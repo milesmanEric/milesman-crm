@@ -1,0 +1,548 @@
+From: <Saved by Blink>
+Snapshot-Content-Location: file:///D:/Downloads/index.html
+Subject: Miles Man CRM
+Date: Fri, 12 Jun 2026 15:26:47 -0400
+MIME-Version: 1.0
+Content-Type: multipart/related;
+	type="text/html";
+	boundary="----MultipartBoundary--FXao52pO2JlrKRqsb2A6DehwYZ8XHJKk3khQucgvca----"
+
+
+------MultipartBoundary--FXao52pO2JlrKRqsb2A6DehwYZ8XHJKk3khQucgvca----
+Content-Type: text/html
+Content-ID: <frame-B92C09B791F869A292B924BABB0AF516@mhtml.blink>
+Content-Transfer-Encoding: quoted-printable
+Content-Location: file:///D:/Downloads/index.html
+
+<!DOCTYPE html><html lang=3D"en"><head><meta http-equiv=3D"Content-Type" co=
+ntent=3D"text/html; charset=3DUTF-8"><link rel=3D"stylesheet" type=3D"text/=
+css" href=3D"cid:css-b2f33608-0cea-4e6f-8588-59601ba189f0@mhtml.blink" />
+
+<title>Miles Man CRM</title>
+
+</head>
+<body>
+<div id=3D"app">
+  <div id=3D"sidebar">
+    <div class=3D"logo-area">
+      <div class=3D"logo-tag">=E2=9C=88 Miles Man</div>
+      <div class=3D"logo-name">Client CRM</div>
+      <div class=3D"logo-sub" id=3D"sync-lbl">=E2=97=8F Saved locally</div>
+    </div>
+    <nav>
+      <button class=3D"nb active" id=3D"nb-dashboard">=F0=9F=93=8A Dashboar=
+d</button>
+      <button class=3D"nb" id=3D"nb-clients">=F0=9F=91=A4 Clients <span cla=
+ss=3D"nc" id=3D"nc-clients">31</span></button>
+      <button class=3D"nb" id=3D"nb-trips">=E2=9C=88=EF=B8=8F Trips <span c=
+lass=3D"nc" id=3D"nc-trips">0</span></button>
+      <button class=3D"nb" id=3D"nb-reports">=F0=9F=93=8A Reports</button>
+    </nav>
+    <div class=3D"sb-footer">
+      <button class=3D"sync-btn" id=3D"outlook-btn">=F0=9F=96=A8 Sync Outlo=
+ok Emails</button>
+      <button class=3D"sync-btn" id=3D"drive-btn" style=3D"color:#1a73e8;bo=
+rder-color:#93c5fd">=E2=98=81 Backup to Google Drive</button>
+      <button class=3D"sync-btn" id=3D"drive-restore-btn" style=3D"color:#1=
+a73e8;border-color:#93c5fd">=E2=98=81 Restore from Google Drive</button>
+      <div class=3D"io-row">
+        <button class=3D"io-btn" id=3D"btn-clients-csv">=E2=AC=87 Clients C=
+SV</button>
+        <button class=3D"io-btn" id=3D"btn-trips-csv">=E2=AC=87 Trips CSV</=
+button>
+      </div>
+      <div class=3D"io-row">
+        <button class=3D"io-btn" id=3D"btn-backup">=E2=AC=87 Backup</button=
+>
+        <button class=3D"io-btn" id=3D"btn-restore">=E2=AC=86 Restore</butt=
+on>
+      </div>
+      <button class=3D"sync-btn" id=3D"btn-mass-email" style=3D"color:#7c3a=
+ed;border-color:#c4b5fd">=F0=9F=93=A7 Email All Clients</button>
+      <button class=3D"sync-btn" id=3D"btn-import-csv" style=3D"color:#0596=
+69;border-color:#6ee7b7">=F0=9F=93=8B Import Contacts from CSV</button>
+      <button class=3D"sync-btn" id=3D"btn-import-revenue" style=3D"color:#=
+059669;border-color:#6ee7b7">=F0=9F=92=B2 Import Revenue CSV</button>
+      <button class=3D"sync-btn" id=3D"btn-ms-signout" style=3D"color:#888;=
+border-color:#ddd;font-size:11px">=F0=9F=94=92 Reset Outlook Login</button>
+      <button class=3D"sync-btn" id=3D"btn-debug-toggle" style=3D"color:#88=
+8;border-color:#ddd;font-size:11px">=F0=9F=90=9E Debug Panel</button>
+      <div class=3D"footer-txt">(908) 419-7700 =C2=B7 themilesman.com</div>
+    </div>
+  </div>
+  <div id=3D"main"><div class=3D"page-hdr"><div class=3D"page-title">Dashbo=
+ard</div><div style=3D"font-size:12px;color:#888">Friday, June 12, 2026</di=
+v></div><div class=3D"stats-grid"><div class=3D"stat"><div class=3D"stat-lb=
+l">Clients</div><div class=3D"stat-val">31</div></div><div class=3D"stat"><=
+div class=3D"stat-lbl">Total trips</div><div class=3D"stat-val">0</div></di=
+v><div class=3D"stat"><div class=3D"stat-lbl">Confirmed</div><div class=3D"=
+stat-val">0</div></div><div class=3D"stat"><div class=3D"stat-lbl">Upcoming=
+</div><div class=3D"stat-val">0</div></div><div class=3D"stat"><div class=
+=3D"stat-lbl">Total value</div><div class=3D"stat-val">$0</div></div><div c=
+lass=3D"stat"><div class=3D"stat-lbl">Points deployed</div><div class=3D"st=
+at-val">0</div></div></div><div class=3D"two-col"><div class=3D"card"><div =
+class=3D"card-hdr"><span class=3D"card-title">Recent trips</span><button cl=
+ass=3D"view-all" id=3D"dash-view-all">View all =E2=86=92</button></div><div=
+ class=3D"empty">No trips yet</div></div><div class=3D"card"><div class=3D"=
+card-hdr"><span class=3D"card-title">Top clients</span></div><div class=3D"=
+cli-row" data-cid=3D"C001"><div class=3D"av" style=3D"width:30px;height:30p=
+x;font-size:12px">S</div><div style=3D"flex:1;min-width:0"><div style=3D"fo=
+nt-size:13px;font-weight:600;color:#111;white-space:nowrap;overflow:hidden;=
+text-overflow:ellipsis">Sharon Roush</div><div style=3D"font-size:11px;colo=
+r:#888">0 pts</div></div><span class=3D"badge b-gray">Standard</span></div>=
+<div class=3D"cli-row" data-cid=3D"C002"><div class=3D"av" style=3D"width:3=
+0px;height:30px;font-size:12px">C</div><div style=3D"flex:1;min-width:0"><d=
+iv style=3D"font-size:13px;font-weight:600;color:#111;white-space:nowrap;ov=
+erflow:hidden;text-overflow:ellipsis">Cliff Rosen</div><div style=3D"font-s=
+ize:11px;color:#888">0 pts</div></div><span class=3D"badge b-gray">Standard=
+</span></div><div class=3D"cli-row" data-cid=3D"C003"><div class=3D"av" sty=
+le=3D"width:30px;height:30px;font-size:12px">B</div><div style=3D"flex:1;mi=
+n-width:0"><div style=3D"font-size:13px;font-weight:600;color:#111;white-sp=
+ace:nowrap;overflow:hidden;text-overflow:ellipsis">Beth Jarecki</div><div s=
+tyle=3D"font-size:11px;color:#888">0 pts</div></div><span class=3D"badge b-=
+gray">Standard</span></div><div class=3D"cli-row" data-cid=3D"C004"><div cl=
+ass=3D"av" style=3D"width:30px;height:30px;font-size:12px">S</div><div styl=
+e=3D"flex:1;min-width:0"><div style=3D"font-size:13px;font-weight:600;color=
+:#111;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Serena Vas=
+h</div><div style=3D"font-size:11px;color:#888">0 pts</div></div><span clas=
+s=3D"badge b-gray">Standard</span></div><div class=3D"cli-row" data-cid=3D"=
+C005"><div class=3D"av" style=3D"width:30px;height:30px;font-size:12px">M</=
+div><div style=3D"flex:1;min-width:0"><div style=3D"font-size:13px;font-wei=
+ght:600;color:#111;white-space:nowrap;overflow:hidden;text-overflow:ellipsi=
+s">Matt Lents</div><div style=3D"font-size:11px;color:#888">0 pts</div></di=
+v><span class=3D"badge b-gray">Standard</span></div></div></div></div>
+</div>
+<div class=3D"overlay" id=3D"overlay">
+  <div class=3D"modal" id=3D"modal"></div>
+</div>
+<div id=3D"toast"></div>
+
+
+
+  <div id=3D"debug-panel" style=3D"display:none;position:fixed;bottom:0;lef=
+t:0;right:0;height:200px;background:#1a1a2e;color:#00ff88;font-family:monos=
+pace;font-size:11px;padding:10px;overflow-y:auto;z-index:2000;border-top:2p=
+x solid #00ff88">
+    <div style=3D"display:flex;justify-content:space-between;margin-bottom:=
+6px">
+      <strong>Debug Log</strong>
+      <button id=3D"debug-clear" style=3D"background:none;border:1px solid =
+#00ff88;color:#00ff88;cursor:pointer;font-size:10px;padding:2px 8px;border-=
+radius:4px">Clear</button>
+      <button id=3D"debug-close" style=3D"background:none;border:1px solid =
+#ff4444;color:#ff4444;cursor:pointer;font-size:10px;padding:2px 8px;border-=
+radius:4px">Close</button>
+    </div>
+    <div id=3D"debug-log"><div style=3D"border-bottom: 1px solid rgb(0, 51,=
+ 34); padding: 2px 0px;">3:25:58 PM &gt; Page URL: file:///D:/Downloads/ind=
+ex.html</div><div style=3D"border-bottom: 1px solid rgb(0, 51, 34); padding=
+: 2px 0px;">3:25:58 PM &gt; Search: </div><div style=3D"border-bottom: 1px =
+solid rgb(0, 51, 34); padding: 2px 0px;">3:25:58 PM &gt; Hash: </div><div s=
+tyle=3D"border-bottom: 1px solid rgb(0, 51, 34); padding: 2px 0px;">3:25:58=
+ PM &gt; Page URL: file:///D:/Downloads/index.html</div><div style=3D"borde=
+r-bottom: 1px solid rgb(0, 51, 34); padding: 2px 0px;">3:25:58 PM &gt; Sear=
+ch: </div><div style=3D"border-bottom: 1px solid rgb(0, 51, 34); padding: 2=
+px 0px;">3:25:58 PM &gt; Hash: </div></div>
+  </div>
+<div id=3D"import-match-overlay" style=3D"position:fixed;inset:0;background=
+:rgba(0,0,0,.5);z-index:3000;display:none;align-items:center;justify-conten=
+t:center;padding:20px">
+  <div id=3D"import-match-box" style=3D"background:#fff;border-radius:12px;=
+padding:26px;width:520px;max-height:80vh;overflow-y:auto;box-shadow:0 20px =
+60px rgba(0,0,0,.2)">
+    <div style=3D"font-size:17px;font-weight:700;color:#111;margin-bottom:6=
+px">Unmatched Client</div>
+    <div id=3D"import-match-name" style=3D"font-size:14px;color:#555;margin=
+-bottom:16px"></div>
+    <div style=3D"display:flex;flex-direction:column;gap:10px">
+      <button id=3D"import-match-add" style=3D"padding:10px 16px;border-rad=
+ius:8px;border:none;background:#2563eb;color:#fff;cursor:pointer;font-size:=
+13px;font-weight:600;font-family:inherit;text-align:left">+ Add as new clie=
+nt</button>
+      <div style=3D"font-size:12px;color:#888;margin-top:4px">=E2=80=94 or =
+match to existing client =E2=80=94</div>
+      <select id=3D"import-match-sel" style=3D"padding:9px 12px;border-radi=
+us:8px;border:1px solid #d1d5db;font-size:13px;font-family:inherit;color:#1=
+11">
+        <option value=3D"">Select existing client...</option>
+      </select>
+      <button id=3D"import-match-use" style=3D"padding:10px 16px;border-rad=
+ius:8px;border:1px solid #d1d5db;background:#fff;color:#374151;cursor:point=
+er;font-size:13px;font-family:inherit">Match to selected client</button>
+      <button id=3D"import-match-skip" style=3D"padding:8px 16px;border-rad=
+ius:8px;border:none;background:none;color:#888;cursor:pointer;font-size:12p=
+x;font-family:inherit">Skip this row</button>
+    </div>
+  </div>
+</div>
+<div id=3D"import-match-overlay" style=3D"display:none;position:fixed;inset=
+:0;background:rgba(0,0,0,.55);z-index:3000;align-items:center;justify-conte=
+nt:center">
+  <div style=3D"background:#fff;border-radius:12px;padding:28px;width:480px=
+;box-shadow:0 20px 60px rgba(0,0,0,.2)">
+    <div style=3D"font-size:16px;font-weight:700;color:#111;margin-bottom:6=
+px">Unmatched Client</div>
+    <div id=3D"import-match-name" style=3D"font-size:13px;color:#555;margin=
+-bottom:18px"></div>
+    <div style=3D"margin-bottom:14px">
+      <label style=3D"font-size:11px;font-weight:600;color:#666;text-transf=
+orm:uppercase;letter-spacing:.06em;display:block;margin-bottom:5px">Match t=
+o existing client</label>
+      <select id=3D"import-match-sel" style=3D"width:100%;padding:8px 11px;=
+border-radius:7px;border:1px solid #d1d5db;font-size:13px;font-family:inher=
+it;color:#111;background:#fafafa"></select>
+    </div>
+    <div style=3D"display:flex;gap:8px;justify-content:flex-end;flex-wrap:w=
+rap">
+      <button id=3D"import-match-skip" style=3D"padding:8px 16px;border-rad=
+ius:8px;border:1px solid #d1d5db;background:#fff;color:#555;cursor:pointer;=
+font-family:inherit;font-size:13px">Skip</button>
+      <button id=3D"import-match-add" style=3D"padding:8px 16px;border-radi=
+us:8px;border:none;background:#059669;color:#fff;cursor:pointer;font-family=
+:inherit;font-size:13px;font-weight:600">Add as New Client</button>
+      <button id=3D"import-match-use" style=3D"padding:8px 16px;border-radi=
+us:8px;border:none;background:#2563eb;color:#fff;cursor:pointer;font-family=
+:inherit;font-size:13px;font-weight:600">Use Selected</button>
+    </div>
+  </div>
+</div>
+<div id=3D"note-expand-overlay">
+  <div id=3D"note-expand-box">
+    <div id=3D"note-expand-header">
+      <div id=3D"note-expand-ts"></div>
+      <button id=3D"note-expand-close">=E2=9C=95</button>
+    </div>
+    <div id=3D"note-expand-body"></div>
+  </div>
+</div>
+
+
+
+
+
+
+</body></html>
+------MultipartBoundary--FXao52pO2JlrKRqsb2A6DehwYZ8XHJKk3khQucgvca----
+Content-Type: text/css
+Content-Transfer-Encoding: quoted-printable
+Content-Location: cid:css-b2f33608-0cea-4e6f-8588-59601ba189f0@mhtml.blink
+
+@charset "utf-8";
+
+html, body { margin: 0px; padding: 0px; height: 100%; background: rgb(255, =
+255, 255); color: rgb(17, 17, 17); font-family: -apple-system, BlinkMacSyst=
+emFont, "Segoe UI", Arial, sans-serif; font-size: 14px; }
+
+* { box-sizing: border-box; }
+
+#app { display: flex; height: 100vh; }
+
+#sidebar { width: 210px; background: rgb(247, 247, 248); border-right: 1px =
+solid rgb(224, 224, 224); display: flex; flex-direction: column; flex-shrin=
+k: 0; }
+
+.logo-area { padding: 18px 16px 14px; border-bottom: 1px solid rgb(224, 224=
+, 224); }
+
+.logo-tag { font-size: 10px; font-weight: 700; letter-spacing: 0.15em; text=
+-transform: uppercase; color: rgb(37, 99, 235); margin-bottom: 2px; }
+
+.logo-name { font-size: 17px; font-weight: 700; color: rgb(17, 17, 17); }
+
+.logo-sub { font-size: 11px; color: rgb(136, 136, 136); margin-top: 3px; }
+
+nav { padding: 10px 8px; flex: 1 1 0%; }
+
+.nb { display: flex; align-items: center; gap: 8px; width: 100%; padding: 9=
+px 10px; border-radius: 8px; border-width: medium; border-style: none; bord=
+er-color: currentcolor; border-image: initial; background: transparent; col=
+or: rgb(85, 85, 85); cursor: pointer; font-size: 13px; font-family: inherit=
+; text-align: left; margin-bottom: 2px; }
+
+.nb:hover { background: rgb(235, 235, 237); }
+
+.nb.active { background: rgb(219, 234, 254); color: rgb(29, 78, 216); font-=
+weight: 600; }
+
+.nc { margin-left: auto; font-size: 10px; background: rgb(229, 231, 235); c=
+olor: rgb(85, 85, 85); border-radius: 20px; padding: 1px 7px; }
+
+.nb.active .nc { background: rgb(191, 219, 254); color: rgb(29, 78, 216); }
+
+.sb-footer { padding: 12px; border-top: 1px solid rgb(224, 224, 224); }
+
+.sync-btn { width: 100%; padding: 7px; border-radius: 7px; border: 1px soli=
+d rgb(209, 213, 219); background: rgb(255, 255, 255); color: rgb(37, 99, 23=
+5); cursor: pointer; font-size: 12px; font-family: inherit; margin-bottom: =
+6px; }
+
+.sync-btn.synced { color: rgb(5, 150, 105); border-color: rgb(110, 231, 183=
+); background: rgb(240, 253, 244); }
+
+.io-row { display: flex; gap: 5px; margin-bottom: 8px; }
+
+.io-btn { flex: 1 1 0%; padding: 6px; border-radius: 6px; border: 1px solid=
+ rgb(224, 224, 224); background: rgb(255, 255, 255); color: rgb(85, 85, 85)=
+; cursor: pointer; font-size: 11px; font-family: inherit; }
+
+.note-entry { margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px=
+ solid rgb(240, 240, 240); }
+
+.note-entry:last-child { border-bottom-width: medium; border-bottom-style: =
+none; border-bottom-color: currentcolor; margin-bottom: 0px; }
+
+.note-ts { font-size: 10px; font-weight: 600; color: rgb(37, 99, 235); marg=
+in-bottom: 4px; letter-spacing: 0.03em; }
+
+.note-txt { width: 100%; padding: 7px 10px; border-radius: 6px; border: 1px=
+ solid rgb(229, 231, 235); font-size: 13px; font-family: inherit; color: rg=
+b(17, 17, 17); background: rgb(255, 255, 255); resize: vertical; box-sizing=
+: border-box; }
+
+.note-ts-link { cursor: pointer; text-decoration: underline; color: rgb(37,=
+ 99, 235); font-size: 10px; font-weight: 600; letter-spacing: 0.03em; }
+
+.note-type-sel { font-size: 11px; padding: 2px 6px; border-radius: 5px; bor=
+der: 1px solid rgb(209, 213, 219); background: rgb(255, 255, 255); color: r=
+gb(55, 65, 81); font-family: inherit; cursor: pointer; margin-left: 8px; }
+
+.note-type-badge { display: inline-block; padding: 1px 8px; border-radius: =
+12px; font-size: 10px; font-weight: 600; margin-left: 8px; vertical-align: =
+middle; }
+
+.nt-email-sent { background: rgb(219, 234, 254); color: rgb(30, 64, 175); }
+
+.nt-email-received { background: rgb(209, 250, 229); color: rgb(6, 95, 70);=
+ }
+
+.nt-initial-call { background: rgb(254, 243, 199); color: rgb(146, 64, 14);=
+ }
+
+.nt-follow-up { background: rgb(243, 232, 255); color: rgb(107, 33, 168); }
+
+.nt-general { background: rgb(243, 244, 246); color: rgb(55, 65, 81); }
+
+.nt-blue { background: rgb(219, 234, 254); color: rgb(30, 64, 175); }
+
+.note-ts-link:hover { color: rgb(29, 78, 216); }
+
+#note-expand-overlay { position: fixed; inset: 0px; background: rgba(0, 0, =
+0, 0.6); z-index: 2000; display: none; align-items: center; justify-content=
+: center; padding: 20px; }
+
+#note-expand-overlay.open { display: flex; }
+
+#note-expand-box { background: rgb(255, 255, 255); border-radius: 12px; pad=
+ding: 28px; width: 100%; max-width: 780px; max-height: 88vh; display: flex;=
+ flex-direction: column; box-shadow: rgba(0, 0, 0, 0.2) 0px 20px 60px; }
+
+#note-expand-header { display: flex; justify-content: space-between; align-=
+items: center; margin-bottom: 14px; flex-shrink: 0; }
+
+#note-expand-ts { font-size: 13px; font-weight: 600; color: rgb(37, 99, 235=
+); }
+
+#note-expand-close { background: none; border-width: medium; border-style: =
+none; border-color: currentcolor; border-image: initial; cursor: pointer; c=
+olor: rgb(136, 136, 136); font-size: 22px; line-height: 1; font-family: inh=
+erit; }
+
+#note-expand-body { flex: 1 1 0%; overflow-y: auto; font-size: 14px; color:=
+ rgb(17, 17, 17); line-height: 1.7; white-space: pre-wrap; word-break: brea=
+k-word; border: 1px solid rgb(229, 231, 235); border-radius: 8px; padding: =
+16px; background: rgb(250, 250, 250); }
+
+.footer-txt { font-size: 10px; color: rgb(170, 170, 170); }
+
+.report-filter { display: flex; gap: 10px; margin-bottom: 18px; flex-wrap: =
+wrap; align-items: flex-end; }
+
+.report-filter label { font-size: 11px; font-weight: 600; color: rgb(102, 1=
+02, 102); text-transform: uppercase; letter-spacing: 0.06em; display: block=
+; margin-bottom: 4px; }
+
+.report-filter input, .report-filter select { padding: 8px 11px; border-rad=
+ius: 7px; border: 1px solid rgb(209, 213, 219); font-size: 13px; font-famil=
+y: inherit; color: rgb(17, 17, 17); background: rgb(250, 250, 250); }
+
+.report-run-btn { padding: 9px 18px; border-radius: 8px; border-width: medi=
+um; border-style: none; border-color: currentcolor; border-image: initial; =
+background: rgb(37, 99, 235); color: rgb(255, 255, 255); cursor: pointer; f=
+ont-size: 13px; font-weight: 600; font-family: inherit; }
+
+.report-export-btn { padding: 9px 18px; border-radius: 8px; border: 1px sol=
+id rgb(209, 213, 219); background: rgb(255, 255, 255); color: rgb(55, 65, 8=
+1); cursor: pointer; font-size: 13px; font-family: inherit; }
+
+.report-table { width: 100%; border-collapse: collapse; margin-top: 4px; }
+
+.report-table th { text-align: left; padding: 9px 12px; font-size: 11px; fo=
+nt-weight: 600; color: rgb(136, 136, 136); border-bottom: 1px solid rgb(229=
+, 231, 235); text-transform: uppercase; letter-spacing: 0.05em; }
+
+.report-table td { padding: 10px 12px; font-size: 13px; color: rgb(68, 68, =
+68); border-bottom: 1px solid rgb(240, 240, 240); vertical-align: top; }
+
+.report-table td.note-cell { max-width: 500px; white-space: pre-wrap; word-=
+break: break-word; line-height: 1.5; }
+
+#main { flex: 1 1 0%; overflow-y: auto; padding: 24px 28px; background: rgb=
+(255, 255, 255); }
+
+.page-hdr { display: flex; justify-content: space-between; align-items: cen=
+ter; margin-bottom: 20px; }
+
+.page-title { font-size: 22px; font-weight: 700; color: rgb(17, 17, 17); }
+
+.add-btn { padding: 9px 18px; border-radius: 8px; border-width: medium; bor=
+der-style: none; border-color: currentcolor; border-image: initial; backgro=
+und: rgb(37, 99, 235); color: rgb(255, 255, 255); cursor: pointer; font-siz=
+e: 13px; font-weight: 600; font-family: inherit; }
+
+.stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10=
+px; margin-bottom: 18px; }
+
+.stat { background: rgb(247, 247, 248); border: 1px solid rgb(229, 231, 235=
+); border-radius: 10px; padding: 14px 16px; }
+
+.stat-lbl { font-size: 11px; color: rgb(136, 136, 136); margin-bottom: 4px;=
+ }
+
+.stat-val { font-size: 24px; font-weight: 700; color: rgb(17, 17, 17); }
+
+.two-col { display: grid; grid-template-columns: 1.5fr 1fr; gap: 14px; }
+
+.card { background: rgb(255, 255, 255); border: 1px solid rgb(229, 231, 235=
+); border-radius: 10px; padding: 16px; }
+
+.card-hdr { display: flex; justify-content: space-between; align-items: cen=
+ter; margin-bottom: 12px; }
+
+.card-title { font-size: 14px; font-weight: 600; color: rgb(17, 17, 17); }
+
+.view-all { font-size: 12px; color: rgb(37, 99, 235); background: none; bor=
+der-width: medium; border-style: none; border-color: currentcolor; border-i=
+mage: initial; cursor: pointer; font-family: inherit; }
+
+table { width: 100%; border-collapse: collapse; }
+
+th { text-align: left; padding: 9px 12px; font-size: 11px; font-weight: 600=
+; color: rgb(136, 136, 136); border-bottom: 1px solid rgb(229, 231, 235); w=
+hite-space: nowrap; text-transform: uppercase; letter-spacing: 0.05em; }
+
+td { padding: 10px 12px; font-size: 13px; color: rgb(68, 68, 68); border-bo=
+ttom: 1px solid rgb(240, 240, 240); vertical-align: middle; }
+
+td.n { color: rgb(17, 17, 17); font-weight: 600; }
+
+tr:last-child td { border-bottom-width: medium; border-bottom-style: none; =
+border-bottom-color: currentcolor; }
+
+.tbl-wrap { border: 1px solid rgb(229, 231, 235); border-radius: 10px; over=
+flow: hidden; }
+
+.badge { display: inline-block; padding: 2px 9px; border-radius: 20px; font=
+-size: 11px; font-weight: 600; }
+
+.b-green { background: rgb(209, 250, 229); color: rgb(6, 95, 70); }
+
+.b-amber { background: rgb(254, 243, 199); color: rgb(146, 64, 14); }
+
+.b-blue { background: rgb(219, 234, 254); color: rgb(30, 64, 175); }
+
+.b-red { background: rgb(254, 226, 226); color: rgb(153, 27, 27); }
+
+.b-gray { background: rgb(243, 244, 246); color: rgb(55, 65, 81); }
+
+.av { width: 30px; height: 30px; border-radius: 50%; background: rgb(219, 2=
+34, 254); color: rgb(30, 64, 175); display: flex; align-items: center; just=
+ify-content: center; font-size: 12px; font-weight: 700; flex-shrink: 0; }
+
+.search-row { display: flex; gap: 8px; margin-bottom: 14px; }
+
+.search-row input, .search-row select { padding: 8px 12px; border-radius: 8=
+px; border: 1px solid rgb(209, 213, 219); font-size: 13px; font-family: inh=
+erit; color: rgb(17, 17, 17); background: rgb(255, 255, 255); }
+
+.search-row input { flex: 1 1 0%; }
+
+.cli-row { display: flex; align-items: center; gap: 10px; padding: 8px; bor=
+der-radius: 8px; cursor: pointer; margin-bottom: 3px; }
+
+.cli-row:hover { background: rgb(247, 247, 248); }
+
+.trips-btn { padding: 3px 10px; border-radius: 20px; border: 1px solid rgb(=
+209, 213, 219); background: rgb(255, 255, 255); color: rgb(37, 99, 235); cu=
+rsor: pointer; font-size: 11px; font-family: inherit; }
+
+.icon-btn { background: none; border-width: medium; border-style: none; bor=
+der-color: currentcolor; border-image: initial; cursor: pointer; padding: 4=
+px 6px; border-radius: 5px; font-size: 15px; }
+
+.back-btn { background: none; border-width: medium; border-style: none; bor=
+der-color: currentcolor; border-image: initial; color: rgb(136, 136, 136); =
+cursor: pointer; font-size: 12px; font-family: inherit; padding: 0px; margi=
+n-top: 3px; display: block; }
+
+.empty { padding: 32px; text-align: center; color: rgb(170, 170, 170); font=
+-size: 13px; }
+
+.overlay { position: fixed; inset: 0px; background: rgba(0, 0, 0, 0.45); di=
+splay: none; align-items: center; justify-content: center; z-index: 999; }
+
+.overlay.open { display: flex; }
+
+.modal { background: rgb(255, 255, 255); border-radius: 12px; border: 1px s=
+olid rgb(229, 231, 235); padding: 26px; width: 620px; max-height: 88vh; ove=
+rflow-y: auto; box-shadow: rgba(0, 0, 0, 0.15) 0px 20px 60px; }
+
+.modal-hdr { display: flex; justify-content: space-between; align-items: ce=
+nter; margin-bottom: 18px; }
+
+.modal-title { font-size: 17px; font-weight: 700; color: rgb(17, 17, 17); }
+
+.close-btn { background: none; border-width: medium; border-style: none; bo=
+rder-color: currentcolor; border-image: initial; cursor: pointer; color: rg=
+b(136, 136, 136); font-size: 20px; font-family: inherit; line-height: 1; }
+
+.fg { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bott=
+om: 4px; }
+
+.full { grid-column: 1 / -1; }
+
+.field { display: flex; flex-direction: column; gap: 4px; }
+
+.field label { font-size: 11px; font-weight: 600; color: rgb(102, 102, 102)=
+; text-transform: uppercase; letter-spacing: 0.06em; }
+
+.field input, .field select, .field textarea { padding: 8px 11px; border-ra=
+dius: 7px; border: 1px solid rgb(209, 213, 219); font-size: 13px; font-fami=
+ly: inherit; color: rgb(17, 17, 17); background: rgb(250, 250, 250); }
+
+.field textarea { resize: vertical; min-height: 58px; }
+
+.form-actions { display: flex; gap: 8px; justify-content: flex-end; margin-=
+top: 18px; }
+
+.cancel-btn { padding: 9px 20px; border-radius: 8px; border: 1px solid rgb(=
+209, 213, 219); background: rgb(255, 255, 255); color: rgb(85, 85, 85); cur=
+sor: pointer; font-family: inherit; font-size: 13px; }
+
+.save-btn { padding: 9px 20px; border-radius: 8px; border-width: medium; bo=
+rder-style: none; border-color: currentcolor; border-image: initial; backgr=
+ound: rgb(37, 99, 235); color: rgb(255, 255, 255); cursor: pointer; font-fa=
+mily: inherit; font-size: 13px; font-weight: 600; }
+
+#toast { position: fixed; bottom: 20px; right: 20px; padding: 11px 18px; bo=
+rder-radius: 9px; font-size: 13px; font-weight: 600; z-index: 1100; display=
+: none; }
+
+.t-ok { background: rgb(209, 250, 229); color: rgb(6, 95, 70); border: 1px =
+solid rgb(110, 231, 183); }
+
+.t-err { background: rgb(254, 226, 226); color: rgb(153, 27, 27); border: 1=
+px solid rgb(252, 165, 165); }
+
+.t-info { background: rgb(219, 234, 254); color: rgb(30, 64, 175); border: =
+1px solid rgb(147, 197, 253); }
+------MultipartBoundary--FXao52pO2JlrKRqsb2A6DehwYZ8XHJKk3khQucgvca------
