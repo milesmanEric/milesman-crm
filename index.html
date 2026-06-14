@@ -943,7 +943,6 @@ function renderReports(){
 
   $('nb-calendar').addEventListener('click', function(){go('calendar');});
   $('nb-email').addEventListener('click', function(){go('email');});
-  $('nb-vendors').addEventListener('click', function(){go('vendors');});
   document.getElementById('rpt-run').addEventListener('click', function(){
     runReport();
     // Bind row clicks after table renders
@@ -1898,6 +1897,9 @@ function delTrip(id){
   $('nb-clients').addEventListener('click', function(){go('clients');});
   $('nb-trips').addEventListener('click', function(){go('trips');});
   $('nb-reports').addEventListener('click', function(){go('reports');});
+  $('nb-calendar').addEventListener('click', function(){go('calendar');});
+  $('nb-email').addEventListener('click', function(){go('email');});
+  $('nb-vendors').addEventListener('click', function(){go('vendors');});
   $('outlook-btn').addEventListener('click', syncOutlook);
   $('drive-btn').addEventListener('click', driveBackup);
   $('drive-restore-btn').addEventListener('click', driveRestore);
