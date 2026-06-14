@@ -1,0 +1,1803 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Miles Man CRM</title>
+<style>
+html,body{margin:0;padding:0;height:100%;background:#fff;color:#111;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:14px}
+*{box-sizing:border-box}
+#app{display:flex;height:100vh}
+#sidebar{width:210px;background:#f7f7f8;border-right:1px solid #e0e0e0;display:flex;flex-direction:column;flex-shrink:0}
+.logo-area{padding:18px 16px 14px;border-bottom:1px solid #e0e0e0}
+.logo-tag{font-size:10px;font-weight:700;letter-spacing:.15em;text-transform:uppercase;color:#2563eb;margin-bottom:2px}
+.logo-name{font-size:17px;font-weight:700;color:#111}
+.logo-sub{font-size:11px;color:#888;margin-top:3px}
+nav{padding:10px 8px;flex:1}
+.nb{display:flex;align-items:center;gap:8px;width:100%;padding:9px 10px;border-radius:8px;border:none;background:transparent;color:#555;cursor:pointer;font-size:13px;font-family:inherit;text-align:left;margin-bottom:2px}
+.nb:hover{background:#ebebed}
+.nb.active{background:#dbeafe;color:#1d4ed8;font-weight:600}
+.nc{margin-left:auto;font-size:10px;background:#e5e7eb;color:#555;border-radius:20px;padding:1px 7px}
+.nb.active .nc{background:#bfdbfe;color:#1d4ed8}
+.sb-footer{padding:12px;border-top:1px solid #e0e0e0}
+.sync-btn{width:100%;padding:7px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit;margin-bottom:6px}
+.sync-btn.synced{color:#059669;border-color:#6ee7b7;background:#f0fdf4}
+.io-row{display:flex;gap:5px;margin-bottom:8px}
+.io-btn{flex:1;padding:6px;border-radius:6px;border:1px solid #e0e0e0;background:#fff;color:#555;cursor:pointer;font-size:11px;font-family:inherit}
+.note-entry{margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid #f0f0f0}
+.note-entry:last-child{border-bottom:none;margin-bottom:0}
+.note-ts{font-size:10px;font-weight:600;color:#2563eb;margin-bottom:4px;letter-spacing:.03em}
+.note-txt{width:100%;padding:7px 10px;border-radius:6px;border:1px solid #e5e7eb;font-size:13px;font-family:inherit;color:#111;background:#fff;resize:vertical;box-sizing:border-box}
+.note-ts-link{cursor:pointer;text-decoration:underline;color:#2563eb;font-size:10px;font-weight:600;letter-spacing:.03em;}
+.note-type-sel{font-size:11px;padding:2px 6px;border-radius:5px;border:1px solid #d1d5db;background:#fff;color:#374151;font-family:inherit;cursor:pointer;margin-left:8px;}
+.note-type-badge{display:inline-block;padding:1px 8px;border-radius:12px;font-size:10px;font-weight:600;margin-left:8px;vertical-align:middle;}
+.nt-email-sent{background:#dbeafe;color:#1e40af;}
+.nt-email-received{background:#d1fae5;color:#065f46;}
+.nt-initial-call{background:#fef3c7;color:#92400e;}
+.nt-follow-up{background:#f3e8ff;color:#6b21a8;}
+.nt-general{background:#f3f4f6;color:#374151;}
+.nt-text-message{background:#fce7f3;color:#9d174d;}
+.nt-blue{background:#dbeafe;color:#1e40af;}
+.note-ts-link:hover{color:#1d4ed8}
+#note-expand-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:2000;display:none;align-items:center;justify-content:center;padding:20px}
+#note-expand-overlay.open{display:flex}
+#note-expand-box{background:#fff;border-radius:12px;padding:28px;width:100%;max-width:780px;max-height:88vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.2)}
+#note-expand-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-shrink:0}
+#note-expand-ts{font-size:13px;font-weight:600;color:#2563eb}
+#note-expand-close{background:none;border:none;cursor:pointer;color:#888;font-size:22px;line-height:1;font-family:inherit}
+#note-expand-body{flex:1;overflow-y:auto;font-size:14px;color:#111;line-height:1.7;white-space:pre-wrap;word-break:break-word;border:1px solid #e5e7eb;border-radius:8px;padding:16px;background:#fafafa}
+.footer-txt{font-size:10px;color:#aaa}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;margin-top:8px}
+.cal-header-cell{text-align:center;font-size:11px;font-weight:700;color:#888;padding:6px 0;text-transform:uppercase;letter-spacing:.05em}
+.cal-cell{min-height:80px;border:1px solid #e5e7eb;border-radius:6px;padding:4px;background:#fff;vertical-align:top}
+.cal-cell.today{background:#eff6ff;border-color:#93c5fd}
+.cal-cell.other-month{background:#f9f9f9;opacity:.6}
+.cal-day-num{font-size:11px;font-weight:600;color:#888;margin-bottom:3px}
+.cal-day-num.today-num{background:#2563eb;color:#fff;border-radius:50%;width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:10px}
+.cal-trip{font-size:10px;padding:2px 5px;border-radius:3px;margin-bottom:2px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:500}
+.cal-trip-start{background:#dbeafe;color:#1e40af;border-left:3px solid #2563eb}
+.template-card{border:1px solid #e5e7eb;border-radius:8px;padding:12px 16px;cursor:pointer;margin-bottom:8px;transition:border-color .15s}
+.template-card:hover,.template-card.selected{border-color:#2563eb;background:#eff6ff}
+.template-card-name{font-size:13px;font-weight:600;color:#111}
+.template-card-desc{font-size:11px;color:#888;margin-top:2px}
+.email-preview{border:1px solid #e5e7eb;border-radius:8px;padding:16px;background:#fafafa;font-size:13px;line-height:1.7;white-space:pre-wrap;min-height:120px;color:#111}
+.email-two-col{display:grid;grid-template-columns:260px 1fr;gap:16px;align-items:start}
+.cal-trip-end{background:#d1fae5;color:#065f46;border-left:3px solid #059669}
+.cal-trip-span{background:#f3f4f6;color:#374151;border-left:3px solid #9ca3af}
+.cal-nav{display:flex;align-items:center;gap:12px}
+.cal-nav-btn{padding:6px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;cursor:pointer;font-size:13px;font-family:inherit;color:#374151}
+.cal-nav-btn:hover{background:#f3f4f6}
+.cal-month-label{font-size:16px;font-weight:700;color:#111;min-width:160px;text-align:center}
+.report-filter{display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap;align-items:flex-end}
+.report-filter label{font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:4px}
+.report-filter input,.report-filter select{padding:8px 11px;border-radius:7px;border:1px solid #d1d5db;font-size:13px;font-family:inherit;color:#111;background:#fafafa}
+.report-run-btn{padding:9px 18px;border-radius:8px;border:none;background:#2563eb;color:#fff;cursor:pointer;font-size:13px;font-weight:600;font-family:inherit}
+.report-export-btn{padding:9px 18px;border-radius:8px;border:1px solid #d1d5db;background:#fff;color:#374151;cursor:pointer;font-size:13px;font-family:inherit}
+.report-table{width:100%;border-collapse:collapse;margin-top:4px}
+.report-table th{text-align:left;padding:9px 12px;font-size:11px;font-weight:600;color:#888;border-bottom:1px solid #e5e7eb;text-transform:uppercase;letter-spacing:.05em}
+.report-table td{padding:10px 12px;font-size:13px;color:#444;border-bottom:1px solid #f0f0f0;vertical-align:top}
+.report-table td.note-cell{max-width:500px;white-space:pre-wrap;word-break:break-word;line-height:1.5}
+#main{flex:1;overflow-y:auto;padding:24px 28px;background:#fff}
+.page-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
+.page-title{font-size:22px;font-weight:700;color:#111}
+.add-btn{padding:9px 18px;border-radius:8px;border:none;background:#2563eb;color:#fff;cursor:pointer;font-size:13px;font-weight:600;font-family:inherit}
+.stats-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:18px}
+.stat{background:#f7f7f8;border:1px solid #e5e7eb;border-radius:10px;padding:14px 16px}
+.stat-lbl{font-size:11px;color:#888;margin-bottom:4px}
+.stat-val{font-size:24px;font-weight:700;color:#111}
+.two-col{display:grid;grid-template-columns:1.5fr 1fr;gap:14px}
+.card{background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:16px}
+.card-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.card-title{font-size:14px;font-weight:600;color:#111}
+.view-all{font-size:12px;color:#2563eb;background:none;border:none;cursor:pointer;font-family:inherit}
+table{width:100%;border-collapse:collapse}
+th{text-align:left;padding:9px 12px;font-size:11px;font-weight:600;color:#888;border-bottom:1px solid #e5e7eb;white-space:nowrap;text-transform:uppercase;letter-spacing:.05em}
+td{padding:10px 12px;font-size:13px;color:#444;border-bottom:1px solid #f0f0f0;vertical-align:middle}
+td.n{color:#111;font-weight:600}
+tr:last-child td{border-bottom:none}
+.tbl-wrap{border:1px solid #e5e7eb;border-radius:10px;overflow:hidden}
+.badge{display:inline-block;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:600}
+.b-green{background:#d1fae5;color:#065f46}
+.b-amber{background:#fef3c7;color:#92400e}
+.b-blue{background:#dbeafe;color:#1e40af}
+.b-red{background:#fee2e2;color:#991b1b}
+.b-gray{background:#f3f4f6;color:#374151}
+.av{width:30px;height:30px;border-radius:50%;background:#dbeafe;color:#1e40af;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0}
+.search-row{display:flex;gap:8px;margin-bottom:14px}
+.search-row input,.search-row select{padding:8px 12px;border-radius:8px;border:1px solid #d1d5db;font-size:13px;font-family:inherit;color:#111;background:#fff}
+.search-row input{flex:1}
+.cli-row{display:flex;align-items:center;gap:10px;padding:8px;border-radius:8px;cursor:pointer;margin-bottom:3px}
+.cli-row:hover{background:#f7f7f8}
+.trips-btn{padding:3px 10px;border-radius:20px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:11px;font-family:inherit}
+.icon-btn{background:none;border:none;cursor:pointer;padding:4px 6px;border-radius:5px;font-size:15px}
+.back-btn{background:none;border:none;color:#888;cursor:pointer;font-size:12px;font-family:inherit;padding:0;margin-top:3px;display:block}
+.empty{padding:32px;text-align:center;color:#aaa;font-size:13px}
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;z-index:999}
+.overlay.open{display:flex}
+.modal{background:#fff;border-radius:12px;border:1px solid #e5e7eb;padding:26px;width:620px;max-height:88vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.15)}
+.modal-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px}
+.modal-title{font-size:17px;font-weight:700;color:#111}
+.close-btn{background:none;border:none;cursor:pointer;color:#888;font-size:20px;font-family:inherit;line-height:1}
+.fg{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:4px}
+.full{grid-column:1/-1}
+.field{display:flex;flex-direction:column;gap:4px}
+.field label{font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em}
+.field input,.field select,.field textarea{padding:8px 11px;border-radius:7px;border:1px solid #d1d5db;font-size:13px;font-family:inherit;color:#111;background:#fafafa}
+.field textarea{resize:vertical;min-height:58px}
+.form-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:18px}
+.cancel-btn{padding:9px 20px;border-radius:8px;border:1px solid #d1d5db;background:#fff;color:#555;cursor:pointer;font-family:inherit;font-size:13px}
+.save-btn{padding:9px 20px;border-radius:8px;border:none;background:#2563eb;color:#fff;cursor:pointer;font-family:inherit;font-size:13px;font-weight:600}
+#toast{position:fixed;bottom:20px;right:20px;padding:11px 18px;border-radius:9px;font-size:13px;font-weight:600;z-index:1100;display:none}
+.t-ok{background:#d1fae5;color:#065f46;border:1px solid #6ee7b7}
+.t-err{background:#fee2e2;color:#991b1b;border:1px solid #fca5a5}
+.t-info{background:#dbeafe;color:#1e40af;border:1px solid #93c5fd}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="sidebar">
+    <div class="logo-area">
+      <div class="logo-tag">&#9992; Miles Man</div>
+      <div class="logo-name">Client CRM</div>
+      <div class="logo-sub" id="sync-lbl">&#9679; Saved locally</div>
+    </div>
+    <nav>
+      <button class="nb active" id="nb-dashboard">&#128202; Dashboard</button>
+      <button class="nb" id="nb-clients">&#128100; Clients <span class="nc" id="nc-clients">0</span></button>
+      <button class="nb" id="nb-trips">&#9992;&#65039; Trips <span class="nc" id="nc-trips">0</span></button>
+      <button class="nb" id="nb-reports">&#128202; Reports</button>
+      <button class="nb" id="nb-calendar">&#128197; Calendar</button>
+      <button class="nb" id="nb-email">&#9993;&#65039; Email</button>
+    </nav>
+    <div class="sb-footer">
+      <button class="sync-btn" id="outlook-btn">&#128424; Sync Outlook Emails</button>
+      <button class="sync-btn" id="drive-btn" style="color:#1a73e8;border-color:#93c5fd">&#9729; Backup to Google Drive</button>
+      <button class="sync-btn" id="drive-restore-btn" style="color:#1a73e8;border-color:#93c5fd">&#9729; Restore from Google Drive</button>
+      <div class="io-row">
+        <button class="io-btn" id="btn-clients-csv">&#11015; Clients CSV</button>
+        <button class="io-btn" id="btn-trips-csv">&#11015; Trips CSV</button>
+      </div>
+      <div class="io-row">
+        <button class="io-btn" id="btn-backup">&#11015; Backup</button>
+        <button class="io-btn" id="btn-restore">&#11014; Restore</button>
+      </div>
+      <button class="sync-btn" id="btn-mass-email" style="color:#7c3aed;border-color:#c4b5fd">&#128231; Email All Clients</button>
+      <button class="sync-btn" id="btn-import-csv" style="color:#059669;border-color:#6ee7b7">&#128203; Import Contacts from CSV</button>
+      <button class="sync-btn" id="btn-import-revenue" style="color:#059669;border-color:#6ee7b7">&#128178; Import Revenue CSV</button>
+      <button class="sync-btn" id="btn-ms-signout" style="color:#888;border-color:#ddd;font-size:11px">&#128274; Reset Outlook Login</button>
+      <button class="sync-btn" id="btn-debug-toggle" style="color:#888;border-color:#ddd;font-size:11px">&#128030; Debug Panel</button>
+      <div class="footer-txt">(908) 419-7700 &middot; themilesman.com</div>
+    </div>
+  </div>
+  <div id="main"></div>
+</div>
+<div class="overlay" id="overlay">
+  <div class="modal" id="modal"></div>
+</div>
+<div id="toast"></div>
+
+
+
+  <div id="debug-panel" style="display:none;position:fixed;bottom:0;left:0;right:0;height:200px;background:#1a1a2e;color:#00ff88;font-family:monospace;font-size:11px;padding:10px;overflow-y:auto;z-index:2000;border-top:2px solid #00ff88">
+    <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+      <strong>Debug Log</strong>
+      <button id="debug-clear" style="background:none;border:1px solid #00ff88;color:#00ff88;cursor:pointer;font-size:10px;padding:2px 8px;border-radius:4px">Clear</button>
+      <button id="debug-close" style="background:none;border:1px solid #ff4444;color:#ff4444;cursor:pointer;font-size:10px;padding:2px 8px;border-radius:4px">Close</button>
+    </div>
+    <div id="debug-log"></div>
+  </div>
+<div id="import-match-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:3000;display:none;align-items:center;justify-content:center;padding:20px">
+  <div id="import-match-box" style="background:#fff;border-radius:12px;padding:26px;width:520px;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.2)">
+    <div style="font-size:17px;font-weight:700;color:#111;margin-bottom:6px">Unmatched Client</div>
+    <div id="import-match-name" style="font-size:14px;color:#555;margin-bottom:16px"></div>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <button id="import-match-add" style="padding:10px 16px;border-radius:8px;border:none;background:#2563eb;color:#fff;cursor:pointer;font-size:13px;font-weight:600;font-family:inherit;text-align:left">+ Add as new client</button>
+      <div style="font-size:12px;color:#888;margin-top:4px">— or match to existing client —</div>
+      <select id="import-match-sel" style="padding:9px 12px;border-radius:8px;border:1px solid #d1d5db;font-size:13px;font-family:inherit;color:#111">
+        <option value="">Select existing client...</option>
+      </select>
+      <button id="import-match-use" style="padding:10px 16px;border-radius:8px;border:1px solid #d1d5db;background:#fff;color:#374151;cursor:pointer;font-size:13px;font-family:inherit">Match to selected client</button>
+      <button id="import-match-skip" style="padding:8px 16px;border-radius:8px;border:none;background:none;color:#888;cursor:pointer;font-size:12px;font-family:inherit">Skip this row</button>
+    </div>
+  </div>
+</div>
+<div id="import-match-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:3000;align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:12px;padding:28px;width:480px;box-shadow:0 20px 60px rgba(0,0,0,.2)">
+    <div style="font-size:16px;font-weight:700;color:#111;margin-bottom:6px">Unmatched Client</div>
+    <div id="import-match-name" style="font-size:13px;color:#555;margin-bottom:18px"></div>
+    <div style="margin-bottom:14px">
+      <label style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:5px">Match to existing client</label>
+      <select id="import-match-sel" style="width:100%;padding:8px 11px;border-radius:7px;border:1px solid #d1d5db;font-size:13px;font-family:inherit;color:#111;background:#fafafa"></select>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap">
+      <button id="import-match-skip" style="padding:8px 16px;border-radius:8px;border:1px solid #d1d5db;background:#fff;color:#555;cursor:pointer;font-family:inherit;font-size:13px">Skip</button>
+      <button id="import-match-add" style="padding:8px 16px;border-radius:8px;border:none;background:#059669;color:#fff;cursor:pointer;font-family:inherit;font-size:13px;font-weight:600">Add as New Client</button>
+      <button id="import-match-use" style="padding:8px 16px;border-radius:8px;border:none;background:#2563eb;color:#fff;cursor:pointer;font-family:inherit;font-size:13px;font-weight:600">Use Selected</button>
+    </div>
+  </div>
+</div>
+<div id="note-expand-overlay">
+  <div id="note-expand-box">
+    <div id="note-expand-header">
+      <div id="note-expand-ts"></div>
+      <button id="note-expand-close">&#x2715;</button>
+    </div>
+    <div id="note-expand-body"></div>
+  </div>
+</div>
+
+<script>
+// Catch any errors during script execution
+window.onerror = function(msg, src, line, col, err) {
+  var d = document.getElementById('debug-panel');
+  var l = document.getElementById('debug-log');
+  if (d && l) {
+    d.style.display = 'block';
+    var div = document.createElement('div');
+    div.style.color = '#ff4444';
+    div.textContent = 'ERROR line ' + line + ': ' + msg;
+    l.appendChild(div);
+  }
+  console.error('Script error:', msg, 'line:', line);
+  return false;
+};
+
+// ── Config ────────────────────────────────────────────────────────────────
+const MS_CLIENT_ID     = 'f59cebe9-632b-4361-bdab-71dda33c174c';
+const MS_TENANT_ID     = 'a9346e69-975d-4abb-861a-dea6e2464642';
+const MS_AUTH_SERVER   = 'https://milesman-auth.vercel.app'; // no secret in browser code
+const MS_SCOPE         = 'https://graph.microsoft.com/Mail.Read offline_access';
+const MS_REDIRECT      = 'https://milesmaneric.github.io/milesman-crm';
+const DRIVE_CLIENT_ID  = '1055867383042-an9l58o1qg22pt7o4ak8vaneeftv54ib.apps.googleusercontent.com';
+const DRIVE_SCOPE      = 'https://www.googleapis.com/auth/drive.file';
+const BACKUP_FILENAME  = 'milesman-crm-backup.json';
+const LS_KEY           = 'milesman_crm_v2';
+
+const TIERS    = ['Standard','Gold','Elite','Platinum'];
+const AIRLINES = ['American','United','Delta','Southwest','JetBlue','Qatar Airways','ANA','Emirates','Lufthansa','British Airways','Air France','Virgin Atlantic'];
+const HOTELS   = ['Marriott','Hilton','Hyatt','IHG','Wyndham','Four Seasons','Ritz-Carlton','W Hotels','Kimpton','Conrad'];
+const STATUSES = ['Planning','Confirmed','Completed','Cancelled'];
+const TYPES    = ['Leisure','Business','Honeymoon','Family','Adventure','Cruise'];
+const CLASSES  = ['Economy','Premium Economy','Business','First'];
+
+let db = {clients:[],trips:[]};
+let view = 'dashboard', selCid = null, fStatus = '', fSearch = '';
+let driveToken = null;
+
+const $ = id => document.getElementById(id);
+const gv = id => $(id) ? $(id).value.trim() : '';
+const gn = id => Number($(id) ? $(id).value : 0);
+const fmt = n => Number(n||0).toLocaleString();
+const today = () => new Date().toISOString().slice(0,10);
+function tsNow(){
+  const n=new Date();
+  return n.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})+' '+n.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+}
+function newId(p,list){
+  const ns=list.map(x=>parseInt((x.id||'0').replace(p,''),10)).filter(n=>!isNaN(n)&&n>0);
+  return p+String((ns.length?Math.max(...ns):0)+1).padStart(3,'0');
+}
+
+// ── Storage ───────────────────────────────────────────────────────────────
+function saveDB(){try{localStorage.setItem(LS_KEY,JSON.stringify(db));}catch(e){}}
+function loadDB(){
+  try{
+    const d=JSON.parse(localStorage.getItem(LS_KEY)||'{}');
+    db.clients=Array.isArray(d.clients)?d.clients:[];
+    db.trips=Array.isArray(d.trips)?d.trips:[];
+  }catch(e){db={clients:[],trips:[]};}
+}
+
+// ── Toast ─────────────────────────────────────────────────────────────────
+function toast(msg,type='ok'){
+  const t=$('toast');
+  t.textContent=msg; t.className='t-'+type; t.style.display='block';
+  clearTimeout(t._t); t._t=setTimeout(()=>{t.style.display='none';},3000);
+}
+
+// ── Badges ────────────────────────────────────────────────────────────────
+const BCLS={Confirmed:'b-green',Planning:'b-amber',Completed:'b-blue',Cancelled:'b-red',Elite:'b-amber',Gold:'b-amber',Standard:'b-gray',Platinum:'b-blue',Leisure:'b-blue',Business:'b-gray',Honeymoon:'b-green',Family:'b-green',Adventure:'b-amber',Cruise:'b-blue',First:'b-blue','Premium Economy':'b-amber',Economy:'b-gray'};
+const badge = l => '<span class="badge '+(BCLS[l]||'b-gray')+'">'+(l||'')+'</span>';
+const av = (name,sz) => { sz=sz||30; return '<div class="av" style="width:'+sz+'px;height:'+sz+'px;font-size:'+Math.round(sz*.4)+'px">'+(name||'?')[0].toUpperCase()+'</div>'; };
+
+
+// ── Debug Panel ───────────────────────────────────────────────────────────
+function debugLog(msg){
+  // Persist to localStorage so it survives redirects
+  const ts = new Date().toLocaleTimeString();
+  const entry = ts + ' > ' + msg;
+  try{
+    const prev = JSON.parse(localStorage.getItem('mm_debug_log')||'[]');
+    prev.push(entry);
+    if(prev.length > 100) prev.shift();
+    localStorage.setItem('mm_debug_log', JSON.stringify(prev));
+  }catch(e){}
+  // Update panel only if already open
+  const panel=$('debug-panel');
+  const log=$('debug-log');
+  if(log){
+    const line=document.createElement('div');
+    line.style.borderBottom='1px solid #003322';
+    line.style.padding='2px 0';
+    line.textContent=entry;
+    log.appendChild(line);
+    log.scrollTop=log.scrollHeight;
+  }
+  console.log('[CRM]', msg);
+}
+
+function loadDebugLog(){
+  try{
+    const entries = JSON.parse(localStorage.getItem('mm_debug_log')||'[]');
+    if(!entries.length) return;
+    const log=$('debug-log');
+    const panel=$('debug-panel');
+    if(!log||!panel) return;
+    entries.forEach(function(entry){
+      const line=document.createElement('div');
+      line.style.borderBottom='1px solid #003322';
+      line.style.padding='2px 0';
+      line.textContent=entry;
+      log.appendChild(line);
+    });
+    log.scrollTop=log.scrollHeight;
+    // Don't auto-open - only show if user has toggled it open
+  }catch(e){}
+}
+
+// ── Microsoft Outlook ─────────────────────────────────────────────────────
+function getMsToken(){ return localStorage.getItem('mm_ms_token'); }
+function msTokenValid(){
+  const exp=parseInt(localStorage.getItem('mm_ms_expiry')||'0',10);
+  return !!getMsToken()&&Date.now()<exp;
+}
+// ── PKCE helpers ─────────────────────────────────────────────────────────
+async function generateCodeVerifier(){
+  const array = new Uint8Array(32);
+  window.crypto.getRandomValues(array);
+  return btoa(String.fromCharCode.apply(null, array))
+    .replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
+}
+async function generateCodeChallenge(verifier){
+  const encoder = new TextEncoder();
+  const data = encoder.encode(verifier);
+  const digest = await window.crypto.subtle.digest('SHA-256', data);
+  return btoa(String.fromCharCode.apply(null, new Uint8Array(digest)))
+    .replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
+}
+async function msLogin(){
+  const verifier = await generateCodeVerifier();
+  const challenge = await generateCodeChallenge(verifier);
+  localStorage.setItem('mm_pkce_verifier', verifier);
+  debugLog('PKCE verifier generated, redirecting...');
+  const params=new URLSearchParams({
+    client_id:MS_CLIENT_ID,response_type:'code',redirect_uri:MS_REDIRECT,
+    scope:MS_SCOPE,response_mode:'query',state:'outlooksync',
+    code_challenge:challenge,code_challenge_method:'S256'
+  });
+  window.location.href='https://login.microsoftonline.com/'+MS_TENANT_ID+'/oauth2/v2.0/authorize?'+params.toString();
+}
+async function exchangeCodeForToken(code){
+  debugLog('Calling auth server (secure token exchange)...');
+  const verifier = localStorage.getItem('mm_pkce_verifier')||'';
+  debugLog('PKCE verifier found: '+(verifier?'yes ('+verifier.slice(0,10)+'...)':'NO - missing!'));
+  const r=await fetch(MS_AUTH_SERVER+'/api/token',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({
+      grant_type:'authorization_code',
+      code:code,
+      redirect_uri:MS_REDIRECT,
+      code_verifier:verifier
+    })
+  });
+  const d=await r.json();
+  debugLog('Token response status: '+r.status+' error: '+(d.error||'none')+' desc: '+(d.error_description||'').slice(0,80));
+  if(!r.ok) throw new Error(d.error_description||d.error||'Token exchange failed');
+  localStorage.setItem('mm_ms_token',d.access_token);
+  localStorage.setItem('mm_ms_expiry',String(Date.now()+(d.expires_in-60)*1000));
+  if(d.refresh_token) localStorage.setItem('mm_ms_refresh',d.refresh_token);
+  return d.access_token;
+}
+async function refreshMsToken(){
+  const rt=localStorage.getItem('mm_ms_refresh');
+  if(!rt) throw new Error('No refresh token');
+  const r=await fetch(MS_AUTH_SERVER+'/api/token',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({grant_type:'refresh_token',refresh_token:rt})
+  });
+  const d=await r.json();
+  if(!r.ok) throw new Error(d.error_description||'Refresh failed');
+  localStorage.setItem('mm_ms_token',d.access_token);
+  localStorage.setItem('mm_ms_expiry',String(Date.now()+(d.expires_in-60)*1000));
+  if(d.refresh_token) localStorage.setItem('mm_ms_refresh',d.refresh_token);
+  return d.access_token;
+}
+async function getValidMsToken(autoRedirect){
+  if(msTokenValid()) return getMsToken();
+  const rt = localStorage.getItem('mm_ms_refresh');
+  if(rt){
+    try{ return await refreshMsToken(); }
+    catch(e){
+      debugLog('Refresh failed, clearing tokens');
+      localStorage.removeItem('mm_ms_token');
+      localStorage.removeItem('mm_ms_refresh');
+      localStorage.removeItem('mm_ms_expiry');
+    }
+  }
+  // Only redirect if explicitly requested (user clicked sync)
+  if(autoRedirect){
+    debugLog('Redirecting to Microsoft login...');
+    msLogin(); // async - starts PKCE flow
+  }
+  return null;
+}
+async function fetchEmails(token,clientEmail,lastSyncDate){
+  const results = [];
+  const clientLower = clientEmail.toLowerCase();
+
+  // Only fetch last 90 days unless we have a lastSync date
+  const since = lastSyncDate || (function(){
+    const d = new Date();
+    d.setDate(d.getDate()-90);
+    return d.toISOString();
+  })();
+
+  debugLog('Fetching emails since: '+since.slice(0,10));
+
+  // Fetch inbox - single page of 50, filtered by date
+  try{
+    const sinceParam = encodeURIComponent(since);
+    const u1 = 'https://graph.microsoft.com/v1.0/me/messages'+
+      '?$select=subject,receivedDateTime,from,toRecipients,body,isDraft'+
+      '&$orderby=receivedDateTime desc&$top=50'+
+      '&$filter=receivedDateTime+ge+'+sinceParam;
+    debugLog('Fetching inbox for '+clientEmail+'...');
+    const r1 = await fetch(u1,{headers:{Authorization:'Bearer '+token}});
+    const d1 = await r1.json();
+    debugLog('Inbox: status='+r1.status+' count='+((d1.value||[]).length));
+    if(r1.ok && d1.value){
+      const matched = d1.value.filter(function(m){
+        const from=(m.from&&m.from.emailAddress&&m.from.emailAddress.address||'').toLowerCase();
+        const to=(m.toRecipients||[]).map(function(r){return(r.emailAddress&&r.emailAddress.address||'').toLowerCase();});
+        return from===clientLower||to.indexOf(clientLower)>=0;
+      });
+      debugLog('Inbox matched: '+matched.length);
+      results.push.apply(results,matched);
+    } else { debugLog('Inbox error: '+(d1.error&&d1.error.message||'unknown')); }
+  }catch(e){ debugLog('Inbox error: '+e.message); }
+
+  // Fetch sent items - single page of 50, filtered by date
+  try{
+    const sinceParam = encodeURIComponent(since);
+    const u2 = 'https://graph.microsoft.com/v1.0/me/mailFolders/SentItems/messages'+
+      '?$select=subject,receivedDateTime,from,toRecipients,body,isDraft'+
+      '&$orderby=receivedDateTime desc&$top=50'+
+      '&$filter=receivedDateTime+ge+'+sinceParam;
+    debugLog('Fetching sent for '+clientEmail+'...');
+    const r2 = await fetch(u2,{headers:{Authorization:'Bearer '+token}});
+    const d2 = await r2.json();
+    debugLog('Sent: status='+r2.status+' count='+((d2.value||[]).length));
+    if(r2.ok && d2.value){
+      const matched = d2.value.filter(function(m){
+        const to=(m.toRecipients||[]).map(function(r){return(r.emailAddress&&r.emailAddress.address||'').toLowerCase();});
+        return to.indexOf(clientLower)>=0;
+      });
+      debugLog('Sent matched: '+matched.length);
+      results.push.apply(results,matched);
+    } else { debugLog('Sent error: '+(d2.error&&d2.error.message||'unknown')); }
+  }catch(e){ debugLog('Sent error: '+e.message); }
+
+  debugLog('Total for '+clientEmail+': '+results.length);
+  return results;
+}
+function stripHtml(html){
+  return (html||'')
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi,'')
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi,'')
+    .replace(/<[^>]+>/g,' ')
+    .replace(/&nbsp;/g,' ').replace(/&amp;/g,'&')
+    .replace(/&lt;/g,'<').replace(/&gt;/g,'>')
+    .replace(/&quot;/g,'"').replace(/\s+/g,' ').trim();
+}
+function emailToNote(msg){
+  const dt=new Date(msg.receivedDateTime);
+  const ts=dt.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})+' '+dt.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+  const isSent=(msg.from&&msg.from.emailAddress&&msg.from.emailAddress.address||'').toLowerCase().includes('themilesman');
+  const dir=isSent?'Sent':'Received';
+  const noteType=isSent?'Email Sent':'Email Received';
+  const subj=msg.subject||'(no subject)';
+  const body=msg.body?stripHtml(msg.body.content||''):(msg.bodyPreview||'');
+  return {ts:ts,text:dir+': '+subj+(body?'\n'+body:''),source:'outlook',msgId:msg.id,noteType:noteType};
+}
+async function syncOutlook(){
+  const btn=$('outlook-btn');
+  const orig=btn.textContent;
+  btn.textContent='Syncing...'; btn.disabled=true;
+  debugLog('=== Outlook Sync Started ===');
+  try{
+    let token=await getValidMsToken(true);
+    if(!token){
+      debugLog('Redirecting to login...');
+      btn.textContent=orig;btn.disabled=false;return;
+    }
+    debugLog('Got token: '+token.slice(0,20)+'...');
+    toast('Connected - fetching emails...','info');
+
+    const clients=db.clients.filter(c=>c.email&&c.email.includes('@'));
+    debugLog('Clients with email: '+clients.length+' ('+clients.map(c=>c.email).join(', ')+')');
+    if(!clients.length){
+      toast('Add clients with email addresses first','err');
+      btn.textContent=orig;btn.disabled=false;return;
+    }
+
+    // Clear last sync date to fetch all emails
+    const lastSync=null; // fetch everything
+    debugLog('Fetching ALL emails (no date filter)');
+
+    let totalNew=0;
+    for(const client of clients){
+      debugLog('--- Fetching emails for: '+client.email+' ---');
+      try{
+        const emails=await fetchEmails(token,client.email,lastSync);
+        debugLog('Emails returned for '+client.email+': '+emails.length);
+        if(!emails.length){debugLog('No emails found for '+client.email);continue;}
+
+        emails.slice(0,3).forEach(function(m){
+          debugLog('  Email: "'+m.subject+'" from '+m.from.emailAddress.address+' on '+m.receivedDateTime);
+        });
+
+        const existing=new Set((client.notesLog||[]).filter(n=>n.msgId).map(n=>n.msgId));
+        debugLog('Existing logged email IDs: '+existing.size);
+        const newNotes=emails.filter(m=>!existing.has(m.id)&&!m.isDraft).map(emailToNote);
+        debugLog('New notes to add: '+newNotes.length);
+
+        if(newNotes.length){
+          const notesLog=[...(client.notesLog||[]),...newNotes].sort((a,b)=>new Date(a.ts)-new Date(b.ts));
+          db.clients=db.clients.map(c=>c.id===client.id?Object.assign({},c,{notesLog:notesLog}):c);
+          totalNew+=newNotes.length;
+        }
+      }catch(e){
+        debugLog('ERROR for '+client.email+': '+e.message);
+        console.error('Email fetch error for '+client.email,e);
+      }
+    }
+    localStorage.setItem('mm_last_outlook_sync',new Date().toISOString());
+    saveDB();render();
+    btn.textContent=orig;btn.style.color='#059669';btn.style.borderColor='#6ee7b7';
+    debugLog('=== Sync Complete: '+totalNew+' new emails ===');
+    toast(totalNew?'Synced '+totalNew+' new emails':'No new emails found','ok');
+  }catch(e){
+    debugLog('FATAL ERROR: '+e.message);
+    console.error('Outlook sync error:',e);
+    toast('Sync failed: '+e.message,'err');
+    btn.textContent=orig;
+  }
+  btn.disabled=false;
+}
+
+// ── Google Drive ──────────────────────────────────────────────────────────
+function loadGIS(){
+  return new Promise(resolve=>{
+    if(window.google&&window.google.accounts&&window.google.accounts.oauth2){resolve();return;}
+    const s=document.createElement('script');
+    s.src='https://accounts.google.com/gsi/client';
+    s.onload=resolve;
+    document.head.appendChild(s);
+  });
+}
+async function getDriveToken(){
+  await loadGIS();
+  return new Promise((resolve,reject)=>{
+    window.google.accounts.oauth2.initTokenClient({
+      client_id:DRIVE_CLIENT_ID,scope:DRIVE_SCOPE,
+      callback:r=>r.error?reject(r.error):resolve(r.access_token)
+    }).requestAccessToken();
+  });
+}
+async function findBackupFile(token){
+  const q=encodeURIComponent("name='"+BACKUP_FILENAME+"' and trashed=false");
+  const r=await fetch('https://www.googleapis.com/drive/v3/files?q='+q+'&fields=files(id,name,modifiedTime)',{
+    headers:{Authorization:'Bearer '+token}
+  });
+  const d=await r.json();
+  return (d.files||[])[0]||null;
+}
+async function driveBackup(silent){
+  const btn=$('drive-btn');
+  if(!silent){btn.textContent='Saving...';btn.disabled=true;}
+  try{
+    if(!driveToken) driveToken=await getDriveToken();
+    const content=JSON.stringify(db,null,2);
+    const existing=await findBackupFile(driveToken);
+    if(existing){
+      await fetch('https://www.googleapis.com/upload/drive/v3/files/'+existing.id+'?uploadType=media',{
+        method:'PATCH',headers:{Authorization:'Bearer '+driveToken,'Content-Type':'application/json'},body:content
+      });
+    }else{
+      const meta=new Blob([JSON.stringify({name:BACKUP_FILENAME,mimeType:'application/json'})],{type:'application/json'});
+      const data=new Blob([content],{type:'application/json'});
+      const form=new FormData();form.append('metadata',meta);form.append('file',data);
+      await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',{
+        method:'POST',headers:{Authorization:'Bearer '+driveToken},body:form
+      });
+    }
+    if(!silent){btn.textContent='Backed up to Drive';btn.style.color='#059669';btn.style.borderColor='#6ee7b7';}
+    var now=new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+    toast('Drive backup saved at '+now,'ok');
+    console.log('[CRM] Drive backup complete at', now);
+  }catch(e){
+    console.error(e);driveToken=null;
+    if(!silent) toast('Drive backup failed: '+e,'err');
+    if(!silent) btn.textContent='Backup to Google Drive';
+  }
+  if(!silent) btn.disabled=false;
+}
+async function driveRestore(){
+  const btn=$('drive-restore-btn');
+  btn.textContent='Loading...';btn.disabled=true;
+  try{
+    if(!driveToken) driveToken=await getDriveToken();
+    const existing=await findBackupFile(driveToken);
+    if(!existing){toast('No backup found in Google Drive','err');btn.textContent='Restore from Google Drive';btn.disabled=false;return;}
+    const r=await fetch('https://www.googleapis.com/drive/v3/files/'+existing.id+'?alt=media',{
+      headers:{Authorization:'Bearer '+driveToken}
+    });
+    const d=await r.json();
+    if(Array.isArray(d.clients)&&Array.isArray(d.trips)){
+      db=d;saveDB();render();
+      const date=new Date(existing.modifiedTime).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+      toast('Restored from Drive ('+date+')','ok');
+    }else{toast('Backup file appears corrupted','err');}
+  }catch(e){console.error(e);driveToken=null;toast('Restore failed: '+e,'err');}
+  btn.textContent='Restore from Google Drive';btn.disabled=false;
+}
+
+// ── Export / Import ───────────────────────────────────────────────────────
+function exportJSON(){
+  const b=new Blob([JSON.stringify(db,null,2)],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='milesman-crm-backup.json';a.click();
+  toast('Backup downloaded');
+}
+function importJSON(){
+  const i=document.createElement('input');i.type='file';i.accept='.json';
+  i.onchange=function(e){
+    const f=e.target.files[0];if(!f)return;
+    const r=new FileReader();
+    r.onload=function(ev){
+      try{
+        const d=JSON.parse(ev.target.result);
+        if(Array.isArray(d.clients)&&Array.isArray(d.trips)){db=d;saveDB();toast('Data imported');render();}
+        else toast('Invalid backup file','err');
+      }catch(ex){toast('Could not read file','err');}
+    };r.readAsText(f);
+  };i.click();
+}
+function exportCSV(type){
+  let rows,filename,headers;
+  if(type==='clients'){
+    headers=['ID','Name','Email','Phone','Location','Tier','Points','Total Revenue','Preferred Airline','Preferred Hotel','Notes','Joined','Total Trips'];
+    rows=db.clients.map(c=>[c.id,c.name,c.email,c.phone,c.location,c.tier,c.points,c.totalRevenue||0,c.preferredAirline,c.preferredHotel,c.notes,c.joined,c.totalTrips]);
+    filename='milesman-clients.csv';
+  }else{
+    headers=['ID','Client','Destination','Origin','Depart','Return','Status','Type','Airline','Class','Hotel','Nights','Points Used','Cash Paid','Total Value','Booking Ref','Notes'];
+    rows=db.trips.map(t=>[t.id,t.clientName,t.destination,t.origin,t.departDate,t.returnDate,t.status,t.type,t.airline,t.flightClass,t.hotel,t.hotelNights,t.pointsUsed,t.cashPaid,t.totalValue,t.bookingRef,t.notes]);
+    filename='milesman-'+type+'.csv';
+  }
+  if(!rows.length){toast('No data to export','err');return;}
+  const esc=v=>{const s=String(v==null?'':v);return s.includes(',')||s.includes('"')||s.includes('\n')?'"'+s.replace(/"/g,'""')+'"':s;};
+  const csv=[headers].concat(rows).map(r=>r.map(esc).join(',')).join('\n');
+  const b=new Blob([csv],{type:'text/csv'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=filename;a.click();
+  toast('CSV downloaded');
+}
+function massEmail(){
+  const withEmail=db.clients.filter(c=>c.email&&c.email.includes('@'));
+  if(!withEmail.length){toast('No client emails found','err');return;}
+  const bcc=withEmail.map(c=>c.email).join(';');
+  const mailto='mailto:?bcc='+encodeURIComponent(bcc)+'&subject='+encodeURIComponent('Miles Man Travel Update');
+  window.location.href=mailto;
+  const ts=tsNow();
+  const note={ts,text:'Mass email sent to '+withEmail.length+' clients'};
+  db.clients=db.clients.map(c=>{
+    if(!c.email||!c.email.includes('@'))return c;
+    const notesLog=Array.isArray(c.notesLog)?c.notesLog.concat([note]):[note];
+    return Object.assign({},c,{notesLog:notesLog});
+  });
+  saveDB();
+  toast('Opening Outlook with '+withEmail.length+' clients in BCC','ok');
+}
+function parseCSVLine(line){
+  const result=[];let cur='',inQuote=false;
+  for(let i=0;i<line.length;i++){
+    const ch=line[i];
+    if(ch==='"'){inQuote=!inQuote;}
+    else if(ch===','&&!inQuote){result.push(cur.trim());cur='';}
+    else{cur+=ch;}
+  }
+  result.push(cur.trim());
+  return result;
+}
+
+function importRevenue(){
+  const inp=document.createElement('input');inp.type='file';inp.accept='.csv';
+  inp.onchange=function(e){
+    const f=e.target.files[0];if(!f)return;
+    const r=new FileReader();
+    r.onload=function(ev){
+      try{
+        const lines=ev.target.result.split('\n').map(l=>l.trim()).filter(l=>l);
+        if(lines.length<2){toast('CSV appears empty','err');return;}
+        const hdrs=parseCSVLine(lines[0]).map(h=>h.replace(/"/g,'').trim().toLowerCase());
+        const ni=hdrs.findIndex(h=>h==='name');
+        const ai=hdrs.findIndex(h=>h==='amount');
+        const di=hdrs.findIndex(h=>h==='date');
+        const mi=hdrs.findIndex(h=>h==='memo');
+        const ii=hdrs.findIndex(h=>h==='item');
+        if(ni===-1){toast('No "Name" column found','err');return;}
+        if(ai===-1){toast('No "Amount" column found','err');return;}
+
+        const rows=[];
+        for(let i=1;i<lines.length;i++){
+          const cols=parseCSVLine(lines[i]);
+          const name=(cols[ni]||'').replace(/"/g,'').trim();
+          const amt=parseFloat((cols[ai]||'').replace(/[$,"]/g,'').trim())||0;
+          if(!name||amt===0)continue;
+          rows.push({
+            name:name,amt:amt,
+            date:(di>=0?(cols[di]||'').replace(/"/g,'').trim():''),
+            memo:(mi>=0?(cols[mi]||'').replace(/"/g,'').trim():''),
+            item:(ii>=0?(cols[ii]||'').replace(/"/g,'').trim():'')
+          });
+        }
+        if(!rows.length){toast('No valid rows found','err');return;}
+
+        // Find unmatched names
+        const unmatchedNames=[];
+        rows.forEach(function(row){
+          const cl=row.name.toLowerCase();
+          const last=row.name.trim().split(' ').pop().toLowerCase();
+          const found=db.clients.some(c=>(c.name||'').toLowerCase()===cl||(c.name||'').trim().split(' ').pop().toLowerCase()===last);
+          if(!found&&!unmatchedNames.includes(row.name))unmatchedNames.push(row.name);
+        });
+
+        window._importState={rows,unmatchedNames,resolutions:{},cursor:0};
+        processImportQueue();
+      }catch(err){console.error(err);toast('Could not read CSV: '+err.message,'err');}
+    };r.readAsText(f);
+  };inp.click();
+}
+
+function processImportQueue(){
+  const state=window._importState;
+  if(!state)return;
+  while(state.cursor<state.unmatchedNames.length){
+    const name=state.unmatchedNames[state.cursor];
+    if(state.resolutions[name]!==undefined){state.cursor++;continue;}
+    showImportMatchModal(name);return;
+  }
+  finalizeImport();
+}
+
+function showImportMatchModal(name){
+  const overlay=$('import-match-overlay');
+  $('import-match-name').textContent='No client found matching: "'+name+'"';
+  const sel=$('import-match-sel');
+  const sorted=[...db.clients].sort((a,b)=>{
+    const al=(a.name||'').trim().split(' ').pop().toLowerCase();
+    const bl=(b.name||'').trim().split(' ').pop().toLowerCase();
+    return al.localeCompare(bl);
+  });
+  sel.innerHTML='<option value="">Select existing client...</option>'+sorted.map(c=>'<option value="'+c.id+'">'+c.name+'</option>').join('');
+  overlay.style.display='flex';
+
+  $('import-match-add').onclick=function(){
+    const newCid=newId('C',db.clients);
+    db.clients.push({id:newCid,name:name,email:'',phone:'',location:'',tier:'Standard',points:0,preferredAirline:'',preferredHotel:'',notesLog:[],joined:today(),totalTrips:0,totalRevenue:0});
+    saveDB();
+    window._importState.resolutions[name]=newCid;
+    overlay.style.display='none';
+    window._importState.cursor++;
+    processImportQueue();
+  };
+  $('import-match-use').onclick=function(){
+    const cid=sel.value;
+    if(!cid){toast('Please select a client or skip','err');return;}
+    window._importState.resolutions[name]=cid;
+    overlay.style.display='none';
+    window._importState.cursor++;
+    processImportQueue();
+  };
+  $('import-match-skip').onclick=function(){
+    window._importState.resolutions[name]=null;
+    overlay.style.display='none';
+    window._importState.cursor++;
+    processImportQueue();
+  };
+}
+
+function finalizeImport(){
+  const state=window._importState;
+  let imported=0,skipped=0,totalRev=0;
+  state.rows.forEach(function(row){
+    const cl=row.name.toLowerCase();
+    const last=row.name.trim().split(' ').pop().toLowerCase();
+    let cid=null;
+    const direct=db.clients.find(c=>(c.name||'').toLowerCase()===cl||(c.name||'').trim().split(' ').pop().toLowerCase()===last);
+    if(direct){cid=direct.id;}
+    else if(state.resolutions[row.name]!==undefined){cid=state.resolutions[row.name];}
+    if(!cid){skipped++;return;}
+    const client=db.clients.find(c=>c.id===cid);
+    if(!client){skipped++;return;}
+
+    // Create trip
+    const tripId=newId('T',db.trips);
+    const dest=row.memo||row.item||'Imported Trip';
+    let tripDate=today();
+    if(row.date){try{const d=new Date(row.date);if(!isNaN(d))tripDate=d.toISOString().slice(0,10);}catch(e){}}
+    db.trips.push({
+      id:tripId,clientId:cid,clientName:client.name,
+      destination:dest,origin:'',departDate:tripDate,returnDate:tripDate,
+      status:'Completed',type:'Leisure',airline:'',flightClass:'',hotel:'',
+      hotelNights:0,pointsUsed:0,cashPaid:row.amt,totalValue:row.amt,
+      bookingRef:'',notes:row.memo||row.item||''
+    });
+
+    // Update client revenue, trip count, and note
+    const newRev=(client.totalRevenue||0)+row.amt;
+    const noteText='Trip imported: '+dest+' — $'+row.amt.toLocaleString()+(row.date?' on '+row.date:'');
+    const newNote={ts:tsNow(),text:noteText,noteType:'Trip Import',source:'revenue-import'};
+    const notesLog=Array.isArray(client.notesLog)?[...client.notesLog,newNote]:[newNote];
+    db.clients=db.clients.map(c=>c.id===cid?Object.assign({},c,{totalRevenue:newRev,totalTrips:(c.totalTrips||0)+1,notesLog}):c);
+
+    imported++;totalRev+=row.amt;
+  });
+  saveDB();render();
+  window._importState=null;
+  toast('Imported '+imported+' trips — $'+totalRev.toLocaleString()+(skipped?' ('+skipped+' skipped)':''),'ok');
+}
+
+
+function importCSV(){
+  const i=document.createElement('input');i.type='file';i.accept='.csv';
+  i.onchange=function(e){
+    const f=e.target.files[0];if(!f)return;
+    const r=new FileReader();
+    r.onload=function(ev){
+      try{
+        const lines=ev.target.result.split('\n').map(function(l){return l.trim();}).filter(function(l){return l;});
+        if(lines.length<2){toast('CSV appears empty','err');return;}
+        const headers=lines[0].split(',').map(function(h){return h.replace(/"/g,'').trim().toLowerCase();});
+        const nameIdx=headers.findIndex(function(h){return h.includes('name');});
+        const emailIdx=headers.findIndex(function(h){return h.includes('email');});
+        if(nameIdx===-1){toast('No name column found in CSV','err');return;}
+        let added=0,skipped=0;
+        for(let i=1;i<lines.length;i++){
+          const cols=lines[i].split(',');
+          const clean=cols.map(function(c){return (c||'').replace(/^"|"$/g,'').trim();});
+          const name=clean[nameIdx]||'';
+          const email=emailIdx>=0?(clean[emailIdx]||''):'';
+          if(!name){skipped++;continue;}
+          const exists=db.clients.some(function(c){
+            return (email&&c.email&&c.email.toLowerCase()===email.toLowerCase())||c.name.toLowerCase()===name.toLowerCase();
+          });
+          if(exists){skipped++;continue;}
+          db.clients.push({id:newId('C',db.clients),name:name,email:email,phone:'',location:'',tier:'Standard',points:0,preferredAirline:'',preferredHotel:'',notes:'',joined:today(),totalTrips:0,notesLog:[]});
+          added++;
+        }
+        saveDB();render();
+        toast('Imported '+added+' contacts'+(skipped?' ('+skipped+' skipped)':'')+' ✓');
+      }catch(err){toast('Could not read CSV: '+err.message,'err');}
+    };r.readAsText(f);
+  };i.click();
+}
+
+// ── Navigation ────────────────────────────────────────────────────────────
+function go(v,cid){
+  view=v;
+  selCid=(v==='trips'&&cid)?cid:null;
+  fSearch='';fStatus='';
+  ['dashboard','clients','trips','reports','calendar','email'].forEach(function(x){var el=$('nb-'+x);if(el)el.classList.toggle('active',x===v);});
+  render();
+}
+
+// ── Render ────────────────────────────────────────────────────────────────
+function render(){
+  $('nc-clients').textContent=db.clients.length;
+  $('nc-trips').textContent=db.trips.length;
+  if(view==='dashboard') renderDash();
+  else if(view==='clients') renderClients();
+  else if(view==='trips') renderTrips();
+  else if(view==='reports') renderReports();
+  else if(view==='calendar') renderCalendar();
+  else if(view==='email') renderEmail();
+}
+
+function renderReports(){
+  var NOTE_TYPES_R = ['','Email Sent','Email Received','Initial Call','Follow-up','General','Trip Import','Text Message'];
+  var typeOpts = NOTE_TYPES_R.map(function(t){return '<option value="'+t+'">'+(t||'All types')+'</option>';}).join('');
+  $('main').innerHTML =
+    '<div class="page-hdr"><div class="page-title">Reports</div></div>'+
+    '<div class="report-filter">'+
+      '<div><label>From Date</label><input type="date" id="rpt-from"/></div>'+
+      '<div><label>To Date</label><input type="date" id="rpt-to"/></div>'+
+      '<div><label>Note Type</label><select id="rpt-type">'+typeOpts+'</select></div>'+
+      '<div><label>Client</label><select id="rpt-client"><option value="">All clients</option>'+
+        [...db.clients].sort(function(a,b){var al=(a.name||'').trim().split(' ').pop().toLowerCase();var bl=(b.name||'').trim().split(' ').pop().toLowerCase();return al.localeCompare(bl);}).map(function(c){return '<option value="'+c.id+'">'+c.name+'</option>';}).join('')+
+      '</select></div>'+
+      '<div style="display:flex;gap:8px;align-self:flex-end">'+
+        '<button class="report-run-btn" id="rpt-run">Run Report</button>'+
+        '<button class="report-export-btn" id="rpt-export">Export CSV</button>'+
+      '</div>'+
+    '</div>'+
+    '<div id="rpt-results"><div class="empty" style="padding:40px">Set filters above and click Run Report</div></div>';
+
+  $('nb-calendar').addEventListener('click', function(){go('calendar');});
+  $('nb-email').addEventListener('click', function(){go('email');});
+  document.getElementById('rpt-run').addEventListener('click', function(){
+    runReport();
+    // Bind row clicks after table renders
+    setTimeout(function(){
+      document.querySelectorAll('.rpt-row').forEach(function(row){
+        row.addEventListener('click', function(){
+          var idx = parseInt(row.dataset.rptIdx, 10);
+          var r = window._reportRows && window._reportRows[idx];
+          if(r) openNoteExpand(r.client+' — '+r.ts, r.text, r.type||'');
+        });
+      });
+    }, 50);
+  });
+  document.getElementById('rpt-export').addEventListener('click', exportReport);
+}
+
+function getReportData(){
+  var fromDate = (document.getElementById('rpt-from')||{}).value||'';
+  var toDate   = (document.getElementById('rpt-to')||{}).value||'';
+  var noteType = (document.getElementById('rpt-type')||{}).value||'';
+  var clientId = (document.getElementById('rpt-client')||{}).value||'';
+
+  // Collect all notes from all clients
+  var rows = [];
+  db.clients.forEach(function(c){
+    if(clientId && c.id !== clientId) return;
+    (c.notesLog||[]).forEach(function(n){
+      // Parse note timestamp for date comparison
+      var noteDate = '';
+      try{ noteDate = new Date(n.ts).toISOString().slice(0,10); }catch(e){}
+      if(!noteDate || noteDate === 'NaN-aN-aN'){
+        // Try parsing 'Jun 10, 2026 10:52 AM' format
+        try{ noteDate = new Date(n.ts).toISOString().slice(0,10); }catch(e){ noteDate = ''; }
+      }
+      if(fromDate && noteDate < fromDate) return;
+      if(toDate   && noteDate > toDate)   return;
+      if(!(n.noteType||'')) return; // exclude notes with no type
+      if(noteType && (n.noteType||'') !== noteType) return;
+      rows.push({
+        client: c.name,
+        email:  c.email||'',
+        ts:     n.ts,
+        type:   n.noteType||'',
+        text:   n.text||''
+      });
+    });
+  });
+
+  // Sort by timestamp descending
+  rows.sort(function(a,b){ return new Date(b.ts)-new Date(a.ts); });
+  return rows;
+}
+
+function runReport(){
+  var rows = getReportData();
+  var container = document.getElementById('rpt-results');
+  if(!container) return;
+  if(!rows.length){
+    container.innerHTML = '<div class="empty" style="padding:40px">No notes match the selected filters</div>';
+    return;
+  }
+  var BCLS2 = {'Email Sent':'nt-email-sent','Email Received':'nt-email-received','Initial Call':'nt-initial-call','Follow-up':'nt-follow-up','General':'nt-general','Trip Import':'nt-blue'};
+  window._reportRows = rows; // store for click handler
+  container.innerHTML =
+    '<div style="font-size:13px;color:#888;margin-bottom:10px">'+rows.length+' note'+(rows.length!==1?'s':'')+' found</div>'+
+    '<div class="tbl-wrap"><table class="report-table"><thead><tr>'+
+      '<th>Client</th><th>Timestamp</th><th>Type</th><th>Note</th>'+
+    '</tr></thead><tbody>'+
+    rows.map(function(r,ri){
+      var badgeCls = BCLS2[r.type]||'nt-general';
+      var typeHtml = r.type ? '<span class="note-type-badge '+badgeCls+'">'+r.type+'</span>' : '<span style="color:#aaa">—</span>';
+      var preview = r.text.slice(0,200)+(r.text.length>200?'…':'');
+      return '<tr style="cursor:pointer" class="rpt-row" data-rpt-idx="'+ri+'">'+
+        '<td><div style="font-weight:600;color:#111">'+r.client+'</div><div style="font-size:11px;color:#888">'+r.email+'</div></td>'+
+        '<td style="white-space:nowrap;color:#555">'+r.ts+'</td>'+
+        '<td>'+typeHtml+'</td>'+
+        '<td class="note-cell" style="color:#2563eb;cursor:pointer;text-decoration:underline">'+preview+'</td>'+
+      '</tr>';
+    }).join('')+
+    '</tbody></table></div>';
+}
+
+function exportReport(){
+  var rows = getReportData();
+  if(!rows.length){ toast('No data to export','err'); return; }
+  var esc = function(v){ var s=String(v==null?'':v); return s.includes(',')||s.includes('"')||s.includes('\n')?'"'+s.replace(/"/g,'""')+'"':s; };
+  var headers = ['Client','Email','Timestamp','Note Type','Note'];
+  var csv = [headers].concat(rows.map(function(r){return[r.client,r.email,r.ts,r.type,r.text];})).map(function(r){return r.map(esc).join(',');}).join('\n');
+  var b = new Blob([csv],{type:'text/csv'});
+  var a = document.createElement('a'); a.href=URL.createObjectURL(b); a.download='milesman-notes-report.csv'; a.click();
+  toast('Report exported ✓');
+}
+
+// ── Email Templates ───────────────────────────────────────────────────────
+// To add a template: add an object to TEMPLATES with name, description, and body.
+// Use {{firstName}}, {{fullName}}, {{email}} as placeholders.
+var TEMPLATES = [
+  {
+    id:'welcome',
+    name:'Welcome New Client',
+    description:'Introduction email for new clients',
+    subject:'Welcome to Miles Man Travel!',
+    body:"Hi {{firstName}},\n\nWelcome to Miles Man! I'm Eric Lipkind, your Chief Mileage Officer. I'm thrilled to have you on board and look forward to helping you maximize your points and miles to travel in style.\n\nAs your dedicated travel advisor, I'll be working with you to:\n\u2022 Find the best award redemptions for your goals\n\u2022 Book premium cabin flights using your points\n\u2022 Identify the best credit card strategies for your travel style\n\nFeel free to reach out any time \u2014 I'm here to help.\n\nWarm regards,\nEric Lipkind\nChief Mileage Officer, Miles Man\neric@themilesman.com\n(908) 419-7700\nthemilesman.com"
+  },
+  {
+    id:'followup',
+    name:'General Follow-Up',
+    description:'Check in after a consultation or inquiry',
+    subject:'Following Up \u2014 Miles Man Travel',
+    body:"Hi {{firstName}},\n\nI wanted to follow up on our recent conversation and see if you have any questions or if there's anything I can help you with.\n\nI'm always happy to hop on a quick call to discuss your travel goals and how we can put your points to work.\n\nLooking forward to hearing from you!\n\nBest,\nEric Lipkind\nChief Mileage Officer, Miles Man\neric@themilesman.com\n(908) 419-7700\nthemilesman.com"
+  },
+  {
+    id:'tripconfirm',
+    name:'Trip Confirmation',
+    description:'Confirm booking details with client',
+    subject:'Your Trip is Confirmed \u2014 Miles Man Travel',
+    body:"Hi {{firstName}},\n\nGreat news \u2014 your trip is confirmed! Here's a summary of your booking details. Please review everything carefully and let me know if you have any questions.\n\nAs always, I'm here if you need anything before, during, or after your trip.\n\nSafe travels!\n\nEric Lipkind\nChief Mileage Officer, Miles Man\neric@themilesman.com\n(908) 419-7700\nthemilesman.com"
+  }
+];
+
+function fillTemplate(body, client){
+  var firstName = (client.name||'').split(' ')[0] || client.name || '';
+  return body
+    .replace(/{{firstName}}/g, firstName)
+    .replace(/{{fullName}}/g, client.name||'')
+    .replace(/{{email}}/g, client.email||'');
+}
+
+function renderEmail(){
+  var sortedClients = [...db.clients].sort(function(a,b){
+    var al=(a.name||'').trim().split(' ').pop().toLowerCase();
+    var bl=(b.name||'').trim().split(' ').pop().toLowerCase();
+    return al.localeCompare(bl);
+  });
+
+  var clientOpts = '<option value="">Select client...</option>'+
+    sortedClients.map(function(c){
+      return '<option value="'+c.id+'">'+c.name+(c.email?' <'+c.email+'>':'')+'</option>';
+    }).join('');
+
+  var templateCards = TEMPLATES.map(function(t){
+    return '<div class="template-card" data-template-id="'+t.id+'">'+
+      '<div class="template-card-name">'+t.name+'</div>'+
+      '<div class="template-card-desc">'+t.description+'</div>'+
+    '</div>';
+  }).join('');
+
+  $('main').innerHTML =
+    '<div class="page-hdr"><div class="page-title">Email</div></div>'+
+    '<div class="email-two-col">'+
+      '<div>'+
+        '<div style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">1. Select Client</div>'+
+        '<select id="email-client-sel" style="width:100%;padding:8px 11px;border-radius:7px;border:1px solid #d1d5db;font-size:13px;font-family:inherit;color:#111;background:#fafafa;margin-bottom:16px">'+clientOpts+'</select>'+
+        '<div style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">2. Select Template</div>'+
+        templateCards+
+      '</div>'+
+      '<div>'+
+        '<div style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">3. Preview & Send</div>'+
+        '<div id="email-preview-area" style="color:#aaa;font-size:13px;padding:20px;text-align:center;border:1px dashed #e5e7eb;border-radius:8px">'+
+          'Select a client and template to preview the email'+
+        '</div>'+
+      '</div>'+
+    '</div>';
+
+  var selClient = null;
+  var selTemplate = null;
+
+  function updatePreview(){
+    const area = document.getElementById('email-preview-area');
+    if(!selClient || !selTemplate){
+      area.innerHTML='<div style="color:#aaa;font-size:13px;padding:20px;text-align:center">Select a client and template to preview</div>';
+      return;
+    }
+    var body = fillTemplate(selTemplate.body, selClient);
+    var subject = fillTemplate(selTemplate.subject, selClient);
+    area.innerHTML =
+      '<div style="margin-bottom:10px">'+
+        '<div style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">To</div>'+
+        '<div style="font-size:13px;color:#111;padding:6px 10px;background:#fff;border:1px solid #e5e7eb;border-radius:6px">'+(selClient.email||'(no email on file)')+'</div>'+
+      '</div>'+
+      '<div style="margin-bottom:10px">'+
+        '<div style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Subject</div>'+
+        '<div style="font-size:13px;color:#111;padding:6px 10px;background:#fff;border:1px solid #e5e7eb;border-radius:6px">'+subject+'</div>'+
+      '</div>'+
+      '<div style="margin-bottom:12px">'+
+        '<div style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Body</div>'+
+        '<div class="email-preview">'+body+'</div>'+
+      '</div>'+
+      '<div style="display:flex;gap:8px">'+
+        '<button id="email-send-btn" style="padding:9px 20px;border-radius:8px;border:none;background:#2563eb;color:#fff;cursor:pointer;font-size:13px;font-weight:600;font-family:inherit">&#9993;&#65039; Open in Outlook</button>'+
+        '<button id="email-log-btn" style="padding:9px 20px;border-radius:8px;border:1px solid #d1d5db;background:#fff;color:#374151;cursor:pointer;font-size:13px;font-family:inherit">&#128221; Log as Note</button>'+
+      '</div>';
+
+    document.getElementById('email-send-btn').addEventListener('click',function(){
+      var mailto='mailto:'+encodeURIComponent(selClient.email||'')+
+        '?subject='+encodeURIComponent(subject)+
+        '&body='+encodeURIComponent(body);
+      window.location.href=mailto;
+    });
+
+    document.getElementById('email-log-btn').addEventListener('click',function(){
+      var newNote={ts:tsNow(),text:'Email Sent: '+subject+'\n'+body,noteType:'Email Sent',source:'template'};
+      db.clients=db.clients.map(function(c){
+        if(c.id!==selClient.id)return c;
+        var nl=Array.isArray(c.notesLog)?[...c.notesLog,newNote]:[newNote];
+        return Object.assign({},c,{notesLog:nl});
+      });
+      saveDB();
+      toast('Email logged as note on '+selClient.name,'ok');
+    });
+  }
+
+  document.getElementById('email-client-sel').addEventListener('change',function(){
+    selClient = db.clients.find(function(c){return c.id===this.value;},this)||null;
+    updatePreview();
+  });
+
+  document.querySelectorAll('.template-card').forEach(function(card){
+    card.addEventListener('click',function(){
+      document.querySelectorAll('.template-card').forEach(function(c){c.classList.remove('selected');});
+      card.classList.add('selected');
+      selTemplate=TEMPLATES.find(function(t){return t.id===card.dataset.templateId;})||null;
+      updatePreview();
+    });
+  });
+}
+
+function renderCalendar(){
+  var now = window._calDate || new Date();
+  window._calDate = now;
+  var year = now.getFullYear();
+  var month = now.getMonth();
+  var monthName = now.toLocaleDateString('en-US',{month:'long',year:'numeric'});
+  var todayStr = new Date().toISOString().slice(0,10);
+
+  // First and last day of month
+  var firstDay = new Date(year, month, 1);
+  var lastDay  = new Date(year, month+1, 0);
+  var startDow = firstDay.getDay(); // 0=Sun
+
+  // Build trip lookup: date -> [{trip, type}]
+  var tripMap = {};
+  function addToMap(dateStr, trip, type){
+    if(!tripMap[dateStr]) tripMap[dateStr] = [];
+    tripMap[dateStr].push({trip:trip, type:type});
+  }
+  db.trips.forEach(function(t){
+    if(!t.departDate) return;
+    var start = new Date(t.departDate+'T12:00:00');
+    var end   = t.returnDate ? new Date(t.returnDate+'T12:00:00') : start;
+    var cur   = new Date(start);
+    var dayCount = 0;
+    while(cur <= end && dayCount < 60){
+      var ds = cur.toISOString().slice(0,10);
+      var type = cur.getTime()===start.getTime() ? 'start' : (cur.getTime()===end.getTime() ? 'end' : 'span');
+      if(start.getTime()===end.getTime()) type='start';
+      addToMap(ds, t, type);
+      cur.setDate(cur.getDate()+1);
+      dayCount++;
+    }
+  });
+
+  // Build calendar grid HTML
+  var days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  var headerCells = days.map(function(d){return '<div class="cal-header-cell">'+d+'</div>';}).join('');
+
+  var cells = '';
+  // Pad start
+  for(var i=0;i<startDow;i++){
+    var prevDate = new Date(year, month, -startDow+i+1);
+    cells += '<div class="cal-cell other-month"><div class="cal-day-num">'+prevDate.getDate()+'</div></div>';
+  }
+  // Days of month
+  for(var d=1;d<=lastDay.getDate();d++){
+    var dateStr = year+'-'+String(month+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+    var isToday = dateStr===todayStr;
+    var trips   = tripMap[dateStr]||[];
+    var dayNumHtml = isToday
+      ? '<div class="cal-day-num today-num">'+d+'</div>'
+      : '<div class="cal-day-num">'+d+'</div>';
+    var tripHtml = trips.slice(0,3).map(function(entry){
+      var t=entry.trip, tp=entry.type;
+      var cls='cal-trip cal-trip-'+(tp==='start'?'start':tp==='end'?'end':'span');
+      var label=(tp==='start'?'▶ ':tp==='end'?'■ ':'  ')+t.clientName+(t.destination?' → '+t.destination.split(',')[0]:'');
+      return '<div class="'+cls+'" data-trip-id="'+t.id+'" title="'+t.clientName+': '+t.destination+(tp==='start'?' (departs)':tp==='end'?' (returns)':'')+'">'+label+'</div>';
+    }).join('');
+    if(trips.length>3) tripHtml+='<div style="font-size:9px;color:#888">+' +(trips.length-3)+' more</div>';
+    cells+='<div class="cal-cell'+(isToday?' today':'')+'">'+dayNumHtml+tripHtml+'</div>';
+  }
+  // Pad end
+  var totalCells = startDow + lastDay.getDate();
+  var endPad = totalCells % 7 === 0 ? 0 : 7-(totalCells%7);
+  for(var i=1;i<=endPad;i++){
+    cells+='<div class="cal-cell other-month"><div class="cal-day-num">'+i+'</div></div>';
+  }
+
+  $('main').innerHTML =
+    '<div class="page-hdr">'+
+      '<div class="page-title">Calendar</div>'+
+      '<div class="cal-nav">'+
+        '<button class="cal-nav-btn" id="cal-prev">&#8592; Prev</button>'+
+        '<div class="cal-month-label">'+monthName+'</div>'+
+        '<button class="cal-nav-btn" id="cal-next">Next &#8594;</button>'+
+        '<button class="cal-nav-btn" id="cal-today">Today</button>'+
+      '</div>'+
+    '</div>'+
+    '<div class="cal-grid">'+headerCells+cells+'</div>';
+
+  // Nav button handlers
+  document.getElementById('cal-prev').addEventListener('click',function(){
+    window._calDate=new Date(year,month-1,1);renderCalendar();
+  });
+  document.getElementById('cal-next').addEventListener('click',function(){
+    window._calDate=new Date(year,month+1,1);renderCalendar();
+  });
+  document.getElementById('cal-today').addEventListener('click',function(){
+    window._calDate=new Date();renderCalendar();
+  });
+
+  // Trip click → open edit form
+  document.querySelectorAll('.cal-trip[data-trip-id]').forEach(function(el){
+    el.addEventListener('click',function(){
+      openTripForm(el.dataset.tripId);
+    });
+  });
+}
+
+function renderDash(){
+  const s={
+    clients:db.clients.length,trips:db.trips.length,
+    value:db.trips.reduce(function(a,t){return a+(t.totalValue||0);},0),
+    pts:db.trips.reduce(function(a,t){return a+(t.pointsUsed||0);},0),
+    confirmed:db.trips.filter(function(t){return t.status==='Confirmed';}).length,
+    upcoming:db.trips.filter(function(t){return (t.departDate||'')>=today();}).length
+  };
+  const recent=[].concat(db.trips).sort(function(a,b){return (b.id||'').localeCompare(a.id||'');}).slice(0,6);
+  const top=[].concat(db.clients).sort(function(a,b){return b.points-a.points;}).slice(0,5);
+  $('main').innerHTML=
+    '<div class="page-hdr"><div class="page-title">Dashboard</div><div style="font-size:12px;color:#888">'+new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'})+'</div></div>'+
+    '<div class="stats-grid">'+
+      '<div class="stat"><div class="stat-lbl">Clients</div><div class="stat-val">'+s.clients+'</div></div>'+
+      '<div class="stat"><div class="stat-lbl">Total trips</div><div class="stat-val">'+s.trips+'</div></div>'+
+      '<div class="stat"><div class="stat-lbl">Confirmed</div><div class="stat-val">'+s.confirmed+'</div></div>'+
+      '<div class="stat"><div class="stat-lbl">Upcoming</div><div class="stat-val">'+s.upcoming+'</div></div>'+
+      '<div class="stat"><div class="stat-lbl">Total value</div><div class="stat-val">$'+fmt(s.value)+'</div></div>'+
+      '<div class="stat"><div class="stat-lbl">Points deployed</div><div class="stat-val">'+fmt(s.pts)+'</div></div>'+
+    '</div>'+
+    '<div class="two-col">'+
+      '<div class="card">'+
+        '<div class="card-hdr"><span class="card-title">Recent trips</span><button class="view-all" id="dash-view-all">View all &rarr;</button></div>'+
+        (recent.length?
+          '<table><thead><tr><th>Client</th><th>Destination</th><th>Depart</th><th>Status</th></tr></thead><tbody>'+
+          recent.map(function(t){return '<tr><td class="n">'+(t.clientName||'')+'</td><td>'+(t.destination||'')+'</td><td>'+(t.departDate||'')+'</td><td>'+badge(t.status)+'</td></tr>';}).join('')+
+          '</tbody></table>':
+          '<div class="empty">No trips yet</div>')+
+      '</div>'+
+      '<div class="card">'+
+        '<div class="card-hdr"><span class="card-title">Top clients</span></div>'+
+        (top.length?
+          top.map(function(c){return '<div class="cli-row" data-cid="'+c.id+'">'+av(c.name)+'<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600;color:#111;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+c.name+'</div><div style="font-size:11px;color:#888">'+fmt(c.points)+' pts</div></div>'+badge(c.tier)+'</div>';}).join(''):
+          '<div class="empty">No clients yet</div>')+
+      '</div>'+
+    '</div>';
+  const va=$('dash-view-all');
+  if(va) va.addEventListener('click',function(){go('trips');});
+  document.querySelectorAll('.cli-row[data-cid]').forEach(function(el){
+    el.addEventListener('click',function(){go('trips',el.dataset.cid);});
+  });
+}
+
+function renderClients(){
+  const q=fSearch.toLowerCase();
+  var list=db.clients.filter(function(c){return !q||(c.name||'').toLowerCase().includes(q)||(c.email||'').toLowerCase().includes(q)||(c.location||'').toLowerCase().includes(q);});
+  list.sort(function(a,b){
+    var aLast=(a.name||'').trim().split(' ').pop().toLowerCase();
+    var bLast=(b.name||'').trim().split(' ').pop().toLowerCase();
+    return aLast.localeCompare(bLast);
+  });
+  $('main').innerHTML=
+    '<div class="page-hdr"><div class="page-title">Clients</div><button class="add-btn" id="btn-add-client">+ Add Client</button></div>'+
+    '<div class="search-row"><input id="client-search" placeholder="Search by name, email, location..." value="'+fSearch+'"/></div>'+
+    '<div class="tbl-wrap"><table><thead><tr><th>Client</th><th>Contact</th><th>Tier</th><th>Points</th><th>Revenue</th><th>Trips</th><th>Notes</th><th>Joined</th><th></th></tr></thead><tbody>'+
+    (list.length?list.map(function(c){return '<tr>'+
+      '<td><div style="display:flex;align-items:center;gap:8px">'+av(c.name)+'<div><div style="font-weight:600;color:#111"><span class="open-client" data-id="'+c.id+'" style="color:#2563eb;cursor:pointer;text-decoration:underline">'+c.name+'</span></div><div style="font-size:10px;color:#aaa">'+c.id+'</div></div></div></td>'+
+      '<td><div>'+(c.email?'<a href="mailto:'+c.email+'" style="color:#2563eb;text-decoration:none" title="Send email">'+c.email+'</a>':'')+'</div><div style="font-size:11px;color:#aaa">'+(c.phone||'')+'</div></td>'+
+      '<td>'+badge(c.tier||'Standard')+'</td>'+
+      '<td>'+fmt(c.points)+'</td>'+
+      '<td>'+(c.totalRevenue?'$'+fmt(c.totalRevenue):'—')+'</td>'+
+      '<td><button class="trips-btn" data-cid="'+c.id+'">'+(c.totalTrips||0)+' trips &rarr;</button></td>'+
+      '<td><button class="trips-btn" data-edit="'+c.id+'">'+(c.notesLog||[]).length+' notes</button></td>'+
+      '<td>'+(c.joined||'')+'</td>'+
+      '<td style="white-space:nowrap"><button class="icon-btn edit-client" data-id="'+c.id+'" style="color:#2563eb">&#9999;&#65039;</button><button class="icon-btn del-client" data-id="'+c.id+'" style="color:#dc2626">&#128465;&#65039;</button></td>'+
+    '</tr>';}).join(''):'<tr><td colspan="8"><div class="empty">No clients found</div></td></tr>')+
+    '</tbody></table></div>';
+
+  $('btn-add-client').addEventListener('click',function(){openClientForm();});
+  $('client-search').addEventListener('input',function(){fSearch=this.value;renderClients();});
+  document.querySelectorAll('.trips-btn[data-cid]').forEach(function(btn){
+    btn.addEventListener('click',function(){go('trips',btn.dataset.cid);});
+  });
+  document.querySelectorAll('.trips-btn[data-edit]').forEach(function(btn){
+    btn.addEventListener('click',function(){openClientForm(btn.dataset.edit);});
+  });
+  document.querySelectorAll('.open-client').forEach(function(span){
+    span.addEventListener('click', function(e){
+      e.stopPropagation();
+      openClientForm(span.dataset.id);
+    });
+  });
+  document.querySelectorAll('.edit-client').forEach(function(btn){
+    btn.addEventListener('click',function(){openClientForm(btn.dataset.id);});
+  });
+  document.querySelectorAll('.del-client').forEach(function(btn){
+    btn.addEventListener('click',function(){delClient(btn.dataset.id);});
+  });
+}
+
+function renderTrips(){
+  const selC=db.clients.find(function(c){return c.id===selCid;});
+  const q=fSearch.toLowerCase();
+  const list=db.trips.filter(function(t){
+    const ms=!q||(t.clientName||'').toLowerCase().includes(q)||(t.destination||'').toLowerCase().includes(q)||(t.bookingRef||'').toLowerCase().includes(q);
+    return ms&&(!fStatus||t.status===fStatus)&&(!selCid||t.clientId===selCid);
+  });
+  const sopts=STATUSES.map(function(s){return '<option value="'+s+'"'+(s===fStatus?' selected':'')+'>'+s+'</option>';}).join('');
+  $('main').innerHTML=
+    '<div class="page-hdr">'+
+      '<div>'+
+        '<div class="page-title">'+(selC?selC.name+"'s Trips":"All Trips")+'</div>'+
+        (selC?'<button class="back-btn" id="btn-back">&#8592; All trips</button>':'')+
+      '</div>'+
+      '<button class="add-btn" id="btn-add-trip">+ Add Trip</button>'+
+    '</div>'+
+    '<div class="search-row">'+
+      '<input id="trip-search" placeholder="Search trips..." value="'+fSearch+'"/>'+
+      '<select id="trip-status-filter"><option value="">All statuses</option>'+sopts+'</select>'+
+    '</div>'+
+    '<div class="tbl-wrap"><table><thead><tr><th>Client</th><th>Destination</th><th>Dates</th><th>Flight</th><th>Status</th><th>Points</th><th>Value</th><th></th></tr></thead><tbody>'+
+    (list.length?list.map(function(t){return '<tr>'+
+      '<td><div><span class="open-client" data-id="'+t.clientId+'" style="font-weight:600;color:#2563eb;cursor:pointer;text-decoration:underline">'+(t.clientName||'')+'</span></div><div style="font-size:10px;color:#aaa">'+t.id+'</div></td>'+
+      '<td><div style="font-weight:600;color:#111">'+(t.destination||'')+'</div><div style="font-size:11px;color:#888">from '+(t.origin||'')+'</div></td>'+
+      '<td><div>'+(t.departDate||'')+'</div><div style="font-size:11px;color:#888">&rarr; '+(t.returnDate||'')+'</div></td>'+
+      '<td><div>'+(t.airline||'')+'</div><div style="font-size:11px">'+badge(t.flightClass||'Economy')+'</div></td>'+
+      '<td>'+badge(t.status||'Planning')+'</td>'+
+      '<td>'+(t.pointsUsed?fmt(t.pointsUsed):'&mdash;')+'</td>'+
+      '<td>$'+fmt(t.totalValue)+'</td>'+
+      '<td style="white-space:nowrap"><button class="icon-btn edit-trip" data-id="'+t.id+'" style="color:#2563eb">&#9999;&#65039;</button><button class="icon-btn del-trip" data-id="'+t.id+'" style="color:#dc2626">&#128465;&#65039;</button></td>'+
+    '</tr>';}).join(''):'<tr><td colspan="8"><div class="empty">No trips found</div></td></tr>')+
+    '</tbody></table></div>';
+
+  $('btn-add-trip').addEventListener('click',function(){openTripForm();});
+  $('trip-search').addEventListener('input',function(){fSearch=this.value;renderTrips();});
+  $('trip-status-filter').addEventListener('change',function(){fStatus=this.value;renderTrips();});
+  if($('btn-back')) $('btn-back').addEventListener('click',function(){selCid=null;render();});
+  document.querySelectorAll('.edit-trip').forEach(function(btn){
+    btn.addEventListener('click',function(){openTripForm(btn.dataset.id);});
+  });
+  document.querySelectorAll('.del-trip').forEach(function(btn){
+    btn.addEventListener('click',function(){delTrip(btn.dataset.id);});
+  });
+  document.querySelectorAll('#main .open-client').forEach(function(span){
+    span.addEventListener('click',function(e){
+      e.stopPropagation();
+      openClientForm(span.dataset.id);
+    });
+  });
+}
+
+// ── Forms ─────────────────────────────────────────────────────────────────
+function selOpts(opts,val){return opts.map(function(o){return '<option value="'+o+'"'+(o===val?' selected':'')+'>'+o+'</option>';}).join('');}
+function fld(label,html,full){return '<div class="field'+(full?' full':'')+'"><label>'+label+'</label>'+html+'</div>';}
+function inp(id,type,val,ph){return '<input id="'+id+'" type="'+(type||'text')+'" value="'+(val||'').toString().replace(/"/g,'&quot;')+'" placeholder="'+(ph||'')+'">';}
+function sel(id,opts,val){return '<select id="'+id+'"><option value="">Select...</option>'+selOpts(opts,val)+'</select>';}
+
+function openClientForm(id){
+  const d=id?(db.clients.find(function(c){return c.id===id;})||{}):{};
+  const notesLog=Array.isArray(d.notesLog)?[...d.notesLog].sort(function(a,b){var ta=new Date(a.ts),tb=new Date(b.ts);return (isNaN(tb)?0:tb)-(isNaN(ta)?0:ta);}):[];
+  const notesHTML=notesLog.length?notesLog.map(function(n,i){
+    return '<div class="note-entry" id="note-entry-'+i+'">'+
+      '<div style="display:flex;align-items:center;margin-bottom:4px">'+
+        '<span class="note-ts-link" data-note-idx="'+i+'">'+n.ts+'</span>'+
+        '<select class="note-type-sel" id="note-type-'+i+'">'+
+          '<option value="">-- Type --</option>'+
+          '<option value="Email Sent"'+(n.noteType==='Email Sent'?' selected':'')+'>Email Sent</option>'+
+          '<option value="Email Received"'+(n.noteType==='Email Received'?' selected':'')+'>Email Received</option>'+
+          '<option value="Initial Call"'+(n.noteType==='Initial Call'?' selected':'')+'>Initial Call</option>'+
+          '<option value="Follow-up"'+(n.noteType==='Follow-up'?' selected':'')+'>Follow-up</option>'+
+          '<option value="General"'+(n.noteType==='General'?' selected':'')+'>General</option>'+
+          '<option value="Trip Import"'+(n.noteType==='Trip Import'?' selected':'')+'>Trip Import</option>'+
+          '<option value="Text Message"'+(n.noteType==='Text Message'?' selected':'')+'>Text Message</option>'+
+        '</select>'+
+      '<button class="del-note-btn" data-note-idx="'+i+'" title="Delete note" style="margin-left:auto;background:none;border:none;cursor:pointer;color:#dc2626;font-size:15px;padding:2px 6px;border-radius:4px;line-height:1">&#128465;&#65039;</button>'+
+      '</div>'+
+      '<textarea class="note-txt" id="note-txt-'+i+'" rows="2">'+n.text+'</textarea>'+
+    '</div>';
+  }).join(''):'<div style="color:#aaa;font-size:12px;padding:6px 0">No notes yet</div>';
+
+  $('modal').innerHTML=
+    '<div class="modal-hdr"><div class="modal-title">'+(id?'Edit Client':'Add Client')+'</div><button class="close-btn" id="modal-close">&#x2715;</button></div>'+
+    '<div class="fg">'+
+      fld('Full Name',inp('fn','text',d.name))+fld('Email',inp('fe','email',d.email))+
+      fld('Phone',inp('fp','text',d.phone,'(xxx) xxx-xxxx'))+fld('Location',inp('fl','text',d.location,'City, State'))+
+      fld('Tier',sel('ft',TIERS,d.tier||'Standard'))+fld('Points Balance',inp('fpts','number',d.points||0))+
+      fld('Preferred Airline',sel('fpa',AIRLINES,d.preferredAirline))+fld('Preferred Hotel',sel('fph',HOTELS,d.preferredHotel))+
+      (id ? (function(){
+        var clientTrips = db.trips.filter(function(t){return t.clientId===id;}).sort(function(a,b){return (a.departDate||'').localeCompare(b.departDate||'');});
+        if(!clientTrips.length) return '';
+        var rows = clientTrips.map(function(t){
+          var status = t.status||'';
+          var scls = {'Confirmed':'b-green','Planning':'b-amber','Completed':'b-blue','Cancelled':'b-red'}[status]||'b-gray';
+          return '<tr style="cursor:pointer" class="client-trip-row" data-trip-id="'+t.id+'">'+
+            '<td style="font-size:12px;font-weight:600;color:#111;padding:6px 8px">'+t.destination+'</td>'+
+            '<td style="font-size:11px;color:#555;padding:6px 8px;white-space:nowrap">'+t.departDate+'</td>'+
+            '<td style="font-size:11px;color:#555;padding:6px 8px;white-space:nowrap">'+(t.returnDate||'—')+'</td>'+
+            '<td style="padding:6px 8px"><span class="badge '+scls+'">'+status+'</span></td>'+
+            '<td style="font-size:11px;color:#888;padding:6px 8px">$'+(t.totalValue?Number(t.totalValue).toLocaleString():'—')+'</td>'+
+          '</tr>';
+        }).join('');
+        return '<div class="field full" style="margin-bottom:12px">'+
+          '<label>Trips ('+clientTrips.length+')</label>'+
+          '<div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;max-height:180px;overflow-y:auto">'+
+          '<table style="width:100%;border-collapse:collapse">'+
+          '<thead><tr style="background:#f9fafb">'+
+            '<th style="text-align:left;padding:5px 8px;font-size:10px;font-weight:600;color:#888;text-transform:uppercase">Destination</th>'+
+            '<th style="text-align:left;padding:5px 8px;font-size:10px;font-weight:600;color:#888;text-transform:uppercase">Depart</th>'+
+            '<th style="text-align:left;padding:5px 8px;font-size:10px;font-weight:600;color:#888;text-transform:uppercase">Return</th>'+
+            '<th style="text-align:left;padding:5px 8px;font-size:10px;font-weight:600;color:#888;text-transform:uppercase">Status</th>'+
+            '<th style="text-align:left;padding:5px 8px;font-size:10px;font-weight:600;color:#888;text-transform:uppercase">Value</th>'+
+          '</tr></thead>'+
+          '<tbody>'+rows+'</tbody></table></div></div>';
+      })() : '') +
+      '<div class="field full"><label>Notes Log</label>'+
+        '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'+
+          '<select id="note-type-filter" style="padding:5px 10px;border-radius:6px;border:1px solid #d1d5db;font-size:12px;font-family:inherit;color:#555;background:#fff">'+
+            '<option value="">All types</option>'+
+            '<option value="Email Sent">Email Sent</option>'+
+            '<option value="Email Received">Email Received</option>'+
+            '<option value="Initial Call">Initial Call</option>'+
+            '<option value="Follow-up">Follow-up</option>'+
+            '<option value="General">General</option>'+
+            '<option value="Trip Import">Trip Import</option>'+
+            '<option value="Text Message">Text Message</option>'+
+          '</select>'+
+          '<span id="note-filter-count" style="font-size:11px;color:#888"></span>'+
+        '</div>'+
+        '<div id="notes-log" style="border:1px solid #e5e7eb;border-radius:8px;padding:10px;background:#fafafa;max-height:220px;overflow-y:auto;margin-bottom:6px">'+notesHTML+'</div>'+
+        '<button type="button" id="btn-add-note" style="align-self:flex-start;padding:5px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit">+ Add Note</button>'+
+      '</div>'+
+    '</div>'+
+    '<div class="form-actions"><button class="cancel-btn" id="modal-cancel">Cancel</button><button class="save-btn" id="modal-save-client" data-id="'+(id||'')+'">Save Client</button></div>';
+
+  $('overlay').classList.add('open');
+  $('modal-close').addEventListener('click',closeModal);
+  $('modal-cancel').addEventListener('click',closeModal);
+  $('btn-add-note').addEventListener('click',addNoteEntry);
+
+  // Note type filter
+  var noteFilterSel = document.getElementById('note-type-filter');
+  var noteFilterCount = document.getElementById('note-filter-count');
+  if(noteFilterSel){
+    function applyNoteFilter(){
+      var val = noteFilterSel.value;
+      var entries = document.querySelectorAll('#notes-log .note-entry');
+      var shown = 0;
+      entries.forEach(function(el){
+        if(!val){el.style.display='';shown++;}
+        else{
+          var sel = el.querySelector('.note-type-sel');
+          var type = sel ? sel.value : '';
+          if(type===val){el.style.display='';shown++;}
+          else{el.style.display='none';}
+        }
+      });
+      if(noteFilterCount) noteFilterCount.textContent = shown+' of '+entries.length+' notes';
+    }
+    noteFilterSel.addEventListener('change', applyNoteFilter);
+    applyNoteFilter(); // apply on open
+  }
+  $('modal-save-client').addEventListener('click',function(){saveClient(this.dataset.id);});
+  // Bind trip row clicks to open trip form
+  document.querySelectorAll('.client-trip-row').forEach(function(row){
+    row.addEventListener('click',function(){
+      closeModal();
+      openTripForm(row.dataset.tripId);
+    });
+  });
+  // Bind timestamp expand clicks - uses event delegation on notes-log
+  var notesLogEl = $('notes-log');
+  var currentNotesLogData = Array.isArray(d.notesLog) ? d.notesLog : [];
+  // Bind delete note buttons via delegation
+  if(notesLogEl){
+    notesLogEl.addEventListener('click', function(e){
+      var btn = e.target.closest ? e.target.closest('.del-note-btn') : null;
+      if(!btn && e.target.classList.contains('del-note-btn')) btn = e.target;
+      if(btn){
+        var entry = btn.closest('.note-entry');
+        if(entry && confirm('Delete this note?')){
+          entry.remove();
+          // Re-index remaining entries
+          var entries = notesLogEl.querySelectorAll('.note-entry');
+          entries.forEach(function(el, newIdx){
+            el.id = 'note-entry-'+newIdx;
+            var tsLink = el.querySelector('.note-ts-link');
+            if(tsLink) tsLink.dataset.noteIdx = newIdx;
+            var sel = el.querySelector('.note-type-sel');
+            if(sel) sel.id = 'note-type-'+newIdx;
+            var ta = el.querySelector('.note-txt');
+            if(ta) ta.id = 'note-txt-'+newIdx;
+            var delBtn = el.querySelector('.del-note-btn');
+            if(delBtn) delBtn.dataset.noteIdx = newIdx;
+          });
+        }
+      }
+    });
+  }
+  if(notesLogEl){
+    notesLogEl.addEventListener('click', function(e){
+      var span = e.target.closest ? e.target.closest('.note-ts-link') : null;
+      if(!span && e.target.classList.contains('note-ts-link')) span = e.target;
+      if(span){
+        var idx = parseInt(span.dataset.noteIdx, 10);
+        var note = currentNotesLogData[idx];
+        if(note) openNoteExpand(note.ts, note.text, note.noteType||'');
+      }
+    });
+  }
+}
+
+function addNoteEntry(){
+  const log=$('notes-log');
+  const empty=log.querySelector('div[style]');
+  if(empty) empty.remove();
+  const idx=log.querySelectorAll('.note-entry').length;
+  const div=document.createElement('div');
+  div.className='note-entry';div.id='note-entry-'+idx;
+  div.innerHTML=
+    '<div style="display:flex;align-items:center;margin-bottom:4px">'+
+      '<span class="note-ts" style="font-size:10px;font-weight:600;color:#2563eb;letter-spacing:.03em">'+tsNow()+'</span>'+
+      '<select class="note-type-sel" id="note-type-'+idx+'">'+
+        '<option value="">-- Type --</option>'+
+        '<option value="Email Sent">Email Sent</option>'+
+        '<option value="Email Received">Email Received</option>'+
+        '<option value="Initial Call">Initial Call</option>'+
+        '<option value="Follow-up">Follow-up</option>'+
+        '<option value="General">General</option>'+
+        '<option value="Trip Import">Trip Import</option>'+
+        '<option value="Text Message">Text Message</option>'+
+      '</select>'+
+      '<button class="del-note-btn" title="Delete note" style="margin-left:auto;background:none;border:none;cursor:pointer;color:#dc2626;font-size:15px;padding:2px 6px;border-radius:4px;line-height:1">&#128465;&#65039;</button>'+
+    '</div>'+
+    '<textarea class="note-txt" id="note-txt-'+idx+'" rows="2" placeholder="Type your note here..."></textarea>';
+  log.appendChild(div);
+  div.querySelector('textarea').focus();
+  log.scrollTop=log.scrollHeight;
+}
+
+function openTripForm(id){
+  const d=id?(db.trips.find(function(t){return t.id===id;})||{}):{};
+  const initCid=d.clientId||selCid||'';
+  const copts=[...db.clients].sort(function(a,b){var al=(a.name||'').trim().split(' ').pop().toLowerCase();var bl=(b.name||'').trim().split(' ').pop().toLowerCase();return al.localeCompare(bl);}).map(function(c){return '<option value="'+c.id+'"'+(c.id===initCid?' selected':'')+'>'+c.name+' ('+c.id+')</option>';}).join('');
+  $('modal').innerHTML=
+    '<div class="modal-hdr"><div class="modal-title">'+(id?'Edit Trip':'Add Trip')+'</div><button class="close-btn" id="modal-close">&#x2715;</button></div>'+
+    '<div class="fg">'+
+      fld('Client','<select id="tc"><option value="">Select client...</option>'+copts+'</select>',true)+
+      fld('Origin',inp('tor','text',d.origin,'e.g. JFK'))+fld('Destination',inp('tde','text',d.destination,'e.g. Tokyo, Japan'))+
+      fld('Depart Date',inp('tdd','date',d.departDate))+fld('Return Date',inp('trd','date',d.returnDate))+
+      fld('Status',sel('tst',STATUSES,d.status||'Planning'))+fld('Trip Type',sel('tty',TYPES,d.type||'Leisure'))+
+      fld('Airline',sel('tai',AIRLINES,d.airline))+fld('Class of Service',sel('tcl',CLASSES,d.flightClass||'Economy'))+
+      fld('Hotel Brand',sel('tho',HOTELS,d.hotel))+fld('Hotel Nights',inp('thn','number',d.hotelNights||0))+
+      fld('Points Used',inp('tpu','number',d.pointsUsed||0))+fld('Cash Paid ($)',inp('tcp','number',d.cashPaid||0))+
+      fld('Total Value ($)',inp('tva','number',d.totalValue||0))+fld('Booking Reference',inp('tbr','text',d.bookingRef,'e.g. UA-44129LHR'))+
+      fld('Notes','<textarea id="tno">'+(d.notes||'')+'</textarea>',true)+
+    '</div>'+
+    '<div class="form-actions"><button class="cancel-btn" id="modal-cancel">Cancel</button><button class="save-btn" id="modal-save-trip" data-id="'+(id||'')+'">Save Trip</button></div>';
+  $('overlay').classList.add('open');
+  $('modal-close').addEventListener('click',closeModal);
+  $('modal-cancel').addEventListener('click',closeModal);
+  $('modal-save-trip').addEventListener('click',function(){saveTrip(this.dataset.id);});
+}
+
+function closeModal(){$('overlay').classList.remove('open');}
+$('overlay').addEventListener('click',function(e){if(e.target===$('overlay'))closeModal();});
+
+// ── CRUD ──────────────────────────────────────────────────────────────────
+function saveClient(id){
+  const name=gv('fn'),email=gv('fe');
+  if(!name||!email){toast('Name and email are required','err');return;}
+  const entries=Array.from(document.querySelectorAll('.note-entry'));
+  // Validate that all notes with text have a type
+  var noteEntryEls = Array.from(document.querySelectorAll('.note-entry'));
+  for(var ni=0; ni<noteEntryEls.length; ni++){
+    var el = noteEntryEls[ni];
+    var txt = (el.querySelector('.note-txt')||{}).value||'';
+    var typ = (el.querySelector('.note-type-sel')||{}).value||'';
+    if(txt.trim() && !typ){
+      toast('Please select a note type for all notes','err');
+      var sel = el.querySelector('.note-type-sel');
+      if(sel){ sel.style.borderColor='#dc2626'; sel.focus(); }
+      return;
+    }
+    if(sel) sel.style.borderColor='';
+  }
+  const notesLog=noteEntryEls.map(function(el,i){
+    const tsEl = el.querySelector('.note-ts-link') || el.querySelector('.note-ts');
+    const ts=(tsEl||{}).textContent||'';
+    const text=(el.querySelector('.note-txt')||{}).value||'';
+    const typeEl=el.querySelector('.note-type-sel');
+    const noteType=(typeEl&&typeEl.value)||'';
+    return {ts:ts.trim(),text:text.trim(),noteType:noteType};
+  }).filter(function(n){return n.text;});
+  const data={name:name,email:email,phone:gv('fp'),location:gv('fl'),tier:gv('ft')||'Standard',points:gn('fpts'),preferredAirline:gv('fpa'),preferredHotel:gv('fph'),notesLog:notesLog};
+  if(id){
+    db.clients=db.clients.map(function(c){return c.id===id?Object.assign({},c,data):c;});
+    toast('Client updated');
+  }else{
+    db.clients.push(Object.assign({},data,{id:newId('C',db.clients),joined:today(),totalTrips:0}));
+    toast('Client added');
+  }
+  saveDB();closeModal();render();
+}
+
+function saveTrip(id){
+  const clientId=gv('tc'),dest=gv('tde');
+  if(!clientId||!dest){toast('Client and destination are required','err');return;}
+  const client=db.clients.find(function(c){return c.id===clientId;});
+  const data={clientId:clientId,clientName:client?client.name:'',origin:gv('tor'),destination:dest,departDate:gv('tdd'),returnDate:gv('trd'),status:gv('tst')||'Planning',type:gv('tty')||'Leisure',airline:gv('tai'),flightClass:gv('tcl')||'Economy',hotel:gv('tho'),hotelNights:gn('thn'),pointsUsed:gn('tpu'),cashPaid:gn('tcp'),totalValue:gn('tva'),bookingRef:gv('tbr'),notes:gv('tno')};
+  if(id){
+    db.trips=db.trips.map(function(t){return t.id===id?Object.assign({},t,data):t;});
+    toast('Trip updated');
+  }else{
+    data.id=newId('T',db.trips);
+    db.trips.push(data);
+    if(client) client.totalTrips=(client.totalTrips||0)+1;
+    toast('Trip added');
+  }
+  saveDB();closeModal();render();
+}
+
+function delClient(id){
+  const c=db.clients.find(function(x){return x.id===id;});
+  if(!c||!confirm('Delete '+c.name+' and all their trips?'))return;
+  db.clients=db.clients.filter(function(x){return x.id!==id;});
+  db.trips=db.trips.filter(function(t){return t.clientId!==id;});
+  if(selCid===id) selCid=null;
+  saveDB();toast('Client deleted');render();
+}
+
+function delTrip(id){
+  if(!confirm('Delete this trip?'))return;
+  db.trips=db.trips.filter(function(t){return t.id!==id;});
+  saveDB();toast('Trip deleted');render();
+}
+
+// ── Check for MS OAuth redirect ───────────────────────────────────────────
+(function checkMsRedirect(){
+  const params=new URLSearchParams(window.location.search);
+  const code=params.get('code');
+  const state=params.get('state');
+  if(code&&state==='outlooksync'){
+    window.history.replaceState({},'',window.location.pathname);
+    debugLog('Got auth code, exchanging for token...');
+    exchangeCodeForToken(code).then(function(){
+      debugLog('Token exchange SUCCESS - auto-syncing emails...');
+      toast('Outlook connected - syncing emails...','info');
+      $('outlook-btn').style.color='#059669';
+      $('outlook-btn').style.borderColor='#6ee7b7';
+      // Auto-run sync immediately after login
+      syncOutlook();
+    }).catch(function(e){
+      debugLog('Token exchange FAILED: '+e.message);
+      toast('Outlook auth failed: '+e.message,'err');
+    });
+  }
+})();
+
+// ── Wire up sidebar buttons ───────────────────────────────────────────────
+// Bind all buttons (script runs after DOM since it's at end of body)
+(function() {
+  $('nb-dashboard').addEventListener('click', function(){go('dashboard');});
+  $('nb-clients').addEventListener('click', function(){go('clients');});
+  $('nb-trips').addEventListener('click', function(){go('trips');});
+  $('nb-reports').addEventListener('click', function(){go('reports');});
+  $('outlook-btn').addEventListener('click', syncOutlook);
+  $('drive-btn').addEventListener('click', driveBackup);
+  $('drive-restore-btn').addEventListener('click', driveRestore);
+  $('btn-clients-csv').addEventListener('click', function(){exportCSV('clients');});
+  $('btn-trips-csv').addEventListener('click', function(){exportCSV('trips');});
+  $('btn-backup').addEventListener('click', exportJSON);
+  $('btn-restore').addEventListener('click', importJSON);
+  $('btn-mass-email').addEventListener('click', massEmail);
+  $('btn-import-csv').addEventListener('click', importCSV);
+  $('btn-import-revenue').addEventListener('click', importRevenue);
+  $('debug-clear').addEventListener('click', function(){$('debug-log').innerHTML='';localStorage.removeItem('mm_debug_log');});
+  $('btn-ms-signout').addEventListener('click', function(){
+    localStorage.removeItem('mm_ms_token');
+    localStorage.removeItem('mm_ms_refresh');
+    localStorage.removeItem('mm_ms_expiry');
+    localStorage.removeItem('mm_last_outlook_sync');
+    const btn = document.getElementById('outlook-btn');
+    btn.style.color='';btn.style.borderColor='';
+    toast('Outlook login reset - click Sync to reconnect','ok');
+    debugLog('MS tokens cleared');
+  });
+  $('btn-debug-toggle').addEventListener('click', function(){
+    const p=$('debug-panel');
+    p.style.display=p.style.display==='none'?'block':'none';
+  });
+  $('debug-close').addEventListener('click', function(){$('debug-panel').style.display='none';});
+  document.getElementById('note-expand-close').addEventListener('click', closeNoteExpand);
+  document.getElementById('note-expand-overlay').addEventListener('click', function(e){
+    if(e.target === document.getElementById('note-expand-overlay')) closeNoteExpand();
+  });
+})();
+
+// ── Note expand ──────────────────────────────────────────────────────────────
+function noteTypeCls(t){
+  var map={'Email Sent':'nt-email-sent','Email Received':'nt-email-received','Initial Call':'nt-initial-call','Follow-up':'nt-follow-up','General':'nt-general','Trip Import':'nt-blue'};
+  return map[t]||'nt-general';
+}
+function openNoteExpand(ts, text, noteType){
+  var overlay = document.getElementById('note-expand-overlay');
+  var tsEl    = document.getElementById('note-expand-ts');
+  var bodyEl  = document.getElementById('note-expand-body');
+  tsEl.innerHTML = ts + (noteType ? ' <span class="note-type-badge '+noteTypeCls(noteType)+'">'+noteType+'</span>' : '');
+  bodyEl.textContent = text;
+  overlay.classList.add('open');
+}
+function closeNoteExpand(){
+  document.getElementById('note-expand-overlay').classList.remove('open');
+}
+
+// ── Auto-save every 5 minutes ────────────────────────────────────────────
+function startAutosave(){
+  // Local save every 5 minutes
+  setInterval(function(){
+    saveDB();
+    var now = new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+    console.log('[CRM] Auto-saved locally at', now);
+  }, 5 * 60 * 1000);
+
+  // Google Drive backup every 30 minutes (only if already authenticated)
+  setInterval(function(){
+    if(!driveToken){
+      console.log('[CRM] Drive auto-backup skipped - not signed in');
+      return;
+    }
+    console.log('[CRM] Running auto Drive backup...');
+    driveBackup(true); // silent=true suppresses the button text change
+  }, 30 * 60 * 1000);
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────
+console.log('[CRM] Script loaded, binding buttons...');
+// Log the full URL so we can see what MS returns
+debugLog('Page URL: '+window.location.href.slice(0,200));
+debugLog('Search: '+window.location.search);
+debugLog('Hash: '+window.location.hash.slice(0,100));
+loadDB();
+render();
+loadDebugLog();
+startAutosave();
+console.log('[CRM] Ready. Clients:', db.clients.length, 'Trips:', db.trips.length);
+</script>
+</body>
+
+
+</html>
