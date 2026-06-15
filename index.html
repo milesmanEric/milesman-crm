@@ -1368,6 +1368,7 @@ function importVendorsCSV(){
 
         // Detect delimiter: tab or comma
         const delim = lines[0].includes('\t') ? '\t' : ',';
+        debugLog('Vendor import: lines='+lines.length+' delim='+(delim==='\t'?'TAB':'COMMA')+' first50='+lines[0].slice(0,50));
 
         // Detect if first row is a header (has text like 'name','vendor','type')
         const firstCols = lines[0].split(delim).map(h=>h.replace(/"/g,'').trim().toLowerCase());
@@ -1376,6 +1377,7 @@ function importVendorsCSV(){
         // QuickBooks tab-separated format (no header):
         // col0=date, col1=ref#, col2=?, col3=vendor name, col4=class/client, col5=?, col6=qty, col7=?, col8=amount
         const isQB = !looksLikeHeader && delim==='\t';
+        debugLog('Vendor import: looksLikeHeader='+looksLikeHeader+' isQB='+isQB);
 
         var added=0, skipped=0;
 
@@ -1386,6 +1388,7 @@ function importVendorsCSV(){
             const cols=lines[i].split('\t');
             // col 3 = vendor name, col 5 = class/client
             var name=(cols[3]||'').replace(/"/g,'').trim();
+            debugLog('QB row '+i+': cols='+cols.length+' name='+name);
             if(!name){skipped++;continue;}
             if(seen[name.toLowerCase()]){continue;} // deduplicate
             seen[name.toLowerCase()]=true;
