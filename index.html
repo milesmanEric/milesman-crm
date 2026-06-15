@@ -1376,8 +1376,8 @@ function importVendorsCSV(){
 
         // QuickBooks tab-separated format (no header):
         // col0=date, col1=ref#, col2=?, col3=vendor name, col4=class/client, col5=?, col6=qty, col7=?, col8=amount
-        const isQB = !looksLikeHeader && delim==='\t';
-        debugLog('Vendor import: looksLikeHeader='+looksLikeHeader+' isQB='+isQB);
+        const isQB = !looksLikeHeader; // QB exports can be tab OR comma separated
+        debugLog('Vendor import: looksLikeHeader='+looksLikeHeader+' isQB='+isQB+' delim='+delim);
 
         var added=0, skipped=0;
 
@@ -1385,7 +1385,7 @@ function importVendorsCSV(){
           // QuickBooks format - parse directly without header
           const seen = {};
           for(let i=0;i<lines.length;i++){
-            const cols=lines[i].split('\t');
+            const cols=lines[i].split(delim);
             // col 3 = vendor name, col 5 = class/client
             var name=(cols[3]||'').replace(/"/g,'').trim();
             debugLog('QB row '+i+': cols='+cols.length+' name='+name);
