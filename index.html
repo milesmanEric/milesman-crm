@@ -1,4 +1,5 @@
 
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -2261,6 +2262,17 @@ function delTrip(id){
   $('btn-undo').addEventListener('click', undo);
   $('debug-clear').addEventListener('click', function(){$('debug-log').innerHTML='';localStorage.removeItem('mm_debug_log');});
  
+  var driveSignoutBtn = $('btn-drive-signout');
+  if(driveSignoutBtn) driveSignoutBtn.addEventListener('click', function(){
+    localStorage.removeItem('mm_drive_token');
+    localStorage.removeItem('mm_drive_refresh');
+    localStorage.removeItem('mm_drive_expiry');
+    localStorage.removeItem('mm_drive_pkce');
+    localStorage.removeItem('mm_drive_action');
+    driveToken = null;
+    toast('Google Drive login reset — tap Backup or Restore to reconnect','ok');
+    debugLog('Drive tokens cleared');
+  });
   $('btn-ms-signout').addEventListener('click', function(){
     localStorage.removeItem('mm_ms_token');
     localStorage.removeItem('mm_ms_refresh');
