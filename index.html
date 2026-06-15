@@ -1677,7 +1677,7 @@ function renderVendors(){
     }).join('') : '<div class="empty">No vendors yet — add airlines, hotels, or referral partners</div>');
 
   $('btn-add-vendor').addEventListener('click', function(){openVendorForm();});
-  $('btn-import-vendors').addEventListener('click', importVendorsCSV);
+  var btnImportVendors = $('btn-import-vendors'); if(btnImportVendors) btnImportVendors.addEventListener('click', importVendorsCSV);
   $('vendor-search').addEventListener('input', function(){
     var q = this.value.toLowerCase();
     document.querySelectorAll('.vendor-card').forEach(function(el){
