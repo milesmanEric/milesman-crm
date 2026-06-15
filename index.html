@@ -1552,6 +1552,65 @@ function getVendorStats(vendor){
   return stats;
 }
 
+function openVendorDetail(id){
+  var v = db.vendors.find(function(x){return x.id===id;});
+  if(!v) return;
+  var stats = getVendorStats(v);
+  var typeCls = v.type==='Referral Partner' ? 'vendor-type-referral' : 'vendor-type-supplier';
+
+  // Build full transaction table
+  var txRows = stats.tripList.map(function(t){
+    var scls={'Confirmed':'b-green','Planning':'b-amber','Completed':'b-blue','Cancelled':'b-red'}[t.status||'']||'b-gray';
+    return '<tr>'+
+      '<td style="padding:8px 12px;font-size:13px;color:#111;font-weight:500">'+t.clientName+'</td>'+
+      '<td style="padding:8px 12px;font-size:13px;color:#374151">'+t.destination+'</td>'+
+      '<td style="padding:8px 12px;font-size:12px;color:#888;white-space:nowrap">'+t.departDate+(t.returnDate?' → '+t.returnDate:'')+'</td>'+
+      '<td style="padding:8px 12px"><span class="badge '+scls+'">'+t.status+'</span></td>'+
+      '<td style="padding:8px 12px;font-size:13px;color:#374151">$'+Number(t.cashPaid||0).toLocaleString()+'</td>'+
+      '<td style="padding:8px 12px;font-size:13px;font-weight:600;color:#111">$'+Number(t.totalValue||0).toLocaleString()+'</td>'+
+      '<td style="padding:8px 12px;font-size:12px;color:#888">'+t.id+'</td>'+
+    '</tr>';
+  }).join('');
+
+  var totalRevenue = stats.tripList.reduce(function(a,t){return a+(t.totalValue||0);},0);
+  var totalCash = stats.tripList.reduce(function(a,t){return a+(t.cashPaid||0);},0);
+
+  $('modal').innerHTML =
+    '<div class="modal-hdr">'+
+      '<div>'+
+        '<div class="modal-title">'+v.name+'</div>'+
+        '<div style="font-size:12px;color:#888;margin-top:2px">'+
+          '<span class="badge '+typeCls+'" style="margin-right:6px">'+v.type+'</span>'+
+          (v.category?'<span class="badge b-gray">'+v.category+'</span>':'')+
+        '</div>'+
+      '</div>'+
+      '<button class="close-btn" id="modal-close">&#x2715;</button>'+
+    '</div>'+
+    (v.primaryClientName?'<div style="font-size:13px;color:#2563eb;font-weight:600;margin-bottom:12px">&#128100; '+v.primaryClientName+'</div>':'')+
+    '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:18px">'+
+      '<div class="stat"><div class="stat-lbl">Transactions</div><div class="stat-val">'+stats.tripList.length+'</div></div>'+
+      '<div class="stat"><div class="stat-lbl">Cash Paid</div><div class="stat-val">$'+Number(totalCash).toLocaleString()+'</div></div>'+
+      '<div class="stat"><div class="stat-lbl">Total Value</div><div class="stat-val">$'+Number(totalRevenue).toLocaleString()+'</div></div>'+
+    '</div>'+
+    (txRows ?
+      '<div class="tbl-wrap" style="max-height:400px;overflow-y:auto"><table>'+
+        '<thead><tr>'+
+          '<th>Client</th><th>Destination</th><th>Dates</th><th>Status</th><th>Cash Paid</th><th>Total Value</th><th>Trip ID</th>'+
+        '</tr></thead>'+
+        '<tbody>'+txRows+'</tbody>'+
+      '</table></div>'
+    : '<div class="empty">No transactions found for this vendor</div>')+
+    '<div class="form-actions">'+
+      '<button class="cancel-btn" id="modal-close2">Close</button>'+
+      '<button class="save-btn" id="modal-edit-vendor" data-id="'+v.id+'">&#9999;&#65039; Edit Vendor</button>'+
+    '</div>';
+
+  $('overlay').classList.add('open');
+  $('modal-close').addEventListener('click', closeModal);
+  $('modal-close2').addEventListener('click', closeModal);
+  $('modal-edit-vendor').addEventListener('click', function(){closeModal(); openVendorForm(this.dataset.id);});
+}
+
 function renderVendors(){
   var sorted = [...db.vendors].sort(function(a,b){return (a.name||'').localeCompare(b.name||'');});
 
@@ -1563,9 +1622,9 @@ function renderVendors(){
       var typeCls = v.type==='Referral Partner' ? 'vendor-type-referral' : 'vendor-type-supplier';
       var clientList = stats.clients.slice(0,3).join(', ')+(stats.clients.length>3?' +' +(stats.clients.length-3)+' more':'');
       return '<div class="vendor-card" id="vc-'+v.id+'">'+
-        '<div style="display:flex;justify-content:space-between;align-items:flex-start">>'+
+        '<div style="display:flex;justify-content:space-between;align-items:flex-start">'+
           '<div>'+
-            '<div style="font-size:15px;font-weight:700;color:#111">'+v.name+'</div>'+(v.primaryClientName?'<div style="font-size:12px;color:#2563eb;font-weight:600;margin-top:2px">&#128100; '+v.primaryClientName+'</div>':'')+
+            '<div style="font-size:15px;font-weight:700;color:#2563eb;cursor:pointer;text-decoration:underline" class="vendor-name-link" data-id="'+v.id+'">'+v.name+'</div>'+(v.primaryClientName?'<div style="font-size:12px;color:#2563eb;font-weight:600;margin-top:2px">&#128100; '+v.primaryClientName+'</div>':'')+
             '<div style="margin-top:3px">'+
               '<span class="badge '+typeCls+'" style="margin-right:6px">'+v.type+'</span>'+
               (v.category?'<span class="badge b-gray">'+v.category+'</span>':'')+
@@ -1628,6 +1687,12 @@ function renderVendors(){
   });
   document.querySelectorAll('.edit-vendor').forEach(function(btn){
     btn.addEventListener('click', function(){openVendorForm(btn.dataset.id);});
+  });
+  document.querySelectorAll('.vendor-name-link').forEach(function(el){
+    el.addEventListener('click', function(e){
+      e.stopPropagation();
+      openVendorDetail(el.dataset.id);
+    });
   });
   document.querySelectorAll('.del-vendor').forEach(function(btn){
     btn.addEventListener('click', function(){delVendor(btn.dataset.id);});
