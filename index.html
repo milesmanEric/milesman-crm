@@ -232,6 +232,7 @@ tr:last-child td{border-bottom:none}
       <button class="sync-btn" id="btn-mass-email" style="color:#7c3aed;border-color:#c4b5fd">&#128231; Email All Clients</button>
       <button class="sync-btn" id="btn-import-csv" style="color:#059669;border-color:#6ee7b7">&#128203; Import Contacts from CSV</button>
       <button class="sync-btn" id="btn-import-revenue" style="color:#059669;border-color:#6ee7b7">&#128178; Import Revenue CSV</button>
+      <button class="sync-btn" id="btn-clear-trips" style="color:#dc2626;border-color:#fca5a5">&#128465; Clear All Trips</button>
       <button class="sync-btn" id="btn-import-suppliers-sb" style="color:#059669;border-color:#6ee7b7">&#127981; Import Suppliers CSV</button>
       <button class="sync-btn" id="btn-undo" disabled style="color:#7c3aed;border-color:#c4b5fd;opacity:.4" title="Nothing to undo">&#8630; Undo</button>
       <button class="sync-btn" id="btn-drive-signout" style="color:#888;border-color:#ddd;font-size:11px">&#9729;&#65039; Reset Drive Login</button>
@@ -1113,52 +1114,58 @@ function finalizeImport(){
         return (v.name||'').toLowerCase().trim()===row.name.toLowerCase().trim();
       });
       if(matchedSup){
-        // Get clients from clientIds, OR fall back to parsing item/product field
-        var supClientIds = (matchedSup.clientIds||[]).slice();
-        debugLog('Revenue: supplier match '+matchedSup.name+' clientIds='+supClientIds.length+' item='+row.item);
+        debugLog('Revenue: supplier match '+matchedSup.name+' clientIds='+(matchedSup.clientIds||[]).length+' item='+row.item);
 
-        // Fall back: parse client from item field e.g. 'Referral:AMEX:AMEX - Eric'
-        // Last segment e.g. 'AMEX - Eric' -> try each word as a first name match
-        if(!supClientIds.length && row.item){
+        // Try to identify the SPECIFIC client from the item field
+        // e.g. 'Referral:AMEX:AMEX - Eric' -> last segment -> match by first/last name word
+        var specificClient=null;
+        if(row.item){
           var itemParts=row.item.split(':');
           var lastSeg=itemParts[itemParts.length-1].trim();
-          // Extract words from last segment, try each as first name
-          var words=lastSeg.replace(/-/g,' ').split(/\s+/).map(function(w){return w.trim().toLowerCase();}).filter(Boolean);
-          var matched2=null;
+          var words=lastSeg.replace(/-/g,' ').split(/\s+/).map(function(w){return w.trim().toLowerCase();}).filter(function(w){return w.length>2;});
           for(var wi=0;wi<words.length;wi++){
             var word=words[wi];
-            if(word.length<2) continue;
-            matched2=db.clients.find(function(c){
+            var m=db.clients.find(function(c){
               var fn=(c.name||'').toLowerCase().trim();
               var fp=fn.split(/\s+/);
-              return fp[0]===word||fp[fp.length-1]===word||fn.includes(word);
+              return fp[0]===word||fp[fp.length-1]===word;
             });
-            if(matched2) break;
+            if(m){specificClient=m;break;}
           }
-          debugLog('Revenue fallback: lastSeg='+lastSeg+' words='+words.join(',')+' matched='+(matched2?matched2.name:'none'));
-          if(matched2) supClientIds=[matched2.id];
+          debugLog('Revenue item parse: lastSeg='+lastSeg+' matched='+(specificClient?specificClient.name:'none'));
         }
 
-        if(supClientIds.length){
-          supClientIds.forEach(function(linkedCid){
-            const linkedClient=db.clients.find(function(c){return c.id===linkedCid;});
-            if(!linkedClient) return;
-            const tripId=newId('T',db.trips);
-            const dest=row.memo||matchedSup.name||'Imported Trip';
-            db.trips.push({
-              id:tripId,clientId:linkedCid,clientName:linkedClient.name,
-              destination:dest,origin:'',departDate:row.date?row.date.slice(0,10):today(),returnDate:row.date?row.date.slice(0,10):today(),
-              status:'Completed',type:'Leisure',airline:'',flightClass:'',hotel:'',
-              hotelNights:0,pointsUsed:0,cashPaid:row.amt,totalValue:row.amt,
-              bookingRef:'',notes:row.memo||'',product:row.product||'',
-              supplierId:matchedSup.id||'',supplierName:matchedSup.name||''
-            });
-            const lc=db.clients.find(c=>c.id===linkedCid);
-            if(lc){lc.totalRevenue=(lc.totalRevenue||0)+row.amt;}
-            imported++;totalRev+=row.amt;
-          });
-          return;
+        // Only create trip for specific client if found, not for ALL linked clients
+        var targetClient = specificClient;
+
+        // If no specific client from item, don't create trips - just record revenue
+        if(!targetClient){
+          debugLog('Revenue: no specific client found for '+matchedSup.name+' row, skipping trip creation');
+          skipped++;return;
         }
+
+        // Duplicate check: skip if trip with same date+amount+client+supplier already exists
+        var dupExists=db.trips.some(function(t){
+          return t.clientId===targetClient.id &&
+                 t.supplierId===(matchedSup?matchedSup.id||'':'') &&
+                 t.cashPaid===row.amt &&
+                 (t.departDate||'').slice(0,10)===(row.date?row.date.slice(0,10):today());
+        });
+        if(dupExists){debugLog('Revenue: duplicate skipped for '+targetClient.name);skipped++;return;}
+
+        const tripId=newId('T',db.trips);
+        const dest=row.memo||matchedSup.name||'Imported Trip';
+        db.trips.push({
+          id:tripId,clientId:targetClient.id,clientName:targetClient.name,
+          destination:dest,origin:'',departDate:row.date?row.date.slice(0,10):today(),returnDate:row.date?row.date.slice(0,10):today(),
+          status:'Completed',type:'Leisure',airline:'',flightClass:'',hotel:'',
+          hotelNights:0,pointsUsed:0,cashPaid:row.amt,totalValue:row.amt,
+          bookingRef:'',notes:row.memo||'',product:row.product||'',
+          supplierId:matchedSup.id||'',supplierName:matchedSup.name||''
+        });
+        targetClient.totalRevenue=(targetClient.totalRevenue||0)+row.amt;
+        imported++;totalRev+=row.amt;
+        return;
       }
       debugLog('Revenue: no match for name='+row.name+' item='+row.item);
       skipped++;return;
@@ -2795,6 +2802,15 @@ function delTrip(id){
   $('btn-mass-email').addEventListener('click', massEmail);
   $('btn-import-csv').addEventListener('click', importCSV);
   $('btn-import-revenue').addEventListener('click', importRevenue);
+  var clearTripsBtn = $('btn-clear-trips');
+  if(clearTripsBtn) clearTripsBtn.addEventListener('click', function(){
+    if(confirm('Delete ALL trips? This cannot be undone.')){
+      snapshot('Clear all trips');
+      db.trips=[];
+      saveDB();render();
+      toast('All trips deleted');
+    }
+  });
   var vendorSbBtn = $('btn-import-suppliers-sb');
   if(vendorSbBtn) vendorSbBtn.addEventListener('click', importVendorsCSV);
   $('btn-undo').addEventListener('click', undo);
