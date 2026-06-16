@@ -1115,6 +1115,7 @@ function finalizeImport(){
       if(matchedSup){
         // Get clients from clientIds, OR fall back to parsing item/product field
         var supClientIds = (matchedSup.clientIds||[]).slice();
+        debugLog('Revenue: supplier match '+matchedSup.name+' clientIds='+supClientIds.length+' item='+row.item);
 
         // Fall back: parse client from item field e.g. 'Referral:AMEX:AMEX - Eric'
         if(!supClientIds.length && row.item){
@@ -1154,6 +1155,7 @@ function finalizeImport(){
           return;
         }
       }
+      debugLog('Revenue: no match for name='+row.name+' item='+row.item);
       skipped++;return;
     }
     const client=db.clients.find(c=>c.id===cid);
