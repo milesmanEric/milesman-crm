@@ -212,10 +212,10 @@ tr:last-child td{border-bottom:none}
       <button class="nb active" id="nb-dashboard">&#128202; Dashboard</button>
       <button class="nb" id="nb-clients">&#128100; Clients <span class="nc" id="nc-clients">0</span></button>
       <button class="nb" id="nb-trips">&#9992;&#65039; Trips <span class="nc" id="nc-trips">0</span></button>
+      <button class="nb" id="nb-vendors">&#127981; Suppliers <span class="nc" id="nc-vendors">0</span></button>
       <button class="nb" id="nb-reports">&#128202; Reports</button>
       <button class="nb" id="nb-calendar">&#128197; Calendar</button>
       <button class="nb" id="nb-email">&#9993;&#65039; Email</button>
-      <button class="nb" id="nb-vendors">&#127981; Vendors</button>
     </nav>
     <div class="sb-footer">
       <button class="sync-btn" id="outlook-btn">&#128424; Sync Outlook Emails</button>
@@ -232,7 +232,7 @@ tr:last-child td{border-bottom:none}
       <button class="sync-btn" id="btn-mass-email" style="color:#7c3aed;border-color:#c4b5fd">&#128231; Email All Clients</button>
       <button class="sync-btn" id="btn-import-csv" style="color:#059669;border-color:#6ee7b7">&#128203; Import Contacts from CSV</button>
       <button class="sync-btn" id="btn-import-revenue" style="color:#059669;border-color:#6ee7b7">&#128178; Import Revenue CSV</button>
-      <button class="sync-btn" id="btn-import-vendors-sb" style="color:#059669;border-color:#6ee7b7">&#127981; Import Vendors CSV</button>
+      <button class="sync-btn" id="btn-import-suppliers-sb" style="color:#059669;border-color:#6ee7b7">&#127981; Import Suppliers CSV</button>
       <button class="sync-btn" id="btn-undo" disabled style="color:#7c3aed;border-color:#c4b5fd;opacity:.4" title="Nothing to undo">&#8630; Undo</button>
       <button class="sync-btn" id="btn-drive-signout" style="color:#888;border-color:#ddd;font-size:11px">&#9729;&#65039; Reset Drive Login</button>
       <button class="sync-btn" id="btn-ms-signout" style="color:#888;border-color:#ddd;font-size:11px">&#128274; Reset Outlook Login</button>
@@ -919,40 +919,123 @@ function importRevenue(){
       try{
         const lines=ev.target.result.split('\n').map(l=>l.trim()).filter(l=>l);
         if(lines.length<2){toast('CSV appears empty','err');return;}
-        const hdrs=parseCSVLine(lines[0]).map(h=>h.replace(/"/g,'').trim().toLowerCase());
-        const ni=hdrs.findIndex(h=>h==='name');
-        const ai=hdrs.findIndex(h=>h==='amount');
-        const di=hdrs.findIndex(h=>h==='date');
-        const mi=hdrs.findIndex(h=>h==='memo');
-        const ii=hdrs.findIndex(h=>h==='item');
-        if(ni===-1){toast('No "Name" column found','err');return;}
-        if(ai===-1){toast('No "Amount" column found','err');return;}
+        // Detect delimiter: tab or comma
+        const revDelim = lines[0].includes('\t') ? '\t' : ',';
+        const parseRevLine = function(line){ return line.split(revDelim).map(function(c){return c.replace(/^"|"$/g,'').trim();}); };
+
+        // QB format: col0=date, col1=invoice, col2=description, col3=client name,
+        //            col4=product type (supplier info), col5=qty, col6=price, col7=total
+        // Try header-based mapping first, fall back to positional
+        const hdrs=parseRevLine(lines[0]).map(function(h){return h.replace(/"/g,'').trim().toLowerCase();});
+        const looksLikeHeader = hdrs.some(function(h){return ['name','date','amount','memo','item','num','qty'].includes(h);});
 
         const rows=[];
-        for(let i=1;i<lines.length;i++){
-          const cols=parseCSVLine(lines[i]);
-          const name=(cols[ni]||'').replace(/"/g,'').trim();
-          const amt=parseFloat((cols[ai]||'').replace(/[$,"]/g,'').trim())||0;
-          if(!name||amt===0)continue;
+        for(let i=(looksLikeHeader?1:0);i<lines.length;i++){
+          const cols=parseRevLine(lines[i]);
+          if(cols.length<4) continue;
+
+          var clientName, productType, amt, date, description;
+
+          if(looksLikeHeader){
+            // Header-based: find columns by name
+            const ni=hdrs.findIndex(function(h){return h==='name';});
+            const ai=hdrs.findIndex(function(h){return h==='amount'||h==='total'||h==='sales price';});
+            const di=hdrs.findIndex(function(h){return h==='date';});
+            const mi=hdrs.findIndex(function(h){return h==='memo'||h==='description';});
+            const pi=hdrs.findIndex(function(h){return h==='item'||h==='product'||h==='product type';});
+            clientName = ni>=0?(cols[ni]||'').trim():'';
+            productType = pi>=0?(cols[pi]||'').trim():'';
+            amt = parseFloat(((ai>=0?cols[ai]:cols[cols.length-1])||'').replace(/[$,"]/g,''))||0;
+            date = di>=0?(cols[di]||'').trim():'';
+            description = mi>=0?(cols[mi]||'').trim():'';
+          } else {
+            // Positional: col0=date, col1=invoice, col2=desc, col3=client, col4=product, col7=total
+            date = (cols[0]||'').trim();
+            description = (cols[2]||'').trim();
+            clientName = (cols[3]||'').trim();
+            productType = (cols[4]||'').trim();
+            amt = parseFloat((cols[7]||cols[cols.length-1]||'').replace(/[$,"]/g,''))||0;
+          }
+
+          if(!clientName||amt===0) continue;
+
+          // Try to match product type against known suppliers
+          // Product type can be: "Virgin Voyages:Cruise" or "Referral:AMEX:AMEX - Eric"
+          var matchedSupplier=null;
+          var productDisplay=productType; // what shows in Product column
+
+          if(productType){
+            // First: try matching the whole productType or each colon-segment against vendors
+            const prodParts=productType.split(':').map(function(p){return p.trim();});
+            for(var pi=0;pi<prodParts.length;pi++){
+              var seg=prodParts[pi].toLowerCase();
+              var m=db.vendors.find(function(v){
+                var vl=(v.name||'').toLowerCase();
+                return vl===seg||vl.includes(seg)||seg.includes(vl);
+              });
+              if(m){matchedSupplier=m;break;}
+            }
+          }
+
           rows.push({
-            name:name,amt:amt,
-            date:(di>=0?(cols[di]||'').replace(/"/g,'').trim():''),
-            memo:(mi>=0?(cols[mi]||'').replace(/"/g,'').trim():''),
-            item:(ii>=0?(cols[ii]||'').replace(/"/g,'').trim():'')
+            name:clientName,
+            supplierName:matchedSupplier?matchedSupplier.name:'',
+            supplierId:matchedSupplier?matchedSupplier.id:'',
+            product:productDisplay,
+            amt:amt,
+            date:date,
+            memo:description,
+            item:productType
           });
         }
         if(!rows.length){toast('No valid rows found','err');return;}
 
-        // Find unmatched names
+        // Auto-match names to clients, collect only truly unmatched
         const unmatchedNames=[];
+        const autoResolutions={};
+
+        function fuzzyMatchClient(name){
+          const nl=name.toLowerCase().trim();
+          const parts=nl.split(/\s+/);
+          const first=parts[0]||'';
+          const last=parts[parts.length-1]||'';
+          // Try exact full name
+          var m=db.clients.find(c=>(c.name||'').toLowerCase().trim()===nl);
+          if(m) return m;
+          // Try last name only
+          m=db.clients.find(c=>(c.name||'').trim().split(/\s+/).pop().toLowerCase()===last);
+          if(m) return m;
+          // Try first name only
+          m=db.clients.find(c=>(c.name||'').trim().split(/\s+/)[0].toLowerCase()===first);
+          if(m) return m;
+          // Try contains
+          m=db.clients.find(c=>(c.name||'').toLowerCase().includes(nl)||nl.includes((c.name||'').toLowerCase().trim()));
+          if(m) return m;
+          // Try last name contains
+          m=db.clients.find(c=>(c.name||'').toLowerCase().includes(last)||last.includes((c.name||'').trim().split(/\s+/).pop().toLowerCase()));
+          if(m) return m;
+          return null;
+        }
+
         rows.forEach(function(row){
-          const cl=row.name.toLowerCase();
-          const last=row.name.trim().split(' ').pop().toLowerCase();
-          const found=db.clients.some(c=>(c.name||'').toLowerCase()===cl||(c.name||'').trim().split(' ').pop().toLowerCase()===last);
-          if(!found&&!unmatchedNames.includes(row.name))unmatchedNames.push(row.name);
+          if(autoResolutions[row.name]||unmatchedNames.includes(row.name)) return;
+          // Check if name matches a supplier — handle in finalizeImport, skip manual match
+          const isSupplier=db.vendors.some(function(v){
+            return (v.name||'').toLowerCase().trim()===row.name.toLowerCase().trim();
+          });
+          if(isSupplier){
+            autoResolutions[row.name]='__supplier__';
+            return;
+          }
+          const matched=fuzzyMatchClient(row.name);
+          if(matched){
+            autoResolutions[row.name]=matched.id;
+          } else {
+            unmatchedNames.push(row.name);
+          }
         });
 
-        window._importState={rows,unmatchedNames,resolutions:{},cursor:0};
+        window._importState={rows,unmatchedNames,resolutions:autoResolutions,cursor:0};
         processImportQueue();
       }catch(err){console.error(err);toast('Could not read CSV: '+err.message,'err');}
     };r.readAsText(f);
@@ -1011,13 +1094,68 @@ function finalizeImport(){
   const state=window._importState;
   let imported=0,skipped=0,totalRev=0;
   state.rows.forEach(function(row){
-    const cl=row.name.toLowerCase();
-    const last=row.name.trim().split(' ').pop().toLowerCase();
+    const cl=row.name.toLowerCase().trim();
+    const nameParts=cl.split(/\s+/);
+    const first=nameParts[0]||'';
+    const last=nameParts[nameParts.length-1]||'';
     let cid=null;
-    const direct=db.clients.find(c=>(c.name||'').toLowerCase()===cl||(c.name||'').trim().split(' ').pop().toLowerCase()===last);
+    // Fuzzy match: exact, last name, first name, contains
+    const direct=db.clients.find(function(c){
+      const fn=(c.name||'').toLowerCase().trim();
+      const fp=fn.split(/\s+/);
+      return fn===cl||fp[fp.length-1]===last||fp[0]===first||fn.includes(cl)||cl.includes(fn);
+    });
     if(direct){cid=direct.id;}
-    else if(state.resolutions[row.name]!==undefined){cid=state.resolutions[row.name];}
-    if(!cid){skipped++;return;}
+    else if(state.resolutions[row.name]!==undefined&&state.resolutions[row.name]!=='__supplier__'){cid=state.resolutions[row.name];}
+    // If no client matched, check if name is a supplier — use its linked clients
+    if(!cid){
+      const matchedSup=db.vendors.find(function(v){
+        return (v.name||'').toLowerCase().trim()===row.name.toLowerCase().trim();
+      });
+      if(matchedSup){
+        // Get clients from clientIds, OR fall back to parsing item/product field
+        var supClientIds = (matchedSup.clientIds||[]).slice();
+
+        // Fall back: parse client from item field e.g. 'Referral:AMEX:AMEX - Eric'
+        if(!supClientIds.length && row.item){
+          var itemParts=row.item.split(':');
+          var clientNameFromItem=itemParts[itemParts.length-1].trim();
+          if(clientNameFromItem){
+            var cl2=clientNameFromItem.toLowerCase();
+            var p2=cl2.split(/\s+/);
+            var f2=p2[0]||'', l2=p2[p2.length-1]||'';
+            var matched2=db.clients.find(function(c){
+              var fn=(c.name||'').toLowerCase().trim();
+              var fp=fn.split(/\s+/);
+              return fn===cl2||fp[fp.length-1]===l2||fp[0]===f2||fn.includes(cl2)||cl2.includes(fn);
+            });
+            if(matched2) supClientIds=[matched2.id];
+          }
+        }
+
+        if(supClientIds.length){
+          supClientIds.forEach(function(linkedCid){
+            const linkedClient=db.clients.find(function(c){return c.id===linkedCid;});
+            if(!linkedClient) return;
+            const tripId=newId('T',db.trips);
+            const dest=row.memo||matchedSup.name||'Imported Trip';
+            db.trips.push({
+              id:tripId,clientId:linkedCid,clientName:linkedClient.name,
+              destination:dest,origin:'',departDate:row.date?row.date.slice(0,10):today(),returnDate:row.date?row.date.slice(0,10):today(),
+              status:'Completed',type:'Leisure',airline:'',flightClass:'',hotel:'',
+              hotelNights:0,pointsUsed:0,cashPaid:row.amt,totalValue:row.amt,
+              bookingRef:'',notes:row.memo||'',product:row.product||'',
+              supplierId:matchedSup.id||'',supplierName:matchedSup.name||''
+            });
+            const lc=db.clients.find(c=>c.id===linkedCid);
+            if(lc){lc.totalRevenue=(lc.totalRevenue||0)+row.amt;}
+            imported++;totalRev+=row.amt;
+          });
+          return;
+        }
+      }
+      skipped++;return;
+    }
     const client=db.clients.find(c=>c.id===cid);
     if(!client){skipped++;return;}
 
@@ -1028,11 +1166,20 @@ function finalizeImport(){
     if(row.date){try{const d=new Date(row.date);if(!isNaN(d))tripDate=d.toISOString().slice(0,10);}catch(e){}}
     db.trips.push({
       id:tripId,clientId:cid,clientName:client.name,
-      destination:dest,origin:'',departDate:tripDate,returnDate:tripDate,
+      destination:dest||row.supplierName||'Imported Trip',origin:'',departDate:tripDate,returnDate:tripDate,
       status:'Completed',type:'Leisure',airline:'',flightClass:'',hotel:'',
       hotelNights:0,pointsUsed:0,cashPaid:row.amt,totalValue:row.amt,
-      bookingRef:'',notes:row.memo||row.item||''
+      bookingRef:'',notes:row.memo||'',product:row.product||'',
+      supplierId:row.supplierId||'',supplierName:row.supplierName||''
     });
+    // Link client to supplier if matched
+    if(row.supplierId){
+      var sup=db.vendors.find(function(v){return v.id===row.supplierId;});
+      if(sup && !(sup.clientIds||[]).includes(cid)){
+        if(!sup.clientIds) sup.clientIds=[];
+        sup.clientIds.push(cid);
+      }
+    }
 
     // Update client revenue, trip count, and note
     const newRev=(client.totalRevenue||0)+row.amt;
@@ -1098,6 +1245,7 @@ function go(v,cid){
 function render(){
   $('nc-clients').textContent=db.clients.length;
   $('nc-trips').textContent=db.trips.length;
+  var ncv=$('nc-vendors'); if(ncv) ncv.textContent=db.vendors.length;
   if(view==='dashboard') renderDash();
   else if(view==='clients') renderClients();
   else if(view==='trips') renderTrips();
@@ -1382,60 +1530,118 @@ function importVendorsCSV(){
         var added=0, skipped=0;
 
         if(isQB){
-          // QuickBooks format - parse directly without header
-          const seen = {};
-          for(let i=0;i<lines.length;i++){
-            const cols=lines[i].split(delim);
-            // col 3 = vendor name, col 5 = class/client
+          // QuickBooks format - two-pass: collect all clients+trips per vendor first
+          var vendorMap = {}; // name.toLowerCase() -> {name, clientNames:[], rows:[]}
+          for(var i=0;i<lines.length;i++){
+            var cols=lines[i].split(delim);
             var name=(cols[3]||'').replace(/"/g,'').trim();
             debugLog('QB row '+i+': cols='+cols.length+' name='+name);
-            if(!name){skipped++;continue;}
-            if(seen[name.toLowerCase()]){continue;} // deduplicate
-            seen[name.toLowerCase()]=true;
-
-            // col 5 = class/client e.g. "Referral:AMEX:AMEX - Eric"
-            const classVal=(cols[5]||'').replace(/"/g,'').trim();
-            // Parse class field e.g. "Referral:AMEX:AMEX - Eric" -> primary client is last part
-            var primaryClientName='';
+            if(!name) continue;
+            var key=name.toLowerCase();
+            if(!vendorMap[key]) vendorMap[key]={name:name, clientNames:[], rows:[]};
+            // col 0=date, col2=trip description, col5=class/client, col7=price, col8=amount
+            var classVal=(cols[5]||'').replace(/"/g,'').trim();
+            var clientName='';
             if(classVal){
-              const parts=classVal.split(':');
-              primaryClientName=parts[parts.length-1].trim();
+              var parts=classVal.split(':');
+              clientName=parts[parts.length-1].trim();
+              if(clientName && !vendorMap[key].clientNames.includes(clientName)){
+                vendorMap[key].clientNames.push(clientName);
+              }
             }
-
-            // Skip if vendor already exists
-            const exists=db.vendors.some(function(v){return(v.name||'').toLowerCase()===name.toLowerCase();});
-            if(exists){skipped++;continue;}
-
-            // Try to match primary client to existing client records
-            const clientIds=[];
-            if(primaryClientName){
-              const matched=db.clients.find(function(c){
-                const full=(c.name||'').toLowerCase();
-                const last=(c.name||'').trim().split(' ').pop().toLowerCase();
-                const pLower=primaryClientName.toLowerCase();
-                return full===pLower||last===pLower||full.includes(pLower)||pLower.includes(last);
-              });
-              if(matched) clientIds.push(matched.id);
-            }
-
-            db.vendors.push({
-              id:newId('V',db.vendors),
-              name:name,
-              type:'Supplier',
-              category:'',
-              primaryClientName:primaryClientName,
-              contactName:'',
-              email:'',
-              phone:'',
-              website:'',
-              notes:'',
-              clientIds:clientIds
+            vendorMap[key].rows.push({
+              date:(cols[0]||'').replace(/"/g,'').trim(),
+              description:(cols[2]||'').replace(/"/g,'').trim(),
+              productType:(cols[4]||'').replace(/"/g,'').trim(),
+              clientName:clientName,
+              price:parseFloat((cols[7]||'0').replace(/[$,"]/g,''))||0,
+              amount:parseFloat((cols[8]||'0').replace(/[$,"]/g,''))||0
             });
-            added++;
           }
-          snapshot('Import vendors');
+          // Helper: fuzzy match client by name
+          function matchClient(cn){
+            if(!cn) return null;
+            var cLower=cn.toLowerCase().trim();
+            var cParts=cLower.split(/[\s,]+/).filter(Boolean);
+            var cFirst=cParts[0]||'';
+            var cLast=cParts[cParts.length-1]||'';
+            return db.clients.find(function(c){
+              var full=(c.name||'').toLowerCase().trim();
+              var parts=full.split(/[\s,]+/).filter(Boolean);
+              var first=parts[0]||'';
+              var last=parts[parts.length-1]||'';
+              // Exact match
+              if(full===cLower) return true;
+              // Last name match
+              if(last && cLast && last===cLast) return true;
+              // First name match
+              if(first && cFirst && first===cFirst) return true;
+              // Contains either direction
+              if(full.includes(cLower)||cLower.includes(full)) return true;
+              // Last name in either direction
+              if(cLower.includes(last)||full.includes(cLast)) return true;
+              return false;
+            });
+          }
+
+          // Now create/update vendor records and add trip notes to clients
+          var tripsAdded=0;
+          Object.keys(vendorMap).forEach(function(key){
+            var vm = vendorMap[key];
+            var exists = db.vendors.find(function(v){return(v.name||'').toLowerCase()===key;});
+            // Match client names to existing client records
+            var clientIds = [];
+            vm.clientNames.forEach(function(cn){
+              var matched=matchClient(cn);
+              if(matched && !clientIds.includes(matched.id)) clientIds.push(matched.id);
+            });
+
+            if(exists){
+              clientIds.forEach(function(cid){
+                if(!(exists.clientIds||[]).includes(cid)){
+                  if(!exists.clientIds) exists.clientIds=[];
+                  exists.clientIds.push(cid);
+                }
+              });
+              skipped++;
+            } else {
+              db.vendors.push({
+                id:newId('V',db.vendors),
+                name:vm.name,
+                type:'Supplier',
+                category:'',
+                primaryClientName:vm.clientNames[0]||'',
+                contactName:'',email:'',phone:'',website:'',notes:'',notesLog:[],
+                clientIds:clientIds
+              });
+              added++;
+            }
+
+            // Add trip import notes to matched client records
+            vm.rows.forEach(function(row){
+              if(!row.clientName) return;
+              var client=matchClient(row.clientName);
+              if(!client) return;
+              if(!client.notesLog) client.notesLog=[];
+              // Check if this row already imported (by date+vendor+description)
+              var dupKey=(row.date+'|'+vm.name+'|'+row.description).toLowerCase();
+              var alreadyImported=client.notesLog.some(function(n){
+                return (n.importKey||'')===dupKey;
+              });
+              if(alreadyImported) return;
+              var noteText=vm.name+(row.description?' - '+row.description:'')+(row.date?' ('+row.date+')':'')+(row.amount?' $'+row.amount:'');
+              client.notesLog.push({
+                ts:new Date().toLocaleString(),
+                text:noteText,
+                noteType:'Trip Import',
+                importKey:dupKey
+              });
+              tripsAdded++;
+            });
+          });
+          snapshot('Import suppliers');
           saveDB();render();
-          toast('Imported '+added+' vendor'+(added!==1?'s':'')+(skipped?' ('+skipped+' skipped)':''),'ok');
+          toast('Imported '+added+' supplier'+(added!==1?'s':'')+(skipped?' ('+skipped+' updated)':'')+(tripsAdded?' · '+tripsAdded+' trip notes added':''),'ok');
           return;
         }
 
@@ -1602,7 +1808,7 @@ function openVendorDetail(id){
     : '<div class="empty">No transactions found for this vendor</div>')+
     '<div class="form-actions">'+
       '<button class="cancel-btn" id="modal-close2">Close</button>'+
-      '<button class="save-btn" id="modal-edit-vendor" data-id="'+v.id+'">&#9999;&#65039; Edit Vendor</button>'+
+      '<button class="save-btn" id="modal-edit-vendor" data-id="'+v.id+'">&#9999;&#65039; Edit Supplier</button>'+
     '</div>';
 
   $('overlay').classList.add('open');
@@ -1614,9 +1820,24 @@ function openVendorDetail(id){
 function renderVendors(){
   var sorted = [...db.vendors].sort(function(a,b){return (a.name||'').localeCompare(b.name||'');});
 
+  // Compute global stats
+  var totalTrips=0, totalRevenue=0, totalClients=new Set();
+  db.vendors.forEach(function(v){
+    var s=getVendorStats(v);
+    totalTrips+=s.tripList.length;
+    totalRevenue+=s.tripList.reduce(function(a,t){return a+(t.totalValue||0);},0);
+    s.clients.forEach(function(c){totalClients.add(c);});
+  });
+
   $('main').innerHTML =
-    '<div class="page-hdr"><div class="page-title">Vendors</div><button class="add-btn" id="btn-add-vendor">+ Add Vendor</button></div>'+
-    '<div class="search-row"><input id="vendor-search" placeholder="Search vendors..."/></div>'+
+    '<div class="page-hdr"><div class="page-title">Suppliers</div><button class="add-btn" id="btn-add-supplier">+ Add Supplier</button></div>'+
+    '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px">'+
+      '<div class="stat"><div class="stat-lbl">Total Suppliers</div><div class="stat-val">'+db.vendors.length+'</div></div>'+
+      '<div class="stat"><div class="stat-lbl">Total Trips</div><div class="stat-val">'+totalTrips+'</div></div>'+
+      '<div class="stat"><div class="stat-lbl">Total Clients</div><div class="stat-val">'+totalClients.size+'</div></div>'+
+      '<div class="stat"><div class="stat-lbl">Total Value</div><div class="stat-val">$'+Number(totalRevenue).toLocaleString()+'</div></div>'+
+    '</div>'+
+    '<div class="search-row"><input id="supplier-search" placeholder="Search suppliers..."/></div>'+
     (sorted.length ? sorted.map(function(v){
       var stats = getVendorStats(v);
       var typeCls = v.type==='Referral Partner' ? 'vendor-type-referral' : 'vendor-type-supplier';
@@ -1624,15 +1845,14 @@ function renderVendors(){
       return '<div class="vendor-card" id="vc-'+v.id+'">'+
         '<div style="display:flex;justify-content:space-between;align-items:flex-start">'+
           '<div>'+
-            '<div style="font-size:15px;font-weight:700;color:#2563eb;cursor:pointer;text-decoration:underline" class="vendor-name-link" data-id="'+v.id+'">'+v.name+'</div>'+(v.primaryClientName?'<div style="font-size:12px;color:#2563eb;font-weight:600;margin-top:2px">&#128100; '+v.primaryClientName+'</div>':'')+
+            '<div style="font-size:15px;font-weight:700;color:#2563eb;cursor:pointer;text-decoration:underline" class="vendor-name-link" data-id="'+v.id+'">'+v.name+'</div>'+
             '<div style="margin-top:3px">'+
               '<span class="badge '+typeCls+'" style="margin-right:6px">'+v.type+'</span>'+
               (v.category?'<span class="badge b-gray">'+v.category+'</span>':'')+
             '</div>'+
           '</div>'+
           '<div style="display:flex;gap:6px">'+
-            '<button class="icon-btn edit-vendor" data-id="'+v.id+'" style="color:#2563eb">&#9999;&#65039;</button>'+
-            '<button class="icon-btn del-vendor" data-id="'+v.id+'" style="color:#dc2626">&#128465;&#65039;</button>'+
+              '<button class="icon-btn del-vendor" data-id="'+v.id+'" style="color:#dc2626">&#128465;&#65039;</button>'+
           '</div>'+
         '</div>'+
         (v.contactName||v.email||v.phone ? '<div style="font-size:12px;color:#666;margin-top:8px">'+
@@ -1674,11 +1894,11 @@ function renderVendors(){
         :'')+
         (v.notes?'<div style="font-size:12px;color:#666;margin-top:8px;border-top:1px solid #f0f0f0;padding-top:8px">'+v.notes+'</div>':'')+
       '</div>';
-    }).join('') : '<div class="empty">No vendors yet — add airlines, hotels, or referral partners</div>');
+    }).join('') : '<div class="empty">No suppliers yet — add airlines, hotels, or referral partners</div>');
 
-  $('btn-add-vendor').addEventListener('click', function(){openVendorForm();});
-  var btnImportVendors = $('btn-import-vendors'); if(btnImportVendors) btnImportVendors.addEventListener('click', importVendorsCSV);
-  $('vendor-search').addEventListener('input', function(){
+  $('btn-add-supplier').addEventListener('click', function(){openVendorForm();});
+  var btnImportVendors = $('btn-import-suppliers'); if(btnImportVendors) btnImportVendors.addEventListener('click', importVendorsCSV);
+  $('supplier-search').addEventListener('input', function(){
     var q = this.value.toLowerCase();
     document.querySelectorAll('.vendor-card').forEach(function(el){
       var txt = el.textContent.toLowerCase();
@@ -1691,7 +1911,7 @@ function renderVendors(){
   document.querySelectorAll('.vendor-name-link').forEach(function(el){
     el.addEventListener('click', function(e){
       e.stopPropagation();
-      openVendorDetail(el.dataset.id);
+      openVendorForm(el.dataset.id);
     });
   });
   document.querySelectorAll('.del-vendor').forEach(function(btn){
@@ -1721,7 +1941,7 @@ function openVendorForm(id){
       '<input type="checkbox" class="vendor-client-cb" value="'+c.id+'" '+checked+' style="width:14px;height:14px">'+
       '<span>'+c.name+'</span>'+
       '<span style="font-size:11px;color:#888;margin-left:auto">'+
-        (c.totalTrips||0)+' trips · $'+Number(c.totalRevenue||0).toLocaleString()+
+        (db.trips.filter(function(t){return t.clientId===c.id;}).length)+' trips · $'+Number(c.totalRevenue||0).toLocaleString()+
       '</span>'+
     '</label>';
   }).join('');
@@ -1734,12 +1954,11 @@ function openVendorForm(id){
   }).join('');
 
   $('modal').innerHTML =
-    '<div class="modal-hdr"><div class="modal-title">'+(id?'Edit Vendor':'Add Vendor')+'</div><button class="close-btn" id="modal-close">&#x2715;</button></div>'+
+    '<div class="modal-hdr"><div class="modal-title">'+(id?'Edit Supplier':'Add Supplier')+'</div><button class="close-btn" id="modal-close">&#x2715;</button></div>'+
     '<div class="fg">'+
-      fld('Vendor Name', inp('vn','text',d.name,'e.g. Delta Air Lines'))+
+      fld('Supplier Name', inp('vn','text',d.name,'e.g. Delta Air Lines'))+
       fld('Type', '<select id="vtype"><option value="">Select...</option>'+typeOpts+'</select>')+
       fld('Category', '<select id="vcat"><option value="">Select...</option>'+catOpts+'</select>')+
-      fld('Primary Client Name', inp('vprimary','text',d.primaryClientName,'e.g. John Smith'))+
       fld('Contact Name', inp('vcn','text',d.contactName,''))+
       fld('Email', inp('vem','email',d.email,''))+
       fld('Phone', inp('vph','text',d.phone,''))+
@@ -1751,7 +1970,79 @@ function openVendorForm(id){
         '</div>'+
       '</div>'+
     '</div>'+
-    '<div class="form-actions"><button class="cancel-btn" id="modal-cancel">Cancel</button><button class="save-btn" id="modal-save-vendor" data-id="'+(id||'')+'">Save Vendor</button></div>';
+    '<div style="margin-top:18px;border-top:1px solid #e5e7eb;padding-top:16px">'+
+      '<div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:10px">Notes</div>'+
+      (function(){
+        var nl = d.notesLog||[];
+        var rows = nl.map(function(n,i){
+          return '<div class="note-entry" id="vne-'+i+'" style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:10px;margin-bottom:8px">'+
+            '<div style="display:flex;align-items:center;margin-bottom:4px">'+
+              '<span class="note-ts" style="font-size:10px;color:#888;font-weight:600;letter-spacing:.03em">'+n.ts+'</span>'+
+              '<select class="vnote-type-sel" data-idx="'+i+'" style="font-size:11px;padding:2px 6px;border-radius:5px;border:1px solid #d1d5db;background:#fff;color:#374151;cursor:pointer;margin-left:8px">'+
+                '<option value="">-- Type --</option>'+
+                ['Email Sent','Email Received','Initial Call','Follow-up','General','Trip Import','Text Message','Lead'].map(function(t){return '<option value="'+t+'"'+(n.noteType===t?' selected':'')+'>'+t+'</option>';}).join('')+
+              '</select>'+
+              '<button class="del-vnote-btn" data-idx="'+i+'" title="Delete note" style="margin-left:auto;background:none;border:none;color:#dc2626;cursor:pointer;font-size:14px">&#128465;</button>'+
+            '</div>'+
+            '<textarea class="vnote-txt" rows="2" style="width:100%;padding:6px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;font-family:inherit;resize:vertical;box-sizing:border-box">'+( n.text||'')+'</textarea>'+
+          '</div>';
+        }).join('');
+        rows += '<div class="note-entry" id="vne-new" style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:10px;margin-bottom:8px">'+
+          '<div style="display:flex;align-items:center;margin-bottom:4px">'+
+            '<span style="font-size:10px;color:#888;font-weight:600">New Note</span>'+
+            '<select class="vnote-type-sel" data-idx="new" style="font-size:11px;padding:2px 6px;border-radius:5px;border:1px solid #d1d5db;background:#fff;color:#374151;cursor:pointer;margin-left:8px">'+
+              '<option value="">-- Type --</option>'+
+              ['Email Sent','Email Received','Initial Call','Follow-up','General','Trip Import','Text Message','Lead'].map(function(t){return '<option value="'+t+'">'+t+'</option>';}).join('')+
+            '</select>'+
+          '</div>'+
+          '<textarea class="vnote-txt" rows="2" placeholder="Add a note..." style="width:100%;padding:6px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;font-family:inherit;resize:vertical;box-sizing:border-box"></textarea>'+
+        '</div>';
+        return rows;
+      })()+
+    '</div>'+
+    '<div style="margin-top:16px;border-top:1px solid #e5e7eb;padding-top:16px">'+
+      '<div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:10px">Clients with Bookings</div>'+
+      (function(){
+        var found = [];
+        var foundIds = new Set();
+        // Match by clientIds (manually linked)
+        (d.clientIds||[]).forEach(function(cid){
+          var c = db.clients.find(function(x){return x.id===cid;});
+          if(c && !foundIds.has(c.id)){found.push(c);foundIds.add(c.id);}
+        });
+        // Match by primaryClientName
+        if(d.primaryClientName){
+          var pLower = d.primaryClientName.toLowerCase();
+          db.clients.forEach(function(c){
+            if(!foundIds.has(c.id)){
+              var cLower = (c.name||'').toLowerCase();
+              if(cLower===pLower || cLower.includes(pLower) || pLower.includes(cLower)){
+                found.push(c); foundIds.add(c.id);
+              }
+            }
+          });
+        }
+        // Match by vendor name appearing in trip flight/notes/destination
+        db.trips.forEach(function(t){
+          if(foundIds.has(t.clientId)) return;
+          var vname = (d.name||'').toLowerCase();
+          var haystack = [(t.flight||''),(t.destination||''),(t.notes||'')].join(' ').toLowerCase();
+          if(haystack.includes(vname)){
+            var c = db.clients.find(function(x){return x.id===t.clientId;});
+            if(c && !foundIds.has(c.id)){found.push(c);foundIds.add(c.id);}
+          }
+        });
+        if(!found.length) return '<div style="font-size:12px;color:#888;padding:8px 0">No linked clients yet</div>';
+        return found.map(function(c){
+          var trips = db.trips.filter(function(t){return t.clientId===c.id;});
+          return '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f3f4f6">'+
+            '<span style="font-size:13px;color:#2563eb;font-weight:500;cursor:pointer;text-decoration:underline" class="supplier-client-link" data-id="'+c.id+'">'+c.name+'</span>'+
+            '<span style="font-size:12px;color:#888">'+trips.length+' trip'+(trips.length!==1?'s':'')+'</span>'+
+          '</div>';
+        }).join('');
+      })()+
+    '</div>'+
+    '<div class="form-actions"><button class="cancel-btn" id="modal-cancel">Cancel</button><button class="save-btn" id="modal-save-vendor" data-id="'+(id||'')+'">Save Supplier</button></div>';
 
   $('overlay').classList.add('open');
   $('modal-close').addEventListener('click', closeModal);
@@ -1764,15 +2055,40 @@ function openVendorForm(id){
   });
 
   $('modal-save-vendor').addEventListener('click', function(){saveVendor(this.dataset.id);});
+  document.querySelectorAll('.supplier-client-link').forEach(function(el){
+    el.addEventListener('click', function(){
+      closeModal();
+      go('clients');
+      setTimeout(function(){openClientForm(el.dataset.id);},100);
+    });
+  });
+  document.querySelectorAll('.del-vnote-btn').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var el=document.getElementById('vne-'+this.dataset.idx);
+      if(el) el.remove();
+    });
+  });
 }
 
 function saveVendor(id){
   var name = gv('vn');
-  if(!name){toast('Vendor name is required','err');return;}
+  if(!name){toast('Supplier name is required','err');return;}
   var clientIds = Array.from(document.querySelectorAll('.vendor-client-cb:checked')).map(function(cb){return cb.value;});
+  // Collect notes from form
+  var notesLog = [];
+  document.querySelectorAll('[id^="vne-"]').forEach(function(el){
+    var txt=(el.querySelector('.vnote-txt')||{}).value||'';
+    var typ=(el.querySelector('.vnote-type-sel')||{}).value||'';
+    var tsEl=el.querySelector('.note-ts');
+    if(el.id==='vne-new'){
+      if(txt.trim()) notesLog.push({ts:new Date().toLocaleString(),text:txt.trim(),noteType:typ});
+    } else {
+      if(txt.trim()) notesLog.push({ts:tsEl?tsEl.textContent:'',text:txt.trim(),noteType:typ});
+    }
+  });
   var data = {
     name:name, type:gv('vtype'), category:gv('vcat'),
-    primaryClientName:gv('vprimary'), contactName:gv('vcn'), email:gv('vem'), phone:gv('vph'),
+    notesLog:notesLog, contactName:gv('vcn'), email:gv('vem'), phone:gv('vph'),
     website:gv('vwb'), notes:gv('vno'), clientIds:clientIds
   };
   if(id){
@@ -1954,7 +2270,7 @@ function renderClients(){
       '<td>'+badge(c.tier||'Standard')+'</td>'+
       '<td>'+fmt(c.points)+'</td>'+
       '<td>'+(c.totalRevenue?'$'+fmt(c.totalRevenue):'—')+'</td>'+
-      '<td><button class="trips-btn" data-cid="'+c.id+'">'+(c.totalTrips||0)+' trips &rarr;</button></td>'+
+      '<td><button class="trips-btn" data-cid="'+c.id+'">'+(db.trips.filter(function(t){return t.clientId===c.id;}).length)+' trips &rarr;</button></td>'+
       '<td><button class="trips-btn" data-edit="'+c.id+'">'+(c.notesLog||[]).length+' notes</button></td>'+
       '<td>'+(c.joined||'')+'</td>'+
       '<td style="white-space:nowrap"><button class="icon-btn edit-client" data-id="'+c.id+'" style="color:#2563eb">&#9999;&#65039;</button><button class="icon-btn del-client" data-id="'+c.id+'" style="color:#dc2626">&#128465;&#65039;</button></td>'+
@@ -2007,7 +2323,7 @@ function renderTrips(){
     '</div>'+
     '<div class="tbl-wrap"><table><thead><tr>'+
       '<th style="width:32px"><input type="checkbox" id="trip-check-all" style="width:14px;height:14px"></th>'+
-      '<th>Client</th><th>Destination</th><th>Dates</th><th>Flight</th><th>Status</th><th>Points</th><th>Value</th><th></th>'+
+      '<th>Client</th><th>Destination</th><th>Dates</th><th>Flight</th><th>Status</th><th>Points</th><th>Value</th><th>Product</th><th>Supplier</th><th></th>'+
     '</tr></thead><tbody>'+
     (list.length?list.map(function(t){return '<tr data-trip-id="'+t.id+'">'+
       '<td style="width:32px"><input type="checkbox" class="trip-row-cb" data-id="'+t.id+'" style="width:14px;height:14px"></td>'+
@@ -2018,14 +2334,29 @@ function renderTrips(){
       '<td>'+badge(t.status||'Planning')+'</td>'+
       '<td>'+(t.pointsUsed?fmt(t.pointsUsed):'&mdash;')+'</td>'+
       '<td>$'+fmt(t.totalValue)+'</td>'+
+      '<td style="font-size:11px;color:#555">'+( t.product||'—')+'</td>'+
+      (function(){
+        var sup = (t.supplierId ? db.vendors.find(function(v){return v.id===t.supplierId;}) : null)
+                || db.vendors.find(function(v){return (v.clientIds||[]).includes(t.clientId);});
+        var supName = sup ? sup.name : (t.supplierName||'');
+        var supId = sup ? sup.id : '';
+        return supName ? '<td style="font-size:11px;color:#2563eb;font-weight:500;cursor:pointer;text-decoration:underline" class="trip-sup-link" data-vendor-id="'+supId+'">'+supName+'</td>' : '<td style="font-size:11px;color:#aaa">—</td>';
+      })()+
       '<td style="white-space:nowrap"><button class="icon-btn edit-trip" data-id="'+t.id+'" style="color:#2563eb">&#9999;&#65039;</button><button class="icon-btn del-trip" data-id="'+t.id+'" style="color:#dc2626">&#128465;&#65039;</button></td>'+
-    '</tr>';}).join(''):'<tr><td colspan="8"><div class="empty">No trips found</div></td></tr>')+
+    '</tr>';}).join(''):'<tr><td colspan="10"><div class="empty">No trips found</div></td></tr>')+
     '</tbody></table></div>';
 
   $('btn-add-trip').addEventListener('click',function(){openTripForm();});
   $('trip-search').addEventListener('input',function(){fSearch=this.value;renderTrips();});
   $('trip-status-filter').addEventListener('change',function(){fStatus=this.value;renderTrips();});
   if($('btn-back')) $('btn-back').addEventListener('click',function(){selCid=null;render();});
+  document.querySelectorAll('.trip-sup-link').forEach(function(el){
+    el.addEventListener('click', function(e){
+      e.stopPropagation();
+      go('vendors');
+      setTimeout(function(){openVendorForm(el.dataset.vendorId);},100);
+    });
+  });
   document.querySelectorAll('.edit-trip').forEach(function(btn){
     btn.addEventListener('click',function(){openTripForm(btn.dataset.id);});
   });
@@ -2120,31 +2451,69 @@ function openClientForm(id){
       fld('Tier',sel('ft',TIERS,d.tier||'Standard'))+fld('Points Balance',inp('fpts','number',d.points||0))+
       fld('Preferred Airline',sel('fpa',AIRLINES,d.preferredAirline))+fld('Preferred Hotel',sel('fph',HOTELS,d.preferredHotel))+
       (id ? (function(){
-        var clientTrips = db.trips.filter(function(t){return t.clientId===id;}).sort(function(a,b){return (a.departDate||'').localeCompare(b.departDate||'');});
-        if(!clientTrips.length) return '';
-        var rows = clientTrips.map(function(t){
+        // Direct trips for this client
+        var clientTrips = db.trips.filter(function(t){return t.clientId===id;}).sort(function(a,b){return (b.departDate||'').localeCompare(a.departDate||'');});
+
+        // Supplier-linked trips: scan all Trip Import notes on this client
+        var supplierTrips = [];
+        var seenSupKeys = {};
+        (d.notesLog||[]).forEach(function(n){
+          if(n.noteType!=='Trip Import') return;
+          var key = n.importKey||n.text;
+          if(seenSupKeys[key]) return;
+          seenSupKeys[key]=true;
+          // Find which supplier this note came from
+          var vendor = db.vendors.find(function(v){
+            return n.text && n.text.toLowerCase().startsWith(v.name.toLowerCase());
+          });
+          supplierTrips.push({
+            supplier: vendor ? vendor.name : 'Supplier',
+            vendorId: vendor ? vendor.id : '',
+            text: n.text,
+            ts: n.ts,
+            importKey: key
+          });
+        });
+
+        var totalCount = clientTrips.length + supplierTrips.length;
+        if(!totalCount) return '<div class="field full"><label>Trips (0)</label><div style="color:#aaa;font-size:12px;padding:8px 0">No trips yet.</div></div>';
+
+        var tripRows = clientTrips.map(function(t){
           var status = t.status||'';
           var scls = {'Confirmed':'b-green','Planning':'b-amber','Completed':'b-blue','Cancelled':'b-red'}[status]||'b-gray';
-          return '<tr style="cursor:pointer" class="client-trip-row" data-trip-id="'+t.id+'">'+
-            '<td style="font-size:12px;font-weight:600;color:#111;padding:6px 8px">'+t.destination+'</td>'+
-            '<td style="font-size:11px;color:#555;padding:6px 8px;white-space:nowrap">'+t.departDate+'</td>'+
-            '<td style="font-size:11px;color:#555;padding:6px 8px;white-space:nowrap">'+(t.returnDate||'—')+'</td>'+
-            '<td style="padding:6px 8px"><span class="badge '+scls+'">'+status+'</span></td>'+
-            '<td style="font-size:11px;color:#888;padding:6px 8px">$'+(t.totalValue?Number(t.totalValue).toLocaleString():'—')+'</td>'+
+          return '<tr style="cursor:pointer;background:#fff" class="client-trip-row" data-trip-id="'+t.id+'">'+
+            '<td style="font-size:12px;font-weight:600;color:#2563eb;padding:8px 10px;text-decoration:underline">'+t.destination+'</td>'+
+            '<td style="font-size:11px;color:#555;padding:8px 10px;white-space:nowrap">'+( t.departDate||'—')+'</td>'+
+            '<td style="font-size:11px;color:#555;padding:8px 10px;white-space:nowrap">'+(t.returnDate||'—')+'</td>'+
+            '<td style="padding:8px 10px"><span class="badge '+scls+'">'+status+'</span></td>'+
+            '<td style="font-size:11px;font-weight:600;color:#111;padding:8px 10px">$'+(t.totalValue?Number(t.totalValue).toLocaleString():'—')+'</td>'+
+            '<td style="font-size:11px;color:#059669;font-weight:600;padding:8px 10px">CRM</td>'+
           '</tr>';
         }).join('');
+
+        var supRows = supplierTrips.map(function(r){
+          return '<tr style="background:#fafafa;cursor:pointer" class="client-sup-trip-row" data-vendor-id="'+r.vendorId+'">'+
+            '<td style="font-size:12px;color:#111;padding:8px 10px" colspan="2">'+r.text+'</td>'+
+            '<td style="font-size:11px;color:#555;padding:8px 10px;white-space:nowrap">'+r.ts+'</td>'+
+            '<td style="padding:8px 10px"></td>'+
+            '<td style="padding:8px 10px"></td>'+
+            '<td style="font-size:11px;color:#2563eb;font-weight:600;padding:8px 10px;cursor:pointer;text-decoration:underline" class="sup-link" data-vendor-id="'+r.vendorId+'">'+r.supplier+'</td>'+
+          '</tr>';
+        }).join('');
+
         return '<div class="field full" style="margin-bottom:12px">'+
-          '<label>Trips ('+clientTrips.length+')</label>'+
-          '<div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;max-height:180px;overflow-y:auto">'+
+          '<label>Trips ('+totalCount+')</label>'+
+          '<div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;max-height:360px;overflow-y:auto">'+
           '<table style="width:100%;border-collapse:collapse">'+
-          '<thead><tr style="background:#f9fafb">'+
-            '<th style="text-align:left;padding:5px 8px;font-size:10px;font-weight:600;color:#888;text-transform:uppercase">Destination</th>'+
-            '<th style="text-align:left;padding:5px 8px;font-size:10px;font-weight:600;color:#888;text-transform:uppercase">Depart</th>'+
-            '<th style="text-align:left;padding:5px 8px;font-size:10px;font-weight:600;color:#888;text-transform:uppercase">Return</th>'+
-            '<th style="text-align:left;padding:5px 8px;font-size:10px;font-weight:600;color:#888;text-transform:uppercase">Status</th>'+
-            '<th style="text-align:left;padding:5px 8px;font-size:10px;font-weight:600;color:#888;text-transform:uppercase">Value</th>'+
+          '<thead><tr style="background:#f3f4f6">'+
+            '<th style="text-align:left;padding:6px 10px;font-size:10px;font-weight:700;color:#888;text-transform:uppercase">Destination / Details</th>'+
+            '<th style="text-align:left;padding:6px 10px;font-size:10px;font-weight:700;color:#888;text-transform:uppercase">Depart</th>'+
+            '<th style="text-align:left;padding:6px 10px;font-size:10px;font-weight:700;color:#888;text-transform:uppercase">Return</th>'+
+            '<th style="text-align:left;padding:6px 10px;font-size:10px;font-weight:700;color:#888;text-transform:uppercase">Status</th>'+
+            '<th style="text-align:left;padding:6px 10px;font-size:10px;font-weight:700;color:#888;text-transform:uppercase">Value</th>'+
+            '<th style="text-align:left;padding:6px 10px;font-size:10px;font-weight:700;color:#888;text-transform:uppercase">Source</th>'+
           '</tr></thead>'+
-          '<tbody>'+rows+'</tbody></table></div></div>';
+          '<tbody>'+tripRows+supRows+'</tbody></table></div></div>';
       })() : '') +
       '<div class="field full"><label>Notes Log</label>'+
         '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'+
@@ -2199,6 +2568,14 @@ function openClientForm(id){
     row.addEventListener('click',function(){
       closeModal();
       openTripForm(row.dataset.tripId);
+    });
+  });
+  document.querySelectorAll('.sup-link').forEach(function(el){
+    el.addEventListener('click',function(e){
+      e.stopPropagation();
+      closeModal();
+      go('vendors');
+      setTimeout(function(){openVendorForm(el.dataset.vendorId);},100);
     });
   });
   // Bind timestamp expand clicks - uses event delegation on notes-log
@@ -2411,7 +2788,7 @@ function delTrip(id){
   $('btn-mass-email').addEventListener('click', massEmail);
   $('btn-import-csv').addEventListener('click', importCSV);
   $('btn-import-revenue').addEventListener('click', importRevenue);
-  var vendorSbBtn = $('btn-import-vendors-sb');
+  var vendorSbBtn = $('btn-import-suppliers-sb');
   if(vendorSbBtn) vendorSbBtn.addEventListener('click', importVendorsCSV);
   $('btn-undo').addEventListener('click', undo);
   $('debug-clear').addEventListener('click', function(){$('debug-log').innerHTML='';localStorage.removeItem('mm_debug_log');});
