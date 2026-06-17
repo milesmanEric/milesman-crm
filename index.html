@@ -1104,11 +1104,17 @@ function finalizeImport(){
     const last=nameParts[nameParts.length-1]||'';
     let cid=null;
     if(!row.isSupplierName){
-      // Fuzzy match client name directly
+      // Strict fuzzy match — exact name or both first+last name match
       const direct=db.clients.find(function(c){
         const fn=(c.name||'').toLowerCase().trim();
         const fp=fn.split(/\s+/);
-        return fn===cl||fp[fp.length-1]===last||fp[0]===first||fn.includes(cl)||cl.includes(fn);
+        // Exact match
+        if(fn===cl) return true;
+        // Both first AND last name must match (not just one)
+        if(first && last && fp.length>=2 && fp[0]===first && fp[fp.length-1]===last) return true;
+        // Full name contained in client name
+        if(fn.includes(cl) && cl.length>4) return true;
+        return false;
       });
       if(direct){cid=direct.id;}
       else if(state.resolutions[row.name]!==undefined&&state.resolutions[row.name]!=='__supplier__'){cid=state.resolutions[row.name];}
@@ -1120,34 +1126,33 @@ function finalizeImport(){
         return (v.name||'').toLowerCase().trim()===row.name.toLowerCase().trim();
       });
       if(matchedSup){
-        debugLog('Revenue: supplier match '+matchedSup.name+' clientIds='+(matchedSup.clientIds||[]).length+' item='+row.item);
+        debugLog('Revenue: supplier match '+matchedSup.name+' name='+row.name+' isSupplierName='+row.isSupplierName);
 
-        // Try to identify the SPECIFIC client from the item field
-        // e.g. 'Referral:AMEX:AMEX - Eric' -> last segment -> match by first/last name word
-        var specificClient=null;
-        if(row.item){
-          var itemParts=row.item.split(':');
-          var lastSeg=itemParts[itemParts.length-1].trim();
-          var words=lastSeg.replace(/-/g,' ').split(/\s+/).map(function(w){return w.trim().toLowerCase();}).filter(function(w){return w.length>2;});
-          for(var wi=0;wi<words.length;wi++){
-            var word=words[wi];
-            var m=db.clients.find(function(c){
-              var fn=(c.name||'').toLowerCase().trim();
-              var fp=fn.split(/\s+/);
-              return fp[0]===word||fp[fp.length-1]===word;
-            });
-            if(m){specificClient=m;break;}
+        var targetClient=null;
+
+        if(row.isSupplierName){
+          // Name column IS the supplier name — try to find client from item field
+          // e.g. item='Referral:AMEX:AMEX - Eric' -> last segment words
+          if(row.item){
+            var itemParts=row.item.split(':');
+            var lastSeg=itemParts[itemParts.length-1].trim();
+            var words=lastSeg.replace(/-/g,' ').split(/\s+/).map(function(w){return w.trim().toLowerCase();}).filter(function(w){return w.length>2;});
+            for(var wi=0;wi<words.length;wi++){
+              var word=words[wi];
+              var m=db.clients.find(function(c){
+                var fn=(c.name||'').toLowerCase().trim();
+                var fp=fn.split(/\s+/);
+                return fp[0]===word||fp[fp.length-1]===word;
+              });
+              if(m){targetClient=m;break;}
+            }
+            debugLog('Revenue item parse: lastSeg='+lastSeg+' matched='+(targetClient?targetClient.name:'none'));
           }
-          debugLog('Revenue item parse: lastSeg='+lastSeg+' matched='+(specificClient?specificClient.name:'none'));
-        }
-
-        // Only create trip for specific client if found, not for ALL linked clients
-        var targetClient = specificClient;
-
-        // If no specific client from item, don't create trips - just record revenue
-        if(!targetClient){
-          debugLog('Revenue: no specific client found for '+matchedSup.name+' row, skipping trip creation');
-          skipped++;return;
+          if(!targetClient){debugLog('Revenue: no client from item for supplier '+matchedSup.name);skipped++;return;}
+        } else {
+          // Name column IS the client name — use it directly (already resolved via cid above)
+          if(cid) targetClient=db.clients.find(function(c){return c.id===cid;});
+          if(!targetClient){debugLog('Revenue: client not found for '+row.name);skipped++;return;}
         }
 
         // Duplicate check: skip if trip with same date+amount+client+supplier already exists
