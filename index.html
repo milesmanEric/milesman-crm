@@ -944,18 +944,37 @@ function importRevenue(){
             const di=hdrs.findIndex(function(h){return h==='date';});
             const mi=hdrs.findIndex(function(h){return h==='memo'||h==='description';});
             const pi=hdrs.findIndex(function(h){return h==='item'||h==='product'||h==='product type';});
-            clientName = ni>=0?(cols[ni]||'').trim():'';
+            var rawName = ni>=0?(cols[ni]||'').trim():'';
             productType = pi>=0?(cols[pi]||'').trim():'';
             amt = parseFloat(((ai>=0?cols[ai]:cols[cols.length-1])||'').replace(/[$,"]/g,''))||0;
             date = di>=0?(cols[di]||'').trim():'';
             description = mi>=0?(cols[mi]||'').trim():'';
+            // Check if Name col is actually a supplier — if so, client is in col 5
+            var nameIsSupHdr = db.vendors.some(function(v){
+              return (v.name||'').toLowerCase().trim()===rawName.toLowerCase().trim();
+            });
+            clientName = nameIsSupHdr ? ((cols[5]||'').trim()||rawName) : rawName;
           } else {
-            // Positional: col0=date, col1=invoice, col2=desc, col3=client, col4=product, col7=total
+            // Positional QB format:
+            // col0=date, col1=invoice, col2=description, col3=supplier, col4=product type,
+            // col5=client name, col6=qty, col7=price, col8=total
             date = (cols[0]||'').trim();
             description = (cols[2]||'').trim();
-            clientName = (cols[3]||'').trim();
+            var col3val = (cols[3]||'').trim();
+            var col5val = (cols[5]||'').trim();
             productType = (cols[4]||'').trim();
-            amt = parseFloat((cols[7]||cols[cols.length-1]||'').replace(/[$,"]/g,''))||0;
+            amt = parseFloat((cols[8]||cols[cols.length-1]||'').replace(/[$,"]/g,''))||0;
+            // col3 is supplier if it matches a known vendor, otherwise treat as client
+            var col3isSupplier = db.vendors.some(function(v){
+              return (v.name||'').toLowerCase().trim()===col3val.toLowerCase().trim();
+            });
+            if(col3isSupplier){
+              // col3=supplier, col5=client
+              clientName = col5val || col3val;
+            } else {
+              // col3=client name (AMEX format)
+              clientName = col3val;
+            }
           }
 
           if(!clientName||amt===0) continue;
