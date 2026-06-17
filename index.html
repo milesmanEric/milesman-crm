@@ -1112,6 +1112,7 @@ function finalizeImport(){
       });
       if(direct){cid=direct.id;}
       else if(state.resolutions[row.name]!==undefined&&state.resolutions[row.name]!=='__supplier__'){cid=state.resolutions[row.name];}
+      if(!cid) debugLog('Revenue: no client match for name='+row.name+' first='+first+' last='+last);
     }
     // If no client matched, check if name is a supplier — use its linked clients
     if(!cid){
