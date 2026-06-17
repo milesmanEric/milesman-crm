@@ -2498,26 +2498,8 @@ function openClientForm(id){
         // Direct trips for this client
         var clientTrips = db.trips.filter(function(t){return t.clientId===id;}).sort(function(a,b){return (b.departDate||'').localeCompare(a.departDate||'');});
 
-        // Supplier-linked trips: scan all Trip Import notes on this client
+        // Supplier trips now show as CRM trips via revenue import
         var supplierTrips = [];
-        var seenSupKeys = {};
-        (d.notesLog||[]).forEach(function(n){
-          if(n.noteType!=='Trip Import') return;
-          var key = n.importKey||n.text;
-          if(seenSupKeys[key]) return;
-          seenSupKeys[key]=true;
-          // Find which supplier this note came from
-          var vendor = db.vendors.find(function(v){
-            return n.text && n.text.toLowerCase().startsWith(v.name.toLowerCase());
-          });
-          supplierTrips.push({
-            supplier: vendor ? vendor.name : 'Supplier',
-            vendorId: vendor ? vendor.id : '',
-            text: n.text,
-            ts: n.ts,
-            importKey: key
-          });
-        });
 
         var totalCount = clientTrips.length + supplierTrips.length;
         if(!totalCount) return '<div class="field full"><label>Trips (0)</label><div style="color:#aaa;font-size:12px;padding:8px 0">No trips yet.</div></div>';
