@@ -960,13 +960,16 @@ function importRevenue(){
 
           if(!clientName||amt===0) continue;
 
+          // Check if clientName itself is a supplier name
+          var nameIsSupplier = db.vendors.some(function(v){
+            return (v.name||'').toLowerCase().trim()===clientName.toLowerCase().trim();
+          });
+
           // Try to match product type against known suppliers
-          // Product type can be: "Virgin Voyages:Cruise" or "Referral:AMEX:AMEX - Eric"
           var matchedSupplier=null;
-          var productDisplay=productType; // what shows in Product column
+          var productDisplay=productType;
 
           if(productType){
-            // First: try matching the whole productType or each colon-segment against vendors
             const prodParts=productType.split(':').map(function(p){return p.trim();});
             for(var pi=0;pi<prodParts.length;pi++){
               var seg=prodParts[pi].toLowerCase();
@@ -978,8 +981,11 @@ function importRevenue(){
             }
           }
 
+          // If clientName is NOT a supplier, use it as the actual client name directly
+          // Only flag as supplier-name if it literally matches a vendor
           rows.push({
-            name:clientName,
+            name:nameIsSupplier?clientName:clientName,
+            isSupplierName:nameIsSupplier,
             supplierName:matchedSupplier?matchedSupplier.name:'',
             supplierId:matchedSupplier?matchedSupplier.id:'',
             product:productDisplay,
@@ -1021,10 +1027,7 @@ function importRevenue(){
         rows.forEach(function(row){
           if(autoResolutions[row.name]||unmatchedNames.includes(row.name)) return;
           // Check if name matches a supplier — handle in finalizeImport, skip manual match
-          const isSupplier=db.vendors.some(function(v){
-            return (v.name||'').toLowerCase().trim()===row.name.toLowerCase().trim();
-          });
-          if(isSupplier){
+          if(row.isSupplierName){
             autoResolutions[row.name]='__supplier__';
             return;
           }
@@ -1100,14 +1103,16 @@ function finalizeImport(){
     const first=nameParts[0]||'';
     const last=nameParts[nameParts.length-1]||'';
     let cid=null;
-    // Fuzzy match: exact, last name, first name, contains
-    const direct=db.clients.find(function(c){
-      const fn=(c.name||'').toLowerCase().trim();
-      const fp=fn.split(/\s+/);
-      return fn===cl||fp[fp.length-1]===last||fp[0]===first||fn.includes(cl)||cl.includes(fn);
-    });
-    if(direct){cid=direct.id;}
-    else if(state.resolutions[row.name]!==undefined&&state.resolutions[row.name]!=='__supplier__'){cid=state.resolutions[row.name];}
+    if(!row.isSupplierName){
+      // Fuzzy match client name directly
+      const direct=db.clients.find(function(c){
+        const fn=(c.name||'').toLowerCase().trim();
+        const fp=fn.split(/\s+/);
+        return fn===cl||fp[fp.length-1]===last||fp[0]===first||fn.includes(cl)||cl.includes(fn);
+      });
+      if(direct){cid=direct.id;}
+      else if(state.resolutions[row.name]!==undefined&&state.resolutions[row.name]!=='__supplier__'){cid=state.resolutions[row.name];}
+    }
     // If no client matched, check if name is a supplier — use its linked clients
     if(!cid){
       const matchedSup=db.vendors.find(function(v){
