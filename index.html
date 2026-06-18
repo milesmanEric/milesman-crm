@@ -1193,7 +1193,8 @@ function finalizeImport(){
         if(dupExists){debugLog('Revenue: duplicate skipped for '+targetClient.name);skipped++;return;}
 
         const tripId=newId('T',db.trips);
-        const dest=row.memo||row.product||matchedSup.name||'Imported Trip';
+        // Use memo/description if available, otherwise use supplier name + date
+        const dest=row.memo||(matchedSup.name+(row.date?' '+row.date:''))||'Imported Trip';
         db.trips.push({
           id:tripId,clientId:targetClient.id,clientName:targetClient.name,
           destination:dest,origin:'',departDate:row.date?row.date.slice(0,10):today(),returnDate:row.date?row.date.slice(0,10):today(),
