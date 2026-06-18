@@ -1008,8 +1008,9 @@ function importRevenue(){
           // If clientName is NOT a supplier, use it as the actual client name directly
           // Only flag as supplier-name if it literally matches a vendor
           rows.push({
-            name:nameIsSupplier?clientName:clientName,
+            name:clientName,
             isSupplierName:nameIsSupplier,
+            supplierCol3: (typeof supplierCol3 !== 'undefined') ? supplierCol3 : '',
             supplierName:matchedSupplier?matchedSupplier.name:'',
             supplierId:matchedSupplier?matchedSupplier.id:'',
             product:productDisplay,
@@ -1146,9 +1147,12 @@ function finalizeImport(){
     }
     // If no client matched, check if name is a supplier — use its linked clients
     if(!cid){
-      const matchedSup=db.vendors.find(function(v){
-        return (v.name||'').toLowerCase().trim()===row.name.toLowerCase().trim();
-      });
+      // Try matching by row.name first, then by supplierCol3
+      var matchedSup=db.vendors.find(function(v){
+        return (v.name||'').toLowerCase().trim()===(row.name||'').toLowerCase().trim();
+      }) || (row.supplierCol3 ? db.vendors.find(function(v){
+        return (v.name||'').toLowerCase().trim()===row.supplierCol3.toLowerCase().trim();
+      }) : null);
       if(matchedSup){
         debugLog('Revenue: supplier match '+matchedSup.name+' name='+row.name+' isSupplierName='+row.isSupplierName);
 
