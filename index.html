@@ -963,26 +963,28 @@ function importRevenue(){
             var col3val = (cols[3]||'').trim();
             var col5val = (cols[5]||'').trim();
             productType = (cols[4]||'').trim();
-            amt = parseFloat((cols[8]||cols[cols.length-1]||'').replace(/[$,"]/g,''))||0;
-            // col3 is supplier if it matches a known vendor, otherwise treat as client
+            amt = parseFloat((cols[8]||cols[7]||cols[cols.length-1]||'').replace(/[$,"]/g,''))||0;
+            // col3 is supplier if it matches a known vendor
             var col3isSupplier = db.vendors.some(function(v){
               return (v.name||'').toLowerCase().trim()===col3val.toLowerCase().trim();
             });
             if(col3isSupplier){
-              // col3=supplier, col5=client
-              clientName = col5val || col3val;
+              // col3=supplier; client is col5 if populated, else parse from item field (col4)
+              clientName = col5val || ''; // leave blank if empty, will be parsed from item field later
             } else {
-              // col3=client name (AMEX format)
+              // col3=client name directly
               clientName = col3val;
             }
           }
 
           if(!clientName||amt===0) continue;
 
-          // Check if clientName itself is a supplier name
-          var nameIsSupplier = db.vendors.some(function(v){
+          // Check if clientName itself is a supplier name OR is empty (col3 was supplier, col5 empty)
+          var nameIsSupplier = !clientName || db.vendors.some(function(v){
             return (v.name||'').toLowerCase().trim()===clientName.toLowerCase().trim();
           });
+          // Store the original col3 supplier name for later lookup
+          var col3SupplierName = (cols ? (cols[3]||'').trim() : '');
 
           // Try to match product type against known suppliers
           var matchedSupplier=null;
