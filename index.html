@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -977,7 +977,10 @@ function importRevenue(){
             }
           }
 
-          if(!clientName||amt===0) continue;
+          // Don't skip if col3 has a supplier name (clientName may be empty for AMEX rows)
+          var col3raw = looksLikeHeader ? '' : (cols[3]||'').trim();
+          var col3isSup = db.vendors.some(function(v){return (v.name||'').toLowerCase().trim()===col3raw.toLowerCase().trim();});
+          if((!clientName && !col3isSup)||amt===0) continue;
 
           // Check if clientName itself is a supplier name OR is empty (col3 was supplier, col5 empty)
           var nameIsSupplier = !clientName || db.vendors.some(function(v){
@@ -1186,7 +1189,7 @@ function finalizeImport(){
         if(dupExists){debugLog('Revenue: duplicate skipped for '+targetClient.name);skipped++;return;}
 
         const tripId=newId('T',db.trips);
-        const dest=row.memo||matchedSup.name||'Imported Trip';
+        const dest=row.memo||row.product||matchedSup.name||'Imported Trip';
         db.trips.push({
           id:tripId,clientId:targetClient.id,clientName:targetClient.name,
           destination:dest,origin:'',departDate:row.date?row.date.slice(0,10):today(),returnDate:row.date?row.date.slice(0,10):today(),
