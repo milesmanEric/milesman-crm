@@ -919,149 +919,142 @@ function importRevenue(){
     r.onload=function(ev){
       try{
         const lines=ev.target.result.split('\n').map(l=>l.trim()).filter(l=>l);
-        if(lines.length<2){toast('CSV appears empty','err');return;}
-        // Detect delimiter: tab or comma
-        const revDelim = lines[0].includes('\t') ? '\t' : ',';
-        const parseRevLine = function(line){ return line.split(revDelim).map(function(c){return c.replace(/^"|"$/g,'').trim();}); };
+        if(lines.length<2){toast('File appears empty','err');return;}
 
-        // QB format: col0=date, col1=invoice, col2=description, col3=client name,
-        //            col4=product type (supplier info), col5=qty, col6=price, col7=total
-        // Try header-based mapping first, fall back to positional
-        const hdrs=parseRevLine(lines[0]).map(function(h){return h.replace(/"/g,'').trim().toLowerCase();});
-        const looksLikeHeader = hdrs.some(function(h){return ['name','date','amount','memo','item','num','qty'].includes(h);});
+        // Detect delimiter
+        const delim = lines[0].includes('\t') ? '\t' : ',';
+        const split = function(line){
+          if(delim===',') return parseCSVLine(line); // handles quoted fields with commas
+          return line.split(delim).map(function(c){return c.replace(/^"|"$/g,'').trim();});
+        };
+
+        // Detect header row
+        const hdrs = split(lines[0]).map(function(h){return h.toLowerCase().trim();});
+        const looksLikeHeader = hdrs.some(function(h){return ['name','date','amount','num','qty','memo','item'].includes(h);});
+        const startRow = looksLikeHeader ? 1 : 0;
+
+        // Column indices (header-based or positional)
+        // Positional: col0=date, col1=invoice, col2=memo/description, col3=name/supplier,
+        //             col4=product/class, col5=client(class), col6=qty, col7=price, col8=total
+        function getCol(row, names, fallbackIdx){
+          if(looksLikeHeader){
+            for(var i=0;i<names.length;i++){
+              var idx=hdrs.indexOf(names[i]);
+              if(idx>=0) return (row[idx]||'').trim();
+            }
+            return '';
+          }
+          return (row[fallbackIdx]||'').trim();
+        }
 
         const rows=[];
-        for(let i=(looksLikeHeader?1:0);i<lines.length;i++){
-          const cols=parseRevLine(lines[i]);
-          if(cols.length<4) continue;
+        for(var i=startRow;i<lines.length;i++){
+          const cols=split(lines[i]);
+          if(cols.length<3) continue;
 
-          var clientName, productType, amt, date, description;
+          const date    = getCol(cols,['date'],0);
+          const memo    = getCol(cols,['memo','description'],2);
+          const nameVal = getCol(cols,['name'],3);
+          const classVal= getCol(cols,['item'],4);        // col4 = Item
+          const clientFromClass = getCol(cols,['class'],5) || (cols[5]||'').trim(); // col5 = Class
+          const amtStr  = getCol(cols,['amount','sales price'],8) ||
+                          getCol(cols,['amount','sales price'],7) ||
+                          cols[cols.length-1]||'';
+          const amt     = parseFloat(amtStr.replace(/[$,"]/g,''))||0;
 
-          if(looksLikeHeader){
-            // Header-based: find columns by name
-            const ni=hdrs.findIndex(function(h){return h==='name';});
-            const ai=hdrs.findIndex(function(h){return h==='amount'||h==='total'||h==='sales price';});
-            const di=hdrs.findIndex(function(h){return h==='date';});
-            const mi=hdrs.findIndex(function(h){return h==='memo'||h==='description';});
-            const pi=hdrs.findIndex(function(h){return h==='item'||h==='product'||h==='product type';});
-            var rawName = ni>=0?(cols[ni]||'').trim():'';
-            productType = pi>=0?(cols[pi]||'').trim():'';
-            amt = parseFloat(((ai>=0?cols[ai]:cols[cols.length-1])||'').replace(/[$,"]/g,''))||0;
-            date = di>=0?(cols[di]||'').trim():'';
-            description = mi>=0?(cols[mi]||'').trim():'';
-            // Check if Name col is actually a supplier — if so, client is in col 5
-            var nameIsSupHdr = db.vendors.some(function(v){
-              return (v.name||'').toLowerCase().trim()===rawName.toLowerCase().trim();
-            });
-            clientName = nameIsSupHdr ? ((cols[5]||'').trim()||rawName) : rawName;
-          } else {
-            // Positional QB format:
-            // col0=date, col1=invoice, col2=description, col3=supplier, col4=product type,
-            // col5=client name, col6=qty, col7=price, col8=total
-            date = (cols[0]||'').trim();
-            description = (cols[2]||'').trim();
-            var col3val = (cols[3]||'').trim();
-            var col5val = (cols[5]||'').trim();
-            productType = (cols[4]||'').trim();
-            amt = parseFloat((cols[8]||cols[7]||cols[cols.length-1]||'').replace(/[$,"]/g,''))||0;
-            // col3 is supplier if it matches a known vendor
-            var col3isSupplier = db.vendors.some(function(v){
-              return (v.name||'').toLowerCase().trim()===col3val.toLowerCase().trim();
-            });
-            if(col3isSupplier){
-              // col3=supplier; client is col5 if populated, else parse from item field (col4)
-              clientName = col5val || ''; // leave blank if empty, will be parsed from item field later
-            } else {
-              // col3=client name directly
-              clientName = col3val;
-            }
-          }
+          if(!nameVal||amt===0) continue;
 
-          // Don't skip if col3 has a supplier name (clientName may be empty for AMEX rows)
-          var col3raw = looksLikeHeader ? '' : (cols[3]||'').trim();
-          var col3isSup = db.vendors.some(function(v){return (v.name||'').toLowerCase().trim()===col3raw.toLowerCase().trim();});
-          if((!clientName && !col3isSup)||amt===0) continue;
-
-          // Check if clientName itself is a supplier name OR is empty (col3 was supplier, col5 empty)
-          var nameIsSupplier = !clientName || db.vendors.some(function(v){
-            return (v.name||'').toLowerCase().trim()===clientName.toLowerCase().trim();
+          // Check if nameVal matches a supplier
+          const matchedSupplier = db.vendors.find(function(v){
+            return (v.name||'').toLowerCase().trim()===nameVal.toLowerCase().trim();
           });
-          // Store the original col3 supplier name for later lookup
-          var col3SupplierName = (cols ? (cols[3]||'').trim() : '');
 
-          // Try to match product type against known suppliers
-          var matchedSupplier=null;
-          var productDisplay=productType;
+          var clientName, supplierId, supplierName, product;
 
-          if(productType){
-            const prodParts=productType.split(':').map(function(p){return p.trim();});
-            for(var pi=0;pi<prodParts.length;pi++){
-              var seg=prodParts[pi].toLowerCase();
-              var m=db.vendors.find(function(v){
-                var vl=(v.name||'').toLowerCase();
-                return vl===seg||vl.includes(seg)||seg.includes(vl);
-              });
-              if(m){matchedSupplier=m;break;}
+          if(matchedSupplier){
+            // nameVal IS a supplier
+            // class/client is in col5 (clientFromClass) or parsed from classVal
+            var clientCol = clientFromClass || '';
+
+            // If no client in col5, try last segment of classVal (e.g. "Referral:AMEX:AMEX - Eric")
+            if(!clientCol && classVal && classVal.includes(':')){
+              var parts = classVal.split(':');
+              clientCol = parts[parts.length-1].trim();
+            }
+
+            // If still no client, skip this row
+            if(!clientCol){
+              debugLog('Revenue skip: supplier='+matchedSupplier.name+' no client in class field');
+              continue;
+            }
+
+            clientName    = clientCol;
+            supplierId    = matchedSupplier.id;
+            supplierName  = matchedSupplier.name;
+            product       = classVal;
+          } else {
+            // nameVal IS the client name
+            clientName   = nameVal;
+            supplierId   = '';
+            supplierName = '';
+            product      = classVal;
+            // Try to match supplier from classVal
+            if(classVal){
+              var prodParts = classVal.split(':');
+              for(var pi=0;pi<prodParts.length;pi++){
+                var seg = prodParts[pi].trim().toLowerCase();
+                var sup = db.vendors.find(function(v){
+                  var vl=(v.name||'').toLowerCase();
+                  return vl===seg||vl.includes(seg)||seg.includes(vl);
+                });
+                if(sup){supplierId=sup.id;supplierName=sup.name;break;}
+              }
             }
           }
 
-          // If clientName is NOT a supplier, use it as the actual client name directly
-          // Only flag as supplier-name if it literally matches a vendor
+          debugLog('Revenue row: name='+nameVal+' client='+clientName+' supplier='+supplierName+' amt='+amt);
+
           rows.push({
             name:clientName,
-            isSupplierName:nameIsSupplier,
-            supplierCol3: (typeof supplierCol3 !== 'undefined') ? supplierCol3 : '',
-            supplierName:matchedSupplier?matchedSupplier.name:'',
-            supplierId:matchedSupplier?matchedSupplier.id:'',
-            product:productDisplay,
+            isSupplierName:!!matchedSupplier,
+            supplierName:supplierName,
+            supplierId:supplierId,
+            product:product,
             amt:amt,
             date:date,
-            memo:description,
-            item:productType
+            memo:memo,
+            item:classVal
           });
         }
+
         if(!rows.length){toast('No valid rows found','err');return;}
 
-        // Auto-match names to clients, collect only truly unmatched
+        // Auto-match client names
         const unmatchedNames=[];
         const autoResolutions={};
 
         function fuzzyMatchClient(name){
+          if(!name) return null;
           const nl=name.toLowerCase().trim();
-          const parts=nl.split(/\s+/);
+          // Handle 'Last, First' format - convert to 'First Last'
+          var normalized=nl;
+          if(nl.includes(',')){ var lf=nl.split(',').map(function(s){return s.trim();}); normalized=lf[1]+' '+lf[0]; }
+          const parts=normalized.split(/\s+/);
           const first=parts[0]||'';
           const last=parts[parts.length-1]||'';
-          // Try exact full name
-          var m=db.clients.find(c=>(c.name||'').toLowerCase().trim()===nl);
-          if(m) return m;
-          // Try last name only
-          m=db.clients.find(c=>(c.name||'').trim().split(/\s+/).pop().toLowerCase()===last);
-          if(m) return m;
-          // Try first name only
-          m=db.clients.find(c=>(c.name||'').trim().split(/\s+/)[0].toLowerCase()===first);
-          if(m) return m;
-          // Try contains
-          m=db.clients.find(c=>(c.name||'').toLowerCase().includes(nl)||nl.includes((c.name||'').toLowerCase().trim()));
-          if(m) return m;
-          // Try last name contains
-          m=db.clients.find(c=>(c.name||'').toLowerCase().includes(last)||last.includes((c.name||'').trim().split(/\s+/).pop().toLowerCase()));
-          if(m) return m;
+          var m=db.clients.find(c=>(c.name||'').toLowerCase().trim()===nl); if(m) return m;
+          m=db.clients.find(c=>(c.name||'').toLowerCase().trim()===normalized); if(m) return m;
+          m=db.clients.find(c=>(c.name||'').trim().split(/\s+/).pop().toLowerCase()===last&&last.length>2); if(m) return m;
+          m=db.clients.find(c=>(c.name||'').trim().split(/\s+/)[0].toLowerCase()===first&&first.length>2); if(m) return m;
+          m=db.clients.find(c=>(c.name||'').toLowerCase().includes(normalized)&&normalized.length>4); if(m) return m;
           return null;
         }
 
         rows.forEach(function(row){
-          if(autoResolutions[row.name]||unmatchedNames.includes(row.name)) return;
-          // Check if name matches a supplier — handle in finalizeImport, skip manual match
-          if(row.isSupplierName){
-            autoResolutions[row.name]='__supplier__';
-            return;
-          }
+          if(autoResolutions[row.name]!==undefined||unmatchedNames.includes(row.name)) return;
           const matched=fuzzyMatchClient(row.name);
-          if(matched){
-            autoResolutions[row.name]=matched.id;
-          } else {
-            unmatchedNames.push(row.name);
-          }
+          if(matched){ autoResolutions[row.name]=matched.id; }
+          else { unmatchedNames.push(row.name); }
         });
 
         window._importState={rows,unmatchedNames,resolutions:autoResolutions,cursor:0};
@@ -1123,124 +1116,80 @@ function finalizeImport(){
   const state=window._importState;
   let imported=0,skipped=0,totalRev=0;
   state.rows.forEach(function(row){
+    // Find client by name
     const cl=row.name.toLowerCase().trim();
-    const nameParts=cl.split(/\s+/);
-    const first=nameParts[0]||'';
-    const last=nameParts[nameParts.length-1]||'';
+    const parts=cl.split(/\s+/);
+    const first=parts[0]||'';
+    const last=parts[parts.length-1]||'';
     let cid=null;
-    if(!row.isSupplierName){
-      // Strict fuzzy match — exact name or both first+last name match
+
+    // Check resolution from match modal first
+    if(state.resolutions[row.name]!==undefined){
+      cid=state.resolutions[row.name];
+    }
+
+    // Handle 'Last, First' format
+    var normalized=cl;
+    if(cl.includes(',')){ var lf2=cl.split(',').map(function(s){return s.trim();}); normalized=lf2[1]+' '+lf2[0]; }
+    const normParts=normalized.split(/\s+/);
+    const normFirst=normParts[0]||'';
+    const normLast=normParts[normParts.length-1]||'';
+
+    // Fuzzy match if no resolution
+    if(!cid){
       const direct=db.clients.find(function(c){
         const fn=(c.name||'').toLowerCase().trim();
         const fp=fn.split(/\s+/);
-        // Exact match
         if(fn===cl) return true;
-        // Both first AND last name must match (not just one)
-        if(first && last && fp.length>=2 && fp[0]===first && fp[fp.length-1]===last) return true;
-        // Full name contained in client name
-        if(fn.includes(cl) && cl.length>4) return true;
+        if(fn===normalized) return true;
+        if(normFirst&&normLast&&fp.length>=2&&fp[0]===normFirst&&fp[fp.length-1]===normLast) return true;
+        if(fn.includes(normalized)&&normalized.length>4) return true;
         return false;
       });
-      if(direct){cid=direct.id;}
-      else if(state.resolutions[row.name]!==undefined&&state.resolutions[row.name]!=='__supplier__'){cid=state.resolutions[row.name];}
-      if(!cid) debugLog('Revenue: no client match for name='+row.name+' first='+first+' last='+last);
+      if(direct) cid=direct.id;
     }
-    // If no client matched, check if name is a supplier — use its linked clients
-    if(!cid){
-      // Try matching by row.name first, then by supplierCol3
-      var matchedSup=db.vendors.find(function(v){
-        return (v.name||'').toLowerCase().trim()===(row.name||'').toLowerCase().trim();
-      }) || (row.supplierCol3 ? db.vendors.find(function(v){
-        return (v.name||'').toLowerCase().trim()===row.supplierCol3.toLowerCase().trim();
-      }) : null);
-      if(matchedSup){
-        debugLog('Revenue: supplier match '+matchedSup.name+' name='+row.name+' isSupplierName='+row.isSupplierName);
 
-        var targetClient=null;
+    if(!cid){debugLog('Revenue: no client match for '+row.name);skipped++;return;}
 
-        if(row.isSupplierName){
-          // Name column IS the supplier name — try to find client from item field
-          // e.g. item='Referral:AMEX:AMEX - Eric' -> last segment words
-          if(row.item){
-            var itemParts=row.item.split(':');
-            var lastSeg=itemParts[itemParts.length-1].trim();
-            var words=lastSeg.replace(/-/g,' ').split(/\s+/).map(function(w){return w.trim().toLowerCase();}).filter(function(w){return w.length>2;});
-            for(var wi=0;wi<words.length;wi++){
-              var word=words[wi];
-              var m=db.clients.find(function(c){
-                var fn=(c.name||'').toLowerCase().trim();
-                var fp=fn.split(/\s+/);
-                return fp[0]===word||fp[fp.length-1]===word;
-              });
-              if(m){targetClient=m;break;}
-            }
-            debugLog('Revenue item parse: lastSeg='+lastSeg+' matched='+(targetClient?targetClient.name:'none'));
-          }
-          if(!targetClient){debugLog('Revenue: no client from item for supplier '+matchedSup.name);skipped++;return;}
-        } else {
-          // Name column IS the client name — use it directly (already resolved via cid above)
-          if(cid) targetClient=db.clients.find(function(c){return c.id===cid;});
-          if(!targetClient){debugLog('Revenue: client not found for '+row.name);skipped++;return;}
-        }
-
-        // Duplicate check: skip if trip with same date+amount+client+supplier already exists
-        var dupExists=db.trips.some(function(t){
-          return t.clientId===targetClient.id &&
-                 t.supplierId===(matchedSup?matchedSup.id||'':'') &&
-                 t.cashPaid===row.amt &&
-                 (t.departDate||'').slice(0,10)===(row.date?row.date.slice(0,10):today());
-        });
-        if(dupExists){debugLog('Revenue: duplicate skipped for '+targetClient.name);skipped++;return;}
-
-        const tripId=newId('T',db.trips);
-        // Use memo/description if available, otherwise use supplier name + date
-        const dest=row.memo||(matchedSup.name+(row.date?' '+row.date:''))||'Imported Trip';
-        db.trips.push({
-          id:tripId,clientId:targetClient.id,clientName:targetClient.name,
-          destination:dest,origin:'',departDate:row.date?row.date.slice(0,10):today(),returnDate:row.date?row.date.slice(0,10):today(),
-          status:'Completed',type:'Leisure',airline:'',flightClass:'',hotel:'',
-          hotelNights:0,pointsUsed:0,cashPaid:row.amt,totalValue:row.amt,
-          bookingRef:'',notes:row.memo||'',product:row.product||'',
-          supplierId:matchedSup.id||'',supplierName:matchedSup.name||''
-        });
-        targetClient.totalRevenue=(targetClient.totalRevenue||0)+row.amt;
-        imported++;totalRev+=row.amt;
-        return;
-      }
-      debugLog('Revenue: no match for name='+row.name+' item='+row.item);
-      skipped++;return;
-    }
     const client=db.clients.find(c=>c.id===cid);
     if(!client){skipped++;return;}
 
-    // Create trip
+    // Duplicate check
+    const dupExists=db.trips.some(function(t){
+      return t.clientId===cid &&
+             t.supplierId===(row.supplierId||'') &&
+             t.cashPaid===row.amt &&
+             (t.departDate||'').slice(0,10)===(row.date?row.date.slice(0,10):today());
+    });
+    if(dupExists){debugLog('Revenue: duplicate skipped for '+client.name);skipped++;return;}
+
+    // Build destination: use memo, or supplier+date, or 'Imported Trip'
     const tripId=newId('T',db.trips);
-    const dest=row.memo||row.item||'Imported Trip';
     let tripDate=today();
     if(row.date){try{const d=new Date(row.date);if(!isNaN(d))tripDate=d.toISOString().slice(0,10);}catch(e){}}
+    const dest=row.memo||(row.supplierName?row.supplierName+(row.date?' '+row.date:''):'Imported Trip');
+
     db.trips.push({
       id:tripId,clientId:cid,clientName:client.name,
-      destination:dest||row.supplierName||'Imported Trip',origin:'',departDate:tripDate,returnDate:tripDate,
+      destination:dest,origin:'',departDate:tripDate,returnDate:tripDate,
       status:'Completed',type:'Leisure',airline:'',flightClass:'',hotel:'',
       hotelNights:0,pointsUsed:0,cashPaid:row.amt,totalValue:row.amt,
       bookingRef:'',notes:row.memo||'',product:row.product||'',
       supplierId:row.supplierId||'',supplierName:row.supplierName||''
     });
-    // Link client to supplier if matched
+
+    // Link client to supplier
     if(row.supplierId){
       var sup=db.vendors.find(function(v){return v.id===row.supplierId;});
-      if(sup && !(sup.clientIds||[]).includes(cid)){
-        if(!sup.clientIds) sup.clientIds=[];
+      if(sup&&!(sup.clientIds||[]).includes(cid)){
+        if(!sup.clientIds)sup.clientIds=[];
         sup.clientIds.push(cid);
       }
     }
 
-    // Update client revenue, trip count, and note
+    // Update client revenue
     const newRev=(client.totalRevenue||0)+row.amt;
-    const noteText='Trip imported: '+dest+' — $'+row.amt.toLocaleString()+(row.date?' on '+row.date:'');
-    const newNote={ts:tsNow(),text:noteText,noteType:'Trip Import',source:'revenue-import'};
-    const notesLog=Array.isArray(client.notesLog)?[...client.notesLog,newNote]:[newNote];
-    db.clients=db.clients.map(c=>c.id===cid?Object.assign({},c,{totalRevenue:newRev,totalTrips:(c.totalTrips||0)+1,notesLog}):c);
+    db.clients=db.clients.map(c=>c.id===cid?Object.assign({},c,{totalRevenue:newRev}):c);
 
     imported++;totalRev+=row.amt;
   });
@@ -1249,7 +1198,6 @@ function finalizeImport(){
   window._importState=null;
   toast('Imported '+imported+' trips — $'+totalRev.toLocaleString()+(skipped?' ('+skipped+' skipped)':''),'ok');
 }
-
 
 function importCSV(){
   const i=document.createElement('input');i.type='file';i.accept='.csv';
