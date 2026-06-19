@@ -1023,10 +1023,11 @@ function importRevenue(){
           const invoiceNum = getCol(cols,['num','invoice'],1);
           const memo    = getCol(cols,['memo','description'],2);
           const nameVal = getCol(cols,['name'],3);
-          const classVal= getCol(cols,['item'],4);        // col4 = Item
-          const clientFromClass = getCol(cols,['class'],5) || (cols[5]||'').trim(); // col5 = Class
-          const amtStr  = getCol(cols,['amount','sales price'],8) ||
-                          getCol(cols,['amount','sales price'],7) ||
+          const shipDate= getCol(cols,['ship date','shipdate'],4);  // col4 = Ship Date (new) -> trip start date
+          const classVal= getCol(cols,['item'],5);        // col5 = Item (was col4)
+          const clientFromClass = getCol(cols,['class'],6) || (cols[6]||'').trim(); // col6 = Class (was col5)
+          const amtStr  = getCol(cols,['amount','sales price'],9) ||
+                          getCol(cols,['amount','sales price'],8) ||
                           cols[cols.length-1]||'';
           const amt     = parseFloat(amtStr.replace(/[$,"]/g,''))||0;
 
@@ -1083,6 +1084,7 @@ function importRevenue(){
             product:product,
             amt:amt,
             date:date,
+            shipDate:shipDate,
             memo:memo,
             item:classVal,
             invoiceNum:invoiceNum
@@ -1229,13 +1231,17 @@ function finalizeImport(){
     // Build destination: use memo, or supplier+date, or 'Imported Trip'
     const tripId=newId('T',db.trips);
     const dest=row.memo||(row.supplierName?row.supplierName+(row.date?' '+row.date:''):'Imported Trip');
-    // Try to extract an actual trip date from the destination/memo text (e.g. '7/19/26 sailing')
-    var extractedDate = extractDateFromText(dest);
+    // Use Ship Date column as trip start date if available, else fall back to extracted/invoice date
     let tripDate=today();
-    if(extractedDate){
-      tripDate = extractedDate;
-    } else if(row.date){
-      try{const d=new Date(row.date);if(!isNaN(d))tripDate=d.toISOString().slice(0,10);}catch(e){}
+    if(row.shipDate){
+      try{const d=new Date(row.shipDate);if(!isNaN(d))tripDate=d.toISOString().slice(0,10);}catch(e){}
+    } else {
+      var extractedDate = extractDateFromText(dest);
+      if(extractedDate){
+        tripDate = extractedDate;
+      } else if(row.date){
+        try{const d=new Date(row.date);if(!isNaN(d))tripDate=d.toISOString().slice(0,10);}catch(e){}
+      }
     }
 
     db.trips.push({
