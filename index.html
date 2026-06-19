@@ -363,6 +363,58 @@ let view = 'dashboard', selCid = null, fStatus = '', fSearch = '';
 let driveToken = null;
 
 const $ = id => document.getElementById(id);
+function toLastFirst(name){
+  if(!name) return '';
+  name = name.trim();
+  if(name.includes(',')) return name; // already in Last, First format
+  var parts = name.split(/\s+/);
+  if(parts.length < 2) return name;
+  var first = parts.slice(0,-1).join(' ');
+  var last = parts[parts.length-1];
+  return last+', '+first;
+}
+function toFirstLast(name){
+  if(!name) return '';
+  name = name.trim();
+  if(!name.includes(',')) return name;
+  var parts = name.split(',').map(function(s){return s.trim();});
+  return parts[1]+' '+parts[0];
+}
+function getLastName(name){
+  if(!name) return '';
+  if(name.includes(',')) return name.split(',')[0].trim();
+  var parts = name.trim().split(/\s+/);
+  return parts[parts.length-1];
+}
+function getFirstName(name){
+  if(!name) return '';
+  if(name.includes(',')){
+    var parts = name.split(',').map(function(s){return s.trim();});
+    return parts[1]||'';
+  }
+  var parts = name.trim().split(/\s+/);
+  return parts[0];
+}
+function extractDateFromText(text){
+  if(!text) return '';
+  // Match patterns like 7/19/26, 12/27/25, 5/29/26
+  var m = text.match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
+  if(!m) return '';
+  var mo=parseInt(m[1],10), da=parseInt(m[2],10), yr=parseInt(m[3],10);
+  if(yr<100) yr += 2000;
+  if(mo<1||mo>12||da<1||da>31) return '';
+  return yr+'-'+String(mo).padStart(2,'0')+'-'+String(da).padStart(2,'0');
+}
+function countDistinctTrips(clientId){
+  var trips = db.trips.filter(function(t){return t.clientId===clientId;});
+  var seen = {};
+  var count = 0;
+  trips.forEach(function(t){
+    var key = t.invoiceNum || t.id; // fall back to trip id if no invoice number
+    if(!seen[key]){ seen[key]=true; count++; }
+  });
+  return count;
+}
 const gv = id => $(id) ? $(id).value.trim() : '';
 const gn = id => Number($(id) ? $(id).value : 0);
 const fmt = n => Number(n||0).toLocaleString();
@@ -384,6 +436,21 @@ function loadDB(){
     db.clients=Array.isArray(d.clients)?d.clients:[];
     db.trips=Array.isArray(d.trips)?d.trips:[];
     db.vendors=Array.isArray(d.vendors)?d.vendors:[];
+    // One-time migration: convert client names to 'Last, First' format
+    if(!localStorage.getItem('mm_name_migration_done')){
+      var migrated=0;
+      db.clients.forEach(function(c){
+        if(c.name && !c.name.includes(',')){
+          c.name=toLastFirst(c.name);
+          migrated++;
+        }
+      });
+      if(migrated>0){
+        saveDB();
+        console.log('[CRM] Migrated '+migrated+' client names to Last, First format');
+      }
+      localStorage.setItem('mm_name_migration_done','1');
+    }
   }catch(e){db={clients:[],trips:[]};}
 }
 
@@ -395,9 +462,9 @@ function toast(msg,type='ok'){
 }
 
 // ── Badges ────────────────────────────────────────────────────────────────
-const BCLS={Confirmed:'b-green',Planning:'b-amber',Completed:'b-blue',Cancelled:'b-red',Elite:'b-amber',Gold:'b-amber',Standard:'b-gray',Platinum:'b-blue',Leisure:'b-blue',Business:'b-gray',Honeymoon:'b-green',Family:'b-green',Adventure:'b-amber',Cruise:'b-blue',First:'b-blue','Premium Economy':'b-amber',Economy:'b-gray'};
+const BCLS={Confirmed:'b-green',Planning:'b-amber',Completed:'b-blue',Cancelled:'b-red',Upcoming:'b-amber',Elite:'b-amber',Gold:'b-amber',Standard:'b-gray',Platinum:'b-blue',Leisure:'b-blue',Business:'b-gray',Honeymoon:'b-green',Family:'b-green',Adventure:'b-amber',Cruise:'b-blue',First:'b-blue','Premium Economy':'b-amber',Economy:'b-gray'};
 const badge = l => '<span class="badge '+(BCLS[l]||'b-gray')+'">'+(l||'')+'</span>';
-const av = (name,sz) => { sz=sz||30; return '<div class="av" style="width:'+sz+'px;height:'+sz+'px;font-size:'+Math.round(sz*.4)+'px">'+(name||'?')[0].toUpperCase()+'</div>'; };
+const av = (name,sz) => { sz=sz||30; var fn=getFirstName(name)||name||'?'; return '<div class="av" style="width:'+sz+'px;height:'+sz+'px;font-size:'+Math.round(sz*.4)+'px">'+fn[0].toUpperCase()+'</div>'; };
 
 
 // ── Debug Panel ───────────────────────────────────────────────────────────
@@ -953,6 +1020,7 @@ function importRevenue(){
           if(cols.length<3) continue;
 
           const date    = getCol(cols,['date'],0);
+          const invoiceNum = getCol(cols,['num','invoice'],1);
           const memo    = getCol(cols,['memo','description'],2);
           const nameVal = getCol(cols,['name'],3);
           const classVal= getCol(cols,['item'],4);        // col4 = Item
@@ -972,19 +1040,12 @@ function importRevenue(){
           var clientName, supplierId, supplierName, product;
 
           if(matchedSupplier){
-            // nameVal IS a supplier
-            // class/client is in col5 (clientFromClass) or parsed from classVal
+            // nameVal IS a supplier — client must come from Class column (col5) ONLY
             var clientCol = clientFromClass || '';
 
-            // If no client in col5, try last segment of classVal (e.g. "Referral:AMEX:AMEX - Eric")
-            if(!clientCol && classVal && classVal.includes(':')){
-              var parts = classVal.split(':');
-              clientCol = parts[parts.length-1].trim();
-            }
-
-            // If still no client, skip this row
+            // If Class is blank, skip this row entirely (per rule)
             if(!clientCol){
-              debugLog('Revenue skip: supplier='+matchedSupplier.name+' no client in class field');
+              debugLog('Revenue skip: supplier='+matchedSupplier.name+' class field is blank');
               continue;
             }
 
@@ -1023,7 +1084,8 @@ function importRevenue(){
             amt:amt,
             date:date,
             memo:memo,
-            item:classVal
+            item:classVal,
+            invoiceNum:invoiceNum
           });
         }
 
@@ -1036,17 +1098,20 @@ function importRevenue(){
         function fuzzyMatchClient(name){
           if(!name) return null;
           const nl=name.toLowerCase().trim();
-          // Handle 'Last, First' format - convert to 'First Last'
-          var normalized=nl;
-          if(nl.includes(',')){ var lf=nl.split(',').map(function(s){return s.trim();}); normalized=lf[1]+' '+lf[0]; }
-          const parts=normalized.split(/\s+/);
-          const first=parts[0]||'';
-          const last=parts[parts.length-1]||'';
+          // Get first/last regardless of input format (handles 'Last, First' or 'First Last')
+          const inputFirst=getFirstName(nl).toLowerCase();
+          const inputLast=getLastName(nl).toLowerCase();
+          // Exact match against stored 'Last, First' format
           var m=db.clients.find(c=>(c.name||'').toLowerCase().trim()===nl); if(m) return m;
-          m=db.clients.find(c=>(c.name||'').toLowerCase().trim()===normalized); if(m) return m;
-          m=db.clients.find(c=>(c.name||'').trim().split(/\s+/).pop().toLowerCase()===last&&last.length>2); if(m) return m;
-          m=db.clients.find(c=>(c.name||'').trim().split(/\s+/)[0].toLowerCase()===first&&first.length>2); if(m) return m;
-          m=db.clients.find(c=>(c.name||'').toLowerCase().includes(normalized)&&normalized.length>4); if(m) return m;
+          // Match by comparing first+last regardless of how input or stored name is formatted
+          if(inputFirst && inputLast && inputFirst!==inputLast){
+            m=db.clients.find(function(c){
+              var cFirst=getFirstName(c.name).toLowerCase();
+              var cLast=getLastName(c.name).toLowerCase();
+              return cFirst===inputFirst && cLast===inputLast;
+            });
+            if(m) return m;
+          }
           return null;
         }
 
@@ -1089,7 +1154,7 @@ function showImportMatchModal(name){
 
   $('import-match-add').onclick=function(){
     const newCid=newId('C',db.clients);
-    db.clients.push({id:newCid,name:name,email:'',phone:'',location:'',tier:'Standard',points:0,preferredAirline:'',preferredHotel:'',notesLog:[],joined:today(),totalTrips:0,totalRevenue:0});
+    db.clients.push({id:newCid,name:toLastFirst(name),email:'',phone:'',location:'',tier:'Standard',points:0,preferredAirline:'',preferredHotel:'',notesLog:[],joined:today(),totalTrips:0,totalRevenue:0});
     saveDB();
     window._importState.resolutions[name]=newCid;
     overlay.style.display='none';
@@ -1128,22 +1193,20 @@ function finalizeImport(){
       cid=state.resolutions[row.name];
     }
 
-    // Handle 'Last, First' format
-    var normalized=cl;
-    if(cl.includes(',')){ var lf2=cl.split(',').map(function(s){return s.trim();}); normalized=lf2[1]+' '+lf2[0]; }
-    const normParts=normalized.split(/\s+/);
-    const normFirst=normParts[0]||'';
-    const normLast=normParts[normParts.length-1]||'';
+    // Get first/last regardless of format
+    const rowFirst = getFirstName(cl);
+    const rowLast = getLastName(cl);
 
-    // Fuzzy match if no resolution
+    // Fuzzy match if no resolution — exact or both-names-match only
     if(!cid){
       const direct=db.clients.find(function(c){
         const fn=(c.name||'').toLowerCase().trim();
-        const fp=fn.split(/\s+/);
         if(fn===cl) return true;
-        if(fn===normalized) return true;
-        if(normFirst&&normLast&&fp.length>=2&&fp[0]===normFirst&&fp[fp.length-1]===normLast) return true;
-        if(fn.includes(normalized)&&normalized.length>4) return true;
+        if(rowFirst&&rowLast&&rowFirst!==rowLast){
+          var cFirst=getFirstName(c.name);
+          var cLast=getLastName(c.name);
+          if(cFirst===rowFirst && cLast===rowLast) return true;
+        }
         return false;
       });
       if(direct) cid=direct.id;
@@ -1165,17 +1228,24 @@ function finalizeImport(){
 
     // Build destination: use memo, or supplier+date, or 'Imported Trip'
     const tripId=newId('T',db.trips);
-    let tripDate=today();
-    if(row.date){try{const d=new Date(row.date);if(!isNaN(d))tripDate=d.toISOString().slice(0,10);}catch(e){}}
     const dest=row.memo||(row.supplierName?row.supplierName+(row.date?' '+row.date:''):'Imported Trip');
+    // Try to extract an actual trip date from the destination/memo text (e.g. '7/19/26 sailing')
+    var extractedDate = extractDateFromText(dest);
+    let tripDate=today();
+    if(extractedDate){
+      tripDate = extractedDate;
+    } else if(row.date){
+      try{const d=new Date(row.date);if(!isNaN(d))tripDate=d.toISOString().slice(0,10);}catch(e){}
+    }
 
     db.trips.push({
       id:tripId,clientId:cid,clientName:client.name,
       destination:dest,origin:'',departDate:tripDate,returnDate:tripDate,
       status:'Completed',type:'Leisure',airline:'',flightClass:'',hotel:'',
       hotelNights:0,pointsUsed:0,cashPaid:row.amt,totalValue:row.amt,
-      bookingRef:'',notes:row.memo||'',product:row.product||'',
-      supplierId:row.supplierId||'',supplierName:row.supplierName||''
+      bookingRef:row.invoiceNum||'',notes:row.memo||'',product:row.product||'',
+      supplierId:row.supplierId||'',supplierName:row.supplierName||'',
+      invoiceNum:row.invoiceNum||''
     });
 
     // Link client to supplier
@@ -1223,7 +1293,7 @@ function importCSV(){
             return (email&&c.email&&c.email.toLowerCase()===email.toLowerCase())||c.name.toLowerCase()===name.toLowerCase();
           });
           if(exists){skipped++;continue;}
-          db.clients.push({id:newId('C',db.clients),name:name,email:email,phone:'',location:'',tier:'Standard',points:0,preferredAirline:'',preferredHotel:'',notes:'',joined:today(),totalTrips:0,notesLog:[]});
+          db.clients.push({id:newId('C',db.clients),name:toLastFirst(name),email:email,phone:'',location:'',tier:'Standard',points:0,preferredAirline:'',preferredHotel:'',notes:'',joined:today(),totalTrips:0,notesLog:[]});
           added++;
         }
         snapshot('Import contacts');
@@ -1267,7 +1337,7 @@ function renderReports(){
       '<div><label>To Date</label><input type="date" id="rpt-to"/></div>'+
       '<div><label>Note Type</label><select id="rpt-type">'+typeOpts+'</select></div>'+
       '<div><label>Client</label><select id="rpt-client"><option value="">All clients</option>'+
-        [...db.clients].sort(function(a,b){var al=(a.name||'').trim().split(' ').pop().toLowerCase();var bl=(b.name||'').trim().split(' ').pop().toLowerCase();return al.localeCompare(bl);}).map(function(c){return '<option value="'+c.id+'">'+c.name+'</option>';}).join('')+
+        [...db.clients].sort(function(a,b){return (a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase());}).map(function(c){return '<option value="'+c.id+'">'+c.name+'</option>';}).join('')+
       '</select></div>'+
       '<div style="display:flex;gap:8px;align-self:flex-end">'+
         '<button class="report-run-btn" id="rpt-run">Run Report</button>'+
@@ -1397,10 +1467,10 @@ var TEMPLATES = [
 ];
 
 function fillTemplate(body, client){
-  var firstName = (client.name||'').split(' ')[0] || client.name || '';
+  var firstName = getFirstName(client.name) || client.name || '';
   return body
     .replace(/{{firstName}}/g, firstName)
-    .replace(/{{fullName}}/g, client.name||'')
+    .replace(/{{fullName}}/g, toFirstLast(client.name)||'')
     .replace(/{{email}}/g, client.email||'');
 }
 
@@ -1564,24 +1634,14 @@ function importVendorsCSV(){
           function matchClient(cn){
             if(!cn) return null;
             var cLower=cn.toLowerCase().trim();
-            var cParts=cLower.split(/[\s,]+/).filter(Boolean);
-            var cFirst=cParts[0]||'';
-            var cLast=cParts[cParts.length-1]||'';
+            var cFirst=getFirstName(cLower);
+            var cLast=getLastName(cLower);
             return db.clients.find(function(c){
               var full=(c.name||'').toLowerCase().trim();
-              var parts=full.split(/[\s,]+/).filter(Boolean);
-              var first=parts[0]||'';
-              var last=parts[parts.length-1]||'';
-              // Exact match
+              var first=getFirstName(full);
+              var last=getLastName(full);
               if(full===cLower) return true;
-              // Last name match
-              if(last && cLast && last===cLast) return true;
-              // First name match
-              if(first && cFirst && first===cFirst) return true;
-              // Contains either direction
-              if(full.includes(cLower)||cLower.includes(full)) return true;
-              // Last name in either direction
-              if(cLower.includes(last)||full.includes(cLast)) return true;
+              if(cFirst&&cLast&&cFirst!==cLast&&first===cFirst&&last===cLast) return true;
               return false;
             });
           }
@@ -1731,32 +1791,35 @@ const VENDOR_CATS  = ['Airline','Hotel','Cruise Line','Car Rental','Tour Operato
 
 function getVendorStats(vendor){
   var stats = {trips:0, revenue:0, clients:[], tripList:[]};
-  if(vendor.type === 'Supplier'){
+
+  // Primary: trips directly linked via supplierId
+  db.trips.forEach(function(t){
+    var matchSupplier = t.supplierId === vendor.id;
+    var matchAir = vendor.category==='Airline' && t.airline && t.airline.toLowerCase()===vendor.name.toLowerCase();
+    var matchHot = vendor.category==='Hotel'   && t.hotel   && t.hotel.toLowerCase()===vendor.name.toLowerCase();
+    if(matchSupplier || matchAir || matchHot){
+      stats.revenue += (t.totalValue||0);
+      if(!stats.clients.includes(t.clientName)) stats.clients.push(t.clientName);
+      stats.tripList.push(t);
+    }
+  });
+
+  // Also include trips for linked clients (referral partners without supplierId match)
+  (vendor.clientIds||[]).forEach(function(cid){
+    var c = db.clients.find(function(x){return x.id===cid;});
+    if(c && !stats.clients.includes(c.name)) stats.clients.push(c.name);
     db.trips.forEach(function(t){
-      var matchAir = vendor.category==='Airline' && t.airline && t.airline.toLowerCase()===vendor.name.toLowerCase();
-      var matchHot = vendor.category==='Hotel'   && t.hotel   && t.hotel.toLowerCase()===vendor.name.toLowerCase();
-      if(matchAir || matchHot){
-        stats.trips++;
-        stats.revenue += (t.totalValue||0);
-        if(!stats.clients.includes(t.clientName)) stats.clients.push(t.clientName);
-        stats.tripList.push(t);
-      }
+      if(t.clientId===cid && !stats.tripList.includes(t)) stats.tripList.push(t);
     });
-  } else {
-    // Referral partner / DMC — linked clients
-    var linked = (vendor.clientIds||[]);
-    linked.forEach(function(cid){
-      var c = db.clients.find(function(x){return x.id===cid;});
-      if(!c) return;
-      stats.clients.push(c.name);
-      stats.revenue += (c.totalRevenue||0);
-      // Also gather trips for linked clients
-      db.trips.forEach(function(t){
-        if(t.clientId===cid) stats.tripList.push(t);
-      });
-    });
-    stats.trips = stats.tripList.length;
-  }
+  });
+
+  // Count distinct invoice numbers (falls back to trip id if no invoice number)
+  var seenInvoices = {};
+  stats.tripList.forEach(function(t){
+    var key = t.invoiceNum || t.id;
+    if(!seenInvoices[key]){ seenInvoices[key]=true; stats.trips++; }
+  });
+
   return stats;
 }
 
@@ -1839,19 +1902,26 @@ function renderVendors(){
       '<div class="stat"><div class="stat-lbl">Total Clients</div><div class="stat-val">'+totalClients.size+'</div></div>'+
       '<div class="stat"><div class="stat-lbl">Total Value</div><div class="stat-val">$'+Number(totalRevenue).toLocaleString()+'</div></div>'+
     '</div>'+
-    '<div class="search-row"><input id="supplier-search" placeholder="Search suppliers..."/></div>'+
+    '<div class="search-row">'+
+      '<input id="supplier-search" placeholder="Search suppliers..."/>'+
+      '<button id="btn-select-all-suppliers" style="padding:7px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#555;cursor:pointer;font-size:12px;font-family:inherit">Select All</button>'+
+      '<button id="btn-delete-checked-suppliers" style="display:none;padding:7px 14px;border-radius:7px;border:none;background:#dc2626;color:#fff;cursor:pointer;font-size:12px;font-family:inherit">&#128465; Delete Selected</button>'+
+    '</div>'+
     (sorted.length ? sorted.map(function(v){
       var stats = getVendorStats(v);
       var typeCls = v.type==='Referral Partner' ? 'vendor-type-referral' : 'vendor-type-supplier';
       var clientList = stats.clients.slice(0,3).join(', ')+(stats.clients.length>3?' +' +(stats.clients.length-3)+' more':'');
       return '<div class="vendor-card" id="vc-'+v.id+'">'+
         '<div style="display:flex;justify-content:space-between;align-items:flex-start">'+
+          '<div style="display:flex;align-items:flex-start;gap:10px">'+
+            '<input type="checkbox" class="supplier-row-cb" data-id="'+v.id+'" style="width:14px;height:14px;margin-top:4px">'+
           '<div>'+
             '<div style="font-size:15px;font-weight:700;color:#2563eb;cursor:pointer;text-decoration:underline" class="vendor-name-link" data-id="'+v.id+'">'+v.name+'</div>'+
             '<div style="margin-top:3px">'+
               '<span class="badge '+typeCls+'" style="margin-right:6px">'+v.type+'</span>'+
               (v.category?'<span class="badge b-gray">'+v.category+'</span>':'')+
             '</div>'+
+          '</div>'+
           '</div>'+
           '<div style="display:flex;gap:6px">'+
               '<button class="icon-btn del-vendor" data-id="'+v.id+'" style="color:#dc2626">&#128465;&#65039;</button>'+
@@ -1926,6 +1996,41 @@ function renderVendors(){
     row.addEventListener('mouseenter', function(){row.style.background='#f0f7ff';});
     row.addEventListener('mouseleave', function(){row.style.background='';});
   });
+
+  // Checkbox bulk select / delete for suppliers
+  var selBtnS = document.getElementById('btn-select-all-suppliers');
+  var delBtnS = document.getElementById('btn-delete-checked-suppliers');
+
+  function updateDeleteBtnS(){
+    var checked = document.querySelectorAll('.supplier-row-cb:checked');
+    var allCbs = document.querySelectorAll('.supplier-row-cb');
+    if(delBtnS) delBtnS.style.display = checked.length ? 'inline-block' : 'none';
+    if(selBtnS) selBtnS.textContent = checked.length === allCbs.length && allCbs.length>0 ? 'Deselect All' : 'Select All';
+  }
+
+  if(selBtnS){
+    selBtnS.addEventListener('click', function(){
+      var cbs = document.querySelectorAll('.supplier-row-cb');
+      var allChecked = document.querySelectorAll('.supplier-row-cb:checked').length === cbs.length;
+      cbs.forEach(function(cb){ cb.checked = !allChecked; });
+      updateDeleteBtnS();
+    });
+  }
+  document.querySelectorAll('.supplier-row-cb').forEach(function(cb){
+    cb.addEventListener('click', function(e){ e.stopPropagation(); });
+    cb.addEventListener('change', updateDeleteBtnS);
+  });
+  if(delBtnS){
+    delBtnS.addEventListener('click', function(){
+      var ids = Array.from(document.querySelectorAll('.supplier-row-cb:checked')).map(function(cb){return cb.dataset.id;});
+      if(!ids.length) return;
+      if(!confirm('Delete '+ids.length+' supplier'+(ids.length!==1?'s':'')+'?')) return;
+      snapshot('Delete '+ids.length+' supplier'+(ids.length!==1?'s':''));
+      db.vendors = db.vendors.filter(function(v){ return !ids.includes(v.id); });
+      saveDB(); render();
+      toast('Deleted '+ids.length+' supplier'+(ids.length!==1?'s':''),'ok');
+    });
+  }
 }
 
 function openVendorForm(id){
@@ -1943,7 +2048,7 @@ function openVendorForm(id){
       '<input type="checkbox" class="vendor-client-cb" value="'+c.id+'" '+checked+' style="width:14px;height:14px">'+
       '<span>'+c.name+'</span>'+
       '<span style="font-size:11px;color:#888;margin-left:auto">'+
-        (db.trips.filter(function(t){return t.clientId===c.id;}).length)+' trips · $'+Number(c.totalRevenue||0).toLocaleString()+
+        countDistinctTrips(c.id)+' trips · $'+Number(c.totalRevenue||0).toLocaleString()+
       '</span>'+
     '</label>';
   }).join('');
@@ -2254,32 +2359,84 @@ function renderDash(){
   });
 }
 
+function clientSortArrow(col){
+  var c = window._clientSortCol || 'name';
+  var d = window._clientSortDir || 'asc';
+  if(c!==col) return '';
+  return d==='asc' ? ' &#9650;' : ' &#9660;';
+}
+
 function renderClients(){
   const q=fSearch.toLowerCase();
+  var clientSortCol = window._clientSortCol || 'name';
+  var clientSortDir = window._clientSortDir || 'asc';
   var list=db.clients.filter(function(c){return !q||(c.name||'').toLowerCase().includes(q)||(c.email||'').toLowerCase().includes(q)||(c.location||'').toLowerCase().includes(q);});
-  list.sort(function(a,b){
-    var aLast=(a.name||'').trim().split(' ').pop().toLowerCase();
-    var bLast=(b.name||'').trim().split(' ').pop().toLowerCase();
-    return aLast.localeCompare(bLast);
+
+  list = list.slice().sort(function(a,b){
+    var av, bv;
+    if(clientSortCol==='trips'){
+      av=countDistinctTrips(a.id); bv=countDistinctTrips(b.id);
+    } else if(clientSortCol==='notes'){
+      av=(a.notesLog||[]).length; bv=(b.notesLog||[]).length;
+    } else {
+      av=a[clientSortCol]; bv=b[clientSortCol];
+    }
+    if(typeof av==='number'||typeof bv==='number'){
+      av=Number(av)||0; bv=Number(bv)||0;
+    } else {
+      av=(av||'').toString().toLowerCase(); bv=(bv||'').toString().toLowerCase();
+    }
+    if(av<bv) return clientSortDir==='asc'?-1:1;
+    if(av>bv) return clientSortDir==='asc'?1:-1;
+    return 0;
   });
+
   $('main').innerHTML=
     '<div class="page-hdr"><div class="page-title">Clients</div><button class="add-btn" id="btn-add-client">+ Add Client</button></div>'+
-    '<div class="search-row"><input id="client-search" placeholder="Search by name, email, location..." value="'+fSearch+'"/></div>'+
-    '<div class="tbl-wrap"><table><thead><tr><th>Client</th><th>Contact</th><th>Tier</th><th>Points</th><th>Revenue</th><th>Trips</th><th>Notes</th><th>Joined</th><th></th></tr></thead><tbody>'+
+    '<div class="search-row">'+
+      '<input id="client-search" placeholder="Search by name, email, location..." value="'+fSearch+'"/>'+
+      '<button id="btn-select-all-clients" style="padding:7px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#555;cursor:pointer;font-size:12px;font-family:inherit">Select All</button>'+
+      '<button id="btn-delete-checked-clients" style="display:none;padding:7px 14px;border-radius:7px;border:none;background:#dc2626;color:#fff;cursor:pointer;font-size:12px;font-family:inherit">&#128465; Delete Selected</button>'+
+    '</div>'+
+    '<div class="tbl-wrap"><table><thead><tr>'+
+      '<th style="width:32px"><input type="checkbox" id="client-check-all" style="width:14px;height:14px"></th>'+
+      '<th class="sort-th-c" data-sort="name" style="cursor:pointer">Client'+clientSortArrow('name')+'</th>'+
+      '<th class="sort-th-c" data-sort="email" style="cursor:pointer">Contact'+clientSortArrow('email')+'</th>'+
+      '<th class="sort-th-c" data-sort="tier" style="cursor:pointer">Tier'+clientSortArrow('tier')+'</th>'+
+      '<th class="sort-th-c" data-sort="points" style="cursor:pointer">Points'+clientSortArrow('points')+'</th>'+
+      '<th class="sort-th-c" data-sort="totalRevenue" style="cursor:pointer">Revenue'+clientSortArrow('totalRevenue')+'</th>'+
+      '<th class="sort-th-c" data-sort="trips" style="cursor:pointer">Trips'+clientSortArrow('trips')+'</th>'+
+      '<th class="sort-th-c" data-sort="notes" style="cursor:pointer">Notes'+clientSortArrow('notes')+'</th>'+
+      '<th class="sort-th-c" data-sort="joined" style="cursor:pointer">Joined'+clientSortArrow('joined')+'</th>'+
+      '<th></th>'+
+    '</tr></thead><tbody>'+
     (list.length?list.map(function(c){return '<tr>'+
+      '<td style="width:32px"><input type="checkbox" class="client-row-cb" data-id="'+c.id+'" style="width:14px;height:14px"></td>'+
       '<td><div style="display:flex;align-items:center;gap:8px">'+av(c.name)+'<div><div style="font-weight:600;color:#111"><span class="open-client" data-id="'+c.id+'" style="color:#2563eb;cursor:pointer;text-decoration:underline">'+c.name+'</span></div><div style="font-size:10px;color:#aaa">'+c.id+'</div></div></div></td>'+
       '<td><div>'+(c.email?'<a href="mailto:'+c.email+'" style="color:#2563eb;text-decoration:none" title="Send email">'+c.email+'</a>':'')+'</div><div style="font-size:11px;color:#aaa">'+(c.phone||'')+'</div></td>'+
       '<td>'+badge(c.tier||'Standard')+'</td>'+
       '<td>'+fmt(c.points)+'</td>'+
       '<td>'+(c.totalRevenue?'$'+fmt(c.totalRevenue):'—')+'</td>'+
-      '<td><button class="trips-btn" data-cid="'+c.id+'">'+(db.trips.filter(function(t){return t.clientId===c.id;}).length)+' trips &rarr;</button></td>'+
+      '<td><button class="trips-btn" data-cid="'+c.id+'">'+countDistinctTrips(c.id)+' trips &rarr;</button></td>'+
       '<td><button class="trips-btn" data-edit="'+c.id+'">'+(c.notesLog||[]).length+' notes</button></td>'+
       '<td>'+(c.joined||'')+'</td>'+
       '<td style="white-space:nowrap"><button class="icon-btn edit-client" data-id="'+c.id+'" style="color:#2563eb">&#9999;&#65039;</button><button class="icon-btn del-client" data-id="'+c.id+'" style="color:#dc2626">&#128465;&#65039;</button></td>'+
-    '</tr>';}).join(''):'<tr><td colspan="8"><div class="empty">No clients found</div></td></tr>')+
+    '</tr>';}).join(''):'<tr><td colspan="9"><div class="empty">No clients found</div></td></tr>')+
     '</tbody></table></div>';
 
   $('btn-add-client').addEventListener('click',function(){openClientForm();});
+  document.querySelectorAll('.sort-th-c').forEach(function(th){
+    th.addEventListener('click', function(){
+      var col = th.dataset.sort;
+      if(window._clientSortCol === col){
+        window._clientSortDir = (window._clientSortDir==='asc') ? 'desc' : 'asc';
+      } else {
+        window._clientSortCol = col;
+        window._clientSortDir = 'asc';
+      }
+      renderClients();
+    });
+  });
   $('client-search').addEventListener('input',function(){fSearch=this.value;renderClients();});
   document.querySelectorAll('.trips-btn[data-cid]').forEach(function(btn){
     btn.addEventListener('click',function(){go('trips',btn.dataset.cid);});
@@ -2299,14 +2456,89 @@ function renderClients(){
   document.querySelectorAll('.del-client').forEach(function(btn){
     btn.addEventListener('click',function(){delClient(btn.dataset.id);});
   });
+
+  // Checkbox bulk select / delete
+  var checkAllC = document.getElementById('client-check-all');
+  var delBtnC   = document.getElementById('btn-delete-checked-clients');
+  var selBtnC   = document.getElementById('btn-select-all-clients');
+
+  function updateDeleteBtnC(){
+    var checked = document.querySelectorAll('.client-row-cb:checked');
+    var allCbs = document.querySelectorAll('.client-row-cb');
+    if(delBtnC) delBtnC.style.display = checked.length ? 'inline-block' : 'none';
+    if(selBtnC) selBtnC.textContent = checked.length === allCbs.length && allCbs.length>0 ? 'Deselect All' : 'Select All';
+    if(checkAllC) checkAllC.checked = checked.length === allCbs.length && allCbs.length>0;
+    if(checkAllC) checkAllC.indeterminate = checked.length > 0 && checked.length < allCbs.length;
+  }
+
+  if(checkAllC){
+    checkAllC.addEventListener('change', function(){
+      document.querySelectorAll('.client-row-cb').forEach(function(cb){ cb.checked = checkAllC.checked; });
+      updateDeleteBtnC();
+    });
+  }
+  if(selBtnC){
+    selBtnC.addEventListener('click', function(){
+      var cbs = document.querySelectorAll('.client-row-cb');
+      var allChecked = document.querySelectorAll('.client-row-cb:checked').length === cbs.length;
+      cbs.forEach(function(cb){ cb.checked = !allChecked; });
+      updateDeleteBtnC();
+    });
+  }
+  document.querySelectorAll('.client-row-cb').forEach(function(cb){
+    cb.addEventListener('change', updateDeleteBtnC);
+  });
+  if(delBtnC){
+    delBtnC.addEventListener('click', function(){
+      var ids = Array.from(document.querySelectorAll('.client-row-cb:checked')).map(function(cb){return cb.dataset.id;});
+      if(!ids.length) return;
+      if(!confirm('Delete '+ids.length+' client'+(ids.length!==1?'s':'')+' and all their trips?')) return;
+      snapshot('Delete '+ids.length+' client'+(ids.length!==1?'s':''));
+      db.clients = db.clients.filter(function(c){ return !ids.includes(c.id); });
+      db.trips = db.trips.filter(function(t){ return !ids.includes(t.clientId); });
+      saveDB(); render();
+      toast('Deleted '+ids.length+' client'+(ids.length!==1?'s':''),'ok');
+    });
+  }
+}
+
+function sortArrow(col){
+  var tripSortCol = window._tripSortCol || 'departDate';
+  var tripSortDir = window._tripSortDir || 'desc';
+  if(tripSortCol!==col) return '';
+  return tripSortDir==='asc' ? ' &#9650;' : ' &#9660;';
 }
 
 function renderTrips(){
+  var tripSortCol = window._tripSortCol || 'departDate';
+  var tripSortDir = window._tripSortDir || 'desc';
   const selC=db.clients.find(function(c){return c.id===selCid;});
   const q=fSearch.toLowerCase();
-  const list=db.trips.filter(function(t){
+  let list=db.trips.filter(function(t){
     const ms=!q||(t.clientName||'').toLowerCase().includes(q)||(t.destination||'').toLowerCase().includes(q)||(t.bookingRef||'').toLowerCase().includes(q);
     return ms&&(!fStatus||t.status===fStatus)&&(!selCid||t.clientId===selCid);
+  });
+  // Sort
+  function displayStatus(t){
+    var st = t.status||'Planning';
+    if(st==='Completed' && t.departDate && t.departDate>=today()) st='Upcoming';
+    return st;
+  }
+  list = list.slice().sort(function(a,b){
+    var av, bv;
+    if(tripSortCol==='status'){
+      av=displayStatus(a); bv=displayStatus(b);
+    } else {
+      av=a[tripSortCol]; bv=b[tripSortCol];
+    }
+    if(typeof av==='number'||typeof bv==='number'){
+      av=Number(av)||0; bv=Number(bv)||0;
+    } else {
+      av=(av||'').toString().toLowerCase(); bv=(bv||'').toString().toLowerCase();
+    }
+    if(av<bv) return tripSortDir==='asc'?-1:1;
+    if(av>bv) return tripSortDir==='asc'?1:-1;
+    return 0;
   });
   const sopts=STATUSES.map(function(s){return '<option value="'+s+'"'+(s===fStatus?' selected':'')+'>'+s+'</option>';}).join('');
   $('main').innerHTML=
@@ -2325,7 +2557,17 @@ function renderTrips(){
     '</div>'+
     '<div class="tbl-wrap"><table><thead><tr>'+
       '<th style="width:32px"><input type="checkbox" id="trip-check-all" style="width:14px;height:14px"></th>'+
-      '<th>Client</th><th>Destination</th><th>Dates</th><th>Flight</th><th>Status</th><th>Points</th><th>Value</th><th>Product</th><th>Supplier</th><th></th>'+
+      '<th class="sort-th" data-sort="clientName" style="cursor:pointer">Client'+sortArrow('clientName')+'</th>'+
+      '<th class="sort-th" data-sort="destination" style="cursor:pointer">Destination'+sortArrow('destination')+'</th>'+
+      '<th class="sort-th" data-sort="departDate" style="cursor:pointer">Dates'+sortArrow('departDate')+'</th>'+
+      '<th class="sort-th" data-sort="airline" style="cursor:pointer">Flight'+sortArrow('airline')+'</th>'+
+      '<th class="sort-th" data-sort="status" style="cursor:pointer">Status'+sortArrow('status')+'</th>'+
+      '<th class="sort-th" data-sort="pointsUsed" style="cursor:pointer">Points'+sortArrow('pointsUsed')+'</th>'+
+      '<th class="sort-th" data-sort="totalValue" style="cursor:pointer">Value'+sortArrow('totalValue')+'</th>'+
+      '<th class="sort-th" data-sort="product" style="cursor:pointer">Product'+sortArrow('product')+'</th>'+
+      '<th class="sort-th" data-sort="supplierName" style="cursor:pointer">Supplier'+sortArrow('supplierName')+'</th>'+
+      '<th class="sort-th" data-sort="invoiceNum" style="cursor:pointer">Invoice #'+sortArrow('invoiceNum')+'</th>'+
+      '<th></th>'+
     '</tr></thead><tbody>'+
     (list.length?list.map(function(t){return '<tr data-trip-id="'+t.id+'">'+
       '<td style="width:32px"><input type="checkbox" class="trip-row-cb" data-id="'+t.id+'" style="width:14px;height:14px"></td>'+
@@ -2333,7 +2575,7 @@ function renderTrips(){
       '<td><div style="font-weight:600;color:#111">'+(t.destination||'')+'</div><div style="font-size:11px;color:#888">from '+(t.origin||'')+'</div></td>'+
       '<td><div>'+(t.departDate||'')+'</div><div style="font-size:11px;color:#888">&rarr; '+(t.returnDate||'')+'</div></td>'+
       '<td><div>'+(t.airline||'')+'</div><div style="font-size:11px">'+badge(t.flightClass||'Economy')+'</div></td>'+
-      '<td>'+badge(t.status||'Planning')+'</td>'+
+      '<td>'+badge(displayStatus(t))+'</td>'+
       '<td>'+(t.pointsUsed?fmt(t.pointsUsed):'&mdash;')+'</td>'+
       '<td>$'+fmt(t.totalValue)+'</td>'+
       '<td style="font-size:11px;color:#555">'+( t.product||'—')+'</td>'+
@@ -2344,11 +2586,25 @@ function renderTrips(){
         var supId = sup ? sup.id : '';
         return supName ? '<td style="font-size:11px;color:#2563eb;font-weight:500;cursor:pointer;text-decoration:underline" class="trip-sup-link" data-vendor-id="'+supId+'">'+supName+'</td>' : '<td style="font-size:11px;color:#aaa">—</td>';
       })()+
+      '<td style="font-size:11px;color:#555">'+(t.invoiceNum||t.bookingRef||'—')+'</td>'+
       '<td style="white-space:nowrap"><button class="icon-btn edit-trip" data-id="'+t.id+'" style="color:#2563eb">&#9999;&#65039;</button><button class="icon-btn del-trip" data-id="'+t.id+'" style="color:#dc2626">&#128465;&#65039;</button></td>'+
-    '</tr>';}).join(''):'<tr><td colspan="10"><div class="empty">No trips found</div></td></tr>')+
+    '</tr>';}).join(''):'<tr><td colspan="11"><div class="empty">No trips found</div></td></tr>')+
     '</tbody></table></div>';
 
   $('btn-add-trip').addEventListener('click',function(){openTripForm();});
+  document.querySelectorAll('.sort-th').forEach(function(th){
+    th.addEventListener('click', function(){
+      var col = th.dataset.sort;
+      if(window._tripSortCol === col){
+        window._tripSortDir = (window._tripSortDir==='asc') ? 'desc' : 'asc';
+      } else {
+        window._tripSortCol = col;
+        window._tripSortDir = 'asc';
+      }
+      debugLog('Trip sort: col='+window._tripSortCol+' dir='+window._tripSortDir);
+      renderTrips();
+    });
+  });
   $('trip-search').addEventListener('input',function(){fSearch=this.value;renderTrips();});
   $('trip-status-filter').addEventListener('change',function(){fStatus=this.value;renderTrips();});
   if($('btn-back')) $('btn-back').addEventListener('click',function(){selCid=null;render();});
@@ -2448,7 +2704,7 @@ function openClientForm(id){
   $('modal').innerHTML=
     '<div class="modal-hdr"><div class="modal-title">'+(id?'Edit Client':'Add Client')+'</div><button class="close-btn" id="modal-close">&#x2715;</button></div>'+
     '<div class="fg">'+
-      fld('Full Name',inp('fn','text',d.name))+fld('Email',inp('fe','email',d.email))+
+      fld('Full Name',inp('fn','text',toFirstLast(d.name)))+fld('Email',inp('fe','email',d.email))+
       fld('Phone',inp('fp','text',d.phone,'(xxx) xxx-xxxx'))+fld('Location',inp('fl','text',d.location,'City, State'))+
       fld('Tier',sel('ft',TIERS,d.tier||'Standard'))+fld('Points Balance',inp('fpts','number',d.points||0))+
       fld('Preferred Airline',sel('fpa',AIRLINES,d.preferredAirline))+fld('Preferred Hotel',sel('fph',HOTELS,d.preferredHotel))+
@@ -2459,7 +2715,7 @@ function openClientForm(id){
         // Supplier trips now show as CRM trips via revenue import
         var supplierTrips = [];
 
-        var totalCount = clientTrips.length + supplierTrips.length;
+        var totalCount = countDistinctTrips(id);
         if(!totalCount) return '<div class="field full"><label>Trips (0)</label><div style="color:#aaa;font-size:12px;padding:8px 0">No trips yet.</div></div>';
 
         var tripRows = clientTrips.map(function(t){
@@ -2471,6 +2727,7 @@ function openClientForm(id){
             '<td style="font-size:11px;color:#555;padding:8px 10px;white-space:nowrap">'+(t.returnDate||'—')+'</td>'+
             '<td style="padding:8px 10px"><span class="badge '+scls+'">'+status+'</span></td>'+
             '<td style="font-size:11px;font-weight:600;color:#111;padding:8px 10px">$'+(t.totalValue?Number(t.totalValue).toLocaleString():'—')+'</td>'+
+            '<td style="font-size:11px;color:#555;padding:8px 10px">'+(t.invoiceNum||t.bookingRef||'—')+'</td>'+
             '<td style="font-size:11px;color:#059669;font-weight:600;padding:8px 10px">CRM</td>'+
           '</tr>';
         }).join('');
@@ -2495,6 +2752,7 @@ function openClientForm(id){
             '<th style="text-align:left;padding:6px 10px;font-size:10px;font-weight:700;color:#888;text-transform:uppercase">Return</th>'+
             '<th style="text-align:left;padding:6px 10px;font-size:10px;font-weight:700;color:#888;text-transform:uppercase">Status</th>'+
             '<th style="text-align:left;padding:6px 10px;font-size:10px;font-weight:700;color:#888;text-transform:uppercase">Value</th>'+
+            '<th style="text-align:left;padding:6px 10px;font-size:10px;font-weight:700;color:#888;text-transform:uppercase">Invoice #</th>'+
             '<th style="text-align:left;padding:6px 10px;font-size:10px;font-weight:700;color:#888;text-transform:uppercase">Source</th>'+
           '</tr></thead>'+
           '<tbody>'+tripRows+supRows+'</tbody></table></div></div>';
@@ -2635,7 +2893,7 @@ function addNoteEntry(){
 function openTripForm(id){
   const d=id?(db.trips.find(function(t){return t.id===id;})||{}):{};
   const initCid=d.clientId||selCid||'';
-  const copts=[...db.clients].sort(function(a,b){var al=(a.name||'').trim().split(' ').pop().toLowerCase();var bl=(b.name||'').trim().split(' ').pop().toLowerCase();return al.localeCompare(bl);}).map(function(c){return '<option value="'+c.id+'"'+(c.id===initCid?' selected':'')+'>'+c.name+' ('+c.id+')</option>';}).join('');
+  const copts=[...db.clients].sort(function(a,b){return (a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase());}).map(function(c){return '<option value="'+c.id+'"'+(c.id===initCid?' selected':'')+'>'+c.name+' ('+c.id+')</option>';}).join('');
   $('modal').innerHTML=
     '<div class="modal-hdr"><div class="modal-title">'+(id?'Edit Trip':'Add Trip')+'</div><button class="close-btn" id="modal-close">&#x2715;</button></div>'+
     '<div class="fg">'+
@@ -2661,7 +2919,7 @@ $('overlay').addEventListener('click',function(e){if(e.target===$('overlay'))clo
 
 // ── CRUD ──────────────────────────────────────────────────────────────────
 function saveClient(id){
-  const name=gv('fn'),email=gv('fe');
+  const name=toLastFirst(gv('fn')),email=gv('fe');
   if(!name||!email){toast('Name and email are required','err');return;}
   snapshot(id?'Edit client':'Add client');
   const entries=Array.from(document.querySelectorAll('.note-entry'));
