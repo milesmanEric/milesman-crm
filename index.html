@@ -1592,200 +1592,127 @@ function importVendorsCSV(){
         const lines=raw.split('\n').map(l=>l.trim()).filter(l=>l);
         if(!lines.length){toast('File appears empty','err');return;}
 
-        // Detect delimiter: tab or comma
         const delim = lines[0].includes('\t') ? '\t' : ',';
-        debugLog('Vendor import: lines='+lines.length+' delim='+(delim==='\t'?'TAB':'COMMA')+' first50='+lines[0].slice(0,50));
-
-        // Detect if first row is a header (has text like 'name','vendor','type')
-        const firstCols = lines[0].split(delim).map(h=>h.replace(/"/g,'').trim().toLowerCase());
-        const looksLikeHeader = firstCols.some(h=>['name','vendor','type','company','supplier','date','amount'].includes(h));
-
-        // QuickBooks tab-separated format (no header):
-        // col0=date, col1=ref#, col2=?, col3=vendor name, col4=class/client, col5=?, col6=qty, col7=?, col8=amount
-        const isQB = !looksLikeHeader; // QB exports can be tab OR comma separated
-        debugLog('Vendor import: looksLikeHeader='+looksLikeHeader+' isQB='+isQB+' delim='+delim);
-
-        var added=0, skipped=0;
-
-        if(isQB){
-          // QuickBooks format - two-pass: collect all clients+trips per vendor first
-          var vendorMap = {}; // name.toLowerCase() -> {name, clientNames:[], rows:[]}
-          for(var i=0;i<lines.length;i++){
-            var cols=lines[i].split(delim);
-            var name=(cols[3]||'').replace(/"/g,'').trim();
-            debugLog('QB row '+i+': cols='+cols.length+' name='+name);
-            if(!name) continue;
-            var key=name.toLowerCase();
-            if(!vendorMap[key]) vendorMap[key]={name:name, clientNames:[], rows:[]};
-            // col 0=date, col2=trip description, col5=class/client, col7=price, col8=amount
-            var classVal=(cols[5]||'').replace(/"/g,'').trim();
-            var clientName='';
-            if(classVal){
-              var parts=classVal.split(':');
-              clientName=parts[parts.length-1].trim();
-              if(clientName && !vendorMap[key].clientNames.includes(clientName)){
-                vendorMap[key].clientNames.push(clientName);
-              }
-            }
-            vendorMap[key].rows.push({
-              date:(cols[0]||'').replace(/"/g,'').trim(),
-              description:(cols[2]||'').replace(/"/g,'').trim(),
-              productType:(cols[4]||'').replace(/"/g,'').trim(),
-              clientName:clientName,
-              price:parseFloat((cols[7]||'0').replace(/[$,"]/g,''))||0,
-              amount:parseFloat((cols[8]||'0').replace(/[$,"]/g,''))||0
-            });
-          }
-          // Helper: fuzzy match client by name
-          function matchClient(cn){
-            if(!cn) return null;
-            var cLower=cn.toLowerCase().trim();
-            var cFirst=getFirstName(cLower);
-            var cLast=getLastName(cLower);
-            return db.clients.find(function(c){
-              var full=(c.name||'').toLowerCase().trim();
-              var first=getFirstName(full);
-              var last=getLastName(full);
-              if(full===cLower) return true;
-              if(cFirst&&cLast&&cFirst!==cLast&&first===cFirst&&last===cLast) return true;
-              return false;
-            });
-          }
-
-          // Now create/update vendor records and add trip notes to clients
-          var tripsAdded=0;
-          Object.keys(vendorMap).forEach(function(key){
-            var vm = vendorMap[key];
-            var exists = db.vendors.find(function(v){return(v.name||'').toLowerCase()===key;});
-            // Match client names to existing client records
-            var clientIds = [];
-            vm.clientNames.forEach(function(cn){
-              var matched=matchClient(cn);
-              if(matched && !clientIds.includes(matched.id)) clientIds.push(matched.id);
-            });
-
-            if(exists){
-              clientIds.forEach(function(cid){
-                if(!(exists.clientIds||[]).includes(cid)){
-                  if(!exists.clientIds) exists.clientIds=[];
-                  exists.clientIds.push(cid);
-                }
-              });
-              skipped++;
-            } else {
-              db.vendors.push({
-                id:newId('V',db.vendors),
-                name:vm.name,
-                type:'Supplier',
-                category:'',
-                primaryClientName:vm.clientNames[0]||'',
-                contactName:'',email:'',phone:'',website:'',notes:'',notesLog:[],
-                clientIds:clientIds
-              });
-              added++;
-            }
-
-            // Add trip import notes to matched client records
-            vm.rows.forEach(function(row){
-              if(!row.clientName) return;
-              var client=matchClient(row.clientName);
-              if(!client) return;
-              if(!client.notesLog) client.notesLog=[];
-              // Check if this row already imported (by date+vendor+description)
-              var dupKey=(row.date+'|'+vm.name+'|'+row.description).toLowerCase();
-              var alreadyImported=client.notesLog.some(function(n){
-                return (n.importKey||'')===dupKey;
-              });
-              if(alreadyImported) return;
-              var noteText=vm.name+(row.description?' - '+row.description:'')+(row.date?' ('+row.date+')':'')+(row.amount?' $'+row.amount:'');
-              client.notesLog.push({
-                ts:new Date().toLocaleString(),
-                text:noteText,
-                noteType:'Trip Import',
-                importKey:dupKey
-              });
-              tripsAdded++;
-            });
-          });
-          snapshot('Import suppliers');
-          saveDB();render();
-          toast('Imported '+added+' supplier'+(added!==1?'s':'')+(skipped?' ('+skipped+' updated)':'')+(tripsAdded?' · '+tripsAdded+' trip notes added':''),'ok');
-          return;
-        }
-
-        // Standard CSV with header row
-        const hdrs=firstCols;
-        const col=function(names){
-          for(var i=0;i<names.length;i++){
-            var idx=hdrs.findIndex(function(h){return h.includes(names[i]);});
-            if(idx>=0) return idx;
-          }
-          return -1;
+        const split = function(line){
+          if(delim===','){ return parseCSVLine(line); }
+          return line.split(delim).map(function(c){return c.replace(/^"|"$/g,'').trim();});
         };
 
-        const ni  = col(['name','vendor','company','supplier']);
-        const ti  = col(['type']);
-        const cati= col(['category','cat']);
-        const cni = col(['contact','person']);
-        const emi = col(['email']);
-        const phi = col(['phone','tel']);
-        const wbi = col(['website','url','web','site']);
-        const noi = col(['note','notes','memo']);
-        const cli = col(['client','customer','referred by','referral']);
-        const pcli = col(['primary client','primary contact','key client','class']);
+        const hdrs = split(lines[0]).map(function(h){return h.toLowerCase().trim();});
+        const looksLikeHeader = hdrs.some(function(h){return ['name','date','amount','num','qty','memo','item','class'].includes(h);});
+        const startRow = looksLikeHeader ? 1 : 0;
 
-        if(ni===-1){toast('No "Name" column found in CSV','err');return;}
+        function getCol(row, names, fallbackIdx){
+          if(looksLikeHeader){
+            for(var i=0;i<names.length;i++){
+              var idx=hdrs.indexOf(names[i]);
+              if(idx>=0) return (row[idx]||'').trim();
+            }
+            return '';
+          }
+          return (row[fallbackIdx]||'').trim();
+        }
 
-        added=0; skipped=0;
-        for(let i=1;i<lines.length;i++){
-          const cols=parseCSVLine(lines[i]);
-          const clean=function(idx){return idx>=0?(cols[idx]||'').replace(/^"|"$/g,'').trim():'';};
-          const name=clean(ni);
-          if(!name){skipped++;continue;}
+        // Same layout as revenue import:
+        // col0=date,col1=invoice,col2=memo,col3=name,col4=ship date,col5=item,col6=class,col7=qty,col8=price,col9=amount
+        var vendorMap = {}; // name.toLowerCase() -> {name, clientNames:[], rows:[]}
 
-          // Skip if vendor with same name already exists
-          const exists=db.vendors.some(function(v){return(v.name||'').toLowerCase()===name.toLowerCase();});
-          if(exists){skipped++;continue;}
+        for(var i=startRow;i<lines.length;i++){
+          var cols=split(lines[i]);
+          if(cols.length<4) continue;
 
-          const type=clean(ti)||'Supplier';
-          const validType=VENDOR_TYPES.includes(type)?type:'Supplier';
-          const category=clean(cati)||'';
-          const validCat=VENDOR_CATS.includes(category)?category:'';
+          var date    = getCol(cols,['date'],0);
+          var memo    = getCol(cols,['memo','description'],2);
+          var nameVal = getCol(cols,['name'],3);
+          var itemVal = getCol(cols,['item'],5);
+          var classVal= getCol(cols,['class'],6) || (cols[6]||'').trim();
+          var amtStr  = getCol(cols,['amount','sales price'],9) ||
+                        getCol(cols,['amount','sales price'],8) ||
+                        cols[cols.length-1]||'';
+          var amount  = parseFloat(amtStr.replace(/[$,"]/g,''))||0;
 
-          // Match client field to existing client records
-          const clientIds=[];
-          const clientVal=clean(cli);
-          if(clientVal){
-            clientVal.split(/[;,]/).forEach(function(part){
-              const cname=part.trim().toLowerCase();
-              if(!cname) return;
-              const matched=db.clients.find(function(c){
-                const full=(c.name||'').toLowerCase();
-                const last=(c.name||'').trim().split(' ').pop().toLowerCase();
-                return full===cname || last===cname || full.includes(cname) || cname.includes(last);
-              });
-              if(matched && !clientIds.includes(matched.id)) clientIds.push(matched.id);
+          if(!nameVal) continue;
+
+          // Rule: if Name !== Class, Name is treated as a supplier
+          var nameLower = nameVal.toLowerCase().trim();
+          var classLower = classVal.toLowerCase().trim();
+          if(nameLower === classLower || !classVal) continue; // skip - this is a direct client row, not a supplier row
+
+          var key = nameLower;
+          if(!vendorMap[key]) vendorMap[key]={name:nameVal, clientNames:[], rows:[]};
+          if(classVal && !vendorMap[key].clientNames.includes(classVal)){
+            vendorMap[key].clientNames.push(classVal);
+          }
+          vendorMap[key].rows.push({
+            date:date, description:memo, productType:itemVal,
+            clientName:classVal, amount:amount
+          });
+        }
+
+        // Fuzzy match client by name (handles Last,First and First Last)
+        function matchClient(cn){
+          if(!cn) return null;
+          var cLower=cn.toLowerCase().trim();
+          var cFirst=getFirstName(cLower);
+          var cLast=getLastName(cLower);
+          return db.clients.find(function(c){
+            var full=(c.name||'').toLowerCase().trim();
+            var first=getFirstName(full);
+            var last=getLastName(full);
+            if(full===cLower) return true;
+            if(cFirst&&cLast&&cFirst!==cLast&&first===cFirst&&last===cLast) return true;
+            return false;
+          });
+        }
+
+        var added=0, skipped=0, tripsAdded=0;
+        Object.keys(vendorMap).forEach(function(key){
+          var vm = vendorMap[key];
+          var exists = db.vendors.find(function(v){return(v.name||'').toLowerCase()===key;});
+          var clientIds = [];
+          vm.clientNames.forEach(function(cn){
+            var matched=matchClient(cn);
+            if(matched && !clientIds.includes(matched.id)) clientIds.push(matched.id);
+          });
+
+          if(exists){
+            clientIds.forEach(function(cid){
+              if(!(exists.clientIds||[]).includes(cid)){
+                if(!exists.clientIds) exists.clientIds=[];
+                exists.clientIds.push(cid);
+              }
             });
+            skipped++;
+          } else {
+            db.vendors.push({
+              id:newId('V',db.vendors),
+              name:vm.name,
+              type:'Supplier',
+              category:'',
+              primaryClientName:vm.clientNames[0]||'',
+              contactName:'',email:'',phone:'',website:'',notes:'',notesLog:[],
+              clientIds:clientIds
+            });
+            added++;
           }
 
-          db.vendors.push({
-            id:newId('V',db.vendors),
-            name:name,
-            type:validType,
-            category:validCat,
-            primaryClientName:clean(pcli),
-            contactName:clean(cni),
-            email:clean(emi),
-            phone:clean(phi),
-            website:clean(wbi),
-            notes:clean(noi),
-            clientIds:clientIds
+          vm.rows.forEach(function(row){
+            if(!row.clientName) return;
+            var client=matchClient(row.clientName);
+            if(!client) return;
+            if(!client.notesLog) client.notesLog=[];
+            var dupKey=(row.date+'|'+vm.name+'|'+row.description).toLowerCase();
+            var alreadyImported=client.notesLog.some(function(n){return (n.importKey||'')===dupKey;});
+            if(alreadyImported) return;
+            var noteText=vm.name+(row.description?' - '+row.description:'')+(row.date?' ('+row.date+')':'')+(row.amount?' $'+row.amount:'');
+            client.notesLog.push({ts:new Date().toLocaleString(),text:noteText,noteType:'Trip Import',importKey:dupKey});
+            tripsAdded++;
           });
-          added++;
-        }
-        snapshot('Import vendors');
+        });
+
+        snapshot('Import suppliers');
         saveDB();render();
-        toast('Imported '+added+' vendor'+(added!==1?'s':'')+(skipped?' ('+skipped+' skipped)':''),'ok');
+        toast('Imported '+added+' supplier'+(added!==1?'s':'')+(skipped?' ('+skipped+' updated)':'')+(tripsAdded?' · '+tripsAdded+' trip notes added':''),'ok');
       }catch(err){console.error(err);toast('Could not read CSV: '+err.message,'err');}
     };r.readAsText(f);
   };inp.click();
@@ -2586,10 +2513,9 @@ function renderTrips(){
       '<td>$'+fmt(t.totalValue)+'</td>'+
       '<td style="font-size:11px;color:#555">'+( t.product||'—')+'</td>'+
       (function(){
-        var sup = (t.supplierId ? db.vendors.find(function(v){return v.id===t.supplierId;}) : null)
-                || db.vendors.find(function(v){return (v.clientIds||[]).includes(t.clientId);});
+        var sup = t.supplierId ? db.vendors.find(function(v){return v.id===t.supplierId;}) : null;
         var supName = sup ? sup.name : (t.supplierName||'');
-        var supId = sup ? sup.id : '';
+        var supId = sup ? sup.id : (t.supplierId||'');
         return supName ? '<td style="font-size:11px;color:#2563eb;font-weight:500;cursor:pointer;text-decoration:underline" class="trip-sup-link" data-vendor-id="'+supId+'">'+supName+'</td>' : '<td style="font-size:11px;color:#aaa">—</td>';
       })()+
       '<td style="font-size:11px;color:#555">'+(t.invoiceNum||t.bookingRef||'—')+'</td>'+
