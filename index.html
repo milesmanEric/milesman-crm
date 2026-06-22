@@ -1334,7 +1334,7 @@ function render(){
 }
 
 function renderReports(){
-  var NOTE_TYPES_R = ['','Email Sent','Email Received','Initial Call','Follow-up','General','Trip Import','Text Message','Lead'];
+  var NOTE_TYPES_R = ['','Trips','Email Sent','Email Received','Initial Call','Follow-up','General','Text Message','Lead'];
   var typeOpts = NOTE_TYPES_R.map(function(t){return '<option value="'+t+'">'+(t||'All types')+'</option>';}).join('');
   $('main').innerHTML =
     '<div class="page-hdr"><div class="page-title">Reports</div></div>'+
@@ -1360,7 +1360,7 @@ function renderReports(){
         row.addEventListener('click', function(){
           var idx = parseInt(row.dataset.rptIdx, 10);
           var r = window._reportRows && window._reportRows[idx];
-          if(r) openNoteExpand(r.client+' — '+r.ts, r.text, r.type||'');
+          if(r){ if(r.type==='Trips' && r.tripId){ openTripForm(r.tripId); } else { openNoteExpand(r.client+' — '+r.ts, r.text, r.type||''); } }
         });
       });
     }, 50);
@@ -1374,33 +1374,53 @@ function getReportData(){
   var noteType = (document.getElementById('rpt-type')||{}).value||'';
   var clientId = (document.getElementById('rpt-client')||{}).value||'';
 
-  // Collect all notes from all clients
   var rows = [];
-  db.clients.forEach(function(c){
-    if(clientId && c.id !== clientId) return;
-    (c.notesLog||[]).forEach(function(n){
-      // Parse note timestamp for date comparison
-      var noteDate = '';
-      try{ noteDate = new Date(n.ts).toISOString().slice(0,10); }catch(e){}
-      if(!noteDate || noteDate === 'NaN-aN-aN'){
-        // Try parsing 'Jun 10, 2026 10:52 AM' format
-        try{ noteDate = new Date(n.ts).toISOString().slice(0,10); }catch(e){ noteDate = ''; }
-      }
-      if(fromDate && noteDate < fromDate) return;
-      if(toDate   && noteDate > toDate)   return;
-      if(!(n.noteType||'')) return; // exclude notes with no type
-      if(noteType && (n.noteType||'') !== noteType) return;
+
+  // Include trip records (when filter is blank or set to 'Trips')
+  if(!noteType || noteType==='Trips'){
+    db.trips.forEach(function(t){
+      if(clientId && t.clientId !== clientId) return;
+      var tripDate = t.departDate||'';
+      if(fromDate && tripDate < fromDate) return;
+      if(toDate   && tripDate > toDate)   return;
+      var supplierTxt = t.supplierName ? ' via '+t.supplierName : '';
+      var text = (t.destination||'Trip')+supplierTxt+(t.invoiceNum?' (Invoice #'+t.invoiceNum+')':'')+' — $'+Number(t.totalValue||0).toLocaleString();
       rows.push({
-        client: c.name,
-        email:  c.email||'',
-        ts:     n.ts,
-        type:   n.noteType||'',
-        text:   n.text||''
+        client: t.clientName||'',
+        email: '',
+        ts: tripDate,
+        type: 'Trips',
+        text: text,
+        tripId: t.id
       });
     });
-  });
+  }
 
-  // Sort by timestamp descending
+  // Include notes from clients (skip Trip Import - those are legacy, trips now come from db.trips)
+  if(!noteType || noteType!=='Trips'){
+    db.clients.forEach(function(c){
+      if(clientId && c.id !== clientId) return;
+      (c.notesLog||[]).forEach(function(n){
+        if((n.noteType||'')==='Trip Import') return; // legacy - trips now in db.trips
+        var noteDateRaw = n.ts;
+        var noteDate = '';
+        try{ noteDate = new Date(noteDateRaw).toISOString().slice(0,10); }catch(e){}
+        if(fromDate && noteDate && noteDate < fromDate) return;
+        if(toDate   && noteDate && noteDate > toDate)   return;
+        if(!(n.noteType||'')) return;
+        if(noteType && (n.noteType||'') !== noteType) return;
+        rows.push({
+          client: c.name,
+          email:  c.email||'',
+          ts:     n.ts,
+          type:   n.noteType||'',
+          text:   n.text||''
+        });
+      });
+    });
+  }
+
+  // Sort by timestamp/date descending
   rows.sort(function(a,b){ return new Date(b.ts)-new Date(a.ts); });
   return rows;
 }
@@ -1413,7 +1433,7 @@ function runReport(){
     container.innerHTML = '<div class="empty" style="padding:40px">No notes match the selected filters</div>';
     return;
   }
-  var BCLS2 = {'Email Sent':'nt-email-sent','Email Received':'nt-email-received','Initial Call':'nt-initial-call','Follow-up':'nt-follow-up','General':'nt-general','Trip Import':'nt-blue','Text Message':'nt-text-message','Lead':'nt-lead'};
+  var BCLS2 = {'Email Sent':'nt-email-sent','Email Received':'nt-email-received','Initial Call':'nt-initial-call','Follow-up':'nt-follow-up','General':'nt-general','Trips':'nt-blue','Text Message':'nt-text-message','Lead':'nt-lead'};
   window._reportRows = rows; // store for click handler
   container.innerHTML =
     '<div style="font-size:13px;color:#888;margin-bottom:10px">'+rows.length+' note'+(rows.length!==1?'s':'')+' found</div>'+
