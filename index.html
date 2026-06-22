@@ -1741,18 +1741,11 @@ function getVendorStats(vendor){
     }
   });
 
-  // Also include trips for linked clients — but ONLY if that trip has no supplierId,
-  // or its supplierId matches this vendor (avoids attributing another supplier's trip)
+  // Linked clients (referral partners) — only count them in the client list,
+  // do NOT pull in their unrelated trips (those are only shown if supplierId explicitly matches, handled above)
   (vendor.clientIds||[]).forEach(function(cid){
     var c = db.clients.find(function(x){return x.id===cid;});
     if(c && !stats.clients.includes(c.name)) stats.clients.push(c.name);
-    db.trips.forEach(function(t){
-      if(t.clientId===cid && !stats.tripList.includes(t)){
-        if(!t.supplierId || t.supplierId===vendor.id){
-          stats.tripList.push(t);
-        }
-      }
-    });
   });
 
   // Count distinct invoice numbers (falls back to trip id if no invoice number)
