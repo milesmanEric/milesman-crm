@@ -1636,7 +1636,11 @@ function importVendorsCSV(){
           // Rule: if Name !== Class, Name is treated as a supplier
           var nameLower = nameVal.toLowerCase().trim();
           var classLower = classVal.toLowerCase().trim();
-          if(nameLower === classLower || !classVal) continue; // skip - this is a direct client row, not a supplier row
+          if(nameLower === classLower || !classVal){
+            debugLog('Supplier import skip: name='+nameVal+' class='+classVal);
+            continue;
+          }
+          debugLog('Supplier import row: name='+nameVal+' class='+classVal);
 
           var key = nameLower;
           if(!vendorMap[key]) vendorMap[key]={name:nameVal, clientNames:[], rows:[]};
