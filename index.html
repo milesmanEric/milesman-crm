@@ -2684,8 +2684,8 @@ function renderClients(){
       '<td><button class="trips-btn" data-cid="'+c.id+'">'+countDistinctTrips(c.id)+' trips &rarr;</button></td>'+
       '<td><button class="trips-btn" data-edit="'+c.id+'">'+(c.notesLog||[]).length+' notes</button></td>'+
       '<td>'+(c.joined||'')+'</td>'+
-      '<td style="text-align:center">'+(c.isPayingClient?'&#9989;':'')+'</td>'+
-      '<td style="text-align:center">'+(c.isSubscriber?'&#9989;':'')+'</td>'+
+      '<td style="text-align:center"><input type="checkbox" class="client-paying-cb" data-id="'+c.id+'" '+(c.isPayingClient?'checked':'')+' style="width:15px;height:15px;cursor:pointer"></td>'+
+      '<td style="text-align:center"><input type="checkbox" class="client-sub-cb" data-id="'+c.id+'" '+(c.isSubscriber?'checked':'')+' style="width:15px;height:15px;cursor:pointer"></td>'+
       '<td style="white-space:nowrap"><button class="icon-btn edit-client" data-id="'+c.id+'" style="color:#2563eb">&#9999;&#65039;</button><button class="icon-btn del-client" data-id="'+c.id+'" style="color:#dc2626">&#128465;&#65039;</button></td>'+
     '</tr>';}).join(''):'<tr><td colspan="11"><div class="empty">No clients found</div></td></tr>')+
     '</tbody></table></div>';
@@ -2721,6 +2721,19 @@ function renderClients(){
   });
   document.querySelectorAll('.del-client').forEach(function(btn){
     btn.addEventListener('click',function(){delClient(btn.dataset.id);});
+  });
+
+  document.querySelectorAll('.client-paying-cb').forEach(function(cb){
+    cb.addEventListener('change', function(){
+      var c = db.clients.find(function(x){return x.id===cb.dataset.id;});
+      if(c){ c.isPayingClient = cb.checked; saveDB(); toast(c.name+(cb.checked?' marked as paying client':' unmarked as paying client'),'ok'); }
+    });
+  });
+  document.querySelectorAll('.client-sub-cb').forEach(function(cb){
+    cb.addEventListener('change', function(){
+      var c = db.clients.find(function(x){return x.id===cb.dataset.id;});
+      if(c){ c.isSubscriber = cb.checked; saveDB(); toast(c.name+(cb.checked?' marked as subscriber':' unmarked as subscriber'),'ok'); }
+    });
   });
 
   // Checkbox bulk select / delete
