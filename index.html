@@ -451,7 +451,22 @@ function newId(p,list){
 }
 
 // ── Storage ───────────────────────────────────────────────────────────────
-function saveDB(){try{localStorage.setItem(LS_KEY,JSON.stringify(db));}catch(e){}}
+function saveDB(){
+  try{
+    localStorage.setItem(LS_KEY,JSON.stringify(db));
+    var lbl=document.getElementById('sync-lbl');
+    if(lbl){
+      var now=new Date();
+      var timeStr=now.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+      lbl.innerHTML='&#9679; Saved '+timeStr;
+      lbl.style.color='#059669';
+      clearTimeout(window._syncLblTimer);
+      window._syncLblTimer=setTimeout(function(){
+        if(lbl) lbl.style.color='';
+      },2000);
+    }
+  }catch(e){}
+}
 function loadDB(){
   try{
     const d=JSON.parse(localStorage.getItem(LS_KEY)||'{}');
@@ -893,7 +908,10 @@ async function driveBackup(silent){
     }
     if(!silent){btn.textContent='Backed up to Drive';btn.style.color='#059669';btn.style.borderColor='#6ee7b7';}
     var now=new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
-    toast('Drive backup saved at '+now,'ok');
+    localStorage.setItem('mm_last_drive_backup', now);
+    var lbl=document.getElementById('sync-lbl');
+    if(lbl){ lbl.innerHTML='&#9729; Drive synced '+now; lbl.style.color='#1a73e8'; }
+    if(!silent) toast('Drive backup saved at '+now,'ok');
     console.log('[CRM] Drive backup complete at', now);
   }catch(e){
     console.error(e);driveToken=null;
