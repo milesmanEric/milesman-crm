@@ -976,7 +976,7 @@ function exportCSV(type){
   let rows,filename,headers;
   if(type==='clients'){
     headers=['ID','Name','Email','Phone','Location','Tier','Points','Total Revenue','Preferred Airline','Preferred Hotel','Notes','Joined','Total Trips'];
-    rows=db.clients.map(c=>[c.id,c.name,c.email,c.phone,c.location,c.tier,c.points,c.totalRevenue||0,c.preferredAirline,c.preferredHotel,c.notes,c.joined,c.totalTrips]);
+    rows=db.clients.map(c=>{var rev=db.trips.filter(function(t){return t.clientId===c.id;}).reduce(function(a,t){return a+(t.totalValue||0);},0);return [c.id,c.name,c.email,c.phone,c.location,c.tier,c.points,rev,c.preferredAirline,c.preferredHotel,c.notes,c.joined,countDistinctTrips(c.id)];});
     filename='milesman-clients.csv';
   }else{
     headers=['ID','Client','Destination','Origin','Depart','Return','Status','Type','Airline','Class','Hotel','Nights','Points Used','Cash Paid','Total Value','Booking Ref','Notes'];
@@ -2636,10 +2636,13 @@ function renderClients(){
 
   list = list.slice().sort(function(a,b){
     var av, bv;
+    function liveRevenue(cid){return db.trips.filter(function(t){return t.clientId===cid;}).reduce(function(a,t){return a+(t.totalValue||0);},0);}
     if(clientSortCol==='trips'){
       av=countDistinctTrips(a.id); bv=countDistinctTrips(b.id);
     } else if(clientSortCol==='notes'){
       av=(a.notesLog||[]).length; bv=(b.notesLog||[]).length;
+    } else if(clientSortCol==='totalRevenue'){
+      av=liveRevenue(a.id); bv=liveRevenue(b.id);
     } else {
       av=a[clientSortCol]; bv=b[clientSortCol];
     }
@@ -2680,7 +2683,7 @@ function renderClients(){
       '<td><div>'+(c.email?'<a href="mailto:'+c.email+'" style="color:#2563eb;text-decoration:none" title="Send email">'+c.email+'</a>':'')+'</div><div style="font-size:11px;color:#aaa">'+(c.phone||'')+'</div></td>'+
       '<td>'+badge(c.tier||'Standard')+'</td>'+
       '<td>'+fmt(c.points)+'</td>'+
-      '<td>'+(c.totalRevenue?'$'+fmt(c.totalRevenue):'—')+'</td>'+
+      '<td>'+(function(){var rev=db.trips.filter(function(t){return t.clientId===c.id;}).reduce(function(a,t){return a+(t.totalValue||0);},0);return rev?'$'+fmt(rev):'—';})()+'</td>'+
       '<td><button class="trips-btn" data-cid="'+c.id+'">'+countDistinctTrips(c.id)+' trips &rarr;</button></td>'+
       '<td><button class="trips-btn" data-edit="'+c.id+'">'+(c.notesLog||[]).length+' notes</button></td>'+
       '<td>'+(c.joined||'')+'</td>'+
