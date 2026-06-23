@@ -13,7 +13,8 @@ html,body{margin:0;padding:0;height:100%;background:#fff;color:#111;font-family:
 .logo-tag{font-size:10px;font-weight:700;letter-spacing:.15em;text-transform:uppercase;color:#2563eb;margin-bottom:2px}
 .logo-name{font-size:17px;font-weight:700;color:#111}
 .logo-sub{font-size:11px;color:#888;margin-top:3px}
-nav{padding:10px 8px;flex:1}
+nav{padding:10px 8px}
+#sidebar{overflow-y:auto}
 .nb{display:flex;align-items:center;gap:8px;width:100%;padding:9px 10px;border-radius:8px;border:none;background:transparent;color:#555;cursor:pointer;font-size:13px;font-family:inherit;text-align:left;margin-bottom:2px}
 .nb:hover{background:#ebebed}
 .nb.active{background:#dbeafe;color:#1d4ed8;font-weight:600}
@@ -48,6 +49,11 @@ nav{padding:10px 8px;flex:1}
 #note-expand-close{background:none;border:none;cursor:pointer;color:#888;font-size:22px;line-height:1;font-family:inherit}
 #note-expand-body{flex:1;overflow-y:auto;font-size:14px;color:#111;line-height:1.7;white-space:pre-wrap;word-break:break-word;border:1px solid #e5e7eb;border-radius:8px;padding:16px;background:#fafafa}
 .footer-txt{font-size:10px;color:#aaa}
+.menu-toggle-btn{width:100%;padding:8px;border-radius:7px;border:1px solid #e0e0e0;background:#fff;color:#374151;cursor:pointer;font-size:12px;font-weight:600;font-family:inherit;margin-bottom:4px;display:flex;align-items:center;justify-content:space-between}
+.menu-toggle-btn:hover{background:#f7f7f8}
+.menu-toggle-btn.open .menu-caret{transform:rotate(90deg);display:inline-block}
+.menu-caret{font-size:10px;transition:transform .15s;display:inline-block}
+.menu-group{padding-left:6px;border-left:2px solid #e5e7eb;margin-left:4px;margin-bottom:6px}
 
 /* ── Mobile nav ── */
 #mobile-nav-toggle{display:none;position:fixed;top:12px;left:12px;z-index:1200;background:#2563eb;color:#fff;border:none;border-radius:8px;padding:8px 12px;font-size:18px;cursor:pointer;line-height:1}
@@ -142,6 +148,9 @@ nav{padding:10px 8px;flex:1}
 .report-table th{text-align:left;padding:9px 12px;font-size:11px;font-weight:600;color:#888;border-bottom:1px solid #e5e7eb;text-transform:uppercase;letter-spacing:.05em}
 .report-table td{padding:10px 12px;font-size:13px;color:#444;border-bottom:1px solid #f0f0f0;vertical-align:top}
 .report-table td.note-cell{max-width:500px;white-space:pre-wrap;word-break:break-word;line-height:1.5}
+.rpt-tab-btn{padding:10px 16px;border:none;background:none;color:#888;cursor:pointer;font-size:13px;font-weight:600;font-family:inherit;border-bottom:2px solid transparent}
+.rpt-tab-btn.active{color:#2563eb;border-bottom-color:#2563eb}
+.rpt-tab-btn:hover{color:#374151}
 #main{flex:1;overflow-y:auto;padding:24px 28px;background:#fff}
 .page-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
 .page-title{font-size:22px;font-weight:700;color:#111}
@@ -218,26 +227,38 @@ tr:last-child td{border-bottom:none}
       <button class="nb" id="nb-email">&#9993;&#65039; Email</button>
     </nav>
     <div class="sb-footer">
-      <button class="sync-btn" id="outlook-btn">&#128424; Sync Outlook Emails</button>
-      <button class="sync-btn" id="drive-btn" style="color:#1a73e8;border-color:#93c5fd">&#9729; Backup to Google Drive</button>
-      <button class="sync-btn" id="drive-restore-btn" style="color:#1a73e8;border-color:#93c5fd">&#9729; Restore from Google Drive</button>
-      <div class="io-row">
-        <button class="io-btn" id="btn-clients-csv">&#11015; Clients CSV</button>
-        <button class="io-btn" id="btn-trips-csv">&#11015; Trips CSV</button>
-      </div>
-      <div class="io-row">
-        <button class="io-btn" id="btn-backup">&#11015; Backup</button>
-        <button class="io-btn" id="btn-restore">&#11014; Restore</button>
-      </div>
-      <button class="sync-btn" id="btn-mass-email" style="color:#7c3aed;border-color:#c4b5fd">&#128231; Email All Clients</button>
-      <button class="sync-btn" id="btn-log-mailchimp" style="color:#7c3aed;border-color:#c4b5fd">&#128226; Log Mailchimp Campaign</button>
-      <button class="sync-btn" id="btn-import-csv" style="color:#059669;border-color:#6ee7b7">&#128203; Import Contacts from CSV</button>
-      <button class="sync-btn" id="btn-import-revenue" style="color:#059669;border-color:#6ee7b7">&#128178; Import Revenue CSV</button>
-      <button class="sync-btn" id="btn-clear-trips" style="color:#dc2626;border-color:#fca5a5">&#128465; Clear All Trips</button>
-      <button class="sync-btn" id="btn-import-suppliers-sb" style="color:#059669;border-color:#6ee7b7">&#127981; Import Suppliers CSV</button>
       <button class="sync-btn" id="btn-undo" disabled style="color:#7c3aed;border-color:#c4b5fd;opacity:.4" title="Nothing to undo">&#8630; Undo</button>
-      <button class="sync-btn" id="btn-drive-signout" style="color:#888;border-color:#ddd;font-size:11px">&#9729;&#65039; Reset Drive Login</button>
-      <button class="sync-btn" id="btn-ms-signout" style="color:#888;border-color:#ddd;font-size:11px">&#128274; Reset Outlook Login</button>
+      <button class="menu-toggle-btn" data-menu="menu-file">&#128193; File <span class="menu-caret">&#9656;</span></button>
+      <div class="menu-group" id="menu-file" style="display:none">
+        <button class="sync-btn" id="drive-btn" style="color:#1a73e8;border-color:#93c5fd">&#9729; Backup to Google Drive</button>
+        <button class="sync-btn" id="drive-restore-btn" style="color:#1a73e8;border-color:#93c5fd">&#9729; Restore from Google Drive</button>
+        <button class="sync-btn" id="btn-drive-signout" style="color:#888;border-color:#ddd;font-size:11px">&#9729;&#65039; Reset Drive Login</button>
+        <div class="io-row">
+          <button class="io-btn" id="btn-clients-csv">&#11015; Clients CSV</button>
+          <button class="io-btn" id="btn-trips-csv">&#11015; Trips CSV</button>
+        </div>
+        <div class="io-row">
+          <button class="io-btn" id="btn-backup">&#11015; Backup</button>
+          <button class="io-btn" id="btn-restore">&#11014; Restore</button>
+        </div>
+      </div>
+
+      <button class="menu-toggle-btn" data-menu="menu-email">&#9993;&#65039; Email <span class="menu-caret">&#9656;</span></button>
+      <div class="menu-group" id="menu-email" style="display:none">
+        <button class="sync-btn" id="outlook-btn">&#128424; Sync Outlook Emails</button>
+        <button class="sync-btn" id="btn-mass-email" style="color:#7c3aed;border-color:#c4b5fd">&#128231; Email All Clients</button>
+        <button class="sync-btn" id="btn-log-mailchimp" style="color:#7c3aed;border-color:#c4b5fd">&#128226; Log Mailchimp Campaign</button>
+        <button class="sync-btn" id="btn-ms-signout" style="color:#888;border-color:#ddd;font-size:11px">&#128274; Reset Outlook Login</button>
+      </div>
+
+      <button class="menu-toggle-btn" data-menu="menu-import">&#128229; Import <span class="menu-caret">&#9656;</span></button>
+      <div class="menu-group" id="menu-import" style="display:none">
+        <button class="sync-btn" id="btn-import-suppliers-sb" style="color:#059669;border-color:#6ee7b7">&#127981; Import Suppliers CSV</button>
+        <button class="sync-btn" id="btn-import-revenue" style="color:#059669;border-color:#6ee7b7">&#128178; Import Revenue CSV</button>
+        <button class="sync-btn" id="btn-import-csv" style="color:#059669;border-color:#6ee7b7">&#128203; Import Clients CSV</button>
+        <button class="sync-btn" id="btn-clear-trips" style="color:#dc2626;border-color:#fca5a5">&#128465; Clear All Trips</button>
+      </div>
+
       <button class="sync-btn" id="btn-debug-toggle" style="color:#888;border-color:#ddd;font-size:11px">&#128030; Debug Panel</button>
       <div class="footer-txt">(908) 419-7700 &middot; themilesman.com</div>
     </div>
@@ -1391,38 +1412,165 @@ function render(){
 }
 
 function renderReports(){
+  var activeTab = window._rptActiveTab || 'activity';
   var NOTE_TYPES_R = ['','Trips','Email Sent','Email Received','Initial Call','Follow-up','General','Text Message','Lead'];
   var typeOpts = NOTE_TYPES_R.map(function(t){return '<option value="'+t+'">'+(t||'All types')+'</option>';}).join('');
+
   $('main').innerHTML =
     '<div class="page-hdr"><div class="page-title">Reports</div></div>'+
-    '<div class="report-filter">'+
-      '<div><label>From Date</label><input type="date" id="rpt-from"/></div>'+
-      '<div><label>To Date</label><input type="date" id="rpt-to"/></div>'+
-      '<div><label>Note Type</label><select id="rpt-type">'+typeOpts+'</select></div>'+
-      '<div><label>Client</label><select id="rpt-client"><option value="">All clients</option>'+
-        [...db.clients].sort(function(a,b){return (a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase());}).map(function(c){return '<option value="'+c.id+'">'+c.name+'</option>';}).join('')+
-      '</select></div>'+
-      '<div style="display:flex;gap:8px;align-self:flex-end">'+
-        '<button class="report-run-btn" id="rpt-run">Run Report</button>'+
-        '<button class="report-export-btn" id="rpt-export">Export CSV</button>'+
-      '</div>'+
+    '<div style="display:flex;gap:8px;margin-bottom:16px;border-bottom:1px solid #e5e7eb">'+
+      '<button class="rpt-tab-btn'+(activeTab==='activity'?' active':'')+'" data-tab="activity">Activity Report</button>'+
+      '<button class="rpt-tab-btn'+(activeTab==='invoice'?' active':'')+'" data-tab="invoice">By Invoice #</button>'+
     '</div>'+
-    '<div id="rpt-results"><div class="empty" style="padding:40px">Set filters above and click Run Report</div></div>';
+    (activeTab==='activity' ?
+      ('<div class="report-filter">'+
+        '<div><label>From Date</label><input type="date" id="rpt-from"/></div>'+
+        '<div><label>To Date</label><input type="date" id="rpt-to"/></div>'+
+        '<div><label>Note Type</label><select id="rpt-type">'+typeOpts+'</select></div>'+
+        '<div><label>Client</label><select id="rpt-client"><option value="">All clients</option>'+
+          [...db.clients].sort(function(a,b){return (a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase());}).map(function(c){return '<option value="'+c.id+'">'+c.name+'</option>';}).join('')+
+        '</select></div>'+
+        '<div style="display:flex;gap:8px;align-self:flex-end">'+
+          '<button class="report-run-btn" id="rpt-run">Run Report</button>'+
+          '<button class="report-export-btn" id="rpt-export">Export CSV</button>'+
+        '</div>'+
+      '</div>'+
+      '<div id="rpt-results"><div class="empty" style="padding:40px">Set filters above and click Run Report</div></div>')
+    :
+      ('<div class="report-filter">'+
+        '<div><label>From Date</label><input type="date" id="rpt-inv-from"/></div>'+
+        '<div><label>To Date</label><input type="date" id="rpt-inv-to"/></div>'+
+        '<div><label>Supplier</label><select id="rpt-inv-supplier"><option value="">All suppliers</option>'+
+          [...db.vendors].sort(function(a,b){return (a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase());}).map(function(v){return '<option value="'+v.id+'">'+v.name+'</option>';}).join('')+
+        '</select></div>'+
+        '<div><label>Client</label><select id="rpt-inv-client"><option value="">All clients</option>'+
+          [...db.clients].sort(function(a,b){return (a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase());}).map(function(c){return '<option value="'+c.id+'">'+c.name+'</option>';}).join('')+
+        '</select></div>'+
+        '<div style="display:flex;gap:8px;align-self:flex-end">'+
+          '<button class="report-run-btn" id="rpt-inv-run">Run Report</button>'+
+          '<button class="report-export-btn" id="rpt-inv-export">Export CSV</button>'+
+        '</div>'+
+      '</div>'+
+      '<div id="rpt-inv-results"><div class="empty" style="padding:40px">Set filters above and click Run Report</div></div>')
+    );
 
-  document.getElementById('rpt-run').addEventListener('click', function(){
-    runReport();
-    // Bind row clicks after table renders
-    setTimeout(function(){
-      document.querySelectorAll('.rpt-row').forEach(function(row){
-        row.addEventListener('click', function(){
-          var idx = parseInt(row.dataset.rptIdx, 10);
-          var r = window._reportRows && window._reportRows[idx];
-          if(r){ if(r.type==='Trips' && r.tripId){ openTripForm(r.tripId); } else { openNoteExpand(r.client+' — '+r.ts, r.text, r.type||''); } }
-        });
-      });
-    }, 50);
+  document.querySelectorAll('.rpt-tab-btn').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      window._rptActiveTab = btn.dataset.tab;
+      renderReports();
+    });
   });
-  document.getElementById('rpt-export').addEventListener('click', exportReport);
+
+  if(activeTab==='activity'){
+    document.getElementById('rpt-run').addEventListener('click', function(){
+      runReport();
+      setTimeout(function(){
+        document.querySelectorAll('.rpt-row').forEach(function(row){
+          row.addEventListener('click', function(){
+            var idx = parseInt(row.dataset.rptIdx, 10);
+            var r = window._reportRows && window._reportRows[idx];
+            if(r){ if(r.type==='Trips' && r.tripId){ openTripForm(r.tripId); } else { openNoteExpand(r.client+' — '+r.ts, r.text, r.type||''); } }
+          });
+        });
+      }, 50);
+    });
+    document.getElementById('rpt-export').addEventListener('click', exportReport);
+  } else {
+    document.getElementById('rpt-inv-run').addEventListener('click', function(){
+      runInvoiceReport();
+      setTimeout(function(){
+        document.querySelectorAll('.rpt-inv-row').forEach(function(row){
+          row.addEventListener('click', function(){
+            openTripForm(row.dataset.tripId);
+          });
+        });
+      }, 50);
+    });
+    document.getElementById('rpt-inv-export').addEventListener('click', exportInvoiceReport);
+  }
+}
+
+function getInvoiceReportData(){
+  var fromDate = (document.getElementById('rpt-inv-from')||{}).value||'';
+  var toDate   = (document.getElementById('rpt-inv-to')||{}).value||'';
+  var supplierId = (document.getElementById('rpt-inv-supplier')||{}).value||'';
+  var clientId = (document.getElementById('rpt-inv-client')||{}).value||'';
+
+  // Group trips by invoice number
+  var groups = {};
+  db.trips.forEach(function(t){
+    if(supplierId && t.supplierId !== supplierId) return;
+    if(clientId && t.clientId !== clientId) return;
+    var tripDate = t.departDate||'';
+    if(fromDate && tripDate < fromDate) return;
+    if(toDate   && tripDate > toDate)   return;
+    var key = t.invoiceNum || t.bookingRef || ('(no invoice) '+t.id);
+    if(!groups[key]) groups[key] = {invoiceNum:key, trips:[], totalValue:0, totalCash:0};
+    groups[key].trips.push(t);
+    groups[key].totalValue += (t.totalValue||0);
+    groups[key].totalCash  += (t.cashPaid||0);
+  });
+
+  var rows = Object.keys(groups).map(function(k){ return groups[k]; });
+  rows.sort(function(a,b){
+    var ad = (a.trips[0]&&a.trips[0].departDate)||'';
+    var bd = (b.trips[0]&&b.trips[0].departDate)||'';
+    return bd.localeCompare(ad);
+  });
+  return rows;
+}
+
+function runInvoiceReport(){
+  var groups = getInvoiceReportData();
+  var container = document.getElementById('rpt-inv-results');
+  if(!container) return;
+  if(!groups.length){
+    container.innerHTML = '<div class="empty" style="padding:40px">No trips match the selected filters</div>';
+    return;
+  }
+
+  var grandTotal = groups.reduce(function(a,g){return a+g.totalValue;},0);
+  var grandCash = groups.reduce(function(a,g){return a+g.totalCash;},0);
+
+  window._invoiceReportRows = groups;
+  var rowsHtml = '';
+  groups.forEach(function(g, gi){
+    g.trips.forEach(function(t, ti){
+      rowsHtml += '<tr class="rpt-inv-row" style="cursor:pointer" data-trip-id="'+t.id+'">'+
+        (ti===0 ? '<td rowspan="'+g.trips.length+'" style="font-weight:700;color:#111;vertical-align:top;border-right:1px solid #f0f0f0">'+g.invoiceNum+'</td>' : '')+
+        '<td>'+(t.clientName||'')+'</td>'+
+        '<td>'+(t.destination||'')+'</td>'+
+        '<td style="white-space:nowrap">'+(t.departDate||'')+'</td>'+
+        '<td>'+(t.supplierName||'—')+'</td>'+
+        '<td style="text-align:right">$'+Number(t.totalValue||0).toLocaleString()+'</td>'+
+      '</tr>';
+    });
+    rowsHtml += '<tr style="background:#f9fafb"><td colspan="5" style="text-align:right;font-weight:700;color:#374151;padding:6px 12px">Invoice '+g.invoiceNum+' Total:</td><td style="text-align:right;font-weight:700;color:#111">$'+Number(g.totalValue).toLocaleString()+'</td></tr>';
+  });
+
+  container.innerHTML =
+    '<div style="font-size:13px;color:#888;margin-bottom:10px">'+groups.length+' invoice'+(groups.length!==1?'s':'')+' · '+db.trips.length+' trip rows · Grand Total: <strong style="color:#111">$'+Number(grandTotal).toLocaleString()+'</strong></div>'+
+    '<div class="tbl-wrap"><table class="report-table"><thead><tr>'+
+      '<th>Invoice #</th><th>Client</th><th>Destination</th><th>Date</th><th>Supplier</th><th style="text-align:right">Value</th>'+
+    '</tr></thead><tbody>'+rowsHtml+'</tbody></table></div>';
+}
+
+function exportInvoiceReport(){
+  var groups = getInvoiceReportData();
+  if(!groups.length){ toast('No data to export','err'); return; }
+  var esc = function(v){ var s=String(v==null?'':v); return s.includes(',')||s.includes('"')||s.includes('\n')?'"'+s.replace(/"/g,'""')+'"':s; };
+  var headers = ['Invoice #','Client','Destination','Date','Supplier','Value'];
+  var rows = [];
+  groups.forEach(function(g){
+    g.trips.forEach(function(t){
+      rows.push([g.invoiceNum, t.clientName, t.destination, t.departDate, t.supplierName||'', t.totalValue||0]);
+    });
+    rows.push(['', '', '', '', 'Invoice Total', g.totalValue]);
+  });
+  var csv = [headers].concat(rows).map(function(r){return r.map(esc).join(',');}).join('\n');
+  var b = new Blob([csv],{type:'text/csv'});
+  var a = document.createElement('a'); a.href=URL.createObjectURL(b); a.download='milesman-invoice-report.csv'; a.click();
+  toast('Report exported ✓');
 }
 
 function getReportData(){
@@ -2288,7 +2436,7 @@ function renderCalendar(){
       return '<div class="'+cls+'" data-trip-id="'+t.id+'" title="'+t.clientName+': '+t.destination+(tp==='start'?' (departs)':tp==='end'?' (returns)':'')+'">'+label+'</div>';
     }).join('');
     if(trips.length>3) tripHtml+='<div style="font-size:9px;color:#888">+' +(trips.length-3)+' more</div>';
-    cells+='<div class="cal-cell'+(isToday?' today':'')+'">'+dayNumHtml+tripHtml+'</div>';
+    cells+='<div class="cal-cell'+(isToday?' today':'')+'" data-date="'+dateStr+'" style="cursor:pointer">'+dayNumHtml+tripHtml+'</div>';
   }
   // Pad end
   var totalCells = startDow + lastDay.getDate();
@@ -2322,8 +2470,69 @@ function renderCalendar(){
 
   // Trip click → open edit form
   document.querySelectorAll('.cal-trip[data-trip-id]').forEach(function(el){
-    el.addEventListener('click',function(){
+    el.addEventListener('click',function(e){
+      e.stopPropagation();
       openTripForm(el.dataset.tripId);
+    });
+  });
+
+  document.querySelectorAll('.cal-cell[data-date]').forEach(function(cell){
+    cell.addEventListener('click', function(){
+      openDayTripsModal(cell.dataset.date, tripMap[cell.dataset.date]||[]);
+    });
+  });
+}
+
+function openDayTripsModal(dateStr, entries){
+  var dateObj = new Date(dateStr+'T12:00:00');
+  var dateLabel = dateObj.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
+
+  // Dedupe trips (a trip can appear multiple times if it spans the date as start+end same day)
+  var seen = {};
+  var trips = [];
+  entries.forEach(function(entry){
+    if(!seen[entry.trip.id]){ seen[entry.trip.id]=true; trips.push(entry.trip); }
+  });
+
+  var rows = trips.map(function(t){
+    var scls = {'Confirmed':'b-green','Planning':'b-amber','Completed':'b-blue','Cancelled':'b-red'}[t.status||'']||'b-gray';
+    return '<tr class="day-trip-row" data-trip-id="'+t.id+'" style="cursor:pointer">'+
+      '<td style="font-weight:600;color:#2563eb;text-decoration:underline">'+(t.clientName||'')+'</td>'+
+      '<td>'+(t.destination||'')+'</td>'+
+      '<td><span class="badge '+scls+'">'+(t.status||'')+'</span></td>'+
+      '<td>'+(t.supplierName||'—')+'</td>'+
+      '<td style="text-align:right">$'+Number(t.totalValue||0).toLocaleString()+'</td>'+
+    '</tr>';
+  }).join('');
+
+  $('modal').innerHTML =
+    '<div class="modal-hdr"><div class="modal-title">'+dateLabel+'</div><button class="close-btn" id="modal-close">&#x2715;</button></div>'+
+    (trips.length ?
+      '<div class="tbl-wrap"><table>'+
+        '<thead><tr><th>Client</th><th>Destination</th><th>Status</th><th>Supplier</th><th style="text-align:right">Value</th></tr></thead>'+
+        '<tbody>'+rows+'</tbody>'+
+      '</table></div>'
+    : '<div class="empty">No trips on this day</div>')+
+    '<div class="form-actions">'+
+      '<button class="cancel-btn" id="modal-close2">Close</button>'+
+      '<button class="save-btn" id="day-add-trip">+ Add Trip</button>'+
+    '</div>';
+
+  $('overlay').classList.add('open');
+  $('modal-close').addEventListener('click', closeModal);
+  $('modal-close2').addEventListener('click', closeModal);
+  $('day-add-trip').addEventListener('click', function(){
+    closeModal();
+    openTripForm();
+    setTimeout(function(){
+      var ddInput = document.getElementById('tdd');
+      if(ddInput) ddInput.value = dateStr;
+    }, 50);
+  });
+  document.querySelectorAll('.day-trip-row').forEach(function(row){
+    row.addEventListener('click', function(){
+      closeModal();
+      openTripForm(row.dataset.tripId);
     });
   });
 }
@@ -3023,6 +3232,17 @@ function delTrip(id){
   function closeMobileNav(){ if(sidebarEl)sidebarEl.classList.remove('open'); if(sidebarOverlay)sidebarOverlay.classList.remove('open'); }
   if(mobileToggle) mobileToggle.addEventListener('click', openMobileNav);
   if(sidebarOverlay) sidebarOverlay.addEventListener('click', closeMobileNav);
+
+  document.querySelectorAll('.menu-toggle-btn').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var menuId = btn.dataset.menu;
+      var menu = document.getElementById(menuId);
+      if(!menu) return;
+      var isOpen = menu.style.display !== 'none';
+      menu.style.display = isOpen ? 'none' : 'block';
+      btn.classList.toggle('open', !isOpen);
+    });
+  });
 
   $('nb-dashboard').addEventListener('click', function(){go('dashboard');closeMobileNav();});
   $('nb-clients').addEventListener('click', function(){go('clients');closeMobileNav();});
