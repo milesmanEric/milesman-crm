@@ -2957,8 +2957,9 @@ function openClientForm(id){
         if(!totalCount) return '<div class="field full"><label>Trips (0)</label><div style="color:#aaa;font-size:12px;padding:8px 0">No trips yet.</div></div>';
 
         var tripRows = clientTrips.map(function(t){
-          var status = t.status||'';
-          var scls = {'Confirmed':'b-green','Planning':'b-amber','Completed':'b-blue','Cancelled':'b-red'}[status]||'b-gray';
+          var status = t.status||'Planning';
+          if(status==='Completed' && t.departDate && t.departDate>=today()) status='Upcoming';
+          var scls = {'Confirmed':'b-green','Planning':'b-amber','Completed':'b-blue','Cancelled':'b-red','Upcoming':'b-amber'}[status]||'b-gray';
           return '<tr style="cursor:pointer;background:#fff" class="client-trip-row" data-trip-id="'+t.id+'">'+
             '<td style="font-size:12px;font-weight:600;color:#2563eb;padding:8px 10px;text-decoration:underline">'+t.destination+'</td>'+
             '<td style="font-size:11px;color:#555;padding:8px 10px;white-space:nowrap">'+( t.departDate||'—')+'</td>'+
