@@ -473,20 +473,18 @@ function loadDB(){
     db.clients=Array.isArray(d.clients)?d.clients:[];
     db.trips=Array.isArray(d.trips)?d.trips:[];
     db.vendors=Array.isArray(d.vendors)?d.vendors:[];
-    // One-time migration: convert client names to 'Last, First' format
-    if(!localStorage.getItem('mm_name_migration_done')){
-      var migrated=0;
-      db.clients.forEach(function(c){
-        if(c.name && !c.name.includes(',')){
-          c.name=toLastFirst(c.name);
-          migrated++;
-        }
-      });
-      if(migrated>0){
-        saveDB();
-        console.log('[CRM] Migrated '+migrated+' client names to Last, First format');
+    // Always normalize client names to 'Last, First' format on every load
+    // (safe to run repeatedly since it skips names that already have a comma)
+    var migrated=0;
+    db.clients.forEach(function(c){
+      if(c.name && !c.name.includes(',')){
+        c.name=toLastFirst(c.name);
+        migrated++;
       }
-      localStorage.setItem('mm_name_migration_done','1');
+    });
+    if(migrated>0){
+      saveDB();
+      console.log('[CRM] Normalized '+migrated+' client names to Last, First format');
     }
   }catch(e){db={clients:[],trips:[]};}
 }
@@ -940,7 +938,9 @@ async function driveRestore(){
         clients:Array.isArray(d.clients)?d.clients:[],
         trips:Array.isArray(d.trips)?d.trips:[],
         vendors:Array.isArray(d.vendors)?d.vendors:[]
-      };saveDB();render();
+      };
+      db.clients.forEach(function(c){ if(c.name && !c.name.includes(',')) c.name=toLastFirst(c.name); });
+      saveDB();render();
       const date=new Date(existing.modifiedTime).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
       toast('Restored from Drive ('+date+')','ok');
     }else{toast('Backup file appears corrupted','err');}
@@ -966,7 +966,7 @@ function importJSON(){
     r.onload=function(ev){
       try{
         const d=JSON.parse(ev.target.result);
-        if(Array.isArray(d.clients)&&Array.isArray(d.trips)){db=d;saveDB();toast('Data imported');render();}
+        if(Array.isArray(d.clients)&&Array.isArray(d.trips)){db=d;(db.clients||[]).forEach(function(c){ if(c.name && !c.name.includes(',')) c.name=toLastFirst(c.name); });saveDB();toast('Data imported');render();}
         else toast('Invalid backup file','err');
       }catch(ex){toast('Could not read file','err');}
     };r.readAsText(f);
