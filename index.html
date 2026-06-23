@@ -1747,6 +1747,10 @@ function renderEmail(){
     '<div class="email-two-col">'+
       '<div>'+
         '<div style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">1. Select Client</div>'+
+        '<div style="display:flex;gap:14px;margin-bottom:8px">'+
+          '<label style="display:flex;align-items:center;gap:5px;font-size:12px;color:#374151;cursor:pointer"><input type="checkbox" id="email-filter-paying" style="width:13px;height:13px"> Paying clients only</label>'+
+          '<label style="display:flex;align-items:center;gap:5px;font-size:12px;color:#374151;cursor:pointer"><input type="checkbox" id="email-filter-subscriber" style="width:13px;height:13px"> Subscribers only</label>'+
+        '</div>'+
         '<select id="email-client-sel" style="width:100%;padding:8px 11px;border-radius:7px;border:1px solid #d1d5db;font-size:13px;font-family:inherit;color:#111;background:#fafafa;margin-bottom:16px">'+clientOpts+'</select>'+
         '<div style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">2. Select Template</div>'+
         templateCards+
@@ -1811,6 +1815,25 @@ function renderEmail(){
     selClient = db.clients.find(function(c){return c.id===this.value;},this)||null;
     updatePreview();
   });
+
+  function applyEmailFilters(){
+    var payingOnly = document.getElementById('email-filter-paying').checked;
+    var subOnly = document.getElementById('email-filter-subscriber').checked;
+    var filtered = sortedClients.filter(function(c){
+      if(payingOnly && !c.isPayingClient) return false;
+      if(subOnly && !c.isSubscriber) return false;
+      return true;
+    });
+    var sel = document.getElementById('email-client-sel');
+    var prevVal = sel.value;
+    sel.innerHTML = '<option value="">Select client...</option>'+
+      filtered.map(function(c){return '<option value="'+c.id+'">'+c.name+(c.email?' <'+c.email+'>':'')+'</option>';}).join('');
+    // Restore selection if still valid
+    if(filtered.some(function(c){return c.id===prevVal;})) sel.value = prevVal;
+    else { selClient=null; updatePreview(); }
+  }
+  document.getElementById('email-filter-paying').addEventListener('change', applyEmailFilters);
+  document.getElementById('email-filter-subscriber').addEventListener('change', applyEmailFilters);
 
   document.querySelectorAll('.template-card').forEach(function(card){
     card.addEventListener('click',function(){
@@ -2647,6 +2670,8 @@ function renderClients(){
       '<th class="sort-th-c" data-sort="trips" style="cursor:pointer">Trips'+clientSortArrow('trips')+'</th>'+
       '<th class="sort-th-c" data-sort="notes" style="cursor:pointer">Notes'+clientSortArrow('notes')+'</th>'+
       '<th class="sort-th-c" data-sort="joined" style="cursor:pointer">Joined'+clientSortArrow('joined')+'</th>'+
+      '<th style="text-align:center">Paying</th>'+
+      '<th style="text-align:center">Sub</th>'+
       '<th></th>'+
     '</tr></thead><tbody>'+
     (list.length?list.map(function(c){return '<tr>'+
@@ -2659,8 +2684,10 @@ function renderClients(){
       '<td><button class="trips-btn" data-cid="'+c.id+'">'+countDistinctTrips(c.id)+' trips &rarr;</button></td>'+
       '<td><button class="trips-btn" data-edit="'+c.id+'">'+(c.notesLog||[]).length+' notes</button></td>'+
       '<td>'+(c.joined||'')+'</td>'+
+      '<td style="text-align:center">'+(c.isPayingClient?'&#9989;':'')+'</td>'+
+      '<td style="text-align:center">'+(c.isSubscriber?'&#9989;':'')+'</td>'+
       '<td style="white-space:nowrap"><button class="icon-btn edit-client" data-id="'+c.id+'" style="color:#2563eb">&#9999;&#65039;</button><button class="icon-btn del-client" data-id="'+c.id+'" style="color:#dc2626">&#128465;&#65039;</button></td>'+
-    '</tr>';}).join(''):'<tr><td colspan="9"><div class="empty">No clients found</div></td></tr>')+
+    '</tr>';}).join(''):'<tr><td colspan="11"><div class="empty">No clients found</div></td></tr>')+
     '</tbody></table></div>';
 
   $('btn-add-client').addEventListener('click',function(){openClientForm();});
@@ -2946,6 +2973,10 @@ function openClientForm(id){
       fld('Phone',inp('fp','text',d.phone,'(xxx) xxx-xxxx'))+fld('Location',inp('fl','text',d.location,'City, State'))+
       fld('Tier',sel('ft',TIERS,d.tier||'Standard'))+fld('Points Balance',inp('fpts','number',d.points||0))+
       fld('Preferred Airline',sel('fpa',AIRLINES,d.preferredAirline))+fld('Preferred Hotel',sel('fph',HOTELS,d.preferredHotel))+
+      '<div class="field full" style="flex-direction:row;align-items:center;gap:24px;padding-top:6px">'+
+        '<label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#374151;text-transform:none;font-weight:500;cursor:pointer"><input type="checkbox" id="f-paying" '+(d.isPayingClient?'checked':'')+' style="width:15px;height:15px"> Paying Client</label>'+
+        '<label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#374151;text-transform:none;font-weight:500;cursor:pointer"><input type="checkbox" id="f-subscriber" '+(d.isSubscriber?'checked':'')+' style="width:15px;height:15px"> Subscriber</label>'+
+      '</div>'+
       (id ? (function(){
         // Direct trips for this client
         var clientTrips = db.trips.filter(function(t){return t.clientId===id;}).sort(function(a,b){return (b.departDate||'').localeCompare(a.departDate||'');});
@@ -3171,7 +3202,7 @@ function saveClient(id){
     const noteType=(typeEl&&typeEl.value)||'';
     return {ts:ts.trim(),text:text.trim(),noteType:noteType};
   }).filter(function(n){return n.text;});
-  const data={name:name,email:email,phone:gv('fp'),location:gv('fl'),tier:gv('ft')||'Standard',points:gn('fpts'),preferredAirline:gv('fpa'),preferredHotel:gv('fph'),notesLog:notesLog};
+  const data={name:name,email:email,phone:gv('fp'),location:gv('fl'),tier:gv('ft')||'Standard',points:gn('fpts'),preferredAirline:gv('fpa'),preferredHotel:gv('fph'),notesLog:notesLog,isPayingClient:document.getElementById('f-paying')?document.getElementById('f-paying').checked:false,isSubscriber:document.getElementById('f-subscriber')?document.getElementById('f-subscriber').checked:false};
   if(id){
     db.clients=db.clients.map(function(c){return c.id===id?Object.assign({},c,data):c;});
     toast('Client updated');
