@@ -230,6 +230,7 @@ tr:last-child td{border-bottom:none}
         <button class="io-btn" id="btn-restore">&#11014; Restore</button>
       </div>
       <button class="sync-btn" id="btn-mass-email" style="color:#7c3aed;border-color:#c4b5fd">&#128231; Email All Clients</button>
+      <button class="sync-btn" id="btn-log-mailchimp" style="color:#7c3aed;border-color:#c4b5fd">&#128226; Log Mailchimp Campaign</button>
       <button class="sync-btn" id="btn-import-csv" style="color:#059669;border-color:#6ee7b7">&#128203; Import Contacts from CSV</button>
       <button class="sync-btn" id="btn-import-revenue" style="color:#059669;border-color:#6ee7b7">&#128178; Import Revenue CSV</button>
       <button class="sync-btn" id="btn-clear-trips" style="color:#dc2626;border-color:#fca5a5">&#128465; Clear All Trips</button>
@@ -966,6 +967,62 @@ function massEmail(){
   saveDB();
   toast('Opening Outlook with '+withEmail.length+' clients in BCC','ok');
 }
+function openLogMailchimpModal(){
+  var sortedClients = [...db.clients].sort(function(a,b){return (a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase());});
+  var clientChecks = sortedClients.map(function(c){
+    return '<label style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:13px;cursor:pointer">'+
+      '<input type="checkbox" class="mc-client-cb" value="'+c.id+'" checked style="width:14px;height:14px">'+
+      '<span>'+c.name+'</span>'+
+    '</label>';
+  }).join('');
+
+  $('modal').innerHTML =
+    '<div class="modal-hdr"><div class="modal-title">Log Mailchimp Campaign</div><button class="close-btn" id="modal-close">&#x2715;</button></div>'+
+    '<div class="fg">'+
+      fld('Campaign Subject', inp('mc-subject','text','','e.g. June Travel Newsletter'), true)+
+      '<div class="field full"><label>Summary / Notes</label><textarea id="mc-summary" rows="3" placeholder="Optional summary of what the campaign covered"></textarea></div>'+
+      '<div class="field full"><label>Send Date</label><input id="mc-date" type="date" value="'+today()+'"></div>'+
+      '<div class="field full"><label>Apply To</label>'+
+        '<div style="margin-bottom:6px"><button type="button" id="mc-select-all" style="font-size:11px;color:#2563eb;background:none;border:none;cursor:pointer;text-decoration:underline">Select All</button> · <button type="button" id="mc-select-none" style="font-size:11px;color:#2563eb;background:none;border:none;cursor:pointer;text-decoration:underline">Select None</button></div>'+
+        '<div style="border:1px solid #e5e7eb;border-radius:8px;padding:10px;max-height:240px;overflow-y:auto;background:#fafafa">'+
+          (clientChecks || '<div style="color:#aaa;font-size:12px">No clients yet</div>')+
+        '</div>'+
+      '</div>'+
+    '</div>'+
+    '<div class="form-actions"><button class="cancel-btn" id="modal-cancel">Cancel</button><button class="save-btn" id="mc-save">Log Campaign</button></div>';
+
+  $('overlay').classList.add('open');
+  $('modal-close').addEventListener('click', closeModal);
+  $('modal-cancel').addEventListener('click', closeModal);
+  document.getElementById('mc-select-all').addEventListener('click', function(){
+    document.querySelectorAll('.mc-client-cb').forEach(function(cb){cb.checked=true;});
+  });
+  document.getElementById('mc-select-none').addEventListener('click', function(){
+    document.querySelectorAll('.mc-client-cb').forEach(function(cb){cb.checked=false;});
+  });
+  document.getElementById('mc-save').addEventListener('click', function(){
+    var subject = gv('mc-subject');
+    if(!subject){toast('Campaign subject is required','err');return;}
+    var summary = gv('mc-summary');
+    var sendDate = gv('mc-date')||today();
+    var selectedIds = Array.from(document.querySelectorAll('.mc-client-cb:checked')).map(function(cb){return cb.value;});
+    if(!selectedIds.length){toast('Select at least one client','err');return;}
+
+    snapshot('Log Mailchimp campaign');
+    var noteText = 'Mailchimp: '+subject+(summary?'\n'+summary:'');
+    var dateObj = new Date(sendDate+'T12:00:00');
+    var ts = dateObj.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})+' '+dateObj.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+
+    db.clients.forEach(function(c){
+      if(!selectedIds.includes(c.id)) return;
+      if(!c.notesLog) c.notesLog=[];
+      c.notesLog.push({ts:ts, text:noteText, noteType:'Email Sent', source:'mailchimp'});
+    });
+    saveDB(); closeModal(); render();
+    toast('Logged campaign for '+selectedIds.length+' client'+(selectedIds.length!==1?'s':''),'ok');
+  });
+}
+
 function parseCSVLine(line){
   const result=[];let cur='',inQuote=false;
   for(let i=0;i<line.length;i++){
@@ -2982,6 +3039,8 @@ function delTrip(id){
   $('btn-backup').addEventListener('click', exportJSON);
   $('btn-restore').addEventListener('click', importJSON);
   $('btn-mass-email').addEventListener('click', massEmail);
+  var logMcBtn = $('btn-log-mailchimp');
+  if(logMcBtn) logMcBtn.addEventListener('click', openLogMailchimpModal);
   $('btn-import-csv').addEventListener('click', importCSV);
   $('btn-import-revenue').addEventListener('click', importRevenue);
   var clearTripsBtn = $('btn-clear-trips');
