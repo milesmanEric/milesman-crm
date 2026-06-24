@@ -1095,6 +1095,7 @@ function importRevenue(){
         const hdrs = split(lines[0]).map(function(h){return h.toLowerCase().trim();});
         const looksLikeHeader = hdrs.some(function(h){return ['name','date','amount','num','qty','memo','item'].includes(h);});
         const startRow = looksLikeHeader ? 1 : 0;
+        debugLog('Revenue import: total lines='+lines.length+' startRow='+startRow+' expected data rows='+(lines.length-startRow));
 
         // Column indices (header-based or positional)
         // Positional: col0=date, col1=invoice, col2=memo/description, col3=name/supplier,
@@ -1874,6 +1875,7 @@ function importVendorsCSV(){
         const hdrs = split(lines[0]).map(function(h){return h.toLowerCase().trim();});
         const looksLikeHeader = hdrs.some(function(h){return ['name','date','amount','num','qty','memo','item','class'].includes(h);});
         const startRow = looksLikeHeader ? 1 : 0;
+        debugLog('Revenue import: total lines='+lines.length+' startRow='+startRow+' expected data rows='+(lines.length-startRow));
 
         function getCol(row, names, fallbackIdx){
           if(looksLikeHeader){
