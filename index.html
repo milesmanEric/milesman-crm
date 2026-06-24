@@ -1127,7 +1127,10 @@ function importRevenue(){
                           cols[cols.length-1]||'';
           const amt     = parseFloat(amtStr.replace(/[$,"]/g,''))||0;
 
-          if(!nameVal||amt===0) continue;
+          if(!nameVal||amt===0){
+            debugLog('Revenue SILENT SKIP row '+i+': nameVal='+JSON.stringify(nameVal)+' amtStr='+JSON.stringify(amtStr)+' amt='+amt+' rawCols='+JSON.stringify(cols));
+            continue;
+          }
 
           // Check if nameVal matches a supplier
           const matchedSupplier = db.vendors.find(function(v){
@@ -1889,7 +1892,10 @@ function importVendorsCSV(){
 
         for(var i=startRow;i<lines.length;i++){
           var cols=split(lines[i]);
-          if(cols.length<4) continue;
+          if(cols.length<4){
+            debugLog('Revenue SILENT SKIP (too few cols) row '+i+': cols='+cols.length+' rawLine='+JSON.stringify(lines[i].slice(0,100)));
+            continue;
+          }
 
           var date    = getCol(cols,['date'],0);
           var memo    = getCol(cols,['memo','description'],2);
