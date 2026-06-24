@@ -1114,7 +1114,7 @@ function importRevenue(){
         const rows=[];
         for(var i=startRow;i<lines.length;i++){
           const cols=split(lines[i]);
-          if(cols.length<3){ debugLog('Revenue ROW SKIPPED (cols<3) row '+i+': cols='+cols.length+' raw='+JSON.stringify(lines[i].slice(0,80))); continue; }
+          if(cols.length<3) continue;
 
           const date    = getCol(cols,['date'],0);
           const invoiceNum = getCol(cols,['num','invoice'],1);
@@ -1128,10 +1128,7 @@ function importRevenue(){
                           cols[cols.length-1]||'';
           const amt     = parseFloat(amtStr.replace(/[$,"]/g,''))||0;
 
-          if(!nameVal||amt===0){
-            debugLog('Revenue SILENT SKIP row '+i+': nameVal='+JSON.stringify(nameVal)+' amtStr='+JSON.stringify(amtStr)+' amt='+amt+' rawCols='+JSON.stringify(cols));
-            continue;
-          }
+          if(!nameVal||amt===0) continue;
 
           // Check if nameVal matches a supplier
           const matchedSupplier = db.vendors.find(function(v){
@@ -1340,7 +1337,6 @@ function finalizeImport(){
     // Only treat as duplicate if we've already accounted for at least as many occurrences
     // as already exist in db.trips (this allows legitimate repeated line items within a batch)
     var dupExists = occurrenceIndex < existingMatchCount;
-    debugLog('Revenue dup check: client='+client.name+' invoiceNum='+row.invoiceNum+' amt='+row.amt+' occurrenceIndex='+occurrenceIndex+' existingMatchCount='+existingMatchCount+' dupFound='+dupExists);
     if(dupExists){debugLog('Revenue: duplicate skipped for '+client.name);skipped++;return;}
 
     // Build destination: use memo, or supplier+date, or 'Imported Trip'
