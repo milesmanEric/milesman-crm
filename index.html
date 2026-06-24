@@ -2056,12 +2056,14 @@ function openVendorDetail(id){
 
   // Build full transaction table
   var txRows = stats.tripList.map(function(t){
-    var scls={'Confirmed':'b-green','Planning':'b-amber','Completed':'b-blue','Cancelled':'b-red'}[t.status||'']||'b-gray';
+    var st = t.status||'Planning';
+    if(st==='Completed' && t.departDate && t.departDate>=today()) st='Upcoming';
+    var scls={'Confirmed':'b-green','Planning':'b-amber','Completed':'b-blue','Cancelled':'b-red','Upcoming':'b-amber'}[st]||'b-gray';
     return '<tr>'+
       '<td style="padding:8px 12px;font-size:13px;color:#111;font-weight:500">'+t.clientName+'</td>'+
       '<td style="padding:8px 12px;font-size:13px;color:#374151">'+t.destination+'</td>'+
       '<td style="padding:8px 12px;font-size:12px;color:#888;white-space:nowrap">'+t.departDate+(t.returnDate?' → '+t.returnDate:'')+'</td>'+
-      '<td style="padding:8px 12px"><span class="badge '+scls+'">'+t.status+'</span></td>'+
+      '<td style="padding:8px 12px"><span class="badge '+scls+'">'+st+'</span></td>'+
       '<td style="padding:8px 12px;font-size:13px;color:#374151">$'+Number(t.cashPaid||0).toLocaleString()+'</td>'+
       '<td style="padding:8px 12px;font-size:13px;font-weight:600;color:#111">$'+Number(t.totalValue||0).toLocaleString()+'</td>'+
       '<td style="padding:8px 12px;font-size:12px;color:#888">'+t.id+'</td>'+
@@ -2176,12 +2178,14 @@ function renderVendors(){
             '</tr></thead>'+
             '<tbody>'+
             stats.tripList.slice(0,10).map(function(t){
-              var scls={'Confirmed':'b-green','Planning':'b-amber','Completed':'b-blue','Cancelled':'b-red'}[t.status||'']||'b-gray';
+              var st = t.status||'Planning';
+              if(st==='Completed' && t.departDate && t.departDate>=today()) st='Upcoming';
+              var scls={'Confirmed':'b-green','Planning':'b-amber','Completed':'b-blue','Cancelled':'b-red','Upcoming':'b-amber'}[st]||'b-gray';
               return '<tr class="vendor-trip-row" data-trip-id="'+t.id+'" style="cursor:pointer">'+
                 '<td style="font-size:12px;padding:5px 8px;color:#111;font-weight:500">'+t.clientName+'</td>'+
                 '<td style="font-size:12px;padding:5px 8px;color:#374151">'+t.destination+'</td>'+
                 '<td style="font-size:11px;padding:5px 8px;color:#888;white-space:nowrap">'+t.departDate+(t.returnDate?' → '+t.returnDate:'')+'</td>'+
-                '<td style="padding:5px 8px"><span class="badge '+scls+'">'+t.status+'</span></td>'+
+                '<td style="padding:5px 8px"><span class="badge '+scls+'">'+st+'</span></td>'+
                 '<td style="font-size:12px;padding:5px 8px;color:#374151">$'+Number(t.totalValue||0).toLocaleString()+'</td>'+
               '</tr>';
             }).join('')+
