@@ -1315,8 +1315,11 @@ function finalizeImport(){
     const client=db.clients.find(c=>c.id===cid);
     if(!client){skipped++;return;}
 
-    // Duplicate check
+    // Duplicate check: prefer invoice number match (most reliable), fall back to client+supplier+amount+date
     const dupExists=db.trips.some(function(t){
+      if(row.invoiceNum && t.invoiceNum){
+        return t.clientId===cid && t.invoiceNum===row.invoiceNum && t.cashPaid===row.amt;
+      }
       return t.clientId===cid &&
              t.supplierId===(row.supplierId||'') &&
              t.cashPaid===row.amt &&
