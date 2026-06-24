@@ -513,8 +513,7 @@ function debugLog(msg){
     if(prev.length > 100) prev.shift();
     localStorage.setItem('mm_debug_log', JSON.stringify(prev));
   }catch(e){}
-  // Update panel only if already open
-  const panel=$('debug-panel');
+  // Update panel DOM, capped to prevent memory leak from unbounded node accumulation
   const log=$('debug-log');
   if(log){
     const line=document.createElement('div');
@@ -522,6 +521,10 @@ function debugLog(msg){
     line.style.padding='2px 0';
     line.textContent=entry;
     log.appendChild(line);
+    // Cap DOM nodes at 100 to match localStorage cap — remove oldest if exceeded
+    while(log.children.length > 100){
+      log.removeChild(log.firstChild);
+    }
     log.scrollTop=log.scrollHeight;
   }
   console.log('[CRM]', msg);
