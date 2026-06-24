@@ -1325,6 +1325,7 @@ function finalizeImport(){
              t.cashPaid===row.amt &&
              (t.departDate||'').slice(0,10)===(row.date?row.date.slice(0,10):today());
     });
+    debugLog('Revenue dup check: client='+client.name+' invoiceNum='+row.invoiceNum+' amt='+row.amt+' dupFound='+dupExists);
     if(dupExists){debugLog('Revenue: duplicate skipped for '+client.name);skipped++;return;}
 
     // Build destination: use memo, or supplier+date, or 'Imported Trip'
