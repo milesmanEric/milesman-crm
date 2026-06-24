@@ -1157,14 +1157,16 @@ function importRevenue(){
             supplierId   = '';
             supplierName = '';
             product      = classVal;
-            // Try to match supplier from classVal
+            // Try to match supplier from classVal — exact match only, no loose 'contains' matching
+            // (loose matching caused wrong suppliers like Melio/Marriott to collide on short substrings)
             if(classVal){
               var prodParts = classVal.split(':');
               for(var pi=0;pi<prodParts.length;pi++){
                 var seg = prodParts[pi].trim().toLowerCase();
+                if(seg.length<3) continue; // skip too-short segments that risk false matches
                 var sup = db.vendors.find(function(v){
                   var vl=(v.name||'').toLowerCase();
-                  return vl===seg||vl.includes(seg)||seg.includes(vl);
+                  return vl===seg;
                 });
                 if(sup){supplierId=sup.id;supplierName=sup.name;break;}
               }
