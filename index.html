@@ -1114,7 +1114,7 @@ function importRevenue(){
         const rows=[];
         for(var i=startRow;i<lines.length;i++){
           const cols=split(lines[i]);
-          if(cols.length<3) continue;
+          if(cols.length<3){ debugLog('Revenue ROW SKIPPED (cols<3) row '+i+': cols='+cols.length+' raw='+JSON.stringify(lines[i].slice(0,80))); continue; }
 
           const date    = getCol(cols,['date'],0);
           const invoiceNum = getCol(cols,['num','invoice'],1);
@@ -1282,6 +1282,7 @@ function showImportMatchModal(name){
 function finalizeImport(){
   const state=window._importState;
   let imported=0,skipped=0,totalRev=0;
+  var seenInBatch={}; // track signature counts seen so far in THIS import batch
   state.rows.forEach(function(row){
     // Find client by name
     const cl=row.name.toLowerCase().trim();
@@ -1319,8 +1320,14 @@ function finalizeImport(){
     const client=db.clients.find(c=>c.id===cid);
     if(!client){skipped++;return;}
 
-    // Duplicate check: prefer invoice number match (most reliable), fall back to client+supplier+amount+date
-    const dupExists=db.trips.some(function(t){
+    // Build a signature for this row, and count how many times this exact signature
+    // has already appeared earlier in THIS batch (to allow legitimate repeated line items)
+    var sig = cid+'|'+(row.invoiceNum||'')+'|'+(row.supplierId||'')+'|'+row.amt+'|'+(row.date?row.date.slice(0,10):today());
+    var occurrenceIndex = seenInBatch[sig] || 0; // how many times we've already seen this sig in this batch
+    seenInBatch[sig] = occurrenceIndex + 1;
+
+    // Count how many matching trips already exist in db.trips with this exact signature
+    var existingMatchCount = db.trips.filter(function(t){
       if(row.invoiceNum && t.invoiceNum){
         return t.clientId===cid && t.invoiceNum===row.invoiceNum && t.cashPaid===row.amt;
       }
@@ -1328,8 +1335,12 @@ function finalizeImport(){
              t.supplierId===(row.supplierId||'') &&
              t.cashPaid===row.amt &&
              (t.departDate||'').slice(0,10)===(row.date?row.date.slice(0,10):today());
-    });
-    debugLog('Revenue dup check: client='+client.name+' invoiceNum='+row.invoiceNum+' amt='+row.amt+' dupFound='+dupExists);
+    }).length;
+
+    // Only treat as duplicate if we've already accounted for at least as many occurrences
+    // as already exist in db.trips (this allows legitimate repeated line items within a batch)
+    var dupExists = occurrenceIndex < existingMatchCount;
+    debugLog('Revenue dup check: client='+client.name+' invoiceNum='+row.invoiceNum+' amt='+row.amt+' occurrenceIndex='+occurrenceIndex+' existingMatchCount='+existingMatchCount+' dupFound='+dupExists);
     if(dupExists){debugLog('Revenue: duplicate skipped for '+client.name);skipped++;return;}
 
     // Build destination: use memo, or supplier+date, or 'Imported Trip'
