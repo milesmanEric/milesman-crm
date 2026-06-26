@@ -2178,7 +2178,10 @@ function renderVendors(){
               '<th style="text-align:left;font-size:10px;color:#aaa;font-weight:600;padding:3px 8px;text-transform:uppercase">Value</th>'+
             '</tr></thead>'+
             '<tbody>'+
-            stats.tripList.slice(0,10).map(function(t){
+            (function(){
+            var vendorExpanded = (window._expandedVendors||{})[v.id];
+            var visibleTrips = vendorExpanded ? stats.tripList : stats.tripList.slice(0,10);
+            var rowsHtml = visibleTrips.map(function(t){
               var st = t.status||'Planning';
               if(st==='Completed' && t.departDate && t.departDate>=today()) st='Upcoming';
               var scls={'Confirmed':'b-green','Planning':'b-amber','Completed':'b-blue','Cancelled':'b-red','Upcoming':'b-amber'}[st]||'b-gray';
@@ -2189,8 +2192,10 @@ function renderVendors(){
                 '<td style="padding:5px 8px"><span class="badge '+scls+'">'+st+'</span></td>'+
                 '<td style="font-size:12px;padding:5px 8px;color:#374151">$'+Number(t.totalValue||0).toLocaleString()+'</td>'+
               '</tr>';
-            }).join('')+
-            (stats.tripList.length>10?'<tr><td colspan="5" style="font-size:11px;color:#888;padding:5px 8px">+ '+(stats.tripList.length-10)+' more trips</td></tr>':'')+
+            }).join('');
+            var moreRow = (stats.tripList.length>10?'<tr><td colspan="5" style="font-size:11px;color:#2563eb;padding:5px 8px;cursor:pointer;text-decoration:underline" class="vendor-toggle-more" data-vendor-id="'+v.id+'">'+(vendorExpanded?'Show less':'+ '+(stats.tripList.length-10)+' more trips')+'</td></tr>':'');
+            return rowsHtml+moreRow;
+            })()+
             '</tbody></table>'+
           '</div>'
         :'')+
@@ -2225,6 +2230,14 @@ function renderVendors(){
     });
     row.addEventListener('mouseenter', function(){row.style.background='#f0f7ff';});
     row.addEventListener('mouseleave', function(){row.style.background='';});
+  });
+  document.querySelectorAll('.vendor-toggle-more').forEach(function(el){
+    el.addEventListener('click', function(e){
+      e.stopPropagation();
+      if(!window._expandedVendors) window._expandedVendors={};
+      window._expandedVendors[el.dataset.vendorId] = !window._expandedVendors[el.dataset.vendorId];
+      renderVendors();
+    });
   });
 
   // Checkbox bulk select / delete for suppliers
