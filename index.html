@@ -2861,6 +2861,16 @@ function renderTrips(){
       '</div>'+
       '<button class="add-btn" id="btn-add-trip">+ Add Trip</button>'+
     '</div>'+
+    (selC ? (function(){
+      var totalValue = list.reduce(function(a,t){return a+(t.totalValue||0);},0);
+      var totalCash  = list.reduce(function(a,t){return a+(t.cashPaid||0);},0);
+      var invoiceCount = countDistinctTrips(selC.id);
+      return '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px">'+
+        '<div class="stat"><div class="stat-lbl">Trips (Distinct Invoices)</div><div class="stat-val">'+invoiceCount+'</div></div>'+
+        '<div class="stat"><div class="stat-lbl">Total Cash Paid</div><div class="stat-val">$'+Number(totalCash).toLocaleString()+'</div></div>'+
+        '<div class="stat"><div class="stat-lbl">Total Value</div><div class="stat-val">$'+Number(totalValue).toLocaleString()+'</div></div>'+
+      '</div>';
+    })() : '')+
     '<div class="search-row">'+
       '<input id="trip-search" placeholder="Search trips..." value="'+fSearch+'"/>'+
       '<select id="trip-status-filter"><option value="">All statuses</option>'+sopts+'</select>'+
