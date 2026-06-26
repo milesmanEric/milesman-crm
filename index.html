@@ -2384,10 +2384,20 @@ function openVendorForm(id){
         });
         if(!found.length) return '<div style="font-size:12px;color:#888;padding:8px 0">No linked clients yet</div>';
         return found.map(function(c){
-          var trips = db.trips.filter(function(t){return t.clientId===c.id;});
-          return '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f3f4f6">'+
-            '<span style="font-size:13px;color:#2563eb;font-weight:500;cursor:pointer;text-decoration:underline" class="supplier-client-link" data-id="'+c.id+'">'+c.name+'</span>'+
-            '<span style="font-size:12px;color:#888">'+trips.length+' trip'+(trips.length!==1?'s':'')+'</span>'+
+          // Only trips for THIS supplier specifically
+          var trips = db.trips.filter(function(t){return t.clientId===c.id && t.supplierId===d.id;});
+          var rowsHtml = trips.map(function(t){
+            return '<div style="display:flex;align-items:center;justify-content:space-between;padding:5px 10px;font-size:12px;color:#555;background:#f9fafb;border-radius:6px;margin-bottom:3px;cursor:pointer" class="client-booking-trip-row" data-trip-id="'+t.id+'">'+
+              '<span>'+(t.destination||'')+'</span>'+
+              '<span>$'+Number(t.totalValue||0).toLocaleString()+'</span>'+
+            '</div>';
+          }).join('');
+          return '<div style="border-bottom:1px solid #f3f4f6;padding:8px 0">'+
+            '<div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer" class="client-booking-toggle" data-client-id="'+c.id+'">'+
+              '<span style="font-size:13px;color:#2563eb;font-weight:500;text-decoration:underline" class="supplier-client-link" data-id="'+c.id+'">'+c.name+'</span>'+
+              '<span style="font-size:12px;color:#888">'+trips.length+' trip'+(trips.length!==1?'s':'')+' '+(trips.length?'<span class="client-booking-caret" style="display:inline-block;margin-left:4px;transition:transform .15s">&#9656;</span>':'')+'</span>'+
+            '</div>'+
+            (trips.length ? '<div class="client-booking-trips" data-client-id="'+c.id+'" style="display:none;margin-top:6px">'+rowsHtml+'</div>' : '')+
           '</div>';
         }).join('');
       })()+
@@ -2406,10 +2416,30 @@ function openVendorForm(id){
 
   $('modal-save-vendor').addEventListener('click', function(){saveVendor(this.dataset.id);});
   document.querySelectorAll('.supplier-client-link').forEach(function(el){
-    el.addEventListener('click', function(){
+    el.addEventListener('click', function(e){
+      e.stopPropagation();
       closeModal();
       go('clients');
       setTimeout(function(){openClientForm(el.dataset.id);},100);
+    });
+  });
+  document.querySelectorAll('.client-booking-toggle').forEach(function(el){
+    el.addEventListener('click', function(e){
+      if(e.target.classList.contains('supplier-client-link')) return;
+      var cid = el.dataset.clientId;
+      var tripsDiv = document.querySelector('.client-booking-trips[data-client-id="'+cid+'"]');
+      var caret = el.querySelector('.client-booking-caret');
+      if(!tripsDiv) return;
+      var isOpen = tripsDiv.style.display !== 'none';
+      tripsDiv.style.display = isOpen ? 'none' : 'block';
+      if(caret) caret.style.transform = isOpen ? 'rotate(0deg)' : 'rotate(90deg)';
+    });
+  });
+  document.querySelectorAll('.client-booking-trip-row').forEach(function(row){
+    row.addEventListener('click', function(e){
+      e.stopPropagation();
+      closeModal();
+      openTripForm(row.dataset.tripId);
     });
   });
   document.querySelectorAll('.del-vnote-btn').forEach(function(btn){
