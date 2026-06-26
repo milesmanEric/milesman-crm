@@ -352,6 +352,7 @@ const LS_KEY           = 'milesman_crm_v2';
 const TIERS    = ['Standard','Gold','Elite','Platinum'];
 const AIRLINES = ['American','United','Delta','Southwest','JetBlue','Qatar Airways','ANA','Emirates','Lufthansa','British Airways','Air France','Virgin Atlantic'];
 const HOTELS   = ['Marriott','Hilton','Hyatt','IHG','Wyndham','Four Seasons','Ritz-Carlton','W Hotels','Kimpton','Conrad'];
+const CRUISE_LINES = ['Virgin Voyages','Royal Caribbean','Carnival','Norwegian','Princess','Celebrity','Disney Cruise Line','Holland America','MSC Cruises','Viking'];
 const STATUSES = ['Planning','Confirmed','Completed','Cancelled'];
 const TYPES    = ['Leisure','Business','Honeymoon','Family','Adventure','Cruise'];
 const CLASSES  = ['Economy','Premium Economy','Business','First'];
@@ -2615,7 +2616,8 @@ function renderDash(){
     upcoming:db.trips.filter(function(t){return (t.departDate||'')>=today();}).length
   };
   const recent=[].concat(db.trips).sort(function(a,b){return (b.id||'').localeCompare(a.id||'');}).slice(0,6);
-  const top=[].concat(db.clients).sort(function(a,b){return b.points-a.points;}).slice(0,5);
+  function clientLiveRevenue(cid){return db.trips.filter(function(t){return t.clientId===cid;}).reduce(function(a,t){return a+(t.totalValue||0);},0);}
+  const top=[].concat(db.clients).sort(function(a,b){return clientLiveRevenue(b.id)-clientLiveRevenue(a.id);}).slice(0,5);
   $('main').innerHTML=
     '<div class="page-hdr"><div class="page-title">Dashboard</div><div style="font-size:12px;color:#888">'+new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'})+'</div></div>'+
     '<div class="stats-grid">'+
@@ -2638,7 +2640,7 @@ function renderDash(){
       '<div class="card">'+
         '<div class="card-hdr"><span class="card-title">Top clients</span></div>'+
         (top.length?
-          top.map(function(c){return '<div class="cli-row" data-cid="'+c.id+'">'+av(c.name)+'<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600;color:#111;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+c.name+'</div><div style="font-size:11px;color:#888">'+fmt(c.points)+' pts</div></div>'+badge(c.tier)+'</div>';}).join(''):
+          top.map(function(c){var rev=clientLiveRevenue(c.id);return '<div class="cli-row" data-cid="'+c.id+'">'+av(c.name)+'<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600;color:#111;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+c.name+'</div><div style="font-size:11px;color:#888">$'+Number(rev).toLocaleString()+'</div></div></div>';}).join(''):
           '<div class="empty">No clients yet</div>')+
       '</div>'+
     '</div>';
@@ -3016,7 +3018,7 @@ function openClientForm(id){
       fld('Full Name',inp('fn','text',toFirstLast(d.name)))+fld('Email',inp('fe','email',d.email))+
       fld('Phone',inp('fp','text',d.phone,'(xxx) xxx-xxxx'))+fld('Location',inp('fl','text',d.location,'City, State'))+
       fld('Tier',sel('ft',TIERS,d.tier||'Standard'))+fld('Points Balance',inp('fpts','number',d.points||0))+
-      fld('Preferred Airline',sel('fpa',AIRLINES,d.preferredAirline))+fld('Preferred Hotel',sel('fph',HOTELS,d.preferredHotel))+
+      fld('Preferred Airline',sel('fpa',AIRLINES,d.preferredAirline))+fld('Preferred Hotel',sel('fph',HOTELS,d.preferredHotel))+fld('Preferred Cruise Line',sel('fpc',CRUISE_LINES,d.preferredCruiseLine))+
       '<div class="field full" style="flex-direction:row;align-items:center;gap:24px;padding-top:6px">'+
         '<label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#374151;text-transform:none;font-weight:500;cursor:pointer"><input type="checkbox" id="f-paying" '+(d.isPayingClient?'checked':'')+' style="width:15px;height:15px"> Paying Client</label>'+
         '<label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#374151;text-transform:none;font-weight:500;cursor:pointer"><input type="checkbox" id="f-subscriber" '+(d.isSubscriber?'checked':'')+' style="width:15px;height:15px"> Subscriber</label>'+
@@ -3246,7 +3248,7 @@ function saveClient(id){
     const noteType=(typeEl&&typeEl.value)||'';
     return {ts:ts.trim(),text:text.trim(),noteType:noteType};
   }).filter(function(n){return n.text;});
-  const data={name:name,email:email,phone:gv('fp'),location:gv('fl'),tier:gv('ft')||'Standard',points:gn('fpts'),preferredAirline:gv('fpa'),preferredHotel:gv('fph'),notesLog:notesLog,isPayingClient:document.getElementById('f-paying')?document.getElementById('f-paying').checked:false,isSubscriber:document.getElementById('f-subscriber')?document.getElementById('f-subscriber').checked:false};
+  const data={name:name,email:email,phone:gv('fp'),location:gv('fl'),tier:gv('ft')||'Standard',points:gn('fpts'),preferredAirline:gv('fpa'),preferredHotel:gv('fph'),preferredCruiseLine:gv('fpc'),notesLog:notesLog,isPayingClient:document.getElementById('f-paying')?document.getElementById('f-paying').checked:false,isSubscriber:document.getElementById('f-subscriber')?document.getElementById('f-subscriber').checked:false};
   if(id){
     db.clients=db.clients.map(function(c){return c.id===id?Object.assign({},c,data):c;});
     toast('Client updated');
