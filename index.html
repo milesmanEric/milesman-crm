@@ -2834,6 +2834,57 @@ function sortArrow(col){
   return tripSortDir==='asc' ? ' &#9650;' : ' &#9660;';
 }
 
+function openInvoiceDetail(invoiceNum){
+  if(!invoiceNum) return;
+  var matchingTrips = db.trips.filter(function(t){
+    return (t.invoiceNum||t.bookingRef||'')===invoiceNum;
+  });
+  if(!matchingTrips.length){ toast('No trips found for invoice '+invoiceNum,'err'); return; }
+
+  var totalValue = matchingTrips.reduce(function(a,t){return a+(t.totalValue||0);},0);
+  var totalCash  = matchingTrips.reduce(function(a,t){return a+(t.cashPaid||0);},0);
+
+  var rows = matchingTrips.map(function(t){
+    var st = t.status||'Planning';
+    if(st==='Completed' && t.departDate && t.departDate>=today()) st='Upcoming';
+    var scls={'Confirmed':'b-green','Planning':'b-amber','Completed':'b-blue','Cancelled':'b-red','Upcoming':'b-amber'}[st]||'b-gray';
+    return '<tr class="invoice-detail-row" data-trip-id="'+t.id+'" style="cursor:pointer">'+
+      '<td style="padding:8px 12px;font-size:13px;color:#111;font-weight:500">'+(t.clientName||'')+'</td>'+
+      '<td style="padding:8px 12px;font-size:13px;color:#374151">'+(t.destination||'')+'</td>'+
+      '<td style="padding:8px 12px;font-size:12px;color:#888">'+(t.product||'—')+'</td>'+
+      '<td style="padding:8px 12px;font-size:12px;color:#2563eb">'+(t.supplierName||'—')+'</td>'+
+      '<td style="padding:8px 12px"><span class="badge '+scls+'">'+st+'</span></td>'+
+      '<td style="padding:8px 12px;font-size:13px;color:#374151;text-align:right">$'+Number(t.cashPaid||0).toLocaleString()+'</td>'+
+      '<td style="padding:8px 12px;font-size:13px;font-weight:600;color:#111;text-align:right">$'+Number(t.totalValue||0).toLocaleString()+'</td>'+
+    '</tr>';
+  }).join('');
+
+  $('modal').innerHTML =
+    '<div class="modal-hdr"><div class="modal-title">Invoice #'+invoiceNum+'</div><button class="close-btn" id="modal-close">&#x2715;</button></div>'+
+    '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px">'+
+      '<div class="stat"><div class="stat-lbl">Line Items</div><div class="stat-val">'+matchingTrips.length+'</div></div>'+
+      '<div class="stat"><div class="stat-lbl">Total Cash Paid</div><div class="stat-val">$'+Number(totalCash).toLocaleString()+'</div></div>'+
+      '<div class="stat"><div class="stat-lbl">Total Value</div><div class="stat-val">$'+Number(totalValue).toLocaleString()+'</div></div>'+
+    '</div>'+
+    '<div class="tbl-wrap" style="max-height:400px;overflow-y:auto"><table>'+
+      '<thead><tr>'+
+        '<th>Client</th><th>Destination</th><th>Product</th><th>Supplier</th><th>Status</th><th style="text-align:right">Cash Paid</th><th style="text-align:right">Total Value</th>'+
+      '</tr></thead>'+
+      '<tbody>'+rows+'</tbody>'+
+    '</table></div>'+
+    '<div class="form-actions"><button class="cancel-btn" id="modal-close2">Close</button></div>';
+
+  $('overlay').classList.add('open');
+  $('modal-close').addEventListener('click', closeModal);
+  $('modal-close2').addEventListener('click', closeModal);
+  document.querySelectorAll('.invoice-detail-row').forEach(function(row){
+    row.addEventListener('click', function(){
+      closeModal();
+      openTripForm(row.dataset.tripId);
+    });
+  });
+}
+
 function renderTrips(){
   var tripSortCol = window._tripSortCol || 'departDate';
   var tripSortDir = window._tripSortDir || 'desc';
@@ -2920,7 +2971,10 @@ function renderTrips(){
         var supId = sup ? sup.id : (t.supplierId||'');
         return supName ? '<td style="font-size:11px;color:#2563eb;font-weight:500;cursor:pointer;text-decoration:underline" class="trip-sup-link" data-vendor-id="'+supId+'">'+supName+'</td>' : '<td style="font-size:11px;color:#aaa">—</td>';
       })()+
-      '<td style="font-size:11px;color:#555">'+(t.invoiceNum||t.bookingRef||'—')+'</td>'+
+      (function(){
+        var invVal = t.invoiceNum||t.bookingRef||'';
+        return invVal ? '<td style="font-size:11px;color:#2563eb;font-weight:500;cursor:pointer;text-decoration:underline" class="trip-invoice-link" data-invoice="'+invVal+'">'+invVal+'</td>' : '<td style="font-size:11px;color:#aaa">—</td>';
+      })()+
       '<td style="white-space:nowrap"><button class="icon-btn edit-trip" data-id="'+t.id+'" style="color:#2563eb">&#9999;&#65039;</button><button class="icon-btn del-trip" data-id="'+t.id+'" style="color:#dc2626">&#128465;&#65039;</button></td>'+
     '</tr>';}).join(''):'<tr><td colspan="11"><div class="empty">No trips found</div></td></tr>')+
     '</tbody></table></div>';
@@ -2947,6 +3001,12 @@ function renderTrips(){
       e.stopPropagation();
       go('vendors');
       setTimeout(function(){openVendorForm(el.dataset.vendorId);},100);
+    });
+  });
+  document.querySelectorAll('.trip-invoice-link').forEach(function(el){
+    el.addEventListener('click', function(e){
+      e.stopPropagation();
+      openInvoiceDetail(el.dataset.invoice);
     });
   });
   document.querySelectorAll('.edit-trip').forEach(function(btn){
