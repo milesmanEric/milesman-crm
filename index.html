@@ -2684,7 +2684,11 @@ function renderDash(){
         '<div class="card-hdr"><span class="card-title">Recent trips</span><button class="view-all" id="dash-view-all">View all &rarr;</button></div>'+
         (recent.length?
           '<table><thead><tr><th>Client</th><th>Destination</th><th>Depart</th><th>Status</th></tr></thead><tbody>'+
-          recent.map(function(t){return '<tr><td class="n">'+(t.clientName||'')+'</td><td>'+(t.destination||'')+'</td><td>'+(t.departDate||'')+'</td><td>'+badge(t.status)+'</td></tr>';}).join('')+
+          recent.map(function(t){
+            var st=t.status||'Planning';
+            if(st==='Completed' && t.departDate && t.departDate>=today()) st='Upcoming';
+            return '<tr><td class="n">'+(t.clientName||'')+'</td><td>'+(t.destination||'')+'</td><td>'+(t.departDate||'')+'</td><td>'+badge(st)+'</td></tr>';
+          }).join('')+
           '</tbody></table>':
           '<div class="empty">No trips yet</div>')+
       '</div>'+
