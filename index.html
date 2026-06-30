@@ -260,6 +260,7 @@ tr:last-child td{border-bottom:none}
       </div>
 
       <button class="sync-btn" id="btn-debug-toggle" style="color:#888;border-color:#ddd;font-size:11px">&#128030; Debug Panel</button>
+      <button class="sync-btn" id="btn-test-connectivity" style="color:#888;border-color:#ddd;font-size:11px">&#128225; Test Connectivity</button>
       <div class="footer-txt">(908) 419-7700 &middot; themilesman.com</div>
     </div>
   </div>
@@ -583,18 +584,20 @@ async function msLogin(){
   window.location.href='https://login.microsoftonline.com/'+MS_TENANT_ID+'/oauth2/v2.0/authorize?'+params.toString();
 }
 async function exchangeCodeForToken(code){
-  debugLog('Calling auth server (secure token exchange)...');
+  debugLog('Calling Microsoft directly (SPA token exchange, no proxy)...');
   const verifier = localStorage.getItem('mm_pkce_verifier')||'';
   debugLog('PKCE verifier found: '+(verifier?'yes ('+verifier.slice(0,10)+'...)':'NO - missing!'));
-  const r=await fetch(MS_AUTH_SERVER+'/api/token',{
+  const params = new URLSearchParams();
+  params.set('client_id', MS_CLIENT_ID);
+  params.set('grant_type', 'authorization_code');
+  params.set('code', code);
+  params.set('redirect_uri', MS_REDIRECT);
+  params.set('code_verifier', verifier);
+  params.set('scope', MS_SCOPE);
+  const r=await fetch('https://login.microsoftonline.com/'+MS_TENANT_ID+'/oauth2/v2.0/token',{
     method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({
-      grant_type:'authorization_code',
-      code:code,
-      redirect_uri:MS_REDIRECT,
-      code_verifier:verifier
-    })
+    headers:{'Content-Type':'application/x-www-form-urlencoded'},
+    body:params.toString()
   });
   const d=await r.json();
   debugLog('Token response status: '+r.status+' error: '+(d.error||'none')+' desc: '+(d.error_description||'').slice(0,80));
@@ -607,10 +610,15 @@ async function exchangeCodeForToken(code){
 async function refreshMsToken(){
   const rt=localStorage.getItem('mm_ms_refresh');
   if(!rt) throw new Error('No refresh token');
-  const r=await fetch(MS_AUTH_SERVER+'/api/token',{
+  const params = new URLSearchParams();
+  params.set('client_id', MS_CLIENT_ID);
+  params.set('grant_type', 'refresh_token');
+  params.set('refresh_token', rt);
+  params.set('scope', MS_SCOPE);
+  const r=await fetch('https://login.microsoftonline.com/'+MS_TENANT_ID+'/oauth2/v2.0/token',{
     method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({grant_type:'refresh_token',refresh_token:rt})
+    headers:{'Content-Type':'application/x-www-form-urlencoded'},
+    body:params.toString()
   });
   const d=await r.json();
   if(!r.ok) throw new Error(d.error_description||'Refresh failed');
@@ -3136,6 +3144,17 @@ function openClientForm(id){
         '<label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#374151;text-transform:none;font-weight:500;cursor:pointer"><input type="checkbox" id="f-paying" '+(d.isPayingClient?'checked':'')+' style="width:15px;height:15px"> Paying Client</label>'+
         '<label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#374151;text-transform:none;font-weight:500;cursor:pointer"><input type="checkbox" id="f-subscriber" '+(d.isSubscriber?'checked':'')+' style="width:15px;height:15px"> Subscriber</label>'+
       '</div>'+
+      '<div class="field full"><label>Attachments (Google Drive Links)</label>'+
+        '<div id="client-attachments-list" style="border:1px solid #e5e7eb;border-radius:8px;padding:10px;background:#fafafa;margin-bottom:8px">'+
+          ((d.attachments&&d.attachments.length) ? d.attachments.map(function(a,ai){
+            return '<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f0f0f0" data-att-idx="'+ai+'">'+
+              '<a href="'+a.url+'" target="_blank" style="font-size:13px;color:#2563eb;text-decoration:underline">&#128206; '+a.name+'</a>'+
+              '<button class="del-attachment-btn" data-att-idx="'+ai+'" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:14px">&#128465;</button>'+
+            '</div>';
+          }).join('') : '<div style="color:#aaa;font-size:12px">No attachments yet</div>')+
+        '</div>'+
+        '<button type="button" id="btn-add-attachment" style="padding:5px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit">+ Add Attachment Link</button>'+
+      '</div>'+
       (id ? (function(){
         // Direct trips for this client
         var clientTrips = db.trips.filter(function(t){return t.clientId===id;}).sort(function(a,b){return (b.departDate||'').localeCompare(a.departDate||'');});
@@ -3210,6 +3229,48 @@ function openClientForm(id){
   $('modal-close').addEventListener('click',closeModal);
   $('modal-cancel').addEventListener('click',closeModal);
   $('btn-add-note').addEventListener('click',addNoteEntry);
+
+  // Attachments — stored as name + URL links (e.g. Google Drive share links)
+  var clientAttachments = Array.isArray(d.attachments) ? d.attachments.slice() : [];
+  function refreshAttachmentsList(){
+    var listEl = document.getElementById('client-attachments-list');
+    if(!listEl) return;
+    if(!clientAttachments.length){
+      listEl.innerHTML = '<div style="color:#aaa;font-size:12px">No attachments yet</div>';
+      return;
+    }
+    listEl.innerHTML = clientAttachments.map(function(a,ai){
+      return '<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f0f0f0" data-att-idx="'+ai+'">'+
+        '<a href="'+a.url+'" target="_blank" style="font-size:13px;color:#2563eb;text-decoration:underline">&#128206; '+a.name+'</a>'+
+        '<button class="del-attachment-btn" data-att-idx="'+ai+'" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:14px">&#128465;</button>'+
+      '</div>';
+    }).join('');
+    bindDeleteAttachmentButtons();
+  }
+  function bindDeleteAttachmentButtons(){
+    document.querySelectorAll('.del-attachment-btn').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var idx = parseInt(btn.dataset.attIdx,10);
+        clientAttachments.splice(idx,1);
+        refreshAttachmentsList();
+      });
+    });
+  }
+  bindDeleteAttachmentButtons();
+
+  var addAttBtn = document.getElementById('btn-add-attachment');
+  if(addAttBtn){
+    addAttBtn.addEventListener('click', function(){
+      var name = prompt('Name for this attachment (e.g. "Passport scan", "Signed contract"):');
+      if(!name) return;
+      var url = prompt('Where is this file stored? Paste the Google Drive (or other) link:');
+      if(!url) return;
+      clientAttachments.push({name:name.trim(), url:url.trim()});
+      refreshAttachmentsList();
+      toast('Attachment link added — click Save Client to keep it','ok');
+    });
+  }
+  window._currentClientAttachments = clientAttachments; // exposed for saveClient to read
 
   // Note type filter
   var noteFilterSel = document.getElementById('note-type-filter');
@@ -3361,7 +3422,7 @@ function saveClient(id){
     const noteType=(typeEl&&typeEl.value)||'';
     return {ts:ts.trim(),text:text.trim(),noteType:noteType};
   }).filter(function(n){return n.text;});
-  const data={name:name,email:email,phone:gv('fp'),location:gv('fl'),tier:gv('ft')||'Standard',points:gn('fpts'),preferredAirline:gv('fpa'),preferredHotel:gv('fph'),preferredCruiseLine:gv('fpc'),notesLog:notesLog,isPayingClient:document.getElementById('f-paying')?document.getElementById('f-paying').checked:false,isSubscriber:document.getElementById('f-subscriber')?document.getElementById('f-subscriber').checked:false};
+  const data={name:name,email:email,phone:gv('fp'),location:gv('fl'),tier:gv('ft')||'Standard',points:gn('fpts'),preferredAirline:gv('fpa'),preferredHotel:gv('fph'),preferredCruiseLine:gv('fpc'),notesLog:notesLog,isPayingClient:document.getElementById('f-paying')?document.getElementById('f-paying').checked:false,isSubscriber:document.getElementById('f-subscriber')?document.getElementById('f-subscriber').checked:false,attachments:window._currentClientAttachments||[]};
   if(id){
     db.clients=db.clients.map(function(c){return c.id===id?Object.assign({},c,data):c;});
     toast('Client updated');
@@ -3512,6 +3573,26 @@ function delTrip(id){
     p.style.display=p.style.display==='none'?'block':'none';
   });
   $('debug-close').addEventListener('click', function(){$('debug-panel').style.display='none';});
+  var testConnBtn = $('btn-test-connectivity');
+  if(testConnBtn) testConnBtn.addEventListener('click', function(){
+    $('debug-panel').style.display='block';
+    debugLog('=== Connectivity Test Started ===');
+    fetch('https://api.github.com').then(function(r){
+      debugLog('GitHub fetch: status='+r.status+' ok='+r.ok);
+    }).catch(function(e){
+      debugLog('GitHub fetch FAILED: '+e.message);
+    });
+    fetch('https://milesman-auth.vercel.app').then(function(r){
+      debugLog('Vercel auth server fetch: status='+r.status+' ok='+r.ok);
+    }).catch(function(e){
+      debugLog('Vercel auth server fetch FAILED: '+e.message);
+    });
+    fetch('https://www.googleapis.com').then(function(r){
+      debugLog('Google APIs fetch: status='+r.status+' ok='+r.ok);
+    }).catch(function(e){
+      debugLog('Google APIs fetch FAILED: '+e.message);
+    });
+  });
   var neClose = document.getElementById('note-expand-close');
   var neOverlay = document.getElementById('note-expand-overlay');
   if(neClose) neClose.addEventListener('click', closeNoteExpand);
