@@ -1248,46 +1248,32 @@ function importRevenue(){
 
           if(!nameVal||amt===0) continue;
 
-          // Check if nameVal matches a supplier
-          const matchedSupplier = db.vendors.find(function(v){
-            return (v.name||'').toLowerCase().trim()===nameVal.toLowerCase().trim();
-          });
+          // Rule: Name must match Class (Class normalized from "First Last" to "Last, First"
+          // before comparing) or the row is skipped entirely — no supplier-cost rows imported here.
+          var nameNormalized  = toLastFirst(nameVal);
+          var classNormalized = toLastFirst(clientFromClass);
+          if(!clientFromClass || nameNormalized.toLowerCase()!==classNormalized.toLowerCase()){
+            debugLog('Revenue skip: name="'+nameVal+'" ('+nameNormalized+') does not match class="'+clientFromClass+'" ('+classNormalized+')');
+            continue;
+          }
 
-          var clientName, supplierId, supplierName, product;
-
-          if(matchedSupplier){
-            // nameVal IS a supplier — client must come from Class column (col5) ONLY
-            var clientCol = clientFromClass || '';
-
-            // If Class is blank, skip this row entirely (per rule)
-            if(!clientCol){
-              debugLog('Revenue skip: supplier='+matchedSupplier.name+' class field is blank');
-              continue;
-            }
-
-            clientName    = clientCol;
-            supplierId    = matchedSupplier.id;
-            supplierName  = matchedSupplier.name;
-            product       = classVal;
-          } else {
-            // nameVal IS the client name
-            clientName   = nameVal;
-            supplierId   = '';
-            supplierName = '';
-            product      = classVal;
-            // Try to match supplier from classVal — exact match only, no loose 'contains' matching
-            // (loose matching caused wrong suppliers like Melio/Marriott to collide on short substrings)
-            if(classVal){
-              var prodParts = classVal.split(':');
-              for(var pi=0;pi<prodParts.length;pi++){
-                var seg = prodParts[pi].trim().toLowerCase();
-                if(seg.length<3) continue; // skip too-short segments that risk false matches
-                var sup = db.vendors.find(function(v){
-                  var vl=(v.name||'').toLowerCase();
-                  return vl===seg;
-                });
-                if(sup){supplierId=sup.id;supplierName=sup.name;break;}
-              }
+          var clientName   = nameNormalized;
+          var supplierId   = '';
+          var supplierName = '';
+          var product      = classVal;
+          // Still try to enrich supplierId/supplierName from the product/item text — exact match only,
+          // no loose 'contains' matching (loose matching caused wrong suppliers like Melio/Marriott to
+          // collide on short substrings). This is just metadata on the trip, not part of the import decision.
+          if(classVal){
+            var prodParts = classVal.split(':');
+            for(var pi=0;pi<prodParts.length;pi++){
+              var seg = prodParts[pi].trim().toLowerCase();
+              if(seg.length<3) continue; // skip too-short segments that risk false matches
+              var sup = db.vendors.find(function(v){
+                var vl=(v.name||'').toLowerCase();
+                return vl===seg;
+              });
+              if(sup){supplierId=sup.id;supplierName=sup.name;break;}
             }
           }
 
@@ -1295,7 +1281,7 @@ function importRevenue(){
 
           rows.push({
             name:clientName,
-            isSupplierName:!!matchedSupplier,
+            isSupplierName:false,
             supplierName:supplierName,
             supplierId:supplierId,
             product:product,
