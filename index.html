@@ -425,6 +425,15 @@ function countDistinctTrips(clientId){
   });
   return count;
 }
+function countDistinctInvoicesIn(tripList){
+  var seen = {};
+  var count = 0;
+  (tripList||[]).forEach(function(t){
+    var key = t.invoiceNum || t.id;
+    if(!seen[key]){ seen[key]=true; count++; }
+  });
+  return count;
+}
 const gv = id => $(id) ? $(id).value.trim() : '';
 const gn = id => Number($(id) ? $(id).value : 0);
 const fmt = n => Number(n||0).toLocaleString();
@@ -2866,6 +2875,17 @@ function renderClients(){
 
   $('main').innerHTML=
     '<div class="page-hdr"><div class="page-title">Clients</div><button class="add-btn" id="btn-add-client">+ Add Client</button></div>'+
+    (function(){
+      var totalRevenue = list.reduce(function(a,c){
+        return a+db.trips.filter(function(t){return t.clientId===c.id;}).reduce(function(x,t){return x+(t.totalValue||0);},0);
+      },0);
+      var totalTrips = list.reduce(function(a,c){return a+countDistinctTrips(c.id);},0);
+      return '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px">'+
+        '<div class="stat"><div class="stat-lbl">Clients</div><div class="stat-val">'+list.length+'</div></div>'+
+        '<div class="stat"><div class="stat-lbl">Total Revenue</div><div class="stat-val">$'+Number(totalRevenue).toLocaleString()+'</div></div>'+
+        '<div class="stat"><div class="stat-lbl">Total Trips</div><div class="stat-val">'+totalTrips+'</div></div>'+
+      '</div>';
+    })()+
     '<div class="search-row">'+
       '<input id="client-search" placeholder="Search by name, email, location..." value="'+fSearch+'"/>'+
       '<button id="btn-select-all-clients" style="padding:7px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#555;cursor:pointer;font-size:12px;font-family:inherit">Select All</button>'+
@@ -3090,16 +3110,16 @@ function renderTrips(){
       '</div>'+
       '<button class="add-btn" id="btn-add-trip">+ Add Trip</button>'+
     '</div>'+
-    (selC ? (function(){
+    (function(){
       var totalValue = list.reduce(function(a,t){return a+(t.totalValue||0);},0);
       var totalCash  = list.reduce(function(a,t){return a+(t.cashPaid||0);},0);
-      var invoiceCount = countDistinctTrips(selC.id);
+      var invoiceCount = selC ? countDistinctTrips(selC.id) : countDistinctInvoicesIn(list);
       return '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px">'+
         '<div class="stat"><div class="stat-lbl">Trips (Distinct Invoices)</div><div class="stat-val">'+invoiceCount+'</div></div>'+
         '<div class="stat"><div class="stat-lbl">Total Cash Paid</div><div class="stat-val">$'+Number(totalCash).toLocaleString()+'</div></div>'+
         '<div class="stat"><div class="stat-lbl">Total Value</div><div class="stat-val">$'+Number(totalValue).toLocaleString()+'</div></div>'+
       '</div>';
-    })() : '')+
+    })()+
     '<div class="search-row">'+
       '<input id="trip-search" placeholder="Search trips..." value="'+fSearch+'"/>'+
       '<select id="trip-status-filter"><option value="">All statuses</option>'+sopts+'</select>'+
