@@ -3801,10 +3801,10 @@ function startAutosave(){
     console.log('[CRM] Auto-saved locally at', now);
   }, 5 * 60 * 1000);
 
-  // Google Drive backup every 10 minutes. Uses a silent token refresh (no login
+  // Google Drive backup every 5 minutes. Uses a silent token refresh (no login
   // redirect) so it works even if the user never manually clicked Backup/Restore
   // in this tab — as long as they've signed in at some point on this device.
-  setInterval(function(){ runAutoDriveBackup(); }, 10 * 60 * 1000);
+  setInterval(function(){ runAutoDriveBackup(); }, 5 * 60 * 1000);
 
   // Also back up whenever the tab is hidden/backgrounded or the page is being
   // unloaded — this is the case that matters most on mobile, where someone edits
