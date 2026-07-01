@@ -962,11 +962,15 @@ function checkDriveRedirect(){
 }
 async function findBackupFile(token){
   const q=encodeURIComponent("name='"+BACKUP_FILENAME+"' and trashed=false");
-  const r=await fetch('https://www.googleapis.com/drive/v3/files?q='+q+'&fields=files(id,name,modifiedTime)',{
+  const r=await fetch('https://www.googleapis.com/drive/v3/files?q='+q+'&orderBy=modifiedTime desc&fields=files(id,name,modifiedTime)',{
     headers:{Authorization:'Bearer '+token}
   });
   const d=await r.json();
-  return (d.files||[])[0]||null;
+  const files = d.files||[];
+  if(files.length>1){
+    debugLog('WARNING: found '+files.length+' files named "'+BACKUP_FILENAME+'" in Drive — using most recent ('+files[0].modifiedTime+'). Other copies may be stale duplicates worth deleting manually in Drive.');
+  }
+  return files[0]||null;
 }
 async function driveBackup(silent){
   const btn=$('drive-btn');
