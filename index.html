@@ -3769,12 +3769,12 @@ async function runAutoDriveBackup(){
   if(_autoBackupInFlight) return;
   const token = await getDriveTokenSilent();
   if(!token){
-    console.log('[CRM] Drive auto-backup skipped - not signed in on this device');
+    debugLog('Auto-backup skipped — not signed in on this device (no valid token or refresh token)');
     return;
   }
   _autoBackupInFlight = true;
-  console.log('[CRM] Running auto Drive backup...');
-  try{ driveToken = token; await driveBackup(true); } // silent=true suppresses button text change
+  debugLog('Running auto Drive backup...');
+  try{ driveToken = token; await driveBackup(true); debugLog('Auto Drive backup finished'); } // silent=true suppresses button text change
   finally{ _autoBackupInFlight = false; }
 }
 
