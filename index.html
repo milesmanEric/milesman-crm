@@ -1509,17 +1509,21 @@ function importCSV(){
         const headers=lines[0].split(',').map(function(h){return h.replace(/"/g,'').trim().toLowerCase();});
         const nameIdx=headers.findIndex(function(h){return h.includes('name');});
         const emailIdx=headers.findIndex(function(h){return h.includes('email');});
+        const phoneIdx=headers.findIndex(function(h){return h.includes('phone');});
+        const locIdx=headers.findIndex(function(h){return h.includes('location')||h.includes('city');});
         if(nameIdx===-1){toast('No name column found in CSV','err');return;}
-        let added=0,skipped=0;
+        let added=0,skipped=0,enriched=0;
         for(let i=1;i<lines.length;i++){
           const cols=lines[i].split(',');
           const clean=cols.map(function(c){return (c||'').replace(/^"|"$/g,'').trim();});
           const name=clean[nameIdx]||'';
           const email=emailIdx>=0?(clean[emailIdx]||''):'';
+          const phone=phoneIdx>=0?(clean[phoneIdx]||''):'';
+          const location=locIdx>=0?(clean[locIdx]||''):'';
           if(!name){skipped++;continue;}
           const nameFirst=getFirstName(name).toLowerCase();
           const nameLast=getLastName(name).toLowerCase();
-          const exists=db.clients.some(function(c){
+          const existing=db.clients.find(function(c){
             if(email && c.email && c.email.toLowerCase()===email.toLowerCase()) return true;
             var cFull=(c.name||'').toLowerCase().trim();
             if(cFull===name.toLowerCase().trim()) return true; // exact match, any format
@@ -1528,13 +1532,27 @@ function importCSV(){
             // Format-independent match: same first+last regardless of "First Last" vs "Last, First"
             return nameFirst && nameLast && nameFirst!==nameLast && cFirst===nameFirst && cLast===nameLast;
           });
-          if(exists){debugLog('Client import skip (duplicate): '+name);skipped++;continue;}
-          db.clients.push({id:newId('C',db.clients),name:toLastFirst(name),email:email,phone:'',location:'',tier:'Standard',points:0,preferredAirline:'',preferredHotel:'',notes:'',joined:today(),totalTrips:0,notesLog:[]});
+          if(existing){
+            // Duplicate — fill in any fields the existing record is missing, don't create a new client
+            var filled=[];
+            if(email && !existing.email){existing.email=email;filled.push('email');}
+            if(phone && !existing.phone){existing.phone=phone;filled.push('phone');}
+            if(location && !existing.location){existing.location=location;filled.push('location');}
+            if(filled.length){
+              debugLog('Client import: enriched '+existing.name+' with '+filled.join(', ')+' from duplicate row');
+              enriched++;
+            } else {
+              debugLog('Client import skip (duplicate, no new info): '+name);
+            }
+            skipped++;
+            continue;
+          }
+          db.clients.push({id:newId('C',db.clients),name:toLastFirst(name),email:email,phone:phone,location:location,tier:'Standard',points:0,preferredAirline:'',preferredHotel:'',notes:'',joined:today(),totalTrips:0,notesLog:[]});
           added++;
         }
         snapshot('Import contacts');
         saveDB();render();
-        toast('Imported '+added+' contacts'+(skipped?' ('+skipped+' skipped)':'')+' ✓');
+        toast('Imported '+added+' contacts'+(skipped?' ('+skipped+' skipped)':'')+(enriched?', enriched '+enriched+' existing':'')+' ✓');
       }catch(err){toast('Could not read CSV: '+err.message,'err');}
     };r.readAsText(f);
   };i.click();
