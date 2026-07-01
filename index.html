@@ -645,38 +645,52 @@ async function fetchEmails(token,clientEmail,lastSyncDate){
   const results = [];
   const clientLower = clientEmail.toLowerCase();
 
-  // Only fetch last 90 days unless we have a lastSync date
+  // No lastSyncDate means "full sync" — use a wide window (5 years) rather than
+  // silently limiting to 90 days, since callers passing null expect everything.
   const since = lastSyncDate || (function(){
     const d = new Date();
-    d.setDate(d.getDate()-90);
+    d.setFullYear(d.getFullYear()-5);
     return d.toISOString();
   })();
 
   debugLog('Fetching emails since: '+since.slice(0,10));
 
-  // Fetch inbox - single page of 50, filtered by date
+  // Follow @odata.nextLink to page through all results, up to a safety cap
+  // so a single sync can't run forever on a huge mailbox.
+  async function fetchAllPages(url, label){
+    var all = [];
+    var next = url;
+    var pages = 0;
+    var MAX_PAGES = 10; // 10 x 50 = up to 500 messages per folder per client
+    while(next && pages < MAX_PAGES){
+      pages++;
+      const r = await fetch(next,{headers:{Authorization:'Bearer '+token}});
+      const d = await r.json();
+      if(!r.ok){ debugLog(label+' error (page '+pages+'): '+(d.error&&d.error.message||'status '+r.status)); break; }
+      all.push.apply(all,(d.value||[]));
+      next = d['@odata.nextLink']||null;
+    }
+    if(next) debugLog(label+': stopped after '+MAX_PAGES+' pages ('+all.length+' messages) — there may be more');
+    return all;
+  }
+
+  // Fetch inbox — filtered server-side by sender email, so it's not competing
+  // with every other message in the mailbox for a spot in the first page.
   try{
     const sinceParam = encodeURIComponent(since);
+    const emailFilter = encodeURIComponent("from/emailAddress/address eq '"+clientEmail.replace(/'/g,"''")+"'");
     const u1 = 'https://graph.microsoft.com/v1.0/me/messages'+
       '?$select=subject,receivedDateTime,from,toRecipients,body,isDraft'+
       '&$orderby=receivedDateTime desc&$top=50'+
-      '&$filter=receivedDateTime+ge+'+sinceParam;
+      '&$filter='+emailFilter+'+and+receivedDateTime+ge+'+sinceParam;
     debugLog('Fetching inbox for '+clientEmail+'...');
-    const r1 = await fetch(u1,{headers:{Authorization:'Bearer '+token}});
-    const d1 = await r1.json();
-    debugLog('Inbox: status='+r1.status+' count='+((d1.value||[]).length));
-    if(r1.ok && d1.value){
-      const matched = d1.value.filter(function(m){
-        const from=(m.from&&m.from.emailAddress&&m.from.emailAddress.address||'').toLowerCase();
-        const to=(m.toRecipients||[]).map(function(r){return(r.emailAddress&&r.emailAddress.address||'').toLowerCase();});
-        return from===clientLower||to.indexOf(clientLower)>=0;
-      });
-      debugLog('Inbox matched: '+matched.length);
-      results.push.apply(results,matched);
-    } else { debugLog('Inbox error: '+(d1.error&&d1.error.message||'unknown')); }
+    const inboxMsgs = await fetchAllPages(u1,'Inbox');
+    debugLog('Inbox: count='+inboxMsgs.length);
+    results.push.apply(results,inboxMsgs);
   }catch(e){ debugLog('Inbox error: '+e.message); }
 
-  // Fetch sent items - single page of 50, filtered by date
+  // Fetch sent items — Graph doesn't reliably support server-side filtering on
+  // toRecipients, so we page through everything in the date window and match client-side.
   try{
     const sinceParam = encodeURIComponent(since);
     const u2 = 'https://graph.microsoft.com/v1.0/me/mailFolders/SentItems/messages'+
@@ -684,17 +698,13 @@ async function fetchEmails(token,clientEmail,lastSyncDate){
       '&$orderby=receivedDateTime desc&$top=50'+
       '&$filter=receivedDateTime+ge+'+sinceParam;
     debugLog('Fetching sent for '+clientEmail+'...');
-    const r2 = await fetch(u2,{headers:{Authorization:'Bearer '+token}});
-    const d2 = await r2.json();
-    debugLog('Sent: status='+r2.status+' count='+((d2.value||[]).length));
-    if(r2.ok && d2.value){
-      const matched = d2.value.filter(function(m){
-        const to=(m.toRecipients||[]).map(function(r){return(r.emailAddress&&r.emailAddress.address||'').toLowerCase();});
-        return to.indexOf(clientLower)>=0;
-      });
-      debugLog('Sent matched: '+matched.length);
-      results.push.apply(results,matched);
-    } else { debugLog('Sent error: '+(d2.error&&d2.error.message||'unknown')); }
+    const sentMsgs = await fetchAllPages(u2,'Sent');
+    const matched = sentMsgs.filter(function(m){
+      const to=(m.toRecipients||[]).map(function(r){return(r.emailAddress&&r.emailAddress.address||'').toLowerCase();});
+      return to.indexOf(clientLower)>=0;
+    });
+    debugLog('Sent: fetched='+sentMsgs.length+' matched='+matched.length);
+    results.push.apply(results,matched);
   }catch(e){ debugLog('Sent error: '+e.message); }
 
   debugLog('Total for '+clientEmail+': '+results.length);
