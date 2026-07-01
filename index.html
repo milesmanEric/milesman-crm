@@ -2,7 +2,9 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Miles Man CRM</title>
+<script src="https://apis.google.com/js/api.js"></script>
 <style>
 html,body{margin:0;padding:0;height:100%;background:#fff;color:#111;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:14px}
 *{box-sizing:border-box}
@@ -12,13 +14,14 @@ html,body{margin:0;padding:0;height:100%;background:#fff;color:#111;font-family:
 .logo-tag{font-size:10px;font-weight:700;letter-spacing:.15em;text-transform:uppercase;color:#2563eb;margin-bottom:2px}
 .logo-name{font-size:17px;font-weight:700;color:#111}
 .logo-sub{font-size:11px;color:#888;margin-top:3px}
-nav{padding:10px 8px;flex:1}
+nav{padding:10px 8px}
+#sidebar{overflow-y:auto}
 .nb{display:flex;align-items:center;gap:8px;width:100%;padding:9px 10px;border-radius:8px;border:none;background:transparent;color:#555;cursor:pointer;font-size:13px;font-family:inherit;text-align:left;margin-bottom:2px}
 .nb:hover{background:#ebebed}
 .nb.active{background:#dbeafe;color:#1d4ed8;font-weight:600}
 .nc{margin-left:auto;font-size:10px;background:#e5e7eb;color:#555;border-radius:20px;padding:1px 7px}
 .nb.active .nc{background:#bfdbfe;color:#1d4ed8}
-.sb-footer{padding:12px;border-top:1px solid #e0e0e0}
+.sb-footer{padding:12px;border-top:1px solid #e0e0e0;flex-shrink:0}
 .sync-btn{width:100%;padding:7px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit;margin-bottom:6px}
 .sync-btn.synced{color:#059669;border-color:#6ee7b7;background:#f0fdf4}
 .io-row{display:flex;gap:5px;margin-bottom:8px}
@@ -35,6 +38,8 @@ nav{padding:10px 8px;flex:1}
 .nt-initial-call{background:#fef3c7;color:#92400e;}
 .nt-follow-up{background:#f3e8ff;color:#6b21a8;}
 .nt-general{background:#f3f4f6;color:#374151;}
+.nt-text-message{background:#fce7f3;color:#9d174d;}
+.nt-lead{background:#fef9c3;color:#713f12;}
 .nt-blue{background:#dbeafe;color:#1e40af;}
 .note-ts-link:hover{color:#1d4ed8}
 #note-expand-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:2000;display:none;align-items:center;justify-content:center;padding:20px}
@@ -45,6 +50,96 @@ nav{padding:10px 8px;flex:1}
 #note-expand-close{background:none;border:none;cursor:pointer;color:#888;font-size:22px;line-height:1;font-family:inherit}
 #note-expand-body{flex:1;overflow-y:auto;font-size:14px;color:#111;line-height:1.7;white-space:pre-wrap;word-break:break-word;border:1px solid #e5e7eb;border-radius:8px;padding:16px;background:#fafafa}
 .footer-txt{font-size:10px;color:#aaa}
+.menu-toggle-btn{width:100%;padding:8px;border-radius:7px;border:1px solid #e0e0e0;background:#fff;color:#374151;cursor:pointer;font-size:12px;font-weight:600;font-family:inherit;margin-bottom:4px;display:flex;align-items:center;justify-content:space-between}
+.menu-toggle-btn:hover{background:#f7f7f8}
+.menu-toggle-btn.open .menu-caret{transform:rotate(90deg);display:inline-block}
+.menu-caret{font-size:10px;transition:transform .15s;display:inline-block}
+.menu-group{padding-left:6px;border-left:2px solid #e5e7eb;margin-left:4px;margin-bottom:6px}
+
+/* ── Mobile nav ── */
+#mobile-nav-toggle{display:none;position:fixed;top:12px;left:12px;z-index:1200;background:#2563eb;color:#fff;border:none;border-radius:8px;padding:8px 12px;font-size:18px;cursor:pointer;line-height:1}
+#sidebar-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:1100}
+
+@media(max-width:700px){
+  #mobile-nav-toggle{display:block}
+  #sidebar{position:fixed;left:-220px;top:0;bottom:0;z-index:1150;transition:left .2s ease;box-shadow:4px 0 20px rgba(0,0,0,.15);overflow-y:auto}
+  #sidebar.open{left:0}
+  #sidebar-overlay.open{display:block}
+  #main{padding:56px 14px 80px;width:100%}
+  #app{flex-direction:column}
+
+  /* Stack tables on mobile */
+  table,thead,tbody,th,td,tr{display:block}
+  thead tr{display:none}
+  td{padding:4px 8px;font-size:13px;border-bottom:none}
+  td:before{font-size:10px;font-weight:700;color:#888;text-transform:uppercase;display:block;margin-bottom:1px}
+  tr{border:1px solid #e5e7eb;border-radius:8px;margin-bottom:8px;padding:8px;background:#fff}
+
+  /* Client table mobile labels */
+  .tbl-wrap table tr td:nth-child(1):before{content:'Client'}
+  .tbl-wrap table tr td:nth-child(2):before{content:'Contact'}
+  .tbl-wrap table tr td:nth-child(3):before{content:'Tier'}
+  .tbl-wrap table tr td:nth-child(4):before{content:'Points'}
+  .tbl-wrap table tr td:nth-child(5):before{content:'Trips'}
+  .tbl-wrap table tr td:nth-child(6):before{content:'Notes'}
+  .tbl-wrap table tr td:nth-child(7):before{content:'Joined'}
+
+  /* Stats grid 2 col on mobile */
+  .stats-grid{grid-template-columns:repeat(2,1fr)}
+
+  /* Two col becomes one col */
+  .two-col{grid-template-columns:1fr}
+  .email-two-col{grid-template-columns:1fr}
+  .fg{grid-template-columns:1fr}
+  .full{grid-column:1}
+
+  /* Modal full screen */
+  .modal{width:100%;max-height:95vh;border-radius:12px 12px 0 0;position:fixed;bottom:0;left:0;right:0}
+  .overlay{align-items:flex-end}
+
+  /* Page header stack */
+  .page-hdr{flex-direction:column;align-items:flex-start;gap:10px}
+
+  /* Calendar */
+  .cal-grid{gap:1px}
+  .cal-cell{min-height:50px;padding:2px}
+  .cal-trip{font-size:9px;padding:1px 3px}
+  .cal-month-label{font-size:13px;min-width:120px}
+  .cal-nav-btn{padding:4px 8px;font-size:12px}
+
+  /* Search row stack */
+  .search-row{flex-direction:column}
+
+  /* Report filter stack */
+  .report-filter{flex-direction:column}
+  .report-filter input,.report-filter select{width:100%}
+}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;margin-top:8px}
+.cal-header-cell{text-align:center;font-size:11px;font-weight:700;color:#888;padding:6px 0;text-transform:uppercase;letter-spacing:.05em}
+.cal-cell{min-height:80px;border:1px solid #e5e7eb;border-radius:6px;padding:4px;background:#fff;vertical-align:top}
+.cal-cell.today{background:#eff6ff;border-color:#93c5fd}
+.cal-cell.other-month{background:#f9f9f9;opacity:.6}
+.cal-day-num{font-size:11px;font-weight:600;color:#888;margin-bottom:3px}
+.cal-day-num.today-num{background:#2563eb;color:#fff;border-radius:50%;width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:10px}
+.cal-trip{font-size:10px;padding:2px 5px;border-radius:3px;margin-bottom:2px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:500}
+.cal-trip-start{background:#dbeafe;color:#1e40af;border-left:3px solid #2563eb}
+.template-card{border:1px solid #e5e7eb;border-radius:8px;padding:12px 16px;cursor:pointer;margin-bottom:8px;transition:border-color .15s}
+.template-card:hover,.template-card.selected{border-color:#2563eb;background:#eff6ff}
+.template-card-name{font-size:13px;font-weight:600;color:#111}
+.template-card-desc{font-size:11px;color:#888;margin-top:2px}
+.email-preview{border:1px solid #e5e7eb;border-radius:8px;padding:16px;background:#fafafa;font-size:13px;line-height:1.7;white-space:pre-wrap;min-height:120px;color:#111}
+.email-two-col{display:grid;grid-template-columns:260px 1fr;gap:16px;align-items:start}
+.vendor-card{border:1px solid #e5e7eb;border-radius:10px;padding:16px;margin-bottom:10px;background:#fff}
+.vendor-card:hover{border-color:#2563eb;box-shadow:0 2px 8px rgba(37,99,235,.08)}
+.vendor-type-supplier{background:#dbeafe;color:#1e40af}
+.vendor-type-referral{background:#d1fae5;color:#065f46}
+.vendor-stat{display:inline-flex;align-items:center;gap:4px;font-size:12px;color:#555;background:#f3f4f6;border-radius:6px;padding:3px 10px;margin-right:6px;margin-top:6px}
+.cal-trip-end{background:#d1fae5;color:#065f46;border-left:3px solid #059669}
+.cal-trip-span{background:#f3f4f6;color:#374151;border-left:3px solid #9ca3af}
+.cal-nav{display:flex;align-items:center;gap:12px}
+.cal-nav-btn{padding:6px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;cursor:pointer;font-size:13px;font-family:inherit;color:#374151}
+.cal-nav-btn:hover{background:#f3f4f6}
+.cal-month-label{font-size:16px;font-weight:700;color:#111;min-width:160px;text-align:center}
 .report-filter{display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap;align-items:flex-end}
 .report-filter label{font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:4px}
 .report-filter input,.report-filter select{padding:8px 11px;border-radius:7px;border:1px solid #d1d5db;font-size:13px;font-family:inherit;color:#111;background:#fafafa}
@@ -54,6 +149,9 @@ nav{padding:10px 8px;flex:1}
 .report-table th{text-align:left;padding:9px 12px;font-size:11px;font-weight:600;color:#888;border-bottom:1px solid #e5e7eb;text-transform:uppercase;letter-spacing:.05em}
 .report-table td{padding:10px 12px;font-size:13px;color:#444;border-bottom:1px solid #f0f0f0;vertical-align:top}
 .report-table td.note-cell{max-width:500px;white-space:pre-wrap;word-break:break-word;line-height:1.5}
+.rpt-tab-btn{padding:10px 16px;border:none;background:none;color:#888;cursor:pointer;font-size:13px;font-weight:600;font-family:inherit;border-bottom:2px solid transparent}
+.rpt-tab-btn.active{color:#2563eb;border-bottom-color:#2563eb}
+.rpt-tab-btn:hover{color:#374151}
 #main{flex:1;overflow-y:auto;padding:24px 28px;background:#fff}
 .page-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
 .page-title{font-size:22px;font-weight:700;color:#111}
@@ -111,6 +209,8 @@ tr:last-child td{border-bottom:none}
 </style>
 </head>
 <body>
+<button id="mobile-nav-toggle">&#9776;</button>
+<div id="sidebar-overlay"></div>
 <div id="app">
   <div id="sidebar">
     <div class="logo-area">
@@ -122,25 +222,46 @@ tr:last-child td{border-bottom:none}
       <button class="nb active" id="nb-dashboard">&#128202; Dashboard</button>
       <button class="nb" id="nb-clients">&#128100; Clients <span class="nc" id="nc-clients">0</span></button>
       <button class="nb" id="nb-trips">&#9992;&#65039; Trips <span class="nc" id="nc-trips">0</span></button>
+      <button class="nb" id="nb-vendors">&#127981; Suppliers <span class="nc" id="nc-vendors">0</span></button>
       <button class="nb" id="nb-reports">&#128202; Reports</button>
+      <button class="nb" id="nb-calendar">&#128197; Calendar</button>
+      <button class="nb" id="nb-email">&#9993;&#65039; Email</button>
     </nav>
     <div class="sb-footer">
-      <button class="sync-btn" id="outlook-btn">&#128424; Sync Outlook Emails</button>
-      <button class="sync-btn" id="drive-btn" style="color:#1a73e8;border-color:#93c5fd">&#9729; Backup to Google Drive</button>
-      <button class="sync-btn" id="drive-restore-btn" style="color:#1a73e8;border-color:#93c5fd">&#9729; Restore from Google Drive</button>
-      <div class="io-row">
-        <button class="io-btn" id="btn-clients-csv">&#11015; Clients CSV</button>
-        <button class="io-btn" id="btn-trips-csv">&#11015; Trips CSV</button>
+      <button class="sync-btn" id="btn-undo" disabled style="color:#7c3aed;border-color:#c4b5fd;opacity:.4" title="Nothing to undo">&#8630; Undo</button>
+      <button class="menu-toggle-btn" data-menu="menu-file">&#128193; File <span class="menu-caret">&#9656;</span></button>
+      <div class="menu-group" id="menu-file" style="display:none">
+        <button class="sync-btn" id="drive-btn" style="color:#1a73e8;border-color:#93c5fd">&#9729; Backup to Google Drive</button>
+        <button class="sync-btn" id="drive-restore-btn" style="color:#1a73e8;border-color:#93c5fd">&#9729; Restore from Google Drive</button>
+        <button class="sync-btn" id="btn-drive-signout" style="color:#888;border-color:#ddd;font-size:11px">&#9729;&#65039; Reset Drive Login</button>
+        <div class="io-row">
+          <button class="io-btn" id="btn-clients-csv">&#11015; Clients CSV</button>
+          <button class="io-btn" id="btn-trips-csv">&#11015; Trips CSV</button>
+        </div>
+        <div class="io-row">
+          <button class="io-btn" id="btn-backup">&#11015; Backup</button>
+          <button class="io-btn" id="btn-restore">&#11014; Restore</button>
+        </div>
       </div>
-      <div class="io-row">
-        <button class="io-btn" id="btn-backup">&#11015; Backup</button>
-        <button class="io-btn" id="btn-restore">&#11014; Restore</button>
+
+      <button class="menu-toggle-btn" data-menu="menu-email">&#9993;&#65039; Email <span class="menu-caret">&#9656;</span></button>
+      <div class="menu-group" id="menu-email" style="display:none">
+        <button class="sync-btn" id="outlook-btn">&#128424; Sync Outlook Emails</button>
+        <button class="sync-btn" id="btn-mass-email" style="color:#7c3aed;border-color:#c4b5fd">&#128231; Email All Clients</button>
+        <button class="sync-btn" id="btn-log-mailchimp" style="color:#7c3aed;border-color:#c4b5fd">&#128226; Log Mailchimp Campaign</button>
+        <button class="sync-btn" id="btn-ms-signout" style="color:#888;border-color:#ddd;font-size:11px">&#128274; Reset Outlook Login</button>
       </div>
-      <button class="sync-btn" id="btn-mass-email" style="color:#7c3aed;border-color:#c4b5fd">&#128231; Email All Clients</button>
-      <button class="sync-btn" id="btn-import-csv" style="color:#059669;border-color:#6ee7b7">&#128203; Import Contacts from CSV</button>
-      <button class="sync-btn" id="btn-import-revenue" style="color:#059669;border-color:#6ee7b7">&#128178; Import Revenue CSV</button>
-      <button class="sync-btn" id="btn-ms-signout" style="color:#888;border-color:#ddd;font-size:11px">&#128274; Reset Outlook Login</button>
+
+      <button class="menu-toggle-btn" data-menu="menu-import">&#128229; Import <span class="menu-caret">&#9656;</span></button>
+      <div class="menu-group" id="menu-import" style="display:none">
+        <button class="sync-btn" id="btn-import-suppliers-sb" style="color:#059669;border-color:#6ee7b7">&#127981; Import Suppliers CSV</button>
+        <button class="sync-btn" id="btn-import-revenue" style="color:#059669;border-color:#6ee7b7">&#128178; Import Revenue CSV</button>
+        <button class="sync-btn" id="btn-import-csv" style="color:#059669;border-color:#6ee7b7">&#128203; Import Clients CSV</button>
+        <button class="sync-btn" id="btn-clear-trips" style="color:#dc2626;border-color:#fca5a5">&#128465; Clear All Trips</button>
+      </div>
+
       <button class="sync-btn" id="btn-debug-toggle" style="color:#888;border-color:#ddd;font-size:11px">&#128030; Debug Panel</button>
+      <button class="sync-btn" id="btn-test-connectivity" style="color:#888;border-color:#ddd;font-size:11px">&#128225; Test Connectivity</button>
       <div class="footer-txt">(908) 419-7700 &middot; themilesman.com</div>
     </div>
   </div>
@@ -225,21 +346,100 @@ const MS_SCOPE         = 'https://graph.microsoft.com/Mail.Read offline_access';
 const MS_REDIRECT      = 'https://milesmaneric.github.io/milesman-crm';
 const DRIVE_CLIENT_ID  = '1055867383042-an9l58o1qg22pt7o4ak8vaneeftv54ib.apps.googleusercontent.com';
 const DRIVE_SCOPE      = 'https://www.googleapis.com/auth/drive.file';
+const DRIVE_REDIRECT   = 'https://milesmaneric.github.io/milesman-crm/';
+const DRIVE_AUTH_SERVER = 'https://milesman-auth.vercel.app';
 const BACKUP_FILENAME  = 'milesman-crm-backup.json';
 const LS_KEY           = 'milesman_crm_v2';
 
 const TIERS    = ['Standard','Gold','Elite','Platinum'];
 const AIRLINES = ['American','United','Delta','Southwest','JetBlue','Qatar Airways','ANA','Emirates','Lufthansa','British Airways','Air France','Virgin Atlantic'];
 const HOTELS   = ['Marriott','Hilton','Hyatt','IHG','Wyndham','Four Seasons','Ritz-Carlton','W Hotels','Kimpton','Conrad'];
+const CRUISE_LINES = ['Virgin Voyages','Royal Caribbean','Carnival','Norwegian','Princess','Celebrity','Disney Cruise Line','Holland America','MSC Cruises','Viking'];
 const STATUSES = ['Planning','Confirmed','Completed','Cancelled'];
 const TYPES    = ['Leisure','Business','Honeymoon','Family','Adventure','Cruise'];
 const CLASSES  = ['Economy','Premium Economy','Business','First'];
 
-let db = {clients:[],trips:[]};
+let db = {clients:[],trips:[],vendors:[]};
+const UNDO_STACK = [];
+const MAX_UNDO = 20;
+function snapshot(label){
+  UNDO_STACK.push({label:label||'action', data:JSON.stringify(db)});
+  if(UNDO_STACK.length > MAX_UNDO) UNDO_STACK.shift();
+  updateUndoBtn();
+}
+function undo(){
+  if(!UNDO_STACK.length){toast('Nothing to undo','err');return;}
+  const prev = UNDO_STACK.pop();
+  try{ db = JSON.parse(prev.data); }catch(e){ toast('Undo failed','err');return; }
+  saveDB(); render();
+  updateUndoBtn();
+  toast('Undid: '+prev.label,'ok');
+}
+function updateUndoBtn(){
+  try{
+  var btn = document.getElementById('btn-undo');
+  if(!btn) return;
+  btn.disabled = UNDO_STACK.length === 0;
+  btn.title = UNDO_STACK.length ? 'Undo: '+UNDO_STACK[UNDO_STACK.length-1].label : 'Nothing to undo';
+  btn.style.opacity = UNDO_STACK.length ? '1' : '0.4';
+  }catch(e){}
+}
 let view = 'dashboard', selCid = null, fStatus = '', fSearch = '';
 let driveToken = null;
 
 const $ = id => document.getElementById(id);
+function toLastFirst(name){
+  if(!name) return '';
+  name = name.trim();
+  if(name.includes(',')) return name; // already in Last, First format
+  var parts = name.split(/\s+/);
+  if(parts.length < 2) return name;
+  var first = parts.slice(0,-1).join(' ');
+  var last = parts[parts.length-1];
+  return last+', '+first;
+}
+function toFirstLast(name){
+  if(!name) return '';
+  name = name.trim();
+  if(!name.includes(',')) return name;
+  var parts = name.split(',').map(function(s){return s.trim();});
+  return parts[1]+' '+parts[0];
+}
+function getLastName(name){
+  if(!name) return '';
+  if(name.includes(',')) return name.split(',')[0].trim();
+  var parts = name.trim().split(/\s+/);
+  return parts[parts.length-1];
+}
+function getFirstName(name){
+  if(!name) return '';
+  if(name.includes(',')){
+    var parts = name.split(',').map(function(s){return s.trim();});
+    return parts[1]||'';
+  }
+  var parts = name.trim().split(/\s+/);
+  return parts[0];
+}
+function extractDateFromText(text){
+  if(!text) return '';
+  // Match patterns like 7/19/26, 12/27/25, 5/29/26
+  var m = text.match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
+  if(!m) return '';
+  var mo=parseInt(m[1],10), da=parseInt(m[2],10), yr=parseInt(m[3],10);
+  if(yr<100) yr += 2000;
+  if(mo<1||mo>12||da<1||da>31) return '';
+  return yr+'-'+String(mo).padStart(2,'0')+'-'+String(da).padStart(2,'0');
+}
+function countDistinctTrips(clientId){
+  var trips = db.trips.filter(function(t){return t.clientId===clientId;});
+  var seen = {};
+  var count = 0;
+  trips.forEach(function(t){
+    var key = t.invoiceNum || t.id; // fall back to trip id if no invoice number
+    if(!seen[key]){ seen[key]=true; count++; }
+  });
+  return count;
+}
 const gv = id => $(id) ? $(id).value.trim() : '';
 const gn = id => Number($(id) ? $(id).value : 0);
 const fmt = n => Number(n||0).toLocaleString();
@@ -254,12 +454,41 @@ function newId(p,list){
 }
 
 // ── Storage ───────────────────────────────────────────────────────────────
-function saveDB(){try{localStorage.setItem(LS_KEY,JSON.stringify(db));}catch(e){}}
+function saveDB(){
+  try{
+    localStorage.setItem(LS_KEY,JSON.stringify(db));
+    var lbl=document.getElementById('sync-lbl');
+    if(lbl){
+      var now=new Date();
+      var timeStr=now.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+      lbl.innerHTML='&#9679; Saved '+timeStr;
+      lbl.style.color='#059669';
+      clearTimeout(window._syncLblTimer);
+      window._syncLblTimer=setTimeout(function(){
+        if(lbl) lbl.style.color='';
+      },2000);
+    }
+  }catch(e){}
+}
 function loadDB(){
   try{
     const d=JSON.parse(localStorage.getItem(LS_KEY)||'{}');
     db.clients=Array.isArray(d.clients)?d.clients:[];
     db.trips=Array.isArray(d.trips)?d.trips:[];
+    db.vendors=Array.isArray(d.vendors)?d.vendors:[];
+    // Always normalize client names to 'Last, First' format on every load
+    // (safe to run repeatedly since it skips names that already have a comma)
+    var migrated=0;
+    db.clients.forEach(function(c){
+      if(c.name && !c.name.includes(',')){
+        c.name=toLastFirst(c.name);
+        migrated++;
+      }
+    });
+    if(migrated>0){
+      saveDB();
+      console.log('[CRM] Normalized '+migrated+' client names to Last, First format');
+    }
   }catch(e){db={clients:[],trips:[]};}
 }
 
@@ -271,9 +500,9 @@ function toast(msg,type='ok'){
 }
 
 // ── Badges ────────────────────────────────────────────────────────────────
-const BCLS={Confirmed:'b-green',Planning:'b-amber',Completed:'b-blue',Cancelled:'b-red',Elite:'b-amber',Gold:'b-amber',Standard:'b-gray',Platinum:'b-blue',Leisure:'b-blue',Business:'b-gray',Honeymoon:'b-green',Family:'b-green',Adventure:'b-amber',Cruise:'b-blue',First:'b-blue','Premium Economy':'b-amber',Economy:'b-gray'};
+const BCLS={Confirmed:'b-green',Planning:'b-amber',Completed:'b-blue',Cancelled:'b-red',Upcoming:'b-amber',Elite:'b-amber',Gold:'b-amber',Standard:'b-gray',Platinum:'b-blue',Leisure:'b-blue',Business:'b-gray',Honeymoon:'b-green',Family:'b-green',Adventure:'b-amber',Cruise:'b-blue',First:'b-blue','Premium Economy':'b-amber',Economy:'b-gray'};
 const badge = l => '<span class="badge '+(BCLS[l]||'b-gray')+'">'+(l||'')+'</span>';
-const av = (name,sz) => { sz=sz||30; return '<div class="av" style="width:'+sz+'px;height:'+sz+'px;font-size:'+Math.round(sz*.4)+'px">'+(name||'?')[0].toUpperCase()+'</div>'; };
+const av = (name,sz) => { sz=sz||30; var fn=getFirstName(name)||name||'?'; return '<div class="av" style="width:'+sz+'px;height:'+sz+'px;font-size:'+Math.round(sz*.4)+'px">'+fn[0].toUpperCase()+'</div>'; };
 
 
 // ── Debug Panel ───────────────────────────────────────────────────────────
@@ -287,8 +516,7 @@ function debugLog(msg){
     if(prev.length > 100) prev.shift();
     localStorage.setItem('mm_debug_log', JSON.stringify(prev));
   }catch(e){}
-  // Update panel only if already open
-  const panel=$('debug-panel');
+  // Update panel DOM, capped to prevent memory leak from unbounded node accumulation
   const log=$('debug-log');
   if(log){
     const line=document.createElement('div');
@@ -296,6 +524,10 @@ function debugLog(msg){
     line.style.padding='2px 0';
     line.textContent=entry;
     log.appendChild(line);
+    // Cap DOM nodes at 100 to match localStorage cap — remove oldest if exceeded
+    while(log.children.length > 100){
+      log.removeChild(log.firstChild);
+    }
     log.scrollTop=log.scrollHeight;
   }
   console.log('[CRM]', msg);
@@ -353,18 +585,20 @@ async function msLogin(){
   window.location.href='https://login.microsoftonline.com/'+MS_TENANT_ID+'/oauth2/v2.0/authorize?'+params.toString();
 }
 async function exchangeCodeForToken(code){
-  debugLog('Calling auth server (secure token exchange)...');
+  debugLog('Calling Microsoft directly (SPA token exchange, no proxy)...');
   const verifier = localStorage.getItem('mm_pkce_verifier')||'';
   debugLog('PKCE verifier found: '+(verifier?'yes ('+verifier.slice(0,10)+'...)':'NO - missing!'));
-  const r=await fetch(MS_AUTH_SERVER+'/api/token',{
+  const params = new URLSearchParams();
+  params.set('client_id', MS_CLIENT_ID);
+  params.set('grant_type', 'authorization_code');
+  params.set('code', code);
+  params.set('redirect_uri', MS_REDIRECT);
+  params.set('code_verifier', verifier);
+  params.set('scope', MS_SCOPE);
+  const r=await fetch('https://login.microsoftonline.com/'+MS_TENANT_ID+'/oauth2/v2.0/token',{
     method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({
-      grant_type:'authorization_code',
-      code:code,
-      redirect_uri:MS_REDIRECT,
-      code_verifier:verifier
-    })
+    headers:{'Content-Type':'application/x-www-form-urlencoded'},
+    body:params.toString()
   });
   const d=await r.json();
   debugLog('Token response status: '+r.status+' error: '+(d.error||'none')+' desc: '+(d.error_description||'').slice(0,80));
@@ -377,10 +611,15 @@ async function exchangeCodeForToken(code){
 async function refreshMsToken(){
   const rt=localStorage.getItem('mm_ms_refresh');
   if(!rt) throw new Error('No refresh token');
-  const r=await fetch(MS_AUTH_SERVER+'/api/token',{
+  const params = new URLSearchParams();
+  params.set('client_id', MS_CLIENT_ID);
+  params.set('grant_type', 'refresh_token');
+  params.set('refresh_token', rt);
+  params.set('scope', MS_SCOPE);
+  const r=await fetch('https://login.microsoftonline.com/'+MS_TENANT_ID+'/oauth2/v2.0/token',{
     method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({grant_type:'refresh_token',refresh_token:rt})
+    headers:{'Content-Type':'application/x-www-form-urlencoded'},
+    body:params.toString()
   });
   const d=await r.json();
   if(!r.ok) throw new Error(d.error_description||'Refresh failed');
@@ -553,22 +792,168 @@ async function syncOutlook(){
 }
 
 // ── Google Drive ──────────────────────────────────────────────────────────
-function loadGIS(){
-  return new Promise(resolve=>{
-    if(window.google&&window.google.accounts&&window.google.accounts.oauth2){resolve();return;}
-    const s=document.createElement('script');
-    s.src='https://accounts.google.com/gsi/client';
-    s.onload=resolve;
-    document.head.appendChild(s);
+// ── Google Drive Auth (PKCE via Vercel server) ───────────────────────────
+async function getDriveToken(){
+  // Return cached token if still valid
+  const stored = localStorage.getItem('mm_drive_token');
+  const expiry = parseInt(localStorage.getItem('mm_drive_expiry')||'0',10);
+  if(stored && Date.now() < expiry) return stored;
+
+  // Try refresh token
+  const rt = localStorage.getItem('mm_drive_refresh');
+  if(rt){
+    try{
+      const r = await fetch(DRIVE_AUTH_SERVER+'/api/drive-token',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({grant_type:'refresh_token',refresh_token:rt})
+      });
+      const d = await r.json();
+      if(r.ok && d.access_token){
+        localStorage.setItem('mm_drive_token', d.access_token);
+        localStorage.setItem('mm_drive_expiry', String(Date.now()+(d.expires_in-60)*1000));
+        if(d.refresh_token) localStorage.setItem('mm_drive_refresh', d.refresh_token);
+        return d.access_token;
+      }
+    }catch(e){ debugLog('Drive refresh failed: '+e.message); }
+    localStorage.removeItem('mm_drive_refresh');
+  }
+
+  // Need fresh login - use PKCE redirect flow
+  await driveLogin();
+  return null;
+}
+
+// Like getDriveToken(), but NEVER redirects to Google login — used for silent
+// background auto-backup so we don't yank the user away from what they're doing.
+// Returns null if there's no valid cached token and no refresh token to fall back on.
+async function getDriveTokenSilent(){
+  const stored = localStorage.getItem('mm_drive_token');
+  const expiry = parseInt(localStorage.getItem('mm_drive_expiry')||'0',10);
+  if(stored && Date.now() < expiry) return stored;
+
+  const rt = localStorage.getItem('mm_drive_refresh');
+  if(!rt) return null;
+  try{
+    const r = await fetch(DRIVE_AUTH_SERVER+'/api/drive-token',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({grant_type:'refresh_token',refresh_token:rt})
+    });
+    const d = await r.json();
+    if(r.ok && d.access_token){
+      localStorage.setItem('mm_drive_token', d.access_token);
+      localStorage.setItem('mm_drive_expiry', String(Date.now()+(d.expires_in-60)*1000));
+      if(d.refresh_token) localStorage.setItem('mm_drive_refresh', d.refresh_token);
+      return d.access_token;
+    }
+  }catch(e){ debugLog('Silent Drive refresh failed: '+e.message); }
+  return null;
+}
+
+// ── Google Drive Picker (browse Drive, link the file, no upload) ───────────
+let _pickerApiLoaded = false;
+function loadPickerApi(){
+  return new Promise(function(resolve){
+    if(_pickerApiLoaded) return resolve();
+    if(typeof gapi === 'undefined'){
+      debugLog('Google API loader (apis.google.com/js/api.js) not available');
+      return resolve();
+    }
+    gapi.load('picker', function(){ _pickerApiLoaded = true; resolve(); });
   });
 }
-async function getDriveToken(){
-  await loadGIS();
-  return new Promise((resolve,reject)=>{
-    window.google.accounts.oauth2.initTokenClient({
-      client_id:DRIVE_CLIENT_ID,scope:DRIVE_SCOPE,
-      callback:r=>r.error?reject(r.error):resolve(r.access_token)
-    }).requestAccessToken();
+
+async function openDrivePicker(onPicked){
+  const token = await getDriveToken();
+  if(!token){ toast('Sign in to Google Drive first','error'); return; } // driveLogin() already redirected if needed
+  await loadPickerApi();
+  if(typeof google === 'undefined' || !google.picker){
+    toast('Drive picker failed to load — check your connection','error');
+    return;
+  }
+  const appId = DRIVE_CLIENT_ID.split('-')[0]; // project number prefix of the OAuth client ID
+  const view = new google.picker.DocsView()
+    .setIncludeFolders(true)
+    .setSelectFolderEnabled(false);
+  const picker = new google.picker.PickerBuilder()
+    .setAppId(appId)
+    .setOAuthToken(token)
+    .addView(view)
+    .setCallback(function(data){
+      if(data.action === google.picker.Action.PICKED){
+        const file = data.docs[0];
+        onPicked({ name: file.name, url: file.url });
+      }
+    })
+    .build();
+  picker.setVisible(true);
+}
+
+async function driveLogin(){
+  const verifier = await generateCodeVerifier();
+  const challenge = await generateCodeChallenge(verifier);
+  localStorage.setItem('mm_drive_pkce', verifier);
+  localStorage.setItem('mm_drive_action', 'pending'); // remember to continue after redirect
+  const params = new URLSearchParams({
+    client_id:            DRIVE_CLIENT_ID,
+    redirect_uri:         DRIVE_REDIRECT,
+    response_type:        'code',
+    scope:                DRIVE_SCOPE,
+    state:                'drive_auth',
+    code_challenge:       challenge,
+    code_challenge_method:'S256',
+    access_type:          'offline',
+    prompt:               'consent'
+  });
+  debugLog('Redirecting to Google Drive login...');
+  window.location.href = 'https://accounts.google.com/o/oauth2/v2/auth?'+params.toString();
+}
+
+function checkDriveRedirect(){
+  const params = new URLSearchParams(window.location.search);
+  const code  = params.get('code');
+  const state = params.get('state');
+  if(!code || state !== 'drive_auth') return;
+
+  window.history.replaceState({},'',window.location.pathname);
+  const verifier = localStorage.getItem('mm_drive_pkce')||'';
+  debugLog('Drive auth code received, exchanging...');
+
+  fetch(DRIVE_AUTH_SERVER+'/api/drive-token',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({
+      grant_type:    'authorization_code',
+      code:          code,
+      redirect_uri:  DRIVE_REDIRECT,
+      code_verifier: verifier
+    })
+  }).then(function(r){return r.json();}).then(function(d){
+    if(d.access_token){
+      localStorage.setItem('mm_drive_token',   d.access_token);
+      localStorage.setItem('mm_drive_expiry',  String(Date.now()+(d.expires_in-60)*1000));
+      if(d.refresh_token) localStorage.setItem('mm_drive_refresh', d.refresh_token);
+      localStorage.removeItem('mm_drive_pkce');
+      driveToken = d.access_token;
+      debugLog('Drive token obtained successfully');
+      toast('Google Drive connected!','ok');
+      // Auto-trigger pending action
+      var action = localStorage.getItem('mm_drive_action');
+      localStorage.removeItem('mm_drive_action');
+      if(action==='backup') driveBackup();
+      else if(action==='restore') driveRestore();
+    } else {
+      debugLog('Drive token exchange failed: '+(d.error||'unknown'));
+      if(d.error === 'invalid_grant'){
+        toast('Google Drive sign-in expired mid-way — please try again','err');
+      } else {
+        toast('Google Drive auth failed: '+(d.error_description||d.error),'err');
+      }
+    }
+  }).catch(function(e){
+    debugLog('Drive token exchange error: '+e.message);
+    toast('Drive auth error: '+e.message,'err');
   });
 }
 async function findBackupFile(token){
@@ -579,11 +964,15 @@ async function findBackupFile(token){
   const d=await r.json();
   return (d.files||[])[0]||null;
 }
-async function driveBackup(){
+async function driveBackup(silent){
   const btn=$('drive-btn');
-  btn.textContent='Saving...';btn.disabled=true;
+  if(!silent){btn.textContent='Saving...';btn.disabled=true;}
   try{
-    if(!driveToken) driveToken=await getDriveToken();
+    if(!driveToken){
+      localStorage.setItem('mm_drive_action','backup');
+      driveToken=await getDriveToken();
+    }
+    if(!driveToken){btn.textContent='Backup to Google Drive';if(!silent)btn.disabled=false;return;}
     const content=JSON.stringify(db,null,2);
     const existing=await findBackupFile(driveToken);
     if(existing){
@@ -598,33 +987,87 @@ async function driveBackup(){
         method:'POST',headers:{Authorization:'Bearer '+driveToken},body:form
       });
     }
-    btn.textContent='Backed up to Drive';btn.style.color='#059669';btn.style.borderColor='#6ee7b7';
-    toast('Backed up to Google Drive','ok');
+    if(!silent){btn.textContent='Backed up to Drive';btn.style.color='#059669';btn.style.borderColor='#6ee7b7';}
+    var now=new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+    localStorage.setItem('mm_last_drive_backup', now);
+    var lbl=document.getElementById('sync-lbl');
+    if(lbl){ lbl.innerHTML='&#9729; Drive synced '+now; lbl.style.color='#1a73e8'; }
+    if(!silent) toast('Drive backup saved at '+now,'ok');
+    console.log('[CRM] Drive backup complete at', now);
   }catch(e){
     console.error(e);driveToken=null;
-    toast('Drive backup failed: '+e,'err');
-    btn.textContent='Backup to Google Drive';
+    if(!silent) toast('Drive backup failed: '+e,'err');
+    if(!silent) btn.textContent='Backup to Google Drive';
   }
-  btn.disabled=false;
+  if(!silent) btn.disabled=false;
 }
 async function driveRestore(){
   const btn=$('drive-restore-btn');
-  btn.textContent='Loading...';btn.disabled=true;
+  if(btn){btn.textContent='Loading...';btn.disabled=true;}
   try{
-    if(!driveToken) driveToken=await getDriveToken();
+    // Always go through getDriveToken() so an expired in-memory token gets refreshed
+    // (previously: if driveToken was already set in memory, an expired token would be
+    // reused directly here and silently fail against the Drive API).
+    debugLog('Restore: checking token...');
+    localStorage.setItem('mm_drive_action','restore'); // so restore auto-resumes if Google redirects us away
+    driveToken = await getDriveToken();
+    if(!driveToken){
+      debugLog('Restore: no token yet — redirecting to Google login');
+      if(btn){btn.textContent='Restore from Google Drive';btn.disabled=false;}
+      return;
+    }
+    debugLog('Restore: token OK, searching for backup file...');
     const existing=await findBackupFile(driveToken);
-    if(!existing){toast('No backup found in Google Drive','err');btn.textContent='Restore from Google Drive';btn.disabled=false;return;}
+    if(!existing){
+      debugLog('Restore: no backup file found in Drive');
+      toast('No backup found in Google Drive','err');
+      if(btn){btn.textContent='Restore from Google Drive';btn.disabled=false;}
+      return;
+    }
+    debugLog('Restore: found backup file '+existing.id+', downloading...');
     const r=await fetch('https://www.googleapis.com/drive/v3/files/'+existing.id+'?alt=media',{
       headers:{Authorization:'Bearer '+driveToken}
     });
-    const d=await r.json();
+    debugLog('Restore: download response status '+r.status);
+    if(!r.ok){
+      driveToken=null; // force a fresh token next attempt
+      const errBody = await r.text();
+      debugLog('Restore: download failed — '+errBody.slice(0,300));
+      toast('Restore failed: Google returned '+r.status+' (try Reset Drive Login, then Restore again)','err');
+      if(btn){btn.textContent='Restore from Google Drive';btn.disabled=false;}
+      return;
+    }
+    let d;
+    try{
+      d = await r.json();
+    }catch(parseErr){
+      debugLog('Restore: response was not valid JSON — '+parseErr.message);
+      toast('Restore failed: backup file is not valid JSON','err');
+      if(btn){btn.textContent='Restore from Google Drive';btn.disabled=false;}
+      return;
+    }
     if(Array.isArray(d.clients)&&Array.isArray(d.trips)){
-      db=d;saveDB();render();
+      db={
+        clients:Array.isArray(d.clients)?d.clients:[],
+        trips:Array.isArray(d.trips)?d.trips:[],
+        vendors:Array.isArray(d.vendors)?d.vendors:[]
+      };
+      db.clients.forEach(function(c){ if(c.name && !c.name.includes(',')) c.name=toLastFirst(c.name); });
+      saveDB();render();
       const date=new Date(existing.modifiedTime).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
-      toast('Restored from Drive ('+date+')','ok');
-    }else{toast('Backup file appears corrupted','err');}
-  }catch(e){console.error(e);driveToken=null;toast('Restore failed: '+e,'err');}
-  btn.textContent='Restore from Google Drive';btn.disabled=false;
+      debugLog('Restore: success — '+db.clients.length+' clients, '+db.trips.length+' trips');
+      toast('Restored from Drive ('+date+') — '+db.clients.length+' clients, '+db.trips.length+' trips','ok');
+    }else{
+      debugLog('Restore: JSON parsed but missing clients/trips arrays. Keys: '+Object.keys(d||{}).join(','));
+      toast('Backup file appears corrupted','err');
+    }
+  }catch(e){
+    console.error(e);driveToken=null;
+    debugLog('Restore: exception — '+(e&&e.message?e.message:String(e)));
+    if(String(e).includes('popup_blocked')){toast('Redirecting to Google login...','info');}
+    else{toast('Restore failed: '+e,'err');}
+  }
+  if(btn){btn.textContent='Restore from Google Drive';btn.disabled=false;}
 }
 
 // ── Export / Import ───────────────────────────────────────────────────────
@@ -641,7 +1084,7 @@ function importJSON(){
     r.onload=function(ev){
       try{
         const d=JSON.parse(ev.target.result);
-        if(Array.isArray(d.clients)&&Array.isArray(d.trips)){db=d;saveDB();toast('Data imported');render();}
+        if(Array.isArray(d.clients)&&Array.isArray(d.trips)){db=d;(db.clients||[]).forEach(function(c){ if(c.name && !c.name.includes(',')) c.name=toLastFirst(c.name); });saveDB();toast('Data imported');render();}
         else toast('Invalid backup file','err');
       }catch(ex){toast('Could not read file','err');}
     };r.readAsText(f);
@@ -651,7 +1094,7 @@ function exportCSV(type){
   let rows,filename,headers;
   if(type==='clients'){
     headers=['ID','Name','Email','Phone','Location','Tier','Points','Total Revenue','Preferred Airline','Preferred Hotel','Notes','Joined','Total Trips'];
-    rows=db.clients.map(c=>[c.id,c.name,c.email,c.phone,c.location,c.tier,c.points,c.totalRevenue||0,c.preferredAirline,c.preferredHotel,c.notes,c.joined,c.totalTrips]);
+    rows=db.clients.map(c=>{var rev=db.trips.filter(function(t){return t.clientId===c.id;}).reduce(function(a,t){return a+(t.totalValue||0);},0);return [c.id,c.name,c.email,c.phone,c.location,c.tier,c.points,rev,c.preferredAirline,c.preferredHotel,c.notes,c.joined,countDistinctTrips(c.id)];});
     filename='milesman-clients.csv';
   }else{
     headers=['ID','Client','Destination','Origin','Depart','Return','Status','Type','Airline','Class','Hotel','Nights','Points Used','Cash Paid','Total Value','Booking Ref','Notes'];
@@ -681,6 +1124,62 @@ function massEmail(){
   saveDB();
   toast('Opening Outlook with '+withEmail.length+' clients in BCC','ok');
 }
+function openLogMailchimpModal(){
+  var sortedClients = [...db.clients].sort(function(a,b){return (a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase());});
+  var clientChecks = sortedClients.map(function(c){
+    return '<label style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:13px;cursor:pointer">'+
+      '<input type="checkbox" class="mc-client-cb" value="'+c.id+'" checked style="width:14px;height:14px">'+
+      '<span>'+c.name+'</span>'+
+    '</label>';
+  }).join('');
+
+  $('modal').innerHTML =
+    '<div class="modal-hdr"><div class="modal-title">Log Mailchimp Campaign</div><button class="close-btn" id="modal-close">&#x2715;</button></div>'+
+    '<div class="fg">'+
+      fld('Campaign Subject', inp('mc-subject','text','','e.g. June Travel Newsletter'), true)+
+      '<div class="field full"><label>Summary / Notes</label><textarea id="mc-summary" rows="3" placeholder="Optional summary of what the campaign covered"></textarea></div>'+
+      '<div class="field full"><label>Send Date</label><input id="mc-date" type="date" value="'+today()+'"></div>'+
+      '<div class="field full"><label>Apply To</label>'+
+        '<div style="margin-bottom:6px"><button type="button" id="mc-select-all" style="font-size:11px;color:#2563eb;background:none;border:none;cursor:pointer;text-decoration:underline">Select All</button> · <button type="button" id="mc-select-none" style="font-size:11px;color:#2563eb;background:none;border:none;cursor:pointer;text-decoration:underline">Select None</button></div>'+
+        '<div style="border:1px solid #e5e7eb;border-radius:8px;padding:10px;max-height:240px;overflow-y:auto;background:#fafafa">'+
+          (clientChecks || '<div style="color:#aaa;font-size:12px">No clients yet</div>')+
+        '</div>'+
+      '</div>'+
+    '</div>'+
+    '<div class="form-actions"><button class="cancel-btn" id="modal-cancel">Cancel</button><button class="save-btn" id="mc-save">Log Campaign</button></div>';
+
+  $('overlay').classList.add('open');
+  $('modal-close').addEventListener('click', closeModal);
+  $('modal-cancel').addEventListener('click', closeModal);
+  document.getElementById('mc-select-all').addEventListener('click', function(){
+    document.querySelectorAll('.mc-client-cb').forEach(function(cb){cb.checked=true;});
+  });
+  document.getElementById('mc-select-none').addEventListener('click', function(){
+    document.querySelectorAll('.mc-client-cb').forEach(function(cb){cb.checked=false;});
+  });
+  document.getElementById('mc-save').addEventListener('click', function(){
+    var subject = gv('mc-subject');
+    if(!subject){toast('Campaign subject is required','err');return;}
+    var summary = gv('mc-summary');
+    var sendDate = gv('mc-date')||today();
+    var selectedIds = Array.from(document.querySelectorAll('.mc-client-cb:checked')).map(function(cb){return cb.value;});
+    if(!selectedIds.length){toast('Select at least one client','err');return;}
+
+    snapshot('Log Mailchimp campaign');
+    var noteText = 'Mailchimp: '+subject+(summary?'\n'+summary:'');
+    var dateObj = new Date(sendDate+'T12:00:00');
+    var ts = dateObj.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})+' '+dateObj.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+
+    db.clients.forEach(function(c){
+      if(!selectedIds.includes(c.id)) return;
+      if(!c.notesLog) c.notesLog=[];
+      c.notesLog.push({ts:ts, text:noteText, noteType:'Email Sent', source:'mailchimp'});
+    });
+    saveDB(); closeModal(); render();
+    toast('Logged campaign for '+selectedIds.length+' client'+(selectedIds.length!==1?'s':''),'ok');
+  });
+}
+
 function parseCSVLine(line){
   const result=[];let cur='',inQuote=false;
   for(let i=0;i<line.length;i++){
@@ -701,41 +1200,148 @@ function importRevenue(){
     r.onload=function(ev){
       try{
         const lines=ev.target.result.split('\n').map(l=>l.trim()).filter(l=>l);
-        if(lines.length<2){toast('CSV appears empty','err');return;}
-        const hdrs=parseCSVLine(lines[0]).map(h=>h.replace(/"/g,'').trim().toLowerCase());
-        const ni=hdrs.findIndex(h=>h==='name');
-        const ai=hdrs.findIndex(h=>h==='amount');
-        const di=hdrs.findIndex(h=>h==='date');
-        const mi=hdrs.findIndex(h=>h==='memo');
-        const ii=hdrs.findIndex(h=>h==='item');
-        if(ni===-1){toast('No "Name" column found','err');return;}
-        if(ai===-1){toast('No "Amount" column found','err');return;}
+        if(lines.length<2){toast('File appears empty','err');return;}
+
+        // Detect delimiter
+        const delim = lines[0].includes('\t') ? '\t' : ',';
+        const split = function(line){
+          if(delim===',') return parseCSVLine(line); // handles quoted fields with commas
+          return line.split(delim).map(function(c){return c.replace(/^"|"$/g,'').trim();});
+        };
+
+        // Detect header row
+        const hdrs = split(lines[0]).map(function(h){return h.toLowerCase().trim();});
+        const looksLikeHeader = hdrs.some(function(h){return ['name','date','amount','num','qty','memo','item'].includes(h);});
+        const startRow = looksLikeHeader ? 1 : 0;
+        debugLog('Revenue import: total lines='+lines.length+' startRow='+startRow+' expected data rows='+(lines.length-startRow));
+
+        // Column indices (header-based or positional)
+        // Positional: col0=date, col1=invoice, col2=memo/description, col3=name/supplier,
+        //             col4=product/class, col5=client(class), col6=qty, col7=price, col8=total
+        function getCol(row, names, fallbackIdx){
+          if(looksLikeHeader){
+            for(var i=0;i<names.length;i++){
+              var idx=hdrs.indexOf(names[i]);
+              if(idx>=0) return (row[idx]||'').trim();
+            }
+            return '';
+          }
+          return (row[fallbackIdx]||'').trim();
+        }
 
         const rows=[];
-        for(let i=1;i<lines.length;i++){
-          const cols=parseCSVLine(lines[i]);
-          const name=(cols[ni]||'').replace(/"/g,'').trim();
-          const amt=parseFloat((cols[ai]||'').replace(/[$,"]/g,'').trim())||0;
-          if(!name||amt===0)continue;
+        for(var i=startRow;i<lines.length;i++){
+          const cols=split(lines[i]);
+          if(cols.length<3) continue;
+
+          const date    = getCol(cols,['date'],0);
+          const invoiceNum = getCol(cols,['num','invoice'],1);
+          const memo    = getCol(cols,['memo','description'],2);
+          const nameVal = getCol(cols,['name'],3);
+          const shipDate= getCol(cols,['ship date','shipdate'],4);  // col4 = Ship Date (new) -> trip start date
+          const classVal= getCol(cols,['item'],5);        // col5 = Item (was col4)
+          const clientFromClass = getCol(cols,['class'],6) || (cols[6]||'').trim(); // col6 = Class (was col5)
+          const amtStr  = getCol(cols,['amount','sales price'],9) ||
+                          getCol(cols,['amount','sales price'],8) ||
+                          cols[cols.length-1]||'';
+          const amt     = parseFloat(amtStr.replace(/[$,"]/g,''))||0;
+
+          if(!nameVal||amt===0) continue;
+
+          // Check if nameVal matches a supplier
+          const matchedSupplier = db.vendors.find(function(v){
+            return (v.name||'').toLowerCase().trim()===nameVal.toLowerCase().trim();
+          });
+
+          var clientName, supplierId, supplierName, product;
+
+          if(matchedSupplier){
+            // nameVal IS a supplier — client must come from Class column (col5) ONLY
+            var clientCol = clientFromClass || '';
+
+            // If Class is blank, skip this row entirely (per rule)
+            if(!clientCol){
+              debugLog('Revenue skip: supplier='+matchedSupplier.name+' class field is blank');
+              continue;
+            }
+
+            clientName    = clientCol;
+            supplierId    = matchedSupplier.id;
+            supplierName  = matchedSupplier.name;
+            product       = classVal;
+          } else {
+            // nameVal IS the client name
+            clientName   = nameVal;
+            supplierId   = '';
+            supplierName = '';
+            product      = classVal;
+            // Try to match supplier from classVal — exact match only, no loose 'contains' matching
+            // (loose matching caused wrong suppliers like Melio/Marriott to collide on short substrings)
+            if(classVal){
+              var prodParts = classVal.split(':');
+              for(var pi=0;pi<prodParts.length;pi++){
+                var seg = prodParts[pi].trim().toLowerCase();
+                if(seg.length<3) continue; // skip too-short segments that risk false matches
+                var sup = db.vendors.find(function(v){
+                  var vl=(v.name||'').toLowerCase();
+                  return vl===seg;
+                });
+                if(sup){supplierId=sup.id;supplierName=sup.name;break;}
+              }
+            }
+          }
+
+          debugLog('Revenue row: name='+nameVal+' client='+clientName+' supplier='+supplierName+' amt='+amt);
+
           rows.push({
-            name:name,amt:amt,
-            date:(di>=0?(cols[di]||'').replace(/"/g,'').trim():''),
-            memo:(mi>=0?(cols[mi]||'').replace(/"/g,'').trim():''),
-            item:(ii>=0?(cols[ii]||'').replace(/"/g,'').trim():'')
+            name:clientName,
+            isSupplierName:!!matchedSupplier,
+            supplierName:supplierName,
+            supplierId:supplierId,
+            product:product,
+            amt:amt,
+            date:date,
+            shipDate:shipDate,
+            memo:memo,
+            item:classVal,
+            invoiceNum:invoiceNum
           });
         }
+
         if(!rows.length){toast('No valid rows found','err');return;}
 
-        // Find unmatched names
+        // Auto-match client names
         const unmatchedNames=[];
+        const autoResolutions={};
+
+        function fuzzyMatchClient(name){
+          if(!name) return null;
+          const nl=name.toLowerCase().trim();
+          // Get first/last regardless of input format (handles 'Last, First' or 'First Last')
+          const inputFirst=getFirstName(nl).toLowerCase();
+          const inputLast=getLastName(nl).toLowerCase();
+          // Exact match against stored 'Last, First' format
+          var m=db.clients.find(c=>(c.name||'').toLowerCase().trim()===nl); if(m) return m;
+          // Match by comparing first+last regardless of how input or stored name is formatted
+          if(inputFirst && inputLast && inputFirst!==inputLast){
+            m=db.clients.find(function(c){
+              var cFirst=getFirstName(c.name).toLowerCase();
+              var cLast=getLastName(c.name).toLowerCase();
+              return cFirst===inputFirst && cLast===inputLast;
+            });
+            if(m) return m;
+          }
+          return null;
+        }
+
         rows.forEach(function(row){
-          const cl=row.name.toLowerCase();
-          const last=row.name.trim().split(' ').pop().toLowerCase();
-          const found=db.clients.some(c=>(c.name||'').toLowerCase()===cl||(c.name||'').trim().split(' ').pop().toLowerCase()===last);
-          if(!found&&!unmatchedNames.includes(row.name))unmatchedNames.push(row.name);
+          if(autoResolutions[row.name]!==undefined||unmatchedNames.includes(row.name)) return;
+          const matched=fuzzyMatchClient(row.name);
+          if(matched){ autoResolutions[row.name]=matched.id; }
+          else { unmatchedNames.push(row.name); }
         });
 
-        window._importState={rows,unmatchedNames,resolutions:{},cursor:0};
+        window._importState={rows,unmatchedNames,resolutions:autoResolutions,cursor:0};
         processImportQueue();
       }catch(err){console.error(err);toast('Could not read CSV: '+err.message,'err');}
     };r.readAsText(f);
@@ -767,7 +1373,7 @@ function showImportMatchModal(name){
 
   $('import-match-add').onclick=function(){
     const newCid=newId('C',db.clients);
-    db.clients.push({id:newCid,name:name,email:'',phone:'',location:'',tier:'Standard',points:0,preferredAirline:'',preferredHotel:'',notesLog:[],joined:today(),totalTrips:0,totalRevenue:0});
+    db.clients.push({id:newCid,name:toLastFirst(name),email:'',phone:'',location:'',tier:'Standard',points:0,preferredAirline:'',preferredHotel:'',notesLog:[],joined:today(),totalTrips:0,totalRevenue:0});
     saveDB();
     window._importState.resolutions[name]=newCid;
     overlay.style.display='none';
@@ -793,44 +1399,112 @@ function showImportMatchModal(name){
 function finalizeImport(){
   const state=window._importState;
   let imported=0,skipped=0,totalRev=0;
+  var seenInBatch={}; // track signature counts seen so far in THIS import batch
   state.rows.forEach(function(row){
-    const cl=row.name.toLowerCase();
-    const last=row.name.trim().split(' ').pop().toLowerCase();
+    // Find client by name
+    const cl=row.name.toLowerCase().trim();
+    const parts=cl.split(/\s+/);
+    const first=parts[0]||'';
+    const last=parts[parts.length-1]||'';
     let cid=null;
-    const direct=db.clients.find(c=>(c.name||'').toLowerCase()===cl||(c.name||'').trim().split(' ').pop().toLowerCase()===last);
-    if(direct){cid=direct.id;}
-    else if(state.resolutions[row.name]!==undefined){cid=state.resolutions[row.name];}
-    if(!cid){skipped++;return;}
+
+    // Check resolution from match modal first
+    if(state.resolutions[row.name]!==undefined){
+      cid=state.resolutions[row.name];
+    }
+
+    // Get first/last regardless of format
+    const rowFirst = getFirstName(cl);
+    const rowLast = getLastName(cl);
+
+    // Fuzzy match if no resolution — exact or both-names-match only
+    if(!cid){
+      const direct=db.clients.find(function(c){
+        const fn=(c.name||'').toLowerCase().trim();
+        if(fn===cl) return true;
+        if(rowFirst&&rowLast&&rowFirst!==rowLast){
+          var cFirst=getFirstName(c.name);
+          var cLast=getLastName(c.name);
+          if(cFirst===rowFirst && cLast===rowLast) return true;
+        }
+        return false;
+      });
+      if(direct) cid=direct.id;
+    }
+
+    if(!cid){debugLog('Revenue: no client match for '+row.name);skipped++;return;}
+
     const client=db.clients.find(c=>c.id===cid);
     if(!client){skipped++;return;}
 
-    // Create trip
+    // Build a signature for this row, and count how many times this exact signature
+    // has already appeared earlier in THIS batch (to allow legitimate repeated line items)
+    var sig = cid+'|'+(row.invoiceNum||'')+'|'+(row.supplierId||'')+'|'+row.amt+'|'+(row.date?row.date.slice(0,10):today());
+    var occurrenceIndex = seenInBatch[sig] || 0; // how many times we've already seen this sig in this batch
+    seenInBatch[sig] = occurrenceIndex + 1;
+
+    // Count how many matching trips already exist in db.trips with this exact signature
+    var existingMatchCount = db.trips.filter(function(t){
+      if(row.invoiceNum && t.invoiceNum){
+        return t.clientId===cid && t.invoiceNum===row.invoiceNum && t.cashPaid===row.amt;
+      }
+      return t.clientId===cid &&
+             t.supplierId===(row.supplierId||'') &&
+             t.cashPaid===row.amt &&
+             (t.departDate||'').slice(0,10)===(row.date?row.date.slice(0,10):today());
+    }).length;
+
+    // Only treat as duplicate if we've already accounted for at least as many occurrences
+    // as already exist in db.trips (this allows legitimate repeated line items within a batch)
+    var dupExists = occurrenceIndex < existingMatchCount;
+    if(dupExists){debugLog('Revenue: duplicate skipped for '+client.name);skipped++;return;}
+
+    // Build destination: use memo, or supplier+date, or 'Imported Trip'
     const tripId=newId('T',db.trips);
-    const dest=row.memo||row.item||'Imported Trip';
+    const dest=row.memo||(row.supplierName?row.supplierName+(row.date?' '+row.date:''):'Imported Trip');
+    // Use Ship Date column as trip start date if available, else fall back to extracted/invoice date
     let tripDate=today();
-    if(row.date){try{const d=new Date(row.date);if(!isNaN(d))tripDate=d.toISOString().slice(0,10);}catch(e){}}
+    if(row.shipDate){
+      try{const d=new Date(row.shipDate);if(!isNaN(d))tripDate=d.toISOString().slice(0,10);}catch(e){}
+    } else {
+      var extractedDate = extractDateFromText(dest);
+      if(extractedDate){
+        tripDate = extractedDate;
+      } else if(row.date){
+        try{const d=new Date(row.date);if(!isNaN(d))tripDate=d.toISOString().slice(0,10);}catch(e){}
+      }
+    }
+
     db.trips.push({
       id:tripId,clientId:cid,clientName:client.name,
       destination:dest,origin:'',departDate:tripDate,returnDate:tripDate,
       status:'Completed',type:'Leisure',airline:'',flightClass:'',hotel:'',
       hotelNights:0,pointsUsed:0,cashPaid:row.amt,totalValue:row.amt,
-      bookingRef:'',notes:row.memo||row.item||''
+      bookingRef:row.invoiceNum||'',notes:row.memo||'',product:row.product||'',
+      supplierId:row.supplierId||'',supplierName:row.supplierName||'',
+      invoiceNum:row.invoiceNum||''
     });
 
-    // Update client revenue, trip count, and note
+    // Link client to supplier
+    if(row.supplierId){
+      var sup=db.vendors.find(function(v){return v.id===row.supplierId;});
+      if(sup&&!(sup.clientIds||[]).includes(cid)){
+        if(!sup.clientIds)sup.clientIds=[];
+        sup.clientIds.push(cid);
+      }
+    }
+
+    // Update client revenue
     const newRev=(client.totalRevenue||0)+row.amt;
-    const noteText='Trip imported: '+dest+' — $'+row.amt.toLocaleString()+(row.date?' on '+row.date:'');
-    const newNote={ts:tsNow(),text:noteText,noteType:'Trip Import',source:'revenue-import'};
-    const notesLog=Array.isArray(client.notesLog)?[...client.notesLog,newNote]:[newNote];
-    db.clients=db.clients.map(c=>c.id===cid?Object.assign({},c,{totalRevenue:newRev,totalTrips:(c.totalTrips||0)+1,notesLog}):c);
+    db.clients=db.clients.map(c=>c.id===cid?Object.assign({},c,{totalRevenue:newRev}):c);
 
     imported++;totalRev+=row.amt;
   });
+  snapshot('Import trips');
   saveDB();render();
   window._importState=null;
   toast('Imported '+imported+' trips — $'+totalRev.toLocaleString()+(skipped?' ('+skipped+' skipped)':''),'ok');
 }
-
 
 function importCSV(){
   const i=document.createElement('input');i.type='file';i.accept='.csv';
@@ -856,9 +1530,10 @@ function importCSV(){
             return (email&&c.email&&c.email.toLowerCase()===email.toLowerCase())||c.name.toLowerCase()===name.toLowerCase();
           });
           if(exists){skipped++;continue;}
-          db.clients.push({id:newId('C',db.clients),name:name,email:email,phone:'',location:'',tier:'Standard',points:0,preferredAirline:'',preferredHotel:'',notes:'',joined:today(),totalTrips:0,notesLog:[]});
+          db.clients.push({id:newId('C',db.clients),name:toLastFirst(name),email:email,phone:'',location:'',tier:'Standard',points:0,preferredAirline:'',preferredHotel:'',notes:'',joined:today(),totalTrips:0,notesLog:[]});
           added++;
         }
+        snapshot('Import contacts');
         saveDB();render();
         toast('Imported '+added+' contacts'+(skipped?' ('+skipped+' skipped)':'')+' ✓');
       }catch(err){toast('Could not read CSV: '+err.message,'err');}
@@ -871,7 +1546,7 @@ function go(v,cid){
   view=v;
   selCid=(v==='trips'&&cid)?cid:null;
   fSearch='';fStatus='';
-  ['dashboard','clients','trips','reports'].forEach(function(x){var el=$('nb-'+x);if(el)el.classList.toggle('active',x===v);});
+  ['dashboard','clients','trips','reports','calendar','email','vendors'].forEach(function(x){var el=$('nb-'+x);if(el)el.classList.toggle('active',x===v);});
   render();
 }
 
@@ -879,45 +1554,176 @@ function go(v,cid){
 function render(){
   $('nc-clients').textContent=db.clients.length;
   $('nc-trips').textContent=db.trips.length;
+  var ncv=$('nc-vendors'); if(ncv) ncv.textContent=db.vendors.length;
   if(view==='dashboard') renderDash();
   else if(view==='clients') renderClients();
   else if(view==='trips') renderTrips();
   else if(view==='reports') renderReports();
+  else if(view==='calendar') renderCalendar();
+  else if(view==='email') renderEmail();
+  else if(view==='vendors') renderVendors();
 }
 
 function renderReports(){
-  var NOTE_TYPES_R = ['','Email Sent','Email Received','Initial Call','Follow-up','General','Trip Import'];
+  var activeTab = window._rptActiveTab || 'activity';
+  var NOTE_TYPES_R = ['','Trips','Email Sent','Email Received','Initial Call','Follow-up','General','Text Message','Lead'];
   var typeOpts = NOTE_TYPES_R.map(function(t){return '<option value="'+t+'">'+(t||'All types')+'</option>';}).join('');
+
   $('main').innerHTML =
     '<div class="page-hdr"><div class="page-title">Reports</div></div>'+
-    '<div class="report-filter">'+
-      '<div><label>From Date</label><input type="date" id="rpt-from"/></div>'+
-      '<div><label>To Date</label><input type="date" id="rpt-to"/></div>'+
-      '<div><label>Note Type</label><select id="rpt-type">'+typeOpts+'</select></div>'+
-      '<div><label>Client</label><select id="rpt-client"><option value="">All clients</option>'+
-        [...db.clients].sort(function(a,b){var al=(a.name||'').trim().split(' ').pop().toLowerCase();var bl=(b.name||'').trim().split(' ').pop().toLowerCase();return al.localeCompare(bl);}).map(function(c){return '<option value="'+c.id+'">'+c.name+'</option>';}).join('')+
-      '</select></div>'+
-      '<div style="display:flex;gap:8px;align-self:flex-end">'+
-        '<button class="report-run-btn" id="rpt-run">Run Report</button>'+
-        '<button class="report-export-btn" id="rpt-export">Export CSV</button>'+
-      '</div>'+
+    '<div style="display:flex;gap:8px;margin-bottom:16px;border-bottom:1px solid #e5e7eb">'+
+      '<button class="rpt-tab-btn'+(activeTab==='activity'?' active':'')+'" data-tab="activity">Activity Report</button>'+
+      '<button class="rpt-tab-btn'+(activeTab==='invoice'?' active':'')+'" data-tab="invoice">By Invoice #</button>'+
     '</div>'+
-    '<div id="rpt-results"><div class="empty" style="padding:40px">Set filters above and click Run Report</div></div>';
+    (activeTab==='activity' ?
+      ('<div class="report-filter">'+
+        '<div><label>From Date</label><input type="date" id="rpt-from"/></div>'+
+        '<div><label>To Date</label><input type="date" id="rpt-to"/></div>'+
+        '<div><label>Note Type</label><select id="rpt-type">'+typeOpts+'</select></div>'+
+        '<div><label>Client</label><select id="rpt-client"><option value="">All clients</option>'+
+          [...db.clients].sort(function(a,b){return (a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase());}).map(function(c){return '<option value="'+c.id+'">'+c.name+'</option>';}).join('')+
+        '</select></div>'+
+        '<div style="display:flex;gap:8px;align-self:flex-end">'+
+          '<button class="report-run-btn" id="rpt-run">Run Report</button>'+
+          '<button class="report-export-btn" id="rpt-export">Export CSV</button>'+
+        '</div>'+
+      '</div>'+
+      '<div id="rpt-results"><div class="empty" style="padding:40px">Set filters above and click Run Report</div></div>')
+    :
+      ('<div class="report-filter">'+
+        '<div><label>From Date</label><input type="date" id="rpt-inv-from"/></div>'+
+        '<div><label>To Date</label><input type="date" id="rpt-inv-to"/></div>'+
+        '<div><label>Supplier</label><select id="rpt-inv-supplier"><option value="">All suppliers</option>'+
+          [...db.vendors].sort(function(a,b){return (a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase());}).map(function(v){return '<option value="'+v.id+'">'+v.name+'</option>';}).join('')+
+        '</select></div>'+
+        '<div><label>Client</label><select id="rpt-inv-client"><option value="">All clients</option>'+
+          [...db.clients].sort(function(a,b){return (a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase());}).map(function(c){return '<option value="'+c.id+'">'+c.name+'</option>';}).join('')+
+        '</select></div>'+
+        '<div style="display:flex;gap:8px;align-self:flex-end">'+
+          '<button class="report-run-btn" id="rpt-inv-run">Run Report</button>'+
+          '<button class="report-export-btn" id="rpt-inv-export">Export CSV</button>'+
+        '</div>'+
+      '</div>'+
+      '<div id="rpt-inv-results"><div class="empty" style="padding:40px">Set filters above and click Run Report</div></div>')
+    );
 
-  document.getElementById('rpt-run').addEventListener('click', function(){
-    runReport();
-    // Bind row clicks after table renders
-    setTimeout(function(){
-      document.querySelectorAll('.rpt-row').forEach(function(row){
-        row.addEventListener('click', function(){
-          var idx = parseInt(row.dataset.rptIdx, 10);
-          var r = window._reportRows && window._reportRows[idx];
-          if(r) openNoteExpand(r.client+' — '+r.ts, r.text, r.type||'');
-        });
-      });
-    }, 50);
+  document.querySelectorAll('.rpt-tab-btn').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      window._rptActiveTab = btn.dataset.tab;
+      renderReports();
+    });
   });
-  document.getElementById('rpt-export').addEventListener('click', exportReport);
+
+  if(activeTab==='activity'){
+    document.getElementById('rpt-run').addEventListener('click', function(){
+      runReport();
+      setTimeout(function(){
+        document.querySelectorAll('.rpt-row').forEach(function(row){
+          row.addEventListener('click', function(){
+            var idx = parseInt(row.dataset.rptIdx, 10);
+            var r = window._reportRows && window._reportRows[idx];
+            if(r){ if(r.type==='Trips' && r.tripId){ openTripForm(r.tripId); } else { openNoteExpand(r.client+' — '+r.ts, r.text, r.type||''); } }
+          });
+        });
+      }, 50);
+    });
+    document.getElementById('rpt-export').addEventListener('click', exportReport);
+  } else {
+    document.getElementById('rpt-inv-run').addEventListener('click', function(){
+      runInvoiceReport();
+      setTimeout(function(){
+        document.querySelectorAll('.rpt-inv-row').forEach(function(row){
+          row.addEventListener('click', function(){
+            openTripForm(row.dataset.tripId);
+          });
+        });
+      }, 50);
+    });
+    document.getElementById('rpt-inv-export').addEventListener('click', exportInvoiceReport);
+  }
+}
+
+function getInvoiceReportData(){
+  var fromDate = (document.getElementById('rpt-inv-from')||{}).value||'';
+  var toDate   = (document.getElementById('rpt-inv-to')||{}).value||'';
+  var supplierId = (document.getElementById('rpt-inv-supplier')||{}).value||'';
+  var clientId = (document.getElementById('rpt-inv-client')||{}).value||'';
+
+  // Group trips by invoice number
+  var groups = {};
+  db.trips.forEach(function(t){
+    if(supplierId && t.supplierId !== supplierId) return;
+    if(clientId && t.clientId !== clientId) return;
+    var tripDate = t.departDate||'';
+    if(fromDate && tripDate < fromDate) return;
+    if(toDate   && tripDate > toDate)   return;
+    var key = t.invoiceNum || t.bookingRef || ('(no invoice) '+t.id);
+    if(!groups[key]) groups[key] = {invoiceNum:key, trips:[], totalValue:0, totalCash:0};
+    groups[key].trips.push(t);
+    groups[key].totalValue += (t.totalValue||0);
+    groups[key].totalCash  += (t.cashPaid||0);
+  });
+
+  var rows = Object.keys(groups).map(function(k){ return groups[k]; });
+  rows.sort(function(a,b){
+    var ad = (a.trips[0]&&a.trips[0].departDate)||'';
+    var bd = (b.trips[0]&&b.trips[0].departDate)||'';
+    return bd.localeCompare(ad);
+  });
+  return rows;
+}
+
+function runInvoiceReport(){
+  var groups = getInvoiceReportData();
+  var container = document.getElementById('rpt-inv-results');
+  if(!container) return;
+  if(!groups.length){
+    container.innerHTML = '<div class="empty" style="padding:40px">No trips match the selected filters</div>';
+    return;
+  }
+
+  var grandTotal = groups.reduce(function(a,g){return a+g.totalValue;},0);
+  var grandCash = groups.reduce(function(a,g){return a+g.totalCash;},0);
+
+  window._invoiceReportRows = groups;
+  var rowsHtml = '';
+  groups.forEach(function(g, gi){
+    g.trips.forEach(function(t, ti){
+      rowsHtml += '<tr class="rpt-inv-row" style="cursor:pointer" data-trip-id="'+t.id+'">'+
+        (ti===0 ? '<td rowspan="'+g.trips.length+'" style="font-weight:700;color:#111;vertical-align:top;border-right:1px solid #f0f0f0">'+g.invoiceNum+'</td>' : '')+
+        '<td>'+(t.clientName||'')+'</td>'+
+        '<td>'+(t.destination||'')+'</td>'+
+        '<td style="white-space:nowrap">'+(t.departDate||'')+'</td>'+
+        '<td>'+(t.supplierName||'—')+'</td>'+
+        '<td style="text-align:right">$'+Number(t.totalValue||0).toLocaleString()+'</td>'+
+      '</tr>';
+    });
+    rowsHtml += '<tr style="background:#f9fafb"><td colspan="5" style="text-align:right;font-weight:700;color:#374151;padding:6px 12px">Invoice '+g.invoiceNum+' Total:</td><td style="text-align:right;font-weight:700;color:#111">$'+Number(g.totalValue).toLocaleString()+'</td></tr>';
+  });
+
+  container.innerHTML =
+    '<div style="font-size:13px;color:#888;margin-bottom:10px">'+groups.length+' invoice'+(groups.length!==1?'s':'')+' · '+db.trips.length+' trip rows · Grand Total: <strong style="color:#111">$'+Number(grandTotal).toLocaleString()+'</strong></div>'+
+    '<div class="tbl-wrap"><table class="report-table"><thead><tr>'+
+      '<th>Invoice #</th><th>Client</th><th>Destination</th><th>Date</th><th>Supplier</th><th style="text-align:right">Value</th>'+
+    '</tr></thead><tbody>'+rowsHtml+'</tbody></table></div>';
+}
+
+function exportInvoiceReport(){
+  var groups = getInvoiceReportData();
+  if(!groups.length){ toast('No data to export','err'); return; }
+  var esc = function(v){ var s=String(v==null?'':v); return s.includes(',')||s.includes('"')||s.includes('\n')?'"'+s.replace(/"/g,'""')+'"':s; };
+  var headers = ['Invoice #','Client','Destination','Date','Supplier','Value'];
+  var rows = [];
+  groups.forEach(function(g){
+    g.trips.forEach(function(t){
+      rows.push([g.invoiceNum, t.clientName, t.destination, t.departDate, t.supplierName||'', t.totalValue||0]);
+    });
+    rows.push(['', '', '', '', 'Invoice Total', g.totalValue]);
+  });
+  var csv = [headers].concat(rows).map(function(r){return r.map(esc).join(',');}).join('\n');
+  var b = new Blob([csv],{type:'text/csv'});
+  var a = document.createElement('a'); a.href=URL.createObjectURL(b); a.download='milesman-invoice-report.csv'; a.click();
+  toast('Report exported ✓');
 }
 
 function getReportData(){
@@ -926,33 +1732,53 @@ function getReportData(){
   var noteType = (document.getElementById('rpt-type')||{}).value||'';
   var clientId = (document.getElementById('rpt-client')||{}).value||'';
 
-  // Collect all notes from all clients
   var rows = [];
-  db.clients.forEach(function(c){
-    if(clientId && c.id !== clientId) return;
-    (c.notesLog||[]).forEach(function(n){
-      // Parse note timestamp for date comparison
-      var noteDate = '';
-      try{ noteDate = new Date(n.ts).toISOString().slice(0,10); }catch(e){}
-      if(!noteDate || noteDate === 'NaN-aN-aN'){
-        // Try parsing 'Jun 10, 2026 10:52 AM' format
-        try{ noteDate = new Date(n.ts).toISOString().slice(0,10); }catch(e){ noteDate = ''; }
-      }
-      if(fromDate && noteDate < fromDate) return;
-      if(toDate   && noteDate > toDate)   return;
-      if(!(n.noteType||'')) return; // exclude notes with no type
-      if(noteType && (n.noteType||'') !== noteType) return;
+
+  // Include trip records (when filter is blank or set to 'Trips')
+  if(!noteType || noteType==='Trips'){
+    db.trips.forEach(function(t){
+      if(clientId && t.clientId !== clientId) return;
+      var tripDate = t.departDate||'';
+      if(fromDate && tripDate < fromDate) return;
+      if(toDate   && tripDate > toDate)   return;
+      var supplierTxt = t.supplierName ? ' via '+t.supplierName : '';
+      var text = (t.destination||'Trip')+supplierTxt+(t.invoiceNum?' (Invoice #'+t.invoiceNum+')':'')+' — $'+Number(t.totalValue||0).toLocaleString();
       rows.push({
-        client: c.name,
-        email:  c.email||'',
-        ts:     n.ts,
-        type:   n.noteType||'',
-        text:   n.text||''
+        client: t.clientName||'',
+        email: '',
+        ts: tripDate,
+        type: 'Trips',
+        text: text,
+        tripId: t.id
       });
     });
-  });
+  }
 
-  // Sort by timestamp descending
+  // Include notes from clients (skip Trip Import - those are legacy, trips now come from db.trips)
+  if(!noteType || noteType!=='Trips'){
+    db.clients.forEach(function(c){
+      if(clientId && c.id !== clientId) return;
+      (c.notesLog||[]).forEach(function(n){
+        if((n.noteType||'')==='Trip Import') return; // legacy - trips now in db.trips
+        var noteDateRaw = n.ts;
+        var noteDate = '';
+        try{ noteDate = new Date(noteDateRaw).toISOString().slice(0,10); }catch(e){}
+        if(fromDate && noteDate && noteDate < fromDate) return;
+        if(toDate   && noteDate && noteDate > toDate)   return;
+        if(!(n.noteType||'')) return;
+        if(noteType && (n.noteType||'') !== noteType) return;
+        rows.push({
+          client: c.name,
+          email:  c.email||'',
+          ts:     n.ts,
+          type:   n.noteType||'',
+          text:   n.text||''
+        });
+      });
+    });
+  }
+
+  // Sort by timestamp/date descending
   rows.sort(function(a,b){ return new Date(b.ts)-new Date(a.ts); });
   return rows;
 }
@@ -965,7 +1791,7 @@ function runReport(){
     container.innerHTML = '<div class="empty" style="padding:40px">No notes match the selected filters</div>';
     return;
   }
-  var BCLS2 = {'Email Sent':'nt-email-sent','Email Received':'nt-email-received','Initial Call':'nt-initial-call','Follow-up':'nt-follow-up','General':'nt-general','Trip Import':'nt-blue'};
+  var BCLS2 = {'Email Sent':'nt-email-sent','Email Received':'nt-email-received','Initial Call':'nt-initial-call','Follow-up':'nt-follow-up','General':'nt-general','Trips':'nt-blue','Text Message':'nt-text-message','Lead':'nt-lead'};
   window._reportRows = rows; // store for click handler
   container.innerHTML =
     '<div style="font-size:13px;color:#888;margin-bottom:10px">'+rows.length+' note'+(rows.length!==1?'s':'')+' found</div>'+
@@ -997,6 +1823,947 @@ function exportReport(){
   toast('Report exported ✓');
 }
 
+// ── Email Templates ───────────────────────────────────────────────────────
+// To add a template: add an object to TEMPLATES with name, description, and body.
+// Use {{firstName}}, {{fullName}}, {{email}} as placeholders.
+var TEMPLATES = [
+  {
+    id:'welcome',
+    name:'Welcome New Client',
+    description:'Introduction email for new clients',
+    subject:'Welcome to Miles Man Travel!',
+    body:"Hi {{firstName}},\n\nWelcome to Miles Man! I'm Eric Lipkind, your Chief Mileage Officer. I'm thrilled to have you on board and look forward to helping you maximize your points and miles to travel in style.\n\nAs your dedicated travel advisor, I'll be working with you to:\n\u2022 Find the best award redemptions for your goals\n\u2022 Book premium cabin flights using your points\n\u2022 Identify the best credit card strategies for your travel style\n\nFeel free to reach out any time \u2014 I'm here to help.\n\nWarm regards,\nEric Lipkind\nChief Mileage Officer, Miles Man\neric@themilesman.com\n(908) 419-7700\nthemilesman.com"
+  },
+  {
+    id:'followup',
+    name:'General Follow-Up',
+    description:'Check in after a consultation or inquiry',
+    subject:'Following Up \u2014 Miles Man Travel',
+    body:"Hi {{firstName}},\n\nI wanted to follow up on our recent conversation and see if you have any questions or if there's anything I can help you with.\n\nI'm always happy to hop on a quick call to discuss your travel goals and how we can put your points to work.\n\nLooking forward to hearing from you!\n\nBest,\nEric Lipkind\nChief Mileage Officer, Miles Man\neric@themilesman.com\n(908) 419-7700\nthemilesman.com"
+  },
+  {
+    id:'tripconfirm',
+    name:'Trip Confirmation',
+    description:'Confirm booking details with client',
+    subject:'Your Trip is Confirmed \u2014 Miles Man Travel',
+    body:"Hi {{firstName}},\n\nGreat news \u2014 your trip is confirmed! Here's a summary of your booking details. Please review everything carefully and let me know if you have any questions.\n\nAs always, I'm here if you need anything before, during, or after your trip.\n\nSafe travels!\n\nEric Lipkind\nChief Mileage Officer, Miles Man\neric@themilesman.com\n(908) 419-7700\nthemilesman.com"
+  }
+];
+
+function fillTemplate(body, client){
+  var firstName = getFirstName(client.name) || client.name || '';
+  return body
+    .replace(/{{firstName}}/g, firstName)
+    .replace(/{{fullName}}/g, toFirstLast(client.name)||'')
+    .replace(/{{email}}/g, client.email||'');
+}
+
+function renderEmail(){
+  var sortedClients = [...db.clients].sort(function(a,b){
+    var al=(a.name||'').trim().split(' ').pop().toLowerCase();
+    var bl=(b.name||'').trim().split(' ').pop().toLowerCase();
+    return al.localeCompare(bl);
+  });
+
+  var clientOpts = '<option value="">Select client...</option>'+
+    sortedClients.map(function(c){
+      return '<option value="'+c.id+'">'+c.name+(c.email?' <'+c.email+'>':'')+'</option>';
+    }).join('');
+
+  var templateCards = TEMPLATES.map(function(t){
+    return '<div class="template-card" data-template-id="'+t.id+'">'+
+      '<div class="template-card-name">'+t.name+'</div>'+
+      '<div class="template-card-desc">'+t.description+'</div>'+
+    '</div>';
+  }).join('');
+
+  $('main').innerHTML =
+    '<div class="page-hdr"><div class="page-title">Email</div></div>'+
+    '<div class="email-two-col">'+
+      '<div>'+
+        '<div style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">1. Select Client</div>'+
+        '<div style="display:flex;gap:14px;margin-bottom:8px">'+
+          '<label style="display:flex;align-items:center;gap:5px;font-size:12px;color:#374151;cursor:pointer"><input type="checkbox" id="email-filter-paying" style="width:13px;height:13px"> Paying clients only</label>'+
+          '<label style="display:flex;align-items:center;gap:5px;font-size:12px;color:#374151;cursor:pointer"><input type="checkbox" id="email-filter-subscriber" style="width:13px;height:13px"> Subscribers only</label>'+
+        '</div>'+
+        '<select id="email-client-sel" style="width:100%;padding:8px 11px;border-radius:7px;border:1px solid #d1d5db;font-size:13px;font-family:inherit;color:#111;background:#fafafa;margin-bottom:16px">'+clientOpts+'</select>'+
+        '<div style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">2. Select Template</div>'+
+        templateCards+
+      '</div>'+
+      '<div>'+
+        '<div style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">3. Preview & Send</div>'+
+        '<div id="email-preview-area" style="color:#aaa;font-size:13px;padding:20px;text-align:center;border:1px dashed #e5e7eb;border-radius:8px">'+
+          'Select a client and template to preview the email'+
+        '</div>'+
+      '</div>'+
+    '</div>';
+
+  var selClient = null;
+  var selTemplate = null;
+
+  function updatePreview(){
+    const area = document.getElementById('email-preview-area');
+    if(!selClient || !selTemplate){
+      area.innerHTML='<div style="color:#aaa;font-size:13px;padding:20px;text-align:center">Select a client and template to preview</div>';
+      return;
+    }
+    var body = fillTemplate(selTemplate.body, selClient);
+    var subject = fillTemplate(selTemplate.subject, selClient);
+    area.innerHTML =
+      '<div style="margin-bottom:10px">'+
+        '<div style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">To</div>'+
+        '<div style="font-size:13px;color:#111;padding:6px 10px;background:#fff;border:1px solid #e5e7eb;border-radius:6px">'+(selClient.email||'(no email on file)')+'</div>'+
+      '</div>'+
+      '<div style="margin-bottom:10px">'+
+        '<div style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Subject</div>'+
+        '<div style="font-size:13px;color:#111;padding:6px 10px;background:#fff;border:1px solid #e5e7eb;border-radius:6px">'+subject+'</div>'+
+      '</div>'+
+      '<div style="margin-bottom:12px">'+
+        '<div style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Body</div>'+
+        '<div class="email-preview">'+body+'</div>'+
+      '</div>'+
+      '<div style="display:flex;gap:8px">'+
+        '<button id="email-send-btn" style="padding:9px 20px;border-radius:8px;border:none;background:#2563eb;color:#fff;cursor:pointer;font-size:13px;font-weight:600;font-family:inherit">&#9993;&#65039; Open in Outlook</button>'+
+        '<button id="email-log-btn" style="padding:9px 20px;border-radius:8px;border:1px solid #d1d5db;background:#fff;color:#374151;cursor:pointer;font-size:13px;font-family:inherit">&#128221; Log as Note</button>'+
+      '</div>';
+
+    document.getElementById('email-send-btn').addEventListener('click',function(){
+      var mailto='mailto:'+encodeURIComponent(selClient.email||'')+
+        '?subject='+encodeURIComponent(subject)+
+        '&body='+encodeURIComponent(body);
+      window.location.href=mailto;
+    });
+
+    document.getElementById('email-log-btn').addEventListener('click',function(){
+      var newNote={ts:tsNow(),text:'Email Sent: '+subject+'\n'+body,noteType:'Email Sent',source:'template'};
+      db.clients=db.clients.map(function(c){
+        if(c.id!==selClient.id)return c;
+        var nl=Array.isArray(c.notesLog)?[...c.notesLog,newNote]:[newNote];
+        return Object.assign({},c,{notesLog:nl});
+      });
+      saveDB();
+      toast('Email logged as note on '+selClient.name,'ok');
+    });
+  }
+
+  document.getElementById('email-client-sel').addEventListener('change',function(){
+    selClient = db.clients.find(function(c){return c.id===this.value;},this)||null;
+    updatePreview();
+  });
+
+  function applyEmailFilters(){
+    var payingOnly = document.getElementById('email-filter-paying').checked;
+    var subOnly = document.getElementById('email-filter-subscriber').checked;
+    var filtered = sortedClients.filter(function(c){
+      if(payingOnly && !c.isPayingClient) return false;
+      if(subOnly && !c.isSubscriber) return false;
+      return true;
+    });
+    var sel = document.getElementById('email-client-sel');
+    var prevVal = sel.value;
+    sel.innerHTML = '<option value="">Select client...</option>'+
+      filtered.map(function(c){return '<option value="'+c.id+'">'+c.name+(c.email?' <'+c.email+'>':'')+'</option>';}).join('');
+    // Restore selection if still valid
+    if(filtered.some(function(c){return c.id===prevVal;})) sel.value = prevVal;
+    else { selClient=null; updatePreview(); }
+  }
+  document.getElementById('email-filter-paying').addEventListener('change', applyEmailFilters);
+  document.getElementById('email-filter-subscriber').addEventListener('change', applyEmailFilters);
+
+  document.querySelectorAll('.template-card').forEach(function(card){
+    card.addEventListener('click',function(){
+      document.querySelectorAll('.template-card').forEach(function(c){c.classList.remove('selected');});
+      card.classList.add('selected');
+      selTemplate=TEMPLATES.find(function(t){return t.id===card.dataset.templateId;})||null;
+      updatePreview();
+    });
+  });
+}
+
+// ── Vendor CSV Import ────────────────────────────────────────────────────
+// Expected columns (flexible): Name, Type, Category, Contact, Email, Phone, Website, Notes
+function importVendorsCSV(){
+  const inp=document.createElement('input');inp.type='file';inp.accept='.csv,.tsv,.txt';
+  inp.onchange=function(e){
+    const f=e.target.files[0];if(!f)return;
+    const r=new FileReader();
+    r.onload=function(ev){
+      try{
+        const raw=ev.target.result;
+        const lines=raw.split('\n').map(l=>l.trim()).filter(l=>l);
+        if(!lines.length){toast('File appears empty','err');return;}
+
+        const delim = lines[0].includes('\t') ? '\t' : ',';
+        const split = function(line){
+          if(delim===','){ return parseCSVLine(line); }
+          return line.split(delim).map(function(c){return c.replace(/^"|"$/g,'').trim();});
+        };
+
+        const hdrs = split(lines[0]).map(function(h){return h.toLowerCase().trim();});
+        const looksLikeHeader = hdrs.some(function(h){return ['name','date','amount','num','qty','memo','item','class'].includes(h);});
+        const startRow = looksLikeHeader ? 1 : 0;
+        debugLog('Revenue import: total lines='+lines.length+' startRow='+startRow+' expected data rows='+(lines.length-startRow));
+
+        function getCol(row, names, fallbackIdx){
+          if(looksLikeHeader){
+            for(var i=0;i<names.length;i++){
+              var idx=hdrs.indexOf(names[i]);
+              if(idx>=0) return (row[idx]||'').trim();
+            }
+            return '';
+          }
+          return (row[fallbackIdx]||'').trim();
+        }
+
+        // Same layout as revenue import:
+        // col0=date,col1=invoice,col2=memo,col3=name,col4=ship date,col5=item,col6=class,col7=qty,col8=price,col9=amount
+        var vendorMap = {}; // name.toLowerCase() -> {name, clientNames:[], rows:[]}
+
+        for(var i=startRow;i<lines.length;i++){
+          var cols=split(lines[i]);
+          if(cols.length<4){
+            debugLog('Revenue SILENT SKIP (too few cols) row '+i+': cols='+cols.length+' rawLine='+JSON.stringify(lines[i].slice(0,100)));
+            continue;
+          }
+
+          var date    = getCol(cols,['date'],0);
+          var memo    = getCol(cols,['memo','description'],2);
+          var nameVal = getCol(cols,['name'],3);
+          var itemVal = getCol(cols,['item'],5);
+          var classVal= getCol(cols,['class'],6) || (cols[6]||'').trim();
+          var amtStr  = getCol(cols,['amount','sales price'],9) ||
+                        getCol(cols,['amount','sales price'],8) ||
+                        cols[cols.length-1]||'';
+          var amount  = parseFloat(amtStr.replace(/[$,"]/g,''))||0;
+
+          if(!nameVal) continue;
+
+          // Rule: if Name !== Class, Name is treated as a supplier
+          var nameLower = nameVal.toLowerCase().trim();
+          var classLower = classVal.toLowerCase().trim();
+          if(nameLower === classLower || !classVal){
+            debugLog('Supplier import skip: name='+nameVal+' class='+classVal);
+            continue;
+          }
+          debugLog('Supplier import row: name='+nameVal+' class='+classVal);
+
+          var key = nameLower;
+          if(!vendorMap[key]) vendorMap[key]={name:nameVal, clientNames:[], rows:[]};
+          if(classVal && !vendorMap[key].clientNames.includes(classVal)){
+            vendorMap[key].clientNames.push(classVal);
+          }
+          vendorMap[key].rows.push({
+            date:date, description:memo, productType:itemVal,
+            clientName:classVal, amount:amount
+          });
+        }
+
+        // Fuzzy match client by name (handles Last,First and First Last)
+        function matchClient(cn){
+          if(!cn) return null;
+          var cLower=cn.toLowerCase().trim();
+          var cFirst=getFirstName(cLower);
+          var cLast=getLastName(cLower);
+          return db.clients.find(function(c){
+            var full=(c.name||'').toLowerCase().trim();
+            var first=getFirstName(full);
+            var last=getLastName(full);
+            if(full===cLower) return true;
+            if(cFirst&&cLast&&cFirst!==cLast&&first===cFirst&&last===cLast) return true;
+            return false;
+          });
+        }
+
+        var added=0, skipped=0, tripsAdded=0;
+        Object.keys(vendorMap).forEach(function(key){
+          var vm = vendorMap[key];
+          var exists = db.vendors.find(function(v){return(v.name||'').toLowerCase()===key;});
+          var clientIds = [];
+          vm.clientNames.forEach(function(cn){
+            var matched=matchClient(cn);
+            if(matched && !clientIds.includes(matched.id)) clientIds.push(matched.id);
+          });
+
+          if(exists){
+            clientIds.forEach(function(cid){
+              if(!(exists.clientIds||[]).includes(cid)){
+                if(!exists.clientIds) exists.clientIds=[];
+                exists.clientIds.push(cid);
+              }
+            });
+            skipped++;
+          } else {
+            db.vendors.push({
+              id:newId('V',db.vendors),
+              name:vm.name,
+              type:'Supplier',
+              category:'',
+              primaryClientName:vm.clientNames[0]||'',
+              contactName:'',email:'',phone:'',website:'',notes:'',notesLog:[],
+              clientIds:clientIds
+            });
+            added++;
+          }
+
+          vm.rows.forEach(function(row){
+            if(!row.clientName) return;
+            var client=matchClient(row.clientName);
+            if(!client) return;
+            if(!client.notesLog) client.notesLog=[];
+            var dupKey=(row.date+'|'+vm.name+'|'+row.description).toLowerCase();
+            var alreadyImported=client.notesLog.some(function(n){return (n.importKey||'')===dupKey;});
+            if(alreadyImported) return;
+            var noteText=vm.name+(row.description?' - '+row.description:'')+(row.date?' ('+row.date+')':'')+(row.amount?' $'+row.amount:'');
+            client.notesLog.push({ts:new Date().toLocaleString(),text:noteText,noteType:'Trip Import',importKey:dupKey});
+            tripsAdded++;
+          });
+        });
+
+        snapshot('Import suppliers');
+        saveDB();render();
+        toast('Imported '+added+' supplier'+(added!==1?'s':'')+(skipped?' ('+skipped+' updated)':'')+(tripsAdded?' · '+tripsAdded+' trip notes added':''),'ok');
+      }catch(err){console.error(err);toast('Could not read CSV: '+err.message,'err');}
+    };r.readAsText(f);
+  };inp.click();
+}
+
+// ── Vendor helpers ───────────────────────────────────────────────────────
+const VENDOR_TYPES = ['Supplier','Referral Partner','DMC'];
+const VENDOR_CATS  = ['Airline','Hotel','Cruise Line','Car Rental','Tour Operator','Other'];
+
+function getVendorStats(vendor){
+  var stats = {trips:0, revenue:0, clients:[], tripList:[]};
+
+  // Primary: trips directly linked via supplierId
+  db.trips.forEach(function(t){
+    var matchSupplier = t.supplierId === vendor.id;
+    var matchAir = vendor.category==='Airline' && t.airline && t.airline.toLowerCase()===vendor.name.toLowerCase();
+    var matchHot = vendor.category==='Hotel'   && t.hotel   && t.hotel.toLowerCase()===vendor.name.toLowerCase();
+    if(matchSupplier || matchAir || matchHot){
+      stats.revenue += (t.totalValue||0);
+      if(!stats.clients.includes(t.clientName)) stats.clients.push(t.clientName);
+      stats.tripList.push(t);
+    }
+  });
+
+  // Linked clients (referral partners) — only count them in the client list,
+  // do NOT pull in their unrelated trips (those are only shown if supplierId explicitly matches, handled above)
+  (vendor.clientIds||[]).forEach(function(cid){
+    var c = db.clients.find(function(x){return x.id===cid;});
+    if(c && !stats.clients.includes(c.name)) stats.clients.push(c.name);
+  });
+
+  // Count distinct invoice numbers (falls back to trip id if no invoice number)
+  var seenInvoices = {};
+  stats.tripList.forEach(function(t){
+    var key = t.invoiceNum || t.id;
+    if(!seenInvoices[key]){ seenInvoices[key]=true; stats.trips++; }
+  });
+
+  return stats;
+}
+
+function openVendorDetail(id){
+  var v = db.vendors.find(function(x){return x.id===id;});
+  if(!v) return;
+  var stats = getVendorStats(v);
+  var typeCls = v.type==='Referral Partner' ? 'vendor-type-referral' : 'vendor-type-supplier';
+
+  // Build full transaction table
+  var txRows = stats.tripList.map(function(t){
+    var st = t.status||'Planning';
+    if(st==='Completed' && t.departDate && t.departDate>=today()) st='Upcoming';
+    var scls={'Confirmed':'b-green','Planning':'b-amber','Completed':'b-blue','Cancelled':'b-red','Upcoming':'b-amber'}[st]||'b-gray';
+    return '<tr>'+
+      '<td style="padding:8px 12px;font-size:13px;color:#111;font-weight:500">'+t.clientName+'</td>'+
+      '<td style="padding:8px 12px;font-size:13px;color:#374151">'+t.destination+'</td>'+
+      '<td style="padding:8px 12px;font-size:12px;color:#888;white-space:nowrap">'+t.departDate+(t.returnDate?' → '+t.returnDate:'')+'</td>'+
+      '<td style="padding:8px 12px"><span class="badge '+scls+'">'+st+'</span></td>'+
+      '<td style="padding:8px 12px;font-size:13px;color:#374151">$'+Number(t.cashPaid||0).toLocaleString()+'</td>'+
+      '<td style="padding:8px 12px;font-size:13px;font-weight:600;color:#111">$'+Number(t.totalValue||0).toLocaleString()+'</td>'+
+      '<td style="padding:8px 12px;font-size:12px;color:#888">'+t.id+'</td>'+
+    '</tr>';
+  }).join('');
+
+  var totalRevenue = stats.tripList.reduce(function(a,t){return a+(t.totalValue||0);},0);
+  var totalCash = stats.tripList.reduce(function(a,t){return a+(t.cashPaid||0);},0);
+
+  $('modal').innerHTML =
+    '<div class="modal-hdr">'+
+      '<div>'+
+        '<div class="modal-title">'+v.name+'</div>'+
+        '<div style="font-size:12px;color:#888;margin-top:2px">'+
+          '<span class="badge '+typeCls+'" style="margin-right:6px">'+v.type+'</span>'+
+          (v.category?'<span class="badge b-gray">'+v.category+'</span>':'')+
+        '</div>'+
+      '</div>'+
+      '<button class="close-btn" id="modal-close">&#x2715;</button>'+
+    '</div>'+
+    (v.primaryClientName?'<div style="font-size:13px;color:#2563eb;font-weight:600;margin-bottom:12px">&#128100; '+v.primaryClientName+'</div>':'')+
+    '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:18px">'+
+      '<div class="stat"><div class="stat-lbl">Transactions</div><div class="stat-val">'+stats.tripList.length+'</div></div>'+
+      '<div class="stat"><div class="stat-lbl">Cash Paid</div><div class="stat-val">$'+Number(totalCash).toLocaleString()+'</div></div>'+
+      '<div class="stat"><div class="stat-lbl">Total Value</div><div class="stat-val">$'+Number(totalRevenue).toLocaleString()+'</div></div>'+
+    '</div>'+
+    (txRows ?
+      '<div class="tbl-wrap" style="max-height:400px;overflow-y:auto"><table>'+
+        '<thead><tr>'+
+          '<th>Client</th><th>Destination</th><th>Dates</th><th>Status</th><th>Cash Paid</th><th>Total Value</th><th>Trip ID</th>'+
+        '</tr></thead>'+
+        '<tbody>'+txRows+'</tbody>'+
+      '</table></div>'
+    : '<div class="empty">No transactions found for this vendor</div>')+
+    '<div class="form-actions">'+
+      '<button class="cancel-btn" id="modal-close2">Close</button>'+
+      '<button class="save-btn" id="modal-edit-vendor" data-id="'+v.id+'">&#9999;&#65039; Edit Supplier</button>'+
+    '</div>';
+
+  $('overlay').classList.add('open');
+  $('modal-close').addEventListener('click', closeModal);
+  $('modal-close2').addEventListener('click', closeModal);
+  $('modal-edit-vendor').addEventListener('click', function(){closeModal(); openVendorForm(this.dataset.id);});
+}
+
+function renderVendors(){
+  var sorted = [...db.vendors].sort(function(a,b){return (a.name||'').localeCompare(b.name||'');});
+
+  // Compute global stats
+  var totalTrips=0, totalRevenue=0, totalClients=new Set();
+  db.vendors.forEach(function(v){
+    var s=getVendorStats(v);
+    totalTrips+=s.tripList.length;
+    totalRevenue+=s.tripList.reduce(function(a,t){return a+(t.totalValue||0);},0);
+    s.clients.forEach(function(c){totalClients.add(c);});
+  });
+
+  $('main').innerHTML =
+    '<div class="page-hdr"><div class="page-title">Suppliers</div><button class="add-btn" id="btn-add-supplier">+ Add Supplier</button></div>'+
+    '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px">'+
+      '<div class="stat"><div class="stat-lbl">Total Suppliers</div><div class="stat-val">'+db.vendors.length+'</div></div>'+
+      '<div class="stat"><div class="stat-lbl">Total Trips</div><div class="stat-val">'+totalTrips+'</div></div>'+
+      '<div class="stat"><div class="stat-lbl">Total Clients</div><div class="stat-val">'+totalClients.size+'</div></div>'+
+      '<div class="stat"><div class="stat-lbl">Total Value</div><div class="stat-val">$'+Number(totalRevenue).toLocaleString()+'</div></div>'+
+    '</div>'+
+    '<div class="search-row">'+
+      '<input id="supplier-search" placeholder="Search suppliers..."/>'+
+      '<button id="btn-select-all-suppliers" style="padding:7px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#555;cursor:pointer;font-size:12px;font-family:inherit">Select All</button>'+
+      '<button id="btn-delete-checked-suppliers" style="display:none;padding:7px 14px;border-radius:7px;border:none;background:#dc2626;color:#fff;cursor:pointer;font-size:12px;font-family:inherit">&#128465; Delete Selected</button>'+
+    '</div>'+
+    (sorted.length ? sorted.map(function(v){
+      var stats = getVendorStats(v);
+      var typeCls = v.type==='Referral Partner' ? 'vendor-type-referral' : 'vendor-type-supplier';
+      var clientList = stats.clients.slice(0,3).join(', ')+(stats.clients.length>3?' +' +(stats.clients.length-3)+' more':'');
+      return '<div class="vendor-card" id="vc-'+v.id+'">'+
+        '<div style="display:flex;justify-content:space-between;align-items:flex-start">'+
+          '<div style="display:flex;align-items:flex-start;gap:10px">'+
+            '<input type="checkbox" class="supplier-row-cb" data-id="'+v.id+'" style="width:14px;height:14px;margin-top:4px">'+
+          '<div>'+
+            '<div style="font-size:15px;font-weight:700;color:#2563eb;cursor:pointer;text-decoration:underline" class="vendor-name-link" data-id="'+v.id+'">'+v.name+'</div>'+
+            '<div style="margin-top:3px">'+
+              '<span class="badge '+typeCls+'" style="margin-right:6px">'+v.type+'</span>'+
+              (v.category?'<span class="badge b-gray">'+v.category+'</span>':'')+
+            '</div>'+
+          '</div>'+
+          '</div>'+
+          '<div style="display:flex;gap:6px">'+
+              '<button class="icon-btn del-vendor" data-id="'+v.id+'" style="color:#dc2626">&#128465;&#65039;</button>'+
+          '</div>'+
+        '</div>'+
+        (v.contactName||v.email||v.phone ? '<div style="font-size:12px;color:#666;margin-top:8px">'+
+          (v.contactName?'<span style="margin-right:12px">&#128100; '+v.contactName+'</span>':'')+
+          (v.email?'<a href="mailto:'+v.email+'" style="color:#2563eb;text-decoration:none;margin-right:12px">&#9993; '+v.email+'</a>':'')+
+          (v.phone?'<span>&#128222; '+v.phone+'</span>':'')+
+        '</div>':'')+
+        '<div style="margin-top:8px">'+
+          '<span class="vendor-stat">&#9992;&#65039; '+stats.trips+' trips</span>'+
+          '<span class="vendor-stat">&#128176; $'+Number(stats.revenue).toLocaleString()+' revenue</span>'+
+          (stats.clients.length?'<span class="vendor-stat">&#128100; '+stats.clients.length+' client'+(stats.clients.length!==1?'s':'')+'</span>':'')+
+        '</div>'+
+        (stats.clients.length?'<div style="font-size:11px;color:#888;margin-top:6px">'+clientList+'</div>':'')+
+        (stats.tripList.length?
+          '<div style="margin-top:10px;border-top:1px solid #f0f0f0;padding-top:10px">'+
+            '<div style="font-size:11px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Trips</div>'+
+            '<table style="width:100%;border-collapse:collapse">'+
+            '<thead><tr>'+
+              '<th style="text-align:left;font-size:10px;color:#aaa;font-weight:600;padding:3px 8px;text-transform:uppercase">Client</th>'+
+              '<th style="text-align:left;font-size:10px;color:#aaa;font-weight:600;padding:3px 8px;text-transform:uppercase">Destination</th>'+
+              '<th style="text-align:left;font-size:10px;color:#aaa;font-weight:600;padding:3px 8px;text-transform:uppercase">Dates</th>'+
+              '<th style="text-align:left;font-size:10px;color:#aaa;font-weight:600;padding:3px 8px;text-transform:uppercase">Status</th>'+
+              '<th style="text-align:left;font-size:10px;color:#aaa;font-weight:600;padding:3px 8px;text-transform:uppercase">Value</th>'+
+            '</tr></thead>'+
+            '<tbody>'+
+            (function(){
+            var vendorExpanded = (window._expandedVendors||{})[v.id];
+            var visibleTrips = vendorExpanded ? stats.tripList : stats.tripList.slice(0,10);
+            var rowsHtml = visibleTrips.map(function(t){
+              var st = t.status||'Planning';
+              if(st==='Completed' && t.departDate && t.departDate>=today()) st='Upcoming';
+              var scls={'Confirmed':'b-green','Planning':'b-amber','Completed':'b-blue','Cancelled':'b-red','Upcoming':'b-amber'}[st]||'b-gray';
+              return '<tr class="vendor-trip-row" data-trip-id="'+t.id+'" style="cursor:pointer">'+
+                '<td style="font-size:12px;padding:5px 8px;color:#111;font-weight:500">'+t.clientName+'</td>'+
+                '<td style="font-size:12px;padding:5px 8px;color:#374151">'+t.destination+'</td>'+
+                '<td style="font-size:11px;padding:5px 8px;color:#888;white-space:nowrap">'+t.departDate+(t.returnDate?' → '+t.returnDate:'')+'</td>'+
+                '<td style="padding:5px 8px"><span class="badge '+scls+'">'+st+'</span></td>'+
+                '<td style="font-size:12px;padding:5px 8px;color:#374151">$'+Number(t.totalValue||0).toLocaleString()+'</td>'+
+              '</tr>';
+            }).join('');
+            var moreRow = (stats.tripList.length>10?'<tr><td colspan="5" style="font-size:11px;color:#2563eb;padding:5px 8px;cursor:pointer;text-decoration:underline" class="vendor-toggle-more" data-vendor-id="'+v.id+'">'+(vendorExpanded?'Show less':'+ '+(stats.tripList.length-10)+' more trips')+'</td></tr>':'');
+            return rowsHtml+moreRow;
+            })()+
+            '</tbody></table>'+
+          '</div>'
+        :'')+
+        (v.notes?'<div style="font-size:12px;color:#666;margin-top:8px;border-top:1px solid #f0f0f0;padding-top:8px">'+v.notes+'</div>':'')+
+      '</div>';
+    }).join('') : '<div class="empty">No suppliers yet — add airlines, hotels, or referral partners</div>');
+
+  $('btn-add-supplier').addEventListener('click', function(){openVendorForm();});
+  var btnImportVendors = $('btn-import-suppliers'); if(btnImportVendors) btnImportVendors.addEventListener('click', importVendorsCSV);
+  $('supplier-search').addEventListener('input', function(){
+    var q = this.value.toLowerCase();
+    document.querySelectorAll('.vendor-card').forEach(function(el){
+      var txt = el.textContent.toLowerCase();
+      el.style.display = !q||txt.includes(q) ? '' : 'none';
+    });
+  });
+  document.querySelectorAll('.edit-vendor').forEach(function(btn){
+    btn.addEventListener('click', function(){openVendorForm(btn.dataset.id);});
+  });
+  document.querySelectorAll('.vendor-name-link').forEach(function(el){
+    el.addEventListener('click', function(e){
+      e.stopPropagation();
+      openVendorForm(el.dataset.id);
+    });
+  });
+  document.querySelectorAll('.del-vendor').forEach(function(btn){
+    btn.addEventListener('click', function(){delVendor(btn.dataset.id);});
+  });
+  document.querySelectorAll('.vendor-trip-row').forEach(function(row){
+    row.addEventListener('click', function(){
+      openTripForm(row.dataset.tripId);
+    });
+    row.addEventListener('mouseenter', function(){row.style.background='#f0f7ff';});
+    row.addEventListener('mouseleave', function(){row.style.background='';});
+  });
+  document.querySelectorAll('.vendor-toggle-more').forEach(function(el){
+    el.addEventListener('click', function(e){
+      e.stopPropagation();
+      if(!window._expandedVendors) window._expandedVendors={};
+      window._expandedVendors[el.dataset.vendorId] = !window._expandedVendors[el.dataset.vendorId];
+      renderVendors();
+    });
+  });
+
+  // Checkbox bulk select / delete for suppliers
+  var selBtnS = document.getElementById('btn-select-all-suppliers');
+  var delBtnS = document.getElementById('btn-delete-checked-suppliers');
+
+  function updateDeleteBtnS(){
+    var checked = document.querySelectorAll('.supplier-row-cb:checked');
+    var allCbs = document.querySelectorAll('.supplier-row-cb');
+    if(delBtnS) delBtnS.style.display = checked.length ? 'inline-block' : 'none';
+    if(selBtnS) selBtnS.textContent = checked.length === allCbs.length && allCbs.length>0 ? 'Deselect All' : 'Select All';
+  }
+
+  if(selBtnS){
+    selBtnS.addEventListener('click', function(){
+      var cbs = document.querySelectorAll('.supplier-row-cb');
+      var allChecked = document.querySelectorAll('.supplier-row-cb:checked').length === cbs.length;
+      cbs.forEach(function(cb){ cb.checked = !allChecked; });
+      updateDeleteBtnS();
+    });
+  }
+  document.querySelectorAll('.supplier-row-cb').forEach(function(cb){
+    cb.addEventListener('click', function(e){ e.stopPropagation(); });
+    cb.addEventListener('change', updateDeleteBtnS);
+  });
+  if(delBtnS){
+    delBtnS.addEventListener('click', function(){
+      var ids = Array.from(document.querySelectorAll('.supplier-row-cb:checked')).map(function(cb){return cb.dataset.id;});
+      if(!ids.length) return;
+      if(!confirm('Delete '+ids.length+' supplier'+(ids.length!==1?'s':'')+'?')) return;
+      snapshot('Delete '+ids.length+' supplier'+(ids.length!==1?'s':''));
+      db.vendors = db.vendors.filter(function(v){ return !ids.includes(v.id); });
+      saveDB(); render();
+      toast('Deleted '+ids.length+' supplier'+(ids.length!==1?'s':''),'ok');
+    });
+  }
+}
+
+function openVendorForm(id){
+  var d = id ? (db.vendors.find(function(v){return v.id===id;}) || {}) : {};
+
+  // Build client checklist for referral partners
+  var sortedClients = [...db.clients].sort(function(a,b){
+    var al=(a.name||'').trim().split(' ').pop().toLowerCase();
+    var bl=(b.name||'').trim().split(' ').pop().toLowerCase();
+    return al.localeCompare(bl);
+  });
+  var clientChecks = sortedClients.map(function(c){
+    var checked = (d.clientIds||[]).includes(c.id) ? 'checked' : '';
+    return '<label style="display:flex;align-items:center;gap:8px;padding:5px 0;font-size:13px;cursor:pointer">'+
+      '<input type="checkbox" class="vendor-client-cb" value="'+c.id+'" '+checked+' style="width:14px;height:14px">'+
+      '<span>'+c.name+'</span>'+
+      '<span style="font-size:11px;color:#888;margin-left:auto">'+
+        countDistinctTrips(c.id)+' trips · $'+Number(c.totalRevenue||0).toLocaleString()+
+      '</span>'+
+    '</label>';
+  }).join('');
+
+  var typeOpts = VENDOR_TYPES.map(function(t){
+    return '<option value="'+t+'"'+(t===d.type?' selected':'')+'>'+t+'</option>';
+  }).join('');
+  var catOpts = VENDOR_CATS.map(function(c){
+    return '<option value="'+c+'"'+(c===d.category?' selected':'')+'>'+c+'</option>';
+  }).join('');
+
+  $('modal').innerHTML =
+    '<div class="modal-hdr"><div class="modal-title">'+(id?'Edit Supplier':'Add Supplier')+'</div><button class="close-btn" id="modal-close">&#x2715;</button></div>'+
+    '<div class="fg">'+
+      fld('Supplier Name', inp('vn','text',d.name,'e.g. Delta Air Lines'))+
+      fld('Type', '<select id="vtype"><option value="">Select...</option>'+typeOpts+'</select>')+
+      fld('Category', '<select id="vcat"><option value="">Select...</option>'+catOpts+'</select>')+
+      fld('Contact Name', inp('vcn','text',d.contactName,''))+
+      fld('Email', inp('vem','email',d.email,''))+
+      fld('Phone', inp('vph','text',d.phone,''))+
+      fld('Website', inp('vwb','text',d.website,'https://'))+
+      '<div class="field full"><label>Notes</label><textarea id="vno" rows="2">'+(d.notes||'')+'</textarea></div>'+
+      '<div class="field full" id="client-link-section" style="display:'+(d.type==='Referral Partner'?'flex':'none')+'"><label>Linked Clients (Referral Partner)</label>'+
+        '<div style="border:1px solid #e5e7eb;border-radius:8px;padding:10px;max-height:200px;overflow-y:auto;background:#fafafa">'+
+          (clientChecks || '<div style="color:#aaa;font-size:12px">No clients yet</div>')+
+        '</div>'+
+      '</div>'+
+    '</div>'+
+    '<div style="margin-top:18px;border-top:1px solid #e5e7eb;padding-top:16px">'+
+      '<div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:10px">Notes</div>'+
+      (function(){
+        var nl = d.notesLog||[];
+        var rows = nl.map(function(n,i){
+          return '<div class="note-entry" id="vne-'+i+'" style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:10px;margin-bottom:8px">'+
+            '<div style="display:flex;align-items:center;margin-bottom:4px">'+
+              '<span class="note-ts" style="font-size:10px;color:#888;font-weight:600;letter-spacing:.03em">'+n.ts+'</span>'+
+              '<select class="vnote-type-sel" data-idx="'+i+'" style="font-size:11px;padding:2px 6px;border-radius:5px;border:1px solid #d1d5db;background:#fff;color:#374151;cursor:pointer;margin-left:8px">'+
+                '<option value="">-- Type --</option>'+
+                ['Email Sent','Email Received','Initial Call','Follow-up','General','Trip Import','Text Message','Lead'].map(function(t){return '<option value="'+t+'"'+(n.noteType===t?' selected':'')+'>'+t+'</option>';}).join('')+
+              '</select>'+
+              '<button class="del-vnote-btn" data-idx="'+i+'" title="Delete note" style="margin-left:auto;background:none;border:none;color:#dc2626;cursor:pointer;font-size:14px">&#128465;</button>'+
+            '</div>'+
+            '<textarea class="vnote-txt" rows="2" style="width:100%;padding:6px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;font-family:inherit;resize:vertical;box-sizing:border-box">'+( n.text||'')+'</textarea>'+
+          '</div>';
+        }).join('');
+        rows += '<div class="note-entry" id="vne-new" style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:10px;margin-bottom:8px">'+
+          '<div style="display:flex;align-items:center;margin-bottom:4px">'+
+            '<span style="font-size:10px;color:#888;font-weight:600">New Note</span>'+
+            '<select class="vnote-type-sel" data-idx="new" style="font-size:11px;padding:2px 6px;border-radius:5px;border:1px solid #d1d5db;background:#fff;color:#374151;cursor:pointer;margin-left:8px">'+
+              '<option value="">-- Type --</option>'+
+              ['Email Sent','Email Received','Initial Call','Follow-up','General','Trip Import','Text Message','Lead'].map(function(t){return '<option value="'+t+'">'+t+'</option>';}).join('')+
+            '</select>'+
+          '</div>'+
+          '<textarea class="vnote-txt" rows="2" placeholder="Add a note..." style="width:100%;padding:6px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;font-family:inherit;resize:vertical;box-sizing:border-box"></textarea>'+
+        '</div>';
+        return rows;
+      })()+
+    '</div>'+
+    '<div style="margin-top:16px;border-top:1px solid #e5e7eb;padding-top:16px">'+
+      '<div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:10px">Clients with Bookings</div>'+
+      (function(){
+        var found = [];
+        var foundIds = new Set();
+        // Match by clientIds (manually linked)
+        (d.clientIds||[]).forEach(function(cid){
+          var c = db.clients.find(function(x){return x.id===cid;});
+          if(c && !foundIds.has(c.id)){found.push(c);foundIds.add(c.id);}
+        });
+        // Match by primaryClientName
+        if(d.primaryClientName){
+          var pLower = d.primaryClientName.toLowerCase();
+          db.clients.forEach(function(c){
+            if(!foundIds.has(c.id)){
+              var cLower = (c.name||'').toLowerCase();
+              if(cLower===pLower || cLower.includes(pLower) || pLower.includes(cLower)){
+                found.push(c); foundIds.add(c.id);
+              }
+            }
+          });
+        }
+        // Match by vendor name appearing in trip flight/notes/destination
+        db.trips.forEach(function(t){
+          if(foundIds.has(t.clientId)) return;
+          var vname = (d.name||'').toLowerCase();
+          var haystack = [(t.flight||''),(t.destination||''),(t.notes||'')].join(' ').toLowerCase();
+          if(haystack.includes(vname)){
+            var c = db.clients.find(function(x){return x.id===t.clientId;});
+            if(c && !foundIds.has(c.id)){found.push(c);foundIds.add(c.id);}
+          }
+        });
+        if(!found.length) return '<div style="font-size:12px;color:#888;padding:8px 0">No linked clients yet</div>';
+        return found.map(function(c){
+          // Only trips for THIS supplier specifically
+          var trips = db.trips.filter(function(t){return t.clientId===c.id && t.supplierId===d.id;});
+          var rowsHtml = trips.map(function(t){
+            return '<div style="display:flex;align-items:center;justify-content:space-between;padding:5px 10px;font-size:12px;color:#555;background:#f9fafb;border-radius:6px;margin-bottom:3px;cursor:pointer" class="client-booking-trip-row" data-trip-id="'+t.id+'">'+
+              '<span>'+(t.destination||'')+'</span>'+
+              '<span>$'+Number(t.totalValue||0).toLocaleString()+'</span>'+
+            '</div>';
+          }).join('');
+          return '<div style="border-bottom:1px solid #f3f4f6;padding:8px 0">'+
+            '<div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer" class="client-booking-toggle" data-client-id="'+c.id+'">'+
+              '<span style="font-size:13px;color:#2563eb;font-weight:500;text-decoration:underline" class="supplier-client-link" data-id="'+c.id+'">'+c.name+'</span>'+
+              '<span style="font-size:12px;color:#888">'+trips.length+' trip'+(trips.length!==1?'s':'')+' '+(trips.length?'<span class="client-booking-caret" style="display:inline-block;margin-left:4px;transition:transform .15s">&#9656;</span>':'')+'</span>'+
+            '</div>'+
+            (trips.length ? '<div class="client-booking-trips" data-client-id="'+c.id+'" style="display:none;margin-top:6px">'+rowsHtml+'</div>' : '')+
+          '</div>';
+        }).join('');
+      })()+
+    '</div>'+
+    '<div class="form-actions"><button class="cancel-btn" id="modal-cancel">Cancel</button><button class="save-btn" id="modal-save-vendor" data-id="'+(id||'')+'">Save Supplier</button></div>';
+
+  $('overlay').classList.add('open');
+  $('modal-close').addEventListener('click', closeModal);
+  $('modal-cancel').addEventListener('click', closeModal);
+
+  // Show/hide client links based on type
+  document.getElementById('vtype').addEventListener('change', function(){
+    var sec = document.getElementById('client-link-section');
+    sec.style.display = this.value==='Referral Partner' ? 'flex' : 'none';
+  });
+
+  $('modal-save-vendor').addEventListener('click', function(){saveVendor(this.dataset.id);});
+  document.querySelectorAll('.supplier-client-link').forEach(function(el){
+    el.addEventListener('click', function(e){
+      e.stopPropagation();
+      closeModal();
+      go('clients');
+      setTimeout(function(){openClientForm(el.dataset.id);},100);
+    });
+  });
+  document.querySelectorAll('.client-booking-toggle').forEach(function(el){
+    el.addEventListener('click', function(e){
+      if(e.target.classList.contains('supplier-client-link')) return;
+      var cid = el.dataset.clientId;
+      var tripsDiv = document.querySelector('.client-booking-trips[data-client-id="'+cid+'"]');
+      var caret = el.querySelector('.client-booking-caret');
+      if(!tripsDiv) return;
+      var isOpen = tripsDiv.style.display !== 'none';
+      tripsDiv.style.display = isOpen ? 'none' : 'block';
+      if(caret) caret.style.transform = isOpen ? 'rotate(0deg)' : 'rotate(90deg)';
+    });
+  });
+  document.querySelectorAll('.client-booking-trip-row').forEach(function(row){
+    row.addEventListener('click', function(e){
+      e.stopPropagation();
+      closeModal();
+      openTripForm(row.dataset.tripId);
+    });
+  });
+  document.querySelectorAll('.del-vnote-btn').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var el=document.getElementById('vne-'+this.dataset.idx);
+      if(el) el.remove();
+    });
+  });
+}
+
+function saveVendor(id){
+  var name = gv('vn');
+  if(!name){toast('Supplier name is required','err');return;}
+  var clientIds = Array.from(document.querySelectorAll('.vendor-client-cb:checked')).map(function(cb){return cb.value;});
+  // Collect notes from form
+  var notesLog = [];
+  document.querySelectorAll('[id^="vne-"]').forEach(function(el){
+    var txt=(el.querySelector('.vnote-txt')||{}).value||'';
+    var typ=(el.querySelector('.vnote-type-sel')||{}).value||'';
+    var tsEl=el.querySelector('.note-ts');
+    if(el.id==='vne-new'){
+      if(txt.trim()) notesLog.push({ts:new Date().toLocaleString(),text:txt.trim(),noteType:typ});
+    } else {
+      if(txt.trim()) notesLog.push({ts:tsEl?tsEl.textContent:'',text:txt.trim(),noteType:typ});
+    }
+  });
+  var data = {
+    name:name, type:gv('vtype'), category:gv('vcat'),
+    notesLog:notesLog, contactName:gv('vcn'), email:gv('vem'), phone:gv('vph'),
+    website:gv('vwb'), notes:gv('vno'), clientIds:clientIds
+  };
+  if(id){
+    db.vendors = db.vendors.map(function(v){return v.id===id ? Object.assign({},v,data) : v;});
+    toast('Vendor updated');
+  } else {
+    data.id = newId('V', db.vendors);
+    db.vendors.push(data);
+    toast('Vendor added');
+  }
+  saveDB(); closeModal(); render();
+}
+
+function delVendor(id){
+  var v = db.vendors.find(function(x){return x.id===id;});
+  if(!v || !confirm('Delete vendor '+v.name+'?')) return;
+  db.vendors = db.vendors.filter(function(x){return x.id!==id;});
+  saveDB(); toast('Vendor deleted'); render();
+}
+
+function renderCalendar(){
+  var now = window._calDate || new Date();
+  window._calDate = now;
+  var year = now.getFullYear();
+  var month = now.getMonth();
+  var monthName = now.toLocaleDateString('en-US',{month:'long',year:'numeric'});
+  var todayStr = new Date().toISOString().slice(0,10);
+
+  // First and last day of month
+  var firstDay = new Date(year, month, 1);
+  var lastDay  = new Date(year, month+1, 0);
+  var startDow = firstDay.getDay(); // 0=Sun
+
+  // Build trip lookup: date -> [{trip, type}]
+  var tripMap = {};
+  function addToMap(dateStr, trip, type){
+    if(!tripMap[dateStr]) tripMap[dateStr] = [];
+    tripMap[dateStr].push({trip:trip, type:type});
+  }
+  db.trips.forEach(function(t){
+    if(!t.departDate) return;
+    var start = new Date(t.departDate+'T12:00:00');
+    var end   = t.returnDate ? new Date(t.returnDate+'T12:00:00') : start;
+    var cur   = new Date(start);
+    var dayCount = 0;
+    while(cur <= end && dayCount < 60){
+      var ds = cur.toISOString().slice(0,10);
+      var type = cur.getTime()===start.getTime() ? 'start' : (cur.getTime()===end.getTime() ? 'end' : 'span');
+      if(start.getTime()===end.getTime()) type='start';
+      addToMap(ds, t, type);
+      cur.setDate(cur.getDate()+1);
+      dayCount++;
+    }
+  });
+
+  // Build calendar grid HTML
+  var days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  var headerCells = days.map(function(d){return '<div class="cal-header-cell">'+d+'</div>';}).join('');
+
+  var cells = '';
+  // Pad start
+  for(var i=0;i<startDow;i++){
+    var prevDate = new Date(year, month, -startDow+i+1);
+    cells += '<div class="cal-cell other-month"><div class="cal-day-num">'+prevDate.getDate()+'</div></div>';
+  }
+  // Days of month
+  for(var d=1;d<=lastDay.getDate();d++){
+    var dateStr = year+'-'+String(month+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+    var isToday = dateStr===todayStr;
+    var trips   = tripMap[dateStr]||[];
+    var dayNumHtml = isToday
+      ? '<div class="cal-day-num today-num">'+d+'</div>'
+      : '<div class="cal-day-num">'+d+'</div>';
+    var tripHtml = trips.slice(0,3).map(function(entry){
+      var t=entry.trip, tp=entry.type;
+      var cls='cal-trip cal-trip-'+(tp==='start'?'start':tp==='end'?'end':'span');
+      var label=(tp==='start'?'▶ ':tp==='end'?'■ ':'  ')+t.clientName+(t.destination?' → '+t.destination.split(',')[0]:'');
+      return '<div class="'+cls+'" data-trip-id="'+t.id+'" title="'+t.clientName+': '+t.destination+(tp==='start'?' (departs)':tp==='end'?' (returns)':'')+'">'+label+'</div>';
+    }).join('');
+    if(trips.length>3) tripHtml+='<div style="font-size:9px;color:#888">+' +(trips.length-3)+' more</div>';
+    cells+='<div class="cal-cell'+(isToday?' today':'')+'" data-date="'+dateStr+'" style="cursor:pointer">'+dayNumHtml+tripHtml+'</div>';
+  }
+  // Pad end
+  var totalCells = startDow + lastDay.getDate();
+  var endPad = totalCells % 7 === 0 ? 0 : 7-(totalCells%7);
+  for(var i=1;i<=endPad;i++){
+    cells+='<div class="cal-cell other-month"><div class="cal-day-num">'+i+'</div></div>';
+  }
+
+  $('main').innerHTML =
+    '<div class="page-hdr">'+
+      '<div class="page-title">Calendar</div>'+
+      '<div class="cal-nav">'+
+        '<button class="cal-nav-btn" id="cal-prev">&#8592; Prev</button>'+
+        '<div class="cal-month-label">'+monthName+'</div>'+
+        '<button class="cal-nav-btn" id="cal-next">Next &#8594;</button>'+
+        '<button class="cal-nav-btn" id="cal-today">Today</button>'+
+      '</div>'+
+    '</div>'+
+    '<div class="cal-grid">'+headerCells+cells+'</div>';
+
+  // Nav button handlers
+  document.getElementById('cal-prev').addEventListener('click',function(){
+    window._calDate=new Date(year,month-1,1);renderCalendar();
+  });
+  document.getElementById('cal-next').addEventListener('click',function(){
+    window._calDate=new Date(year,month+1,1);renderCalendar();
+  });
+  document.getElementById('cal-today').addEventListener('click',function(){
+    window._calDate=new Date();renderCalendar();
+  });
+
+  // Trip click → open edit form
+  document.querySelectorAll('.cal-trip[data-trip-id]').forEach(function(el){
+    el.addEventListener('click',function(e){
+      e.stopPropagation();
+      openTripForm(el.dataset.tripId);
+    });
+  });
+
+  document.querySelectorAll('.cal-cell[data-date]').forEach(function(cell){
+    cell.addEventListener('click', function(){
+      openDayTripsModal(cell.dataset.date, tripMap[cell.dataset.date]||[]);
+    });
+  });
+}
+
+function openDayTripsModal(dateStr, entries){
+  var dateObj = new Date(dateStr+'T12:00:00');
+  var dateLabel = dateObj.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
+
+  // Dedupe trips (a trip can appear multiple times if it spans the date as start+end same day)
+  var seen = {};
+  var trips = [];
+  entries.forEach(function(entry){
+    if(!seen[entry.trip.id]){ seen[entry.trip.id]=true; trips.push(entry.trip); }
+  });
+
+  var rows = trips.map(function(t){
+    var scls = {'Confirmed':'b-green','Planning':'b-amber','Completed':'b-blue','Cancelled':'b-red'}[t.status||'']||'b-gray';
+    return '<tr class="day-trip-row" data-trip-id="'+t.id+'" style="cursor:pointer">'+
+      '<td style="font-weight:600;color:#2563eb;text-decoration:underline">'+(t.clientName||'')+'</td>'+
+      '<td>'+(t.destination||'')+'</td>'+
+      '<td><span class="badge '+scls+'">'+(t.status||'')+'</span></td>'+
+      '<td>'+(t.supplierName||'—')+'</td>'+
+      '<td style="text-align:right">$'+Number(t.totalValue||0).toLocaleString()+'</td>'+
+    '</tr>';
+  }).join('');
+
+  $('modal').innerHTML =
+    '<div class="modal-hdr"><div class="modal-title">'+dateLabel+'</div><button class="close-btn" id="modal-close">&#x2715;</button></div>'+
+    (trips.length ?
+      '<div class="tbl-wrap"><table>'+
+        '<thead><tr><th>Client</th><th>Destination</th><th>Status</th><th>Supplier</th><th style="text-align:right">Value</th></tr></thead>'+
+        '<tbody>'+rows+'</tbody>'+
+      '</table></div>'
+    : '<div class="empty">No trips on this day</div>')+
+    '<div class="form-actions">'+
+      '<button class="cancel-btn" id="modal-close2">Close</button>'+
+      '<button class="save-btn" id="day-add-trip">+ Add Trip</button>'+
+    '</div>';
+
+  $('overlay').classList.add('open');
+  $('modal-close').addEventListener('click', closeModal);
+  $('modal-close2').addEventListener('click', closeModal);
+  $('day-add-trip').addEventListener('click', function(){
+    closeModal();
+    openTripForm();
+    setTimeout(function(){
+      var ddInput = document.getElementById('tdd');
+      if(ddInput) ddInput.value = dateStr;
+    }, 50);
+  });
+  document.querySelectorAll('.day-trip-row').forEach(function(row){
+    row.addEventListener('click', function(){
+      closeModal();
+      openTripForm(row.dataset.tripId);
+    });
+  });
+}
+
 function renderDash(){
   const s={
     clients:db.clients.length,trips:db.trips.length,
@@ -1006,7 +2773,8 @@ function renderDash(){
     upcoming:db.trips.filter(function(t){return (t.departDate||'')>=today();}).length
   };
   const recent=[].concat(db.trips).sort(function(a,b){return (b.id||'').localeCompare(a.id||'');}).slice(0,6);
-  const top=[].concat(db.clients).sort(function(a,b){return b.points-a.points;}).slice(0,5);
+  function clientLiveRevenue(cid){return db.trips.filter(function(t){return t.clientId===cid;}).reduce(function(a,t){return a+(t.totalValue||0);},0);}
+  const top=[].concat(db.clients).sort(function(a,b){return clientLiveRevenue(b.id)-clientLiveRevenue(a.id);}).slice(0,5);
   $('main').innerHTML=
     '<div class="page-hdr"><div class="page-title">Dashboard</div><div style="font-size:12px;color:#888">'+new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'})+'</div></div>'+
     '<div class="stats-grid">'+
@@ -1022,14 +2790,18 @@ function renderDash(){
         '<div class="card-hdr"><span class="card-title">Recent trips</span><button class="view-all" id="dash-view-all">View all &rarr;</button></div>'+
         (recent.length?
           '<table><thead><tr><th>Client</th><th>Destination</th><th>Depart</th><th>Status</th></tr></thead><tbody>'+
-          recent.map(function(t){return '<tr><td class="n">'+(t.clientName||'')+'</td><td>'+(t.destination||'')+'</td><td>'+(t.departDate||'')+'</td><td>'+badge(t.status)+'</td></tr>';}).join('')+
+          recent.map(function(t){
+            var st=t.status||'Planning';
+            if(st==='Completed' && t.departDate && t.departDate>=today()) st='Upcoming';
+            return '<tr><td class="n">'+(t.clientName||'')+'</td><td>'+(t.destination||'')+'</td><td>'+(t.departDate||'')+'</td><td>'+badge(st)+'</td></tr>';
+          }).join('')+
           '</tbody></table>':
           '<div class="empty">No trips yet</div>')+
       '</div>'+
       '<div class="card">'+
         '<div class="card-hdr"><span class="card-title">Top clients</span></div>'+
         (top.length?
-          top.map(function(c){return '<div class="cli-row" data-cid="'+c.id+'">'+av(c.name)+'<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600;color:#111;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+c.name+'</div><div style="font-size:11px;color:#888">'+fmt(c.points)+' pts</div></div>'+badge(c.tier)+'</div>';}).join(''):
+          top.map(function(c){var rev=clientLiveRevenue(c.id);return '<div class="cli-row" data-cid="'+c.id+'">'+av(c.name)+'<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600;color:#111;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+c.name+'</div><div style="font-size:11px;color:#888">$'+Number(rev).toLocaleString()+'</div></div></div>';}).join(''):
           '<div class="empty">No clients yet</div>')+
       '</div>'+
     '</div>';
@@ -1040,32 +2812,91 @@ function renderDash(){
   });
 }
 
+function clientSortArrow(col){
+  var c = window._clientSortCol || 'name';
+  var d = window._clientSortDir || 'asc';
+  if(c!==col) return '';
+  return d==='asc' ? ' &#9650;' : ' &#9660;';
+}
+
 function renderClients(){
   const q=fSearch.toLowerCase();
+  var clientSortCol = window._clientSortCol || 'name';
+  var clientSortDir = window._clientSortDir || 'asc';
   var list=db.clients.filter(function(c){return !q||(c.name||'').toLowerCase().includes(q)||(c.email||'').toLowerCase().includes(q)||(c.location||'').toLowerCase().includes(q);});
-  list.sort(function(a,b){
-    var aLast=(a.name||'').trim().split(' ').pop().toLowerCase();
-    var bLast=(b.name||'').trim().split(' ').pop().toLowerCase();
-    return aLast.localeCompare(bLast);
+
+  list = list.slice().sort(function(a,b){
+    var av, bv;
+    function liveRevenue(cid){return db.trips.filter(function(t){return t.clientId===cid;}).reduce(function(a,t){return a+(t.totalValue||0);},0);}
+    if(clientSortCol==='trips'){
+      av=countDistinctTrips(a.id); bv=countDistinctTrips(b.id);
+    } else if(clientSortCol==='notes'){
+      av=(a.notesLog||[]).length; bv=(b.notesLog||[]).length;
+    } else if(clientSortCol==='totalRevenue'){
+      av=liveRevenue(a.id); bv=liveRevenue(b.id);
+    } else {
+      av=a[clientSortCol]; bv=b[clientSortCol];
+    }
+    if(typeof av==='number'||typeof bv==='number'){
+      av=Number(av)||0; bv=Number(bv)||0;
+    } else {
+      av=(av||'').toString().toLowerCase(); bv=(bv||'').toString().toLowerCase();
+    }
+    if(av<bv) return clientSortDir==='asc'?-1:1;
+    if(av>bv) return clientSortDir==='asc'?1:-1;
+    return 0;
   });
+
   $('main').innerHTML=
     '<div class="page-hdr"><div class="page-title">Clients</div><button class="add-btn" id="btn-add-client">+ Add Client</button></div>'+
-    '<div class="search-row"><input id="client-search" placeholder="Search by name, email, location..." value="'+fSearch+'"/></div>'+
-    '<div class="tbl-wrap"><table><thead><tr><th>Client</th><th>Contact</th><th>Tier</th><th>Points</th><th>Revenue</th><th>Trips</th><th>Notes</th><th>Joined</th><th></th></tr></thead><tbody>'+
+    '<div class="search-row">'+
+      '<input id="client-search" placeholder="Search by name, email, location..." value="'+fSearch+'"/>'+
+      '<button id="btn-select-all-clients" style="padding:7px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#555;cursor:pointer;font-size:12px;font-family:inherit">Select All</button>'+
+      '<button id="btn-delete-checked-clients" style="display:none;padding:7px 14px;border-radius:7px;border:none;background:#dc2626;color:#fff;cursor:pointer;font-size:12px;font-family:inherit">&#128465; Delete Selected</button>'+
+    '</div>'+
+    '<div class="tbl-wrap"><table><thead><tr>'+
+      '<th style="width:32px"><input type="checkbox" id="client-check-all" style="width:14px;height:14px"></th>'+
+      '<th class="sort-th-c" data-sort="name" style="cursor:pointer">Client'+clientSortArrow('name')+'</th>'+
+      '<th class="sort-th-c" data-sort="email" style="cursor:pointer">Contact'+clientSortArrow('email')+'</th>'+
+      '<th class="sort-th-c" data-sort="tier" style="cursor:pointer">Tier'+clientSortArrow('tier')+'</th>'+
+      '<th class="sort-th-c" data-sort="points" style="cursor:pointer">Points'+clientSortArrow('points')+'</th>'+
+      '<th class="sort-th-c" data-sort="totalRevenue" style="cursor:pointer">Revenue'+clientSortArrow('totalRevenue')+'</th>'+
+      '<th class="sort-th-c" data-sort="trips" style="cursor:pointer">Trips'+clientSortArrow('trips')+'</th>'+
+      '<th class="sort-th-c" data-sort="notes" style="cursor:pointer">Notes'+clientSortArrow('notes')+'</th>'+
+      '<th class="sort-th-c" data-sort="joined" style="cursor:pointer">Joined'+clientSortArrow('joined')+'</th>'+
+      '<th style="text-align:center">Paying</th>'+
+      '<th style="text-align:center">Sub</th>'+
+      '<th></th>'+
+    '</tr></thead><tbody>'+
     (list.length?list.map(function(c){return '<tr>'+
+      '<td style="width:32px"><input type="checkbox" class="client-row-cb" data-id="'+c.id+'" style="width:14px;height:14px"></td>'+
       '<td><div style="display:flex;align-items:center;gap:8px">'+av(c.name)+'<div><div style="font-weight:600;color:#111"><span class="open-client" data-id="'+c.id+'" style="color:#2563eb;cursor:pointer;text-decoration:underline">'+c.name+'</span></div><div style="font-size:10px;color:#aaa">'+c.id+'</div></div></div></td>'+
       '<td><div>'+(c.email?'<a href="mailto:'+c.email+'" style="color:#2563eb;text-decoration:none" title="Send email">'+c.email+'</a>':'')+'</div><div style="font-size:11px;color:#aaa">'+(c.phone||'')+'</div></td>'+
       '<td>'+badge(c.tier||'Standard')+'</td>'+
       '<td>'+fmt(c.points)+'</td>'+
-      '<td>'+(c.totalRevenue?'$'+fmt(c.totalRevenue):'—')+'</td>'+
-      '<td><button class="trips-btn" data-cid="'+c.id+'">'+(c.totalTrips||0)+' trips &rarr;</button></td>'+
+      '<td>'+(function(){var rev=db.trips.filter(function(t){return t.clientId===c.id;}).reduce(function(a,t){return a+(t.totalValue||0);},0);return rev?'$'+fmt(rev):'—';})()+'</td>'+
+      '<td><button class="trips-btn" data-cid="'+c.id+'">'+countDistinctTrips(c.id)+' trips &rarr;</button></td>'+
       '<td><button class="trips-btn" data-edit="'+c.id+'">'+(c.notesLog||[]).length+' notes</button></td>'+
       '<td>'+(c.joined||'')+'</td>'+
+      '<td style="text-align:center"><input type="checkbox" class="client-paying-cb" data-id="'+c.id+'" '+(c.isPayingClient?'checked':'')+' style="width:15px;height:15px;cursor:pointer"></td>'+
+      '<td style="text-align:center"><input type="checkbox" class="client-sub-cb" data-id="'+c.id+'" '+(c.isSubscriber?'checked':'')+' style="width:15px;height:15px;cursor:pointer"></td>'+
       '<td style="white-space:nowrap"><button class="icon-btn edit-client" data-id="'+c.id+'" style="color:#2563eb">&#9999;&#65039;</button><button class="icon-btn del-client" data-id="'+c.id+'" style="color:#dc2626">&#128465;&#65039;</button></td>'+
-    '</tr>';}).join(''):'<tr><td colspan="8"><div class="empty">No clients found</div></td></tr>')+
+    '</tr>';}).join(''):'<tr><td colspan="11"><div class="empty">No clients found</div></td></tr>')+
     '</tbody></table></div>';
 
   $('btn-add-client').addEventListener('click',function(){openClientForm();});
+  document.querySelectorAll('.sort-th-c').forEach(function(th){
+    th.addEventListener('click', function(){
+      var col = th.dataset.sort;
+      if(window._clientSortCol === col){
+        window._clientSortDir = (window._clientSortDir==='asc') ? 'desc' : 'asc';
+      } else {
+        window._clientSortCol = col;
+        window._clientSortDir = 'asc';
+      }
+      renderClients();
+    });
+  });
   $('client-search').addEventListener('input',function(){fSearch=this.value;renderClients();});
   document.querySelectorAll('.trips-btn[data-cid]').forEach(function(btn){
     btn.addEventListener('click',function(){go('trips',btn.dataset.cid);});
@@ -1085,14 +2916,153 @@ function renderClients(){
   document.querySelectorAll('.del-client').forEach(function(btn){
     btn.addEventListener('click',function(){delClient(btn.dataset.id);});
   });
+
+  document.querySelectorAll('.client-paying-cb').forEach(function(cb){
+    cb.addEventListener('change', function(){
+      var c = db.clients.find(function(x){return x.id===cb.dataset.id;});
+      if(c){ c.isPayingClient = cb.checked; saveDB(); toast(c.name+(cb.checked?' marked as paying client':' unmarked as paying client'),'ok'); }
+    });
+  });
+  document.querySelectorAll('.client-sub-cb').forEach(function(cb){
+    cb.addEventListener('change', function(){
+      var c = db.clients.find(function(x){return x.id===cb.dataset.id;});
+      if(c){ c.isSubscriber = cb.checked; saveDB(); toast(c.name+(cb.checked?' marked as subscriber':' unmarked as subscriber'),'ok'); }
+    });
+  });
+
+  // Checkbox bulk select / delete
+  var checkAllC = document.getElementById('client-check-all');
+  var delBtnC   = document.getElementById('btn-delete-checked-clients');
+  var selBtnC   = document.getElementById('btn-select-all-clients');
+
+  function updateDeleteBtnC(){
+    var checked = document.querySelectorAll('.client-row-cb:checked');
+    var allCbs = document.querySelectorAll('.client-row-cb');
+    if(delBtnC) delBtnC.style.display = checked.length ? 'inline-block' : 'none';
+    if(selBtnC) selBtnC.textContent = checked.length === allCbs.length && allCbs.length>0 ? 'Deselect All' : 'Select All';
+    if(checkAllC) checkAllC.checked = checked.length === allCbs.length && allCbs.length>0;
+    if(checkAllC) checkAllC.indeterminate = checked.length > 0 && checked.length < allCbs.length;
+  }
+
+  if(checkAllC){
+    checkAllC.addEventListener('change', function(){
+      document.querySelectorAll('.client-row-cb').forEach(function(cb){ cb.checked = checkAllC.checked; });
+      updateDeleteBtnC();
+    });
+  }
+  if(selBtnC){
+    selBtnC.addEventListener('click', function(){
+      var cbs = document.querySelectorAll('.client-row-cb');
+      var allChecked = document.querySelectorAll('.client-row-cb:checked').length === cbs.length;
+      cbs.forEach(function(cb){ cb.checked = !allChecked; });
+      updateDeleteBtnC();
+    });
+  }
+  document.querySelectorAll('.client-row-cb').forEach(function(cb){
+    cb.addEventListener('change', updateDeleteBtnC);
+  });
+  if(delBtnC){
+    delBtnC.addEventListener('click', function(){
+      var ids = Array.from(document.querySelectorAll('.client-row-cb:checked')).map(function(cb){return cb.dataset.id;});
+      if(!ids.length) return;
+      if(!confirm('Delete '+ids.length+' client'+(ids.length!==1?'s':'')+' and all their trips?')) return;
+      snapshot('Delete '+ids.length+' client'+(ids.length!==1?'s':''));
+      db.clients = db.clients.filter(function(c){ return !ids.includes(c.id); });
+      db.trips = db.trips.filter(function(t){ return !ids.includes(t.clientId); });
+      saveDB(); render();
+      toast('Deleted '+ids.length+' client'+(ids.length!==1?'s':''),'ok');
+    });
+  }
+}
+
+function sortArrow(col){
+  var tripSortCol = window._tripSortCol || 'departDate';
+  var tripSortDir = window._tripSortDir || 'desc';
+  if(tripSortCol!==col) return '';
+  return tripSortDir==='asc' ? ' &#9650;' : ' &#9660;';
+}
+
+function openInvoiceDetail(invoiceNum){
+  if(!invoiceNum) return;
+  var matchingTrips = db.trips.filter(function(t){
+    return (t.invoiceNum||t.bookingRef||'')===invoiceNum;
+  });
+  if(!matchingTrips.length){ toast('No trips found for invoice '+invoiceNum,'err'); return; }
+
+  var totalValue = matchingTrips.reduce(function(a,t){return a+(t.totalValue||0);},0);
+  var totalCash  = matchingTrips.reduce(function(a,t){return a+(t.cashPaid||0);},0);
+
+  var rows = matchingTrips.map(function(t){
+    var st = t.status||'Planning';
+    if(st==='Completed' && t.departDate && t.departDate>=today()) st='Upcoming';
+    var scls={'Confirmed':'b-green','Planning':'b-amber','Completed':'b-blue','Cancelled':'b-red','Upcoming':'b-amber'}[st]||'b-gray';
+    return '<tr class="invoice-detail-row" data-trip-id="'+t.id+'" style="cursor:pointer">'+
+      '<td style="padding:8px 12px;font-size:13px;color:#111;font-weight:500">'+(t.clientName||'')+'</td>'+
+      '<td style="padding:8px 12px;font-size:13px;color:#374151">'+(t.destination||'')+'</td>'+
+      '<td style="padding:8px 12px;font-size:12px;color:#888">'+(t.product||'—')+'</td>'+
+      '<td style="padding:8px 12px;font-size:12px;color:#2563eb">'+(t.supplierName||'—')+'</td>'+
+      '<td style="padding:8px 12px"><span class="badge '+scls+'">'+st+'</span></td>'+
+      '<td style="padding:8px 12px;font-size:13px;color:#374151;text-align:right">$'+Number(t.cashPaid||0).toLocaleString()+'</td>'+
+      '<td style="padding:8px 12px;font-size:13px;font-weight:600;color:#111;text-align:right">$'+Number(t.totalValue||0).toLocaleString()+'</td>'+
+    '</tr>';
+  }).join('');
+
+  $('modal').innerHTML =
+    '<div class="modal-hdr"><div class="modal-title">Invoice #'+invoiceNum+'</div><button class="close-btn" id="modal-close">&#x2715;</button></div>'+
+    '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px">'+
+      '<div class="stat"><div class="stat-lbl">Line Items</div><div class="stat-val">'+matchingTrips.length+'</div></div>'+
+      '<div class="stat"><div class="stat-lbl">Total Cash Paid</div><div class="stat-val">$'+Number(totalCash).toLocaleString()+'</div></div>'+
+      '<div class="stat"><div class="stat-lbl">Total Value</div><div class="stat-val">$'+Number(totalValue).toLocaleString()+'</div></div>'+
+    '</div>'+
+    '<div class="tbl-wrap" style="max-height:400px;overflow-y:auto"><table>'+
+      '<thead><tr>'+
+        '<th>Client</th><th>Destination</th><th>Product</th><th>Supplier</th><th>Status</th><th style="text-align:right">Cash Paid</th><th style="text-align:right">Total Value</th>'+
+      '</tr></thead>'+
+      '<tbody>'+rows+'</tbody>'+
+    '</table></div>'+
+    '<div class="form-actions"><button class="cancel-btn" id="modal-close2">Close</button></div>';
+
+  $('overlay').classList.add('open');
+  $('modal-close').addEventListener('click', closeModal);
+  $('modal-close2').addEventListener('click', closeModal);
+  document.querySelectorAll('.invoice-detail-row').forEach(function(row){
+    row.addEventListener('click', function(){
+      closeModal();
+      openTripForm(row.dataset.tripId);
+    });
+  });
 }
 
 function renderTrips(){
+  var tripSortCol = window._tripSortCol || 'departDate';
+  var tripSortDir = window._tripSortDir || 'desc';
   const selC=db.clients.find(function(c){return c.id===selCid;});
   const q=fSearch.toLowerCase();
-  const list=db.trips.filter(function(t){
+  let list=db.trips.filter(function(t){
     const ms=!q||(t.clientName||'').toLowerCase().includes(q)||(t.destination||'').toLowerCase().includes(q)||(t.bookingRef||'').toLowerCase().includes(q);
     return ms&&(!fStatus||t.status===fStatus)&&(!selCid||t.clientId===selCid);
+  });
+  // Sort
+  function displayStatus(t){
+    var st = t.status||'Planning';
+    if(st==='Completed' && t.departDate && t.departDate>=today()) st='Upcoming';
+    return st;
+  }
+  list = list.slice().sort(function(a,b){
+    var av, bv;
+    if(tripSortCol==='status'){
+      av=displayStatus(a); bv=displayStatus(b);
+    } else {
+      av=a[tripSortCol]; bv=b[tripSortCol];
+    }
+    if(typeof av==='number'||typeof bv==='number'){
+      av=Number(av)||0; bv=Number(bv)||0;
+    } else {
+      av=(av||'').toString().toLowerCase(); bv=(bv||'').toString().toLowerCase();
+    }
+    if(av<bv) return tripSortDir==='asc'?-1:1;
+    if(av>bv) return tripSortDir==='asc'?1:-1;
+    return 0;
   });
   const sopts=STATUSES.map(function(s){return '<option value="'+s+'"'+(s===fStatus?' selected':'')+'>'+s+'</option>';}).join('');
   $('main').innerHTML=
@@ -1103,33 +3073,144 @@ function renderTrips(){
       '</div>'+
       '<button class="add-btn" id="btn-add-trip">+ Add Trip</button>'+
     '</div>'+
+    (selC ? (function(){
+      var totalValue = list.reduce(function(a,t){return a+(t.totalValue||0);},0);
+      var totalCash  = list.reduce(function(a,t){return a+(t.cashPaid||0);},0);
+      var invoiceCount = countDistinctTrips(selC.id);
+      return '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px">'+
+        '<div class="stat"><div class="stat-lbl">Trips (Distinct Invoices)</div><div class="stat-val">'+invoiceCount+'</div></div>'+
+        '<div class="stat"><div class="stat-lbl">Total Cash Paid</div><div class="stat-val">$'+Number(totalCash).toLocaleString()+'</div></div>'+
+        '<div class="stat"><div class="stat-lbl">Total Value</div><div class="stat-val">$'+Number(totalValue).toLocaleString()+'</div></div>'+
+      '</div>';
+    })() : '')+
     '<div class="search-row">'+
       '<input id="trip-search" placeholder="Search trips..." value="'+fSearch+'"/>'+
       '<select id="trip-status-filter"><option value="">All statuses</option>'+sopts+'</select>'+
+      '<button id="btn-select-all-trips" style="padding:7px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#555;cursor:pointer;font-size:12px;font-family:inherit">Select All</button>'+
+      '<button id="btn-delete-checked-trips" style="display:none;padding:7px 14px;border-radius:7px;border:none;background:#dc2626;color:#fff;cursor:pointer;font-size:12px;font-family:inherit">&#128465; Delete Selected</button>'+
     '</div>'+
-    '<div class="tbl-wrap"><table><thead><tr><th>Client</th><th>Destination</th><th>Dates</th><th>Flight</th><th>Status</th><th>Points</th><th>Value</th><th></th></tr></thead><tbody>'+
-    (list.length?list.map(function(t){return '<tr>'+
-      '<td><div style="font-weight:600;color:#111">'+(t.clientName||'')+'</div><div style="font-size:10px;color:#aaa">'+t.id+'</div></td>'+
+    '<div class="tbl-wrap"><table><thead><tr>'+
+      '<th style="width:32px"><input type="checkbox" id="trip-check-all" style="width:14px;height:14px"></th>'+
+      '<th class="sort-th" data-sort="clientName" style="cursor:pointer">Client'+sortArrow('clientName')+'</th>'+
+      '<th class="sort-th" data-sort="destination" style="cursor:pointer">Destination'+sortArrow('destination')+'</th>'+
+      '<th class="sort-th" data-sort="departDate" style="cursor:pointer">Dates'+sortArrow('departDate')+'</th>'+
+      '<th class="sort-th" data-sort="airline" style="cursor:pointer">Flight'+sortArrow('airline')+'</th>'+
+      '<th class="sort-th" data-sort="status" style="cursor:pointer">Status'+sortArrow('status')+'</th>'+
+      '<th class="sort-th" data-sort="pointsUsed" style="cursor:pointer">Points'+sortArrow('pointsUsed')+'</th>'+
+      '<th class="sort-th" data-sort="totalValue" style="cursor:pointer">Value'+sortArrow('totalValue')+'</th>'+
+      '<th class="sort-th" data-sort="product" style="cursor:pointer">Product'+sortArrow('product')+'</th>'+
+      '<th class="sort-th" data-sort="supplierName" style="cursor:pointer">Supplier'+sortArrow('supplierName')+'</th>'+
+      '<th class="sort-th" data-sort="invoiceNum" style="cursor:pointer">Invoice #'+sortArrow('invoiceNum')+'</th>'+
+      '<th></th>'+
+    '</tr></thead><tbody>'+
+    (list.length?list.map(function(t){return '<tr data-trip-id="'+t.id+'">'+
+      '<td style="width:32px"><input type="checkbox" class="trip-row-cb" data-id="'+t.id+'" style="width:14px;height:14px"></td>'+
+      '<td><div><span class="open-client" data-id="'+t.clientId+'" style="font-weight:600;color:#2563eb;cursor:pointer;text-decoration:underline">'+(t.clientName||'')+'</span></div><div style="font-size:10px;color:#aaa">'+t.id+'</div></td>'+
       '<td><div style="font-weight:600;color:#111">'+(t.destination||'')+'</div><div style="font-size:11px;color:#888">from '+(t.origin||'')+'</div></td>'+
       '<td><div>'+(t.departDate||'')+'</div><div style="font-size:11px;color:#888">&rarr; '+(t.returnDate||'')+'</div></td>'+
       '<td><div>'+(t.airline||'')+'</div><div style="font-size:11px">'+badge(t.flightClass||'Economy')+'</div></td>'+
-      '<td>'+badge(t.status||'Planning')+'</td>'+
+      '<td>'+badge(displayStatus(t))+'</td>'+
       '<td>'+(t.pointsUsed?fmt(t.pointsUsed):'&mdash;')+'</td>'+
       '<td>$'+fmt(t.totalValue)+'</td>'+
+      '<td style="font-size:11px;color:#555">'+( t.product||'—')+'</td>'+
+      (function(){
+        var sup = t.supplierId ? db.vendors.find(function(v){return v.id===t.supplierId;}) : null;
+        var supName = sup ? sup.name : (t.supplierName||'');
+        var supId = sup ? sup.id : (t.supplierId||'');
+        return supName ? '<td style="font-size:11px;color:#2563eb;font-weight:500;cursor:pointer;text-decoration:underline" class="trip-sup-link" data-vendor-id="'+supId+'">'+supName+'</td>' : '<td style="font-size:11px;color:#aaa">—</td>';
+      })()+
+      (function(){
+        var invVal = t.invoiceNum||t.bookingRef||'';
+        return invVal ? '<td style="font-size:11px;color:#2563eb;font-weight:500;cursor:pointer;text-decoration:underline" class="trip-invoice-link" data-invoice="'+invVal+'">'+invVal+'</td>' : '<td style="font-size:11px;color:#aaa">—</td>';
+      })()+
       '<td style="white-space:nowrap"><button class="icon-btn edit-trip" data-id="'+t.id+'" style="color:#2563eb">&#9999;&#65039;</button><button class="icon-btn del-trip" data-id="'+t.id+'" style="color:#dc2626">&#128465;&#65039;</button></td>'+
-    '</tr>';}).join(''):'<tr><td colspan="8"><div class="empty">No trips found</div></td></tr>')+
+    '</tr>';}).join(''):'<tr><td colspan="11"><div class="empty">No trips found</div></td></tr>')+
     '</tbody></table></div>';
 
   $('btn-add-trip').addEventListener('click',function(){openTripForm();});
+  document.querySelectorAll('.sort-th').forEach(function(th){
+    th.addEventListener('click', function(){
+      var col = th.dataset.sort;
+      if(window._tripSortCol === col){
+        window._tripSortDir = (window._tripSortDir==='asc') ? 'desc' : 'asc';
+      } else {
+        window._tripSortCol = col;
+        window._tripSortDir = 'asc';
+      }
+      debugLog('Trip sort: col='+window._tripSortCol+' dir='+window._tripSortDir);
+      renderTrips();
+    });
+  });
   $('trip-search').addEventListener('input',function(){fSearch=this.value;renderTrips();});
   $('trip-status-filter').addEventListener('change',function(){fStatus=this.value;renderTrips();});
   if($('btn-back')) $('btn-back').addEventListener('click',function(){selCid=null;render();});
+  document.querySelectorAll('.trip-sup-link').forEach(function(el){
+    el.addEventListener('click', function(e){
+      e.stopPropagation();
+      go('vendors');
+      setTimeout(function(){openVendorForm(el.dataset.vendorId);},100);
+    });
+  });
+  document.querySelectorAll('.trip-invoice-link').forEach(function(el){
+    el.addEventListener('click', function(e){
+      e.stopPropagation();
+      openInvoiceDetail(el.dataset.invoice);
+    });
+  });
   document.querySelectorAll('.edit-trip').forEach(function(btn){
     btn.addEventListener('click',function(){openTripForm(btn.dataset.id);});
   });
   document.querySelectorAll('.del-trip').forEach(function(btn){
     btn.addEventListener('click',function(){delTrip(btn.dataset.id);});
   });
+  document.querySelectorAll('#main .open-client').forEach(function(span){
+    span.addEventListener('click',function(e){
+      e.stopPropagation();
+      openClientForm(span.dataset.id);
+    });
+  });
+
+  // Checkbox handling
+  var checkAll = document.getElementById('trip-check-all');
+  var delBtn   = document.getElementById('btn-delete-checked-trips');
+  var selBtn   = document.getElementById('btn-select-all-trips');
+
+  function updateDeleteBtn(){
+    var checked = document.querySelectorAll('.trip-row-cb:checked');
+    if(delBtn) delBtn.style.display = checked.length ? 'inline-block' : 'none';
+    if(selBtn) selBtn.textContent = checked.length === document.querySelectorAll('.trip-row-cb').length ? 'Deselect All' : 'Select All';
+    if(checkAll) checkAll.checked = checked.length === document.querySelectorAll('.trip-row-cb').length && checked.length > 0;
+    if(checkAll) checkAll.indeterminate = checked.length > 0 && checked.length < document.querySelectorAll('.trip-row-cb').length;
+  }
+
+  if(checkAll){
+    checkAll.addEventListener('change', function(){
+      document.querySelectorAll('.trip-row-cb').forEach(function(cb){ cb.checked = checkAll.checked; });
+      updateDeleteBtn();
+    });
+  }
+  if(selBtn){
+    selBtn.addEventListener('click', function(){
+      var cbs = document.querySelectorAll('.trip-row-cb');
+      var allChecked = document.querySelectorAll('.trip-row-cb:checked').length === cbs.length;
+      cbs.forEach(function(cb){ cb.checked = !allChecked; });
+      updateDeleteBtn();
+    });
+  }
+  document.querySelectorAll('.trip-row-cb').forEach(function(cb){
+    cb.addEventListener('change', updateDeleteBtn);
+  });
+  if(delBtn){
+    delBtn.addEventListener('click', function(){
+      var ids = Array.from(document.querySelectorAll('.trip-row-cb:checked')).map(function(cb){return cb.dataset.id;});
+      if(!ids.length) return;
+      if(!confirm('Delete '+ids.length+' trip'+(ids.length!==1?'s':'')+' ?')) return;
+      snapshot('Delete '+ids.length+' trip'+(ids.length!==1?'s':''));
+      db.trips = db.trips.filter(function(t){ return !ids.includes(t.id); });
+      saveDB(); render();
+      toast('Deleted '+ids.length+' trip'+(ids.length!==1?'s':''),'ok');
+    });
+  }
 }
 
 // ── Forms ─────────────────────────────────────────────────────────────────
@@ -1140,7 +3221,7 @@ function sel(id,opts,val){return '<select id="'+id+'"><option value="">Select...
 
 function openClientForm(id){
   const d=id?(db.clients.find(function(c){return c.id===id;})||{}):{};
-  const notesLog=Array.isArray(d.notesLog)?d.notesLog:[];
+  const notesLog=Array.isArray(d.notesLog)?[...d.notesLog].sort(function(a,b){var ta=new Date(a.ts),tb=new Date(b.ts);return (isNaN(tb)?0:tb)-(isNaN(ta)?0:ta);}):[];
   const notesHTML=notesLog.length?notesLog.map(function(n,i){
     return '<div class="note-entry" id="note-entry-'+i+'">'+
       '<div style="display:flex;align-items:center;margin-bottom:4px">'+
@@ -1153,7 +3234,10 @@ function openClientForm(id){
           '<option value="Follow-up"'+(n.noteType==='Follow-up'?' selected':'')+'>Follow-up</option>'+
           '<option value="General"'+(n.noteType==='General'?' selected':'')+'>General</option>'+
           '<option value="Trip Import"'+(n.noteType==='Trip Import'?' selected':'')+'>Trip Import</option>'+
+          '<option value="Text Message"'+(n.noteType==='Text Message'?' selected':'')+'>Text Message</option>'+
+          '<option value="Lead"'+(n.noteType==='Lead'?' selected':'')+'>Lead</option>'+
         '</select>'+
+      '<button class="del-note-btn" data-note-idx="'+i+'" title="Delete note" style="margin-left:auto;background:none;border:none;cursor:pointer;color:#dc2626;font-size:15px;padding:2px 6px;border-radius:4px;line-height:1">&#128465;&#65039;</button>'+
       '</div>'+
       '<textarea class="note-txt" id="note-txt-'+i+'" rows="2">'+n.text+'</textarea>'+
     '</div>';
@@ -1162,11 +3246,90 @@ function openClientForm(id){
   $('modal').innerHTML=
     '<div class="modal-hdr"><div class="modal-title">'+(id?'Edit Client':'Add Client')+'</div><button class="close-btn" id="modal-close">&#x2715;</button></div>'+
     '<div class="fg">'+
-      fld('Full Name',inp('fn','text',d.name))+fld('Email',inp('fe','email',d.email))+
+      fld('Full Name',inp('fn','text',toFirstLast(d.name)))+fld('Email',inp('fe','email',d.email))+
       fld('Phone',inp('fp','text',d.phone,'(xxx) xxx-xxxx'))+fld('Location',inp('fl','text',d.location,'City, State'))+
       fld('Tier',sel('ft',TIERS,d.tier||'Standard'))+fld('Points Balance',inp('fpts','number',d.points||0))+
-      fld('Preferred Airline',sel('fpa',AIRLINES,d.preferredAirline))+fld('Preferred Hotel',sel('fph',HOTELS,d.preferredHotel))+
+      fld('Preferred Airline',sel('fpa',AIRLINES,d.preferredAirline))+fld('Preferred Hotel',sel('fph',HOTELS,d.preferredHotel))+fld('Preferred Cruise Line',sel('fpc',CRUISE_LINES,d.preferredCruiseLine))+
+      '<div class="field full" style="flex-direction:row;align-items:center;gap:24px;padding-top:6px">'+
+        '<label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#374151;text-transform:none;font-weight:500;cursor:pointer"><input type="checkbox" id="f-paying" '+(d.isPayingClient?'checked':'')+' style="width:15px;height:15px"> Paying Client</label>'+
+        '<label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#374151;text-transform:none;font-weight:500;cursor:pointer"><input type="checkbox" id="f-subscriber" '+(d.isSubscriber?'checked':'')+' style="width:15px;height:15px"> Subscriber</label>'+
+      '</div>'+
+      '<div class="field full"><label>Attachments (Google Drive Links)</label>'+
+        '<div id="client-attachments-list" style="border:1px solid #e5e7eb;border-radius:8px;padding:10px;background:#fafafa;margin-bottom:8px">'+
+          ((d.attachments&&d.attachments.length) ? d.attachments.map(function(a,ai){
+            return '<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f0f0f0" data-att-idx="'+ai+'">'+
+              '<a href="'+a.url+'" target="_blank" style="font-size:13px;color:#2563eb;text-decoration:underline">&#128206; '+a.name+'</a>'+
+              '<button class="del-attachment-btn" data-att-idx="'+ai+'" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:14px">&#128465;</button>'+
+            '</div>';
+          }).join('') : '<div style="color:#aaa;font-size:12px">No attachments yet</div>')+
+        '</div>'+
+        '<button type="button" id="btn-add-attachment" style="padding:5px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit">+ Add Attachment Link</button>'+
+        '<button type="button" id="btn-browse-drive" style="padding:5px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit;margin-left:8px">&#128193; Browse Google Drive...</button>'+
+      '</div>'+
+      (id ? (function(){
+        // Direct trips for this client
+        var clientTrips = db.trips.filter(function(t){return t.clientId===id;}).sort(function(a,b){return (b.departDate||'').localeCompare(a.departDate||'');});
+
+        // Supplier trips now show as CRM trips via revenue import
+        var supplierTrips = [];
+
+        var totalCount = countDistinctTrips(id);
+        if(!totalCount) return '<div class="field full"><label>Trips (0)</label><div style="color:#aaa;font-size:12px;padding:8px 0">No trips yet.</div></div>';
+
+        var tripRows = clientTrips.map(function(t){
+          var status = t.status||'Planning';
+          if(status==='Completed' && t.departDate && t.departDate>=today()) status='Upcoming';
+          var scls = {'Confirmed':'b-green','Planning':'b-amber','Completed':'b-blue','Cancelled':'b-red','Upcoming':'b-amber'}[status]||'b-gray';
+          return '<tr style="cursor:pointer;background:#fff" class="client-trip-row" data-trip-id="'+t.id+'">'+
+            '<td style="font-size:12px;font-weight:600;color:#2563eb;padding:8px 10px;text-decoration:underline">'+t.destination+'</td>'+
+            '<td style="font-size:11px;color:#555;padding:8px 10px;white-space:nowrap">'+( t.departDate||'—')+'</td>'+
+            '<td style="font-size:11px;color:#555;padding:8px 10px;white-space:nowrap">'+(t.returnDate||'—')+'</td>'+
+            '<td style="padding:8px 10px"><span class="badge '+scls+'">'+status+'</span></td>'+
+            '<td style="font-size:11px;font-weight:600;color:#111;padding:8px 10px">$'+(t.totalValue?Number(t.totalValue).toLocaleString():'—')+'</td>'+
+            '<td style="font-size:11px;color:#555;padding:8px 10px">'+(t.invoiceNum||t.bookingRef||'—')+'</td>'+
+            '<td style="font-size:11px;color:#059669;font-weight:600;padding:8px 10px">CRM</td>'+
+          '</tr>';
+        }).join('');
+
+        var supRows = supplierTrips.map(function(r){
+          return '<tr style="background:#fafafa;cursor:pointer" class="client-sup-trip-row" data-vendor-id="'+r.vendorId+'">'+
+            '<td style="font-size:12px;color:#111;padding:8px 10px" colspan="2">'+r.text+'</td>'+
+            '<td style="font-size:11px;color:#555;padding:8px 10px;white-space:nowrap">'+r.ts+'</td>'+
+            '<td style="padding:8px 10px"></td>'+
+            '<td style="padding:8px 10px"></td>'+
+            '<td style="font-size:11px;color:#2563eb;font-weight:600;padding:8px 10px;cursor:pointer;text-decoration:underline" class="sup-link" data-vendor-id="'+r.vendorId+'">'+r.supplier+'</td>'+
+          '</tr>';
+        }).join('');
+
+        return '<div class="field full" style="margin-bottom:12px">'+
+          '<label>Trips ('+totalCount+')</label>'+
+          '<div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;max-height:360px;overflow-y:auto">'+
+          '<table style="width:100%;border-collapse:collapse">'+
+          '<thead><tr style="background:#f3f4f6">'+
+            '<th style="text-align:left;padding:6px 10px;font-size:10px;font-weight:700;color:#888;text-transform:uppercase">Destination / Details</th>'+
+            '<th style="text-align:left;padding:6px 10px;font-size:10px;font-weight:700;color:#888;text-transform:uppercase">Depart</th>'+
+            '<th style="text-align:left;padding:6px 10px;font-size:10px;font-weight:700;color:#888;text-transform:uppercase">Return</th>'+
+            '<th style="text-align:left;padding:6px 10px;font-size:10px;font-weight:700;color:#888;text-transform:uppercase">Status</th>'+
+            '<th style="text-align:left;padding:6px 10px;font-size:10px;font-weight:700;color:#888;text-transform:uppercase">Value</th>'+
+            '<th style="text-align:left;padding:6px 10px;font-size:10px;font-weight:700;color:#888;text-transform:uppercase">Invoice #</th>'+
+            '<th style="text-align:left;padding:6px 10px;font-size:10px;font-weight:700;color:#888;text-transform:uppercase">Source</th>'+
+          '</tr></thead>'+
+          '<tbody>'+tripRows+supRows+'</tbody></table></div></div>';
+      })() : '') +
       '<div class="field full"><label>Notes Log</label>'+
+        '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'+
+          '<select id="note-type-filter" style="padding:5px 10px;border-radius:6px;border:1px solid #d1d5db;font-size:12px;font-family:inherit;color:#555;background:#fff">'+
+            '<option value="">All types</option>'+
+            '<option value="Email Sent">Email Sent</option>'+
+            '<option value="Email Received">Email Received</option>'+
+            '<option value="Initial Call">Initial Call</option>'+
+            '<option value="Follow-up">Follow-up</option>'+
+            '<option value="General">General</option>'+
+            '<option value="Trip Import">Trip Import</option>'+
+            '<option value="Text Message">Text Message</option>'+'<option value="Lead">Lead</option>'+
+          '</select>'+
+          '<span id="note-filter-count" style="font-size:11px;color:#888"></span>'+
+        '</div>'+
         '<div id="notes-log" style="border:1px solid #e5e7eb;border-radius:8px;padding:10px;background:#fafafa;max-height:220px;overflow-y:auto;margin-bottom:6px">'+notesHTML+'</div>'+
         '<button type="button" id="btn-add-note" style="align-self:flex-start;padding:5px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit">+ Add Note</button>'+
       '</div>'+
@@ -1177,10 +3340,127 @@ function openClientForm(id){
   $('modal-close').addEventListener('click',closeModal);
   $('modal-cancel').addEventListener('click',closeModal);
   $('btn-add-note').addEventListener('click',addNoteEntry);
+
+  // Attachments — stored as name + URL links (e.g. Google Drive share links)
+  var clientAttachments = Array.isArray(d.attachments) ? d.attachments.slice() : [];
+  function refreshAttachmentsList(){
+    var listEl = document.getElementById('client-attachments-list');
+    if(!listEl) return;
+    if(!clientAttachments.length){
+      listEl.innerHTML = '<div style="color:#aaa;font-size:12px">No attachments yet</div>';
+      return;
+    }
+    listEl.innerHTML = clientAttachments.map(function(a,ai){
+      return '<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f0f0f0" data-att-idx="'+ai+'">'+
+        '<a href="'+a.url+'" target="_blank" style="font-size:13px;color:#2563eb;text-decoration:underline">&#128206; '+a.name+'</a>'+
+        '<button class="del-attachment-btn" data-att-idx="'+ai+'" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:14px">&#128465;</button>'+
+      '</div>';
+    }).join('');
+    bindDeleteAttachmentButtons();
+  }
+  function bindDeleteAttachmentButtons(){
+    document.querySelectorAll('.del-attachment-btn').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var idx = parseInt(btn.dataset.attIdx,10);
+        clientAttachments.splice(idx,1);
+        refreshAttachmentsList();
+      });
+    });
+  }
+  bindDeleteAttachmentButtons();
+
+  var addAttBtn = document.getElementById('btn-add-attachment');
+  if(addAttBtn){
+    addAttBtn.addEventListener('click', function(){
+      var name = prompt('Name for this attachment (e.g. "Passport scan", "Signed contract"):');
+      if(!name) return;
+      var url = prompt('Where is this file stored? Paste the Google Drive (or other) link:');
+      if(!url) return;
+      clientAttachments.push({name:name.trim(), url:url.trim()});
+      refreshAttachmentsList();
+      toast('Attachment link added — click Save Client to keep it','ok');
+    });
+  }
+
+  var browseDriveBtn = document.getElementById('btn-browse-drive');
+  if(browseDriveBtn){
+    browseDriveBtn.addEventListener('click', function(){
+      openDrivePicker(function(file){
+        clientAttachments.push({name:file.name, url:file.url});
+        refreshAttachmentsList();
+        toast('Linked "'+file.name+'" from Drive — click Save Client to keep it','ok');
+      });
+    });
+  }
+  window._currentClientAttachments = clientAttachments; // exposed for saveClient to read
+
+  // Note type filter
+  var noteFilterSel = document.getElementById('note-type-filter');
+  var noteFilterCount = document.getElementById('note-filter-count');
+  if(noteFilterSel){
+    function applyNoteFilter(){
+      var val = noteFilterSel.value;
+      var entries = document.querySelectorAll('#notes-log .note-entry');
+      var shown = 0;
+      entries.forEach(function(el){
+        if(!val){el.style.display='';shown++;}
+        else{
+          var sel = el.querySelector('.note-type-sel');
+          var type = sel ? sel.value : '';
+          if(type===val){el.style.display='';shown++;}
+          else{el.style.display='none';}
+        }
+      });
+      if(noteFilterCount) noteFilterCount.textContent = shown+' of '+entries.length+' notes';
+    }
+    noteFilterSel.addEventListener('change', applyNoteFilter);
+    applyNoteFilter(); // apply on open
+  }
   $('modal-save-client').addEventListener('click',function(){saveClient(this.dataset.id);});
+  // Bind trip row clicks to open trip form
+  document.querySelectorAll('.client-trip-row').forEach(function(row){
+    row.addEventListener('click',function(){
+      closeModal();
+      openTripForm(row.dataset.tripId);
+    });
+  });
+  document.querySelectorAll('.sup-link').forEach(function(el){
+    el.addEventListener('click',function(e){
+      e.stopPropagation();
+      closeModal();
+      go('vendors');
+      setTimeout(function(){openVendorForm(el.dataset.vendorId);},100);
+    });
+  });
   // Bind timestamp expand clicks - uses event delegation on notes-log
   var notesLogEl = $('notes-log');
   var currentNotesLogData = Array.isArray(d.notesLog) ? d.notesLog : [];
+  // Bind delete note buttons via delegation
+  if(notesLogEl){
+    notesLogEl.addEventListener('click', function(e){
+      var btn = e.target.closest ? e.target.closest('.del-note-btn') : null;
+      if(!btn && e.target.classList.contains('del-note-btn')) btn = e.target;
+      if(btn){
+        var entry = btn.closest('.note-entry');
+        if(entry && confirm('Delete this note?')){
+          entry.remove();
+          // Re-index remaining entries
+          var entries = notesLogEl.querySelectorAll('.note-entry');
+          entries.forEach(function(el, newIdx){
+            el.id = 'note-entry-'+newIdx;
+            var tsLink = el.querySelector('.note-ts-link');
+            if(tsLink) tsLink.dataset.noteIdx = newIdx;
+            var sel = el.querySelector('.note-type-sel');
+            if(sel) sel.id = 'note-type-'+newIdx;
+            var ta = el.querySelector('.note-txt');
+            if(ta) ta.id = 'note-txt-'+newIdx;
+            var delBtn = el.querySelector('.del-note-btn');
+            if(delBtn) delBtn.dataset.noteIdx = newIdx;
+          });
+        }
+      }
+    });
+  }
   if(notesLogEl){
     notesLogEl.addEventListener('click', function(e){
       var span = e.target.closest ? e.target.closest('.note-ts-link') : null;
@@ -1212,7 +3492,9 @@ function addNoteEntry(){
         '<option value="Follow-up">Follow-up</option>'+
         '<option value="General">General</option>'+
         '<option value="Trip Import">Trip Import</option>'+
+        '<option value="Text Message">Text Message</option>'+'<option value="Lead">Lead</option>'+
       '</select>'+
+      '<button class="del-note-btn" title="Delete note" style="margin-left:auto;background:none;border:none;cursor:pointer;color:#dc2626;font-size:15px;padding:2px 6px;border-radius:4px;line-height:1">&#128465;&#65039;</button>'+
     '</div>'+
     '<textarea class="note-txt" id="note-txt-'+idx+'" rows="2" placeholder="Type your note here..."></textarea>';
   log.appendChild(div);
@@ -1223,7 +3505,7 @@ function addNoteEntry(){
 function openTripForm(id){
   const d=id?(db.trips.find(function(t){return t.id===id;})||{}):{};
   const initCid=d.clientId||selCid||'';
-  const copts=[...db.clients].sort(function(a,b){var al=(a.name||'').trim().split(' ').pop().toLowerCase();var bl=(b.name||'').trim().split(' ').pop().toLowerCase();return al.localeCompare(bl);}).map(function(c){return '<option value="'+c.id+'"'+(c.id===initCid?' selected':'')+'>'+c.name+' ('+c.id+')</option>';}).join('');
+  const copts=[...db.clients].sort(function(a,b){return (a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase());}).map(function(c){return '<option value="'+c.id+'"'+(c.id===initCid?' selected':'')+'>'+c.name+' ('+c.id+')</option>';}).join('');
   $('modal').innerHTML=
     '<div class="modal-hdr"><div class="modal-title">'+(id?'Edit Trip':'Add Trip')+'</div><button class="close-btn" id="modal-close">&#x2715;</button></div>'+
     '<div class="fg">'+
@@ -1249,23 +3531,11 @@ $('overlay').addEventListener('click',function(e){if(e.target===$('overlay'))clo
 
 // ── CRUD ──────────────────────────────────────────────────────────────────
 function saveClient(id){
-  const name=gv('fn'),email=gv('fe');
+  const name=toLastFirst(gv('fn')),email=gv('fe');
   if(!name||!email){toast('Name and email are required','err');return;}
+  snapshot(id?'Edit client':'Add client');
   const entries=Array.from(document.querySelectorAll('.note-entry'));
-  // Validate that all notes with text have a type
   var noteEntryEls = Array.from(document.querySelectorAll('.note-entry'));
-  for(var ni=0; ni<noteEntryEls.length; ni++){
-    var el = noteEntryEls[ni];
-    var txt = (el.querySelector('.note-txt')||{}).value||'';
-    var typ = (el.querySelector('.note-type-sel')||{}).value||'';
-    if(txt.trim() && !typ){
-      toast('Please select a note type for all notes','err');
-      var sel = el.querySelector('.note-type-sel');
-      if(sel){ sel.style.borderColor='#dc2626'; sel.focus(); }
-      return;
-    }
-    if(sel) sel.style.borderColor='';
-  }
   const notesLog=noteEntryEls.map(function(el,i){
     const tsEl = el.querySelector('.note-ts-link') || el.querySelector('.note-ts');
     const ts=(tsEl||{}).textContent||'';
@@ -1274,7 +3544,7 @@ function saveClient(id){
     const noteType=(typeEl&&typeEl.value)||'';
     return {ts:ts.trim(),text:text.trim(),noteType:noteType};
   }).filter(function(n){return n.text;});
-  const data={name:name,email:email,phone:gv('fp'),location:gv('fl'),tier:gv('ft')||'Standard',points:gn('fpts'),preferredAirline:gv('fpa'),preferredHotel:gv('fph'),notesLog:notesLog};
+  const data={name:name,email:email,phone:gv('fp'),location:gv('fl'),tier:gv('ft')||'Standard',points:gn('fpts'),preferredAirline:gv('fpa'),preferredHotel:gv('fph'),preferredCruiseLine:gv('fpc'),notesLog:notesLog,isPayingClient:document.getElementById('f-paying')?document.getElementById('f-paying').checked:false,isSubscriber:document.getElementById('f-subscriber')?document.getElementById('f-subscriber').checked:false,attachments:window._currentClientAttachments||[]};
   if(id){
     db.clients=db.clients.map(function(c){return c.id===id?Object.assign({},c,data):c;});
     toast('Client updated');
@@ -1288,6 +3558,7 @@ function saveClient(id){
 function saveTrip(id){
   const clientId=gv('tc'),dest=gv('tde');
   if(!clientId||!dest){toast('Client and destination are required','err');return;}
+  snapshot(id?'Edit trip':'Add trip');
   const client=db.clients.find(function(c){return c.id===clientId;});
   const data={clientId:clientId,clientName:client?client.name:'',origin:gv('tor'),destination:dest,departDate:gv('tdd'),returnDate:gv('trd'),status:gv('tst')||'Planning',type:gv('tty')||'Leisure',airline:gv('tai'),flightClass:gv('tcl')||'Economy',hotel:gv('tho'),hotelNights:gn('thn'),pointsUsed:gn('tpu'),cashPaid:gn('tcp'),totalValue:gn('tva'),bookingRef:gv('tbr'),notes:gv('tno')};
   if(id){
@@ -1305,6 +3576,7 @@ function saveTrip(id){
 function delClient(id){
   const c=db.clients.find(function(x){return x.id===id;});
   if(!c||!confirm('Delete '+c.name+' and all their trips?'))return;
+  snapshot('Delete client: '+c.name);
   db.clients=db.clients.filter(function(x){return x.id!==id;});
   db.trips=db.trips.filter(function(t){return t.clientId!==id;});
   if(selCid===id) selCid=null;
@@ -1313,6 +3585,7 @@ function delClient(id){
 
 function delTrip(id){
   if(!confirm('Delete this trip?'))return;
+  snapshot('Delete trip');
   db.trips=db.trips.filter(function(t){return t.id!==id;});
   saveDB();toast('Trip deleted');render();
 }
@@ -1342,10 +3615,34 @@ function delTrip(id){
 // ── Wire up sidebar buttons ───────────────────────────────────────────────
 // Bind all buttons (script runs after DOM since it's at end of body)
 (function() {
-  $('nb-dashboard').addEventListener('click', function(){go('dashboard');});
-  $('nb-clients').addEventListener('click', function(){go('clients');});
-  $('nb-trips').addEventListener('click', function(){go('trips');});
-  $('nb-reports').addEventListener('click', function(){go('reports');});
+  try{
+  // Mobile nav toggle
+  var mobileToggle = document.getElementById('mobile-nav-toggle');
+  var sidebarEl = document.getElementById('sidebar');
+  var sidebarOverlay = document.getElementById('sidebar-overlay');
+  function openMobileNav(){ if(sidebarEl)sidebarEl.classList.add('open'); if(sidebarOverlay)sidebarOverlay.classList.add('open'); }
+  function closeMobileNav(){ if(sidebarEl)sidebarEl.classList.remove('open'); if(sidebarOverlay)sidebarOverlay.classList.remove('open'); }
+  if(mobileToggle) mobileToggle.addEventListener('click', openMobileNav);
+  if(sidebarOverlay) sidebarOverlay.addEventListener('click', closeMobileNav);
+
+  document.querySelectorAll('.menu-toggle-btn').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var menuId = btn.dataset.menu;
+      var menu = document.getElementById(menuId);
+      if(!menu) return;
+      var isOpen = menu.style.display !== 'none';
+      menu.style.display = isOpen ? 'none' : 'block';
+      btn.classList.toggle('open', !isOpen);
+    });
+  });
+
+  $('nb-dashboard').addEventListener('click', function(){go('dashboard');closeMobileNav();});
+  $('nb-clients').addEventListener('click', function(){go('clients');closeMobileNav();});
+  $('nb-trips').addEventListener('click', function(){go('trips');closeMobileNav();});
+  $('nb-reports').addEventListener('click', function(){go('reports');closeMobileNav();});
+  $('nb-calendar').addEventListener('click', function(){go('calendar');closeMobileNav();});
+  $('nb-email').addEventListener('click', function(){go('email');closeMobileNav();});
+  $('nb-vendors').addEventListener('click', function(){go('vendors');closeMobileNav();});
   $('outlook-btn').addEventListener('click', syncOutlook);
   $('drive-btn').addEventListener('click', driveBackup);
   $('drive-restore-btn').addEventListener('click', driveRestore);
@@ -1354,9 +3651,35 @@ function delTrip(id){
   $('btn-backup').addEventListener('click', exportJSON);
   $('btn-restore').addEventListener('click', importJSON);
   $('btn-mass-email').addEventListener('click', massEmail);
+  var logMcBtn = $('btn-log-mailchimp');
+  if(logMcBtn) logMcBtn.addEventListener('click', openLogMailchimpModal);
   $('btn-import-csv').addEventListener('click', importCSV);
   $('btn-import-revenue').addEventListener('click', importRevenue);
+  var clearTripsBtn = $('btn-clear-trips');
+  if(clearTripsBtn) clearTripsBtn.addEventListener('click', function(){
+    if(confirm('Delete ALL trips? This cannot be undone.')){
+      snapshot('Clear all trips');
+      db.trips=[];
+      saveDB();render();
+      toast('All trips deleted');
+    }
+  });
+  var vendorSbBtn = $('btn-import-suppliers-sb');
+  if(vendorSbBtn) vendorSbBtn.addEventListener('click', importVendorsCSV);
+  $('btn-undo').addEventListener('click', undo);
   $('debug-clear').addEventListener('click', function(){$('debug-log').innerHTML='';localStorage.removeItem('mm_debug_log');});
+ 
+  var driveSignoutBtn = $('btn-drive-signout');
+  if(driveSignoutBtn) driveSignoutBtn.addEventListener('click', function(){
+    localStorage.removeItem('mm_drive_token');
+    localStorage.removeItem('mm_drive_refresh');
+    localStorage.removeItem('mm_drive_expiry');
+    localStorage.removeItem('mm_drive_pkce');
+    localStorage.removeItem('mm_drive_action');
+    driveToken = null;
+    toast('Google Drive login reset — tap Backup or Restore to reconnect','ok');
+    debugLog('Drive tokens cleared');
+  });
   $('btn-ms-signout').addEventListener('click', function(){
     localStorage.removeItem('mm_ms_token');
     localStorage.removeItem('mm_ms_refresh');
@@ -1372,15 +3695,38 @@ function delTrip(id){
     p.style.display=p.style.display==='none'?'block':'none';
   });
   $('debug-close').addEventListener('click', function(){$('debug-panel').style.display='none';});
-  document.getElementById('note-expand-close').addEventListener('click', closeNoteExpand);
-  document.getElementById('note-expand-overlay').addEventListener('click', function(e){
-    if(e.target === document.getElementById('note-expand-overlay')) closeNoteExpand();
+  var testConnBtn = $('btn-test-connectivity');
+  if(testConnBtn) testConnBtn.addEventListener('click', function(){
+    $('debug-panel').style.display='block';
+    debugLog('=== Connectivity Test Started ===');
+    fetch('https://api.github.com').then(function(r){
+      debugLog('GitHub fetch: status='+r.status+' ok='+r.ok);
+    }).catch(function(e){
+      debugLog('GitHub fetch FAILED: '+e.message);
+    });
+    fetch('https://milesman-auth.vercel.app').then(function(r){
+      debugLog('Vercel auth server fetch: status='+r.status+' ok='+r.ok);
+    }).catch(function(e){
+      debugLog('Vercel auth server fetch FAILED: '+e.message);
+    });
+    fetch('https://www.googleapis.com').then(function(r){
+      debugLog('Google APIs fetch: status='+r.status+' ok='+r.ok);
+    }).catch(function(e){
+      debugLog('Google APIs fetch FAILED: '+e.message);
+    });
   });
+  var neClose = document.getElementById('note-expand-close');
+  var neOverlay = document.getElementById('note-expand-overlay');
+  if(neClose) neClose.addEventListener('click', closeNoteExpand);
+  if(neOverlay) neOverlay.addEventListener('click', function(e){
+    if(e.target === neOverlay) closeNoteExpand();
+  });
+  }catch(e){ console.error('[CRM] Button binding error:', e); }
 })();
 
 // ── Note expand ──────────────────────────────────────────────────────────────
 function noteTypeCls(t){
-  var map={'Email Sent':'nt-email-sent','Email Received':'nt-email-received','Initial Call':'nt-initial-call','Follow-up':'nt-follow-up','General':'nt-general','Trip Import':'nt-blue'};
+  var map={'Email Sent':'nt-email-sent','Email Received':'nt-email-received','Initial Call':'nt-initial-call','Follow-up':'nt-follow-up','General':'nt-general','Trip Import':'nt-blue','Text Message':'nt-text-message','Lead':'nt-lead'};
   return map[t]||'nt-general';
 }
 function openNoteExpand(ts, text, noteType){
@@ -1397,12 +3743,39 @@ function closeNoteExpand(){
 
 // ── Auto-save every 5 minutes ────────────────────────────────────────────
 function startAutosave(){
+  // Local save every 5 minutes
   setInterval(function(){
     saveDB();
     var now = new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
-    toast('Auto-saved at '+now,'ok');
-    console.log('[CRM] Auto-saved at', now);
-  }, 5 * 60 * 1000); // 5 minutes
+    console.log('[CRM] Auto-saved locally at', now);
+  }, 5 * 60 * 1000);
+
+  // Google Drive backup every 10 minutes. Uses a silent token refresh (no login
+  // redirect) so it works even if the user never manually clicked Backup/Restore
+  // in this tab — as long as they've signed in at some point on this device.
+  setInterval(function(){ runAutoDriveBackup(); }, 10 * 60 * 1000);
+
+  // Also back up whenever the tab is hidden/backgrounded or the page is being
+  // unloaded — this is the case that matters most on mobile, where someone edits
+  // a record then switches apps or closes the tab well before any timer fires.
+  document.addEventListener('visibilitychange', function(){
+    if(document.visibilityState === 'hidden') runAutoDriveBackup();
+  });
+  window.addEventListener('pagehide', function(){ runAutoDriveBackup(); });
+}
+
+let _autoBackupInFlight = false;
+async function runAutoDriveBackup(){
+  if(_autoBackupInFlight) return;
+  const token = await getDriveTokenSilent();
+  if(!token){
+    console.log('[CRM] Drive auto-backup skipped - not signed in on this device');
+    return;
+  }
+  _autoBackupInFlight = true;
+  console.log('[CRM] Running auto Drive backup...');
+  try{ driveToken = token; await driveBackup(true); } // silent=true suppresses button text change
+  finally{ _autoBackupInFlight = false; }
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────
@@ -1415,6 +3788,8 @@ loadDB();
 render();
 loadDebugLog();
 startAutosave();
+updateUndoBtn();
+checkDriveRedirect();
 console.log('[CRM] Ready. Clients:', db.clients.length, 'Trips:', db.trips.length);
 </script>
 </body>
