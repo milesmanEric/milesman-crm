@@ -966,38 +966,46 @@ async function findBackupFile(token){
 }
 async function driveBackup(silent){
   const btn=$('drive-btn');
-  if(!silent){btn.textContent='Saving...';btn.disabled=true;}
+  if(!silent){btn.textContent='Saving...';btn.disabled=true;debugLog('Manual backup clicked...');}
   try{
     if(!driveToken){
       localStorage.setItem('mm_drive_action','backup');
+      if(!silent) debugLog('No token cached — requesting one...');
       driveToken=await getDriveToken();
     }
-    if(!driveToken){btn.textContent='Backup to Google Drive';if(!silent)btn.disabled=false;return;}
+    if(!driveToken){
+      if(!silent) debugLog('No token available — redirecting to Google login');
+      btn.textContent='Backup to Google Drive';if(!silent)btn.disabled=false;return;
+    }
+    if(!silent) debugLog('Token OK, uploading backup...');
     const content=JSON.stringify(db,null,2);
     const existing=await findBackupFile(driveToken);
     if(existing){
-      await fetch('https://www.googleapis.com/upload/drive/v3/files/'+existing.id+'?uploadType=media',{
+      const r=await fetch('https://www.googleapis.com/upload/drive/v3/files/'+existing.id+'?uploadType=media',{
         method:'PATCH',headers:{Authorization:'Bearer '+driveToken,'Content-Type':'application/json'},body:content
       });
+      if(!silent) debugLog('Manual backup PATCH status: '+r.status);
+      if(!r.ok){ throw new Error('Drive returned '+r.status+' on backup upload'); }
     }else{
       const meta=new Blob([JSON.stringify({name:BACKUP_FILENAME,mimeType:'application/json'})],{type:'application/json'});
       const data=new Blob([content],{type:'application/json'});
       const form=new FormData();form.append('metadata',meta);form.append('file',data);
-      await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',{
+      const r=await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',{
         method:'POST',headers:{Authorization:'Bearer '+driveToken},body:form
       });
+      if(!silent) debugLog('Manual backup POST status: '+r.status);
+      if(!r.ok){ throw new Error('Drive returned '+r.status+' on backup upload'); }
     }
     if(!silent){btn.textContent='Backed up to Drive';btn.style.color='#059669';btn.style.borderColor='#6ee7b7';}
     var now=new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
     localStorage.setItem('mm_last_drive_backup', now);
     var lbl=document.getElementById('sync-lbl');
     if(lbl){ lbl.innerHTML='&#9729; Drive synced '+now; lbl.style.color='#1a73e8'; }
-    if(!silent) toast('Drive backup saved at '+now,'ok');
+    if(!silent){ debugLog('Manual backup finished successfully at '+now); toast('Drive backup saved at '+now,'ok'); }
     console.log('[CRM] Drive backup complete at', now);
   }catch(e){
     console.error(e);driveToken=null;
-    if(!silent) toast('Drive backup failed: '+e,'err');
-    if(!silent) btn.textContent='Backup to Google Drive';
+    if(!silent){ debugLog('Manual backup FAILED: '+e.message); toast('Drive backup failed: '+e,'err'); btn.textContent='Backup to Google Drive'; }
   }
   if(!silent) btn.disabled=false;
 }
