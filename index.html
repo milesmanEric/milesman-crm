@@ -3611,9 +3611,19 @@ function delTrip(id){
 })();
 
 // ── Wire up sidebar buttons ───────────────────────────────────────────────
-// Bind all buttons (script runs after DOM since it's at end of body)
-(function() {
+// Bind all buttons (script runs after DOM since it's at end of body).
+// Each binding is independent — if one element is missing or a handler throws
+// during setup, it's logged and skipped, but every OTHER button still gets wired up.
+function bindClick(id, handler){
   try{
+    var el = document.getElementById(id);
+    if(!el){ debugLog('Button bind skipped — #'+id+' not found in DOM'); return; }
+    el.addEventListener('click', handler);
+  }catch(e){
+    debugLog('Button bind FAILED for #'+id+': '+e.message);
+  }
+}
+(function() {
   // Mobile nav toggle
   var mobileToggle = document.getElementById('mobile-nav-toggle');
   var sidebarEl = document.getElementById('sidebar');
@@ -3624,37 +3634,37 @@ function delTrip(id){
   if(sidebarOverlay) sidebarOverlay.addEventListener('click', closeMobileNav);
 
   document.querySelectorAll('.menu-toggle-btn').forEach(function(btn){
-    btn.addEventListener('click', function(){
-      var menuId = btn.dataset.menu;
-      var menu = document.getElementById(menuId);
-      if(!menu) return;
-      var isOpen = menu.style.display !== 'none';
-      menu.style.display = isOpen ? 'none' : 'block';
-      btn.classList.toggle('open', !isOpen);
-    });
+    try{
+      btn.addEventListener('click', function(){
+        var menuId = btn.dataset.menu;
+        var menu = document.getElementById(menuId);
+        if(!menu) return;
+        var isOpen = menu.style.display !== 'none';
+        menu.style.display = isOpen ? 'none' : 'block';
+        btn.classList.toggle('open', !isOpen);
+      });
+    }catch(e){ debugLog('menu-toggle-btn bind failed: '+e.message); }
   });
 
-  $('nb-dashboard').addEventListener('click', function(){go('dashboard');closeMobileNav();});
-  $('nb-clients').addEventListener('click', function(){go('clients');closeMobileNav();});
-  $('nb-trips').addEventListener('click', function(){go('trips');closeMobileNav();});
-  $('nb-reports').addEventListener('click', function(){go('reports');closeMobileNav();});
-  $('nb-calendar').addEventListener('click', function(){go('calendar');closeMobileNav();});
-  $('nb-email').addEventListener('click', function(){go('email');closeMobileNav();});
-  $('nb-vendors').addEventListener('click', function(){go('vendors');closeMobileNav();});
-  $('outlook-btn').addEventListener('click', syncOutlook);
-  $('drive-btn').addEventListener('click', driveBackup);
-  $('drive-restore-btn').addEventListener('click', driveRestore);
-  $('btn-clients-csv').addEventListener('click', function(){exportCSV('clients');});
-  $('btn-trips-csv').addEventListener('click', function(){exportCSV('trips');});
-  $('btn-backup').addEventListener('click', exportJSON);
-  $('btn-restore').addEventListener('click', importJSON);
-  $('btn-mass-email').addEventListener('click', massEmail);
-  var logMcBtn = $('btn-log-mailchimp');
-  if(logMcBtn) logMcBtn.addEventListener('click', openLogMailchimpModal);
-  $('btn-import-csv').addEventListener('click', importCSV);
-  $('btn-import-revenue').addEventListener('click', importRevenue);
-  var clearTripsBtn = $('btn-clear-trips');
-  if(clearTripsBtn) clearTripsBtn.addEventListener('click', function(){
+  bindClick('nb-dashboard', function(){go('dashboard');closeMobileNav();});
+  bindClick('nb-clients', function(){go('clients');closeMobileNav();});
+  bindClick('nb-trips', function(){go('trips');closeMobileNav();});
+  bindClick('nb-reports', function(){go('reports');closeMobileNav();});
+  bindClick('nb-calendar', function(){go('calendar');closeMobileNav();});
+  bindClick('nb-email', function(){go('email');closeMobileNav();});
+  bindClick('nb-vendors', function(){go('vendors');closeMobileNav();});
+  bindClick('outlook-btn', syncOutlook);
+  bindClick('drive-btn', driveBackup);
+  bindClick('drive-restore-btn', driveRestore);
+  bindClick('btn-clients-csv', function(){exportCSV('clients');});
+  bindClick('btn-trips-csv', function(){exportCSV('trips');});
+  bindClick('btn-backup', exportJSON);
+  bindClick('btn-restore', importJSON);
+  bindClick('btn-mass-email', massEmail);
+  bindClick('btn-log-mailchimp', openLogMailchimpModal);
+  bindClick('btn-import-csv', importCSV);
+  bindClick('btn-import-revenue', importRevenue);
+  bindClick('btn-clear-trips', function(){
     if(confirm('Delete ALL trips? This cannot be undone.')){
       snapshot('Clear all trips');
       db.trips=[];
@@ -3662,13 +3672,11 @@ function delTrip(id){
       toast('All trips deleted');
     }
   });
-  var vendorSbBtn = $('btn-import-suppliers-sb');
-  if(vendorSbBtn) vendorSbBtn.addEventListener('click', importVendorsCSV);
-  $('btn-undo').addEventListener('click', undo);
-  $('debug-clear').addEventListener('click', function(){$('debug-log').innerHTML='';localStorage.removeItem('mm_debug_log');});
- 
-  var driveSignoutBtn = $('btn-drive-signout');
-  if(driveSignoutBtn) driveSignoutBtn.addEventListener('click', function(){
+  bindClick('btn-import-suppliers-sb', importVendorsCSV);
+  bindClick('btn-undo', undo);
+  bindClick('debug-clear', function(){$('debug-log').innerHTML='';localStorage.removeItem('mm_debug_log');});
+
+  bindClick('btn-drive-signout', function(){
     localStorage.removeItem('mm_drive_token');
     localStorage.removeItem('mm_drive_refresh');
     localStorage.removeItem('mm_drive_expiry');
@@ -3678,23 +3686,22 @@ function delTrip(id){
     toast('Google Drive login reset — tap Backup or Restore to reconnect','ok');
     debugLog('Drive tokens cleared');
   });
-  $('btn-ms-signout').addEventListener('click', function(){
+  bindClick('btn-ms-signout', function(){
     localStorage.removeItem('mm_ms_token');
     localStorage.removeItem('mm_ms_refresh');
     localStorage.removeItem('mm_ms_expiry');
     localStorage.removeItem('mm_last_outlook_sync');
     const btn = document.getElementById('outlook-btn');
-    btn.style.color='';btn.style.borderColor='';
+    if(btn){btn.style.color='';btn.style.borderColor='';}
     toast('Outlook login reset - click Sync to reconnect','ok');
     debugLog('MS tokens cleared');
   });
-  $('btn-debug-toggle').addEventListener('click', function(){
+  bindClick('btn-debug-toggle', function(){
     const p=$('debug-panel');
     p.style.display=p.style.display==='none'?'block':'none';
   });
-  $('debug-close').addEventListener('click', function(){$('debug-panel').style.display='none';});
-  var testConnBtn = $('btn-test-connectivity');
-  if(testConnBtn) testConnBtn.addEventListener('click', function(){
+  bindClick('debug-close', function(){$('debug-panel').style.display='none';});
+  bindClick('btn-test-connectivity', function(){
     $('debug-panel').style.display='block';
     debugLog('=== Connectivity Test Started ===');
     fetch('https://api.github.com').then(function(r){
@@ -3713,13 +3720,10 @@ function delTrip(id){
       debugLog('Google APIs fetch FAILED: '+e.message);
     });
   });
-  var neClose = document.getElementById('note-expand-close');
-  var neOverlay = document.getElementById('note-expand-overlay');
-  if(neClose) neClose.addEventListener('click', closeNoteExpand);
-  if(neOverlay) neOverlay.addEventListener('click', function(e){
-    if(e.target === neOverlay) closeNoteExpand();
+  bindClick('note-expand-close', closeNoteExpand);
+  bindClick('note-expand-overlay', function(e){
+    if(e.target === document.getElementById('note-expand-overlay')) closeNoteExpand();
   });
-  }catch(e){ console.error('[CRM] Button binding error:', e); }
 })();
 
 // ── Note expand ──────────────────────────────────────────────────────────────
