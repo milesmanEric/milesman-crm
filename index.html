@@ -297,21 +297,6 @@ tr:last-child td{border-bottom:none}
     </div>
   </div>
 </div>
-<div id="import-match-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:3000;align-items:center;justify-content:center">
-  <div style="background:#fff;border-radius:12px;padding:28px;width:480px;box-shadow:0 20px 60px rgba(0,0,0,.2)">
-    <div style="font-size:16px;font-weight:700;color:#111;margin-bottom:6px">Unmatched Client</div>
-    <div id="import-match-name" style="font-size:13px;color:#555;margin-bottom:18px"></div>
-    <div style="margin-bottom:14px">
-      <label style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:5px">Match to existing client</label>
-      <select id="import-match-sel" style="width:100%;padding:8px 11px;border-radius:7px;border:1px solid #d1d5db;font-size:13px;font-family:inherit;color:#111;background:#fafafa"></select>
-    </div>
-    <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap">
-      <button id="import-match-skip" style="padding:8px 16px;border-radius:8px;border:1px solid #d1d5db;background:#fff;color:#555;cursor:pointer;font-family:inherit;font-size:13px">Skip</button>
-      <button id="import-match-add" style="padding:8px 16px;border-radius:8px;border:none;background:#059669;color:#fff;cursor:pointer;font-family:inherit;font-size:13px;font-weight:600">Add as New Client</button>
-      <button id="import-match-use" style="padding:8px 16px;border-radius:8px;border:none;background:#2563eb;color:#fff;cursor:pointer;font-family:inherit;font-size:13px;font-weight:600">Use Selected</button>
-    </div>
-  </div>
-</div>
 <div id="note-expand-overlay">
   <div id="note-expand-box">
     <div id="note-expand-header">
@@ -1532,10 +1517,18 @@ function importCSV(){
           const name=clean[nameIdx]||'';
           const email=emailIdx>=0?(clean[emailIdx]||''):'';
           if(!name){skipped++;continue;}
+          const nameFirst=getFirstName(name).toLowerCase();
+          const nameLast=getLastName(name).toLowerCase();
           const exists=db.clients.some(function(c){
-            return (email&&c.email&&c.email.toLowerCase()===email.toLowerCase())||c.name.toLowerCase()===name.toLowerCase();
+            if(email && c.email && c.email.toLowerCase()===email.toLowerCase()) return true;
+            var cFull=(c.name||'').toLowerCase().trim();
+            if(cFull===name.toLowerCase().trim()) return true; // exact match, any format
+            var cFirst=getFirstName(c.name).toLowerCase();
+            var cLast=getLastName(c.name).toLowerCase();
+            // Format-independent match: same first+last regardless of "First Last" vs "Last, First"
+            return nameFirst && nameLast && nameFirst!==nameLast && cFirst===nameFirst && cLast===nameLast;
           });
-          if(exists){skipped++;continue;}
+          if(exists){debugLog('Client import skip (duplicate): '+name);skipped++;continue;}
           db.clients.push({id:newId('C',db.clients),name:toLastFirst(name),email:email,phone:'',location:'',tier:'Standard',points:0,preferredAirline:'',preferredHotel:'',notes:'',joined:today(),totalTrips:0,notesLog:[]});
           added++;
         }
