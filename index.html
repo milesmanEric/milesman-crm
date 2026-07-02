@@ -78,11 +78,9 @@ nav{padding:10px 8px}
   /* Client table mobile labels */
   .tbl-wrap table tr td:nth-child(1):before{content:'Client'}
   .tbl-wrap table tr td:nth-child(2):before{content:'Contact'}
-  .tbl-wrap table tr td:nth-child(3):before{content:'Tier'}
-  .tbl-wrap table tr td:nth-child(4):before{content:'Points'}
-  .tbl-wrap table tr td:nth-child(5):before{content:'Trips'}
-  .tbl-wrap table tr td:nth-child(6):before{content:'Notes'}
-  .tbl-wrap table tr td:nth-child(7):before{content:'Joined'}
+  .tbl-wrap table tr td:nth-child(3):before{content:'Trips'}
+  .tbl-wrap table tr td:nth-child(4):before{content:'Notes'}
+  .tbl-wrap table tr td:nth-child(5):before{content:'Joined'}
 
   /* Stats grid 2 col on mobile */
   .stats-grid{grid-template-columns:repeat(2,1fr)}
@@ -336,9 +334,10 @@ const DRIVE_AUTH_SERVER = 'https://milesman-auth.vercel.app';
 const BACKUP_FILENAME  = 'milesman-crm-backup.json';
 const LS_KEY           = 'milesman_crm_v2';
 
-const TIERS    = ['Standard','Gold','Elite','Platinum'];
 const AIRLINES = ['American','United','Delta','Southwest','JetBlue','Qatar Airways','ANA','Emirates','Lufthansa','British Airways','Air France','Virgin Atlantic'];
 const HOTELS   = ['Marriott','Hilton','Hyatt','IHG','Wyndham','Four Seasons','Ritz-Carlton','W Hotels','Kimpton','Conrad'];
+const CREDIT_CARDS = ['Chase Sapphire Preferred','Chase Sapphire Reserve','Chase Ink Business Preferred','Amex Platinum','Amex Gold','Amex Business Platinum','Capital One Venture X','Citi Premier','Citi Prestige','Bilt Mastercard'];
+const ELITE_STATUS = ['None','Silver','Gold','Platinum','Diamond'];
 const CRUISE_LINES = ['Virgin Voyages','Royal Caribbean','Carnival','Norwegian','Princess','Celebrity','Disney Cruise Line','Holland America','MSC Cruises','Viking'];
 const STATUSES = ['Planning','Confirmed','Completed','Cancelled'];
 const TYPES    = ['Leisure','Business','Honeymoon','Family','Adventure','Cruise'];
@@ -483,7 +482,7 @@ function loadDB(){
       saveDB();
       console.log('[CRM] Normalized '+migrated+' client names to Last, First format');
     }
-  }catch(e){db={clients:[],trips:[]};}
+  }catch(e){db={clients:[],trips:[],vendors:[]};}
 }
 
 // ── Toast ─────────────────────────────────────────────────────────────────
@@ -1109,8 +1108,8 @@ function importJSON(){
 function exportCSV(type){
   let rows,filename,headers;
   if(type==='clients'){
-    headers=['ID','Name','Email','Phone','Location','Tier','Points','Total Revenue','Preferred Airline','Preferred Hotel','Notes','Joined','Total Trips'];
-    rows=db.clients.map(c=>{var rev=db.trips.filter(function(t){return t.clientId===c.id;}).reduce(function(a,t){return a+(t.totalValue||0);},0);return [c.id,c.name,c.email,c.phone,c.location,c.tier,c.points,rev,c.preferredAirline,c.preferredHotel,c.notes,c.joined,countDistinctTrips(c.id)];});
+    headers=['ID','Name','Email','Phone','Location','Total Revenue','Preferred Airline','Preferred Hotel','Notes','Joined','Total Trips'];
+    rows=db.clients.map(c=>{var rev=db.trips.filter(function(t){return t.clientId===c.id;}).reduce(function(a,t){return a+(t.totalValue||0);},0);return [c.id,c.name,c.email,c.phone,c.location,rev,c.preferredAirline,c.preferredHotel,c.notes,c.joined,countDistinctTrips(c.id)];});
     filename='milesman-clients.csv';
   }else{
     headers=['ID','Client','Destination','Origin','Depart','Return','Status','Type','Airline','Class','Hotel','Nights','Points Used','Cash Paid','Total Value','Booking Ref','Notes'];
@@ -1387,7 +1386,7 @@ function showImportMatchModal(name){
 
   $('import-match-add').onclick=function(){
     const newCid=newId('C',db.clients);
-    db.clients.push({id:newCid,name:toLastFirst(name),email:'',phone:'',location:'',tier:'Standard',points:0,preferredAirline:'',preferredHotel:'',notesLog:[],joined:today(),totalTrips:0,totalRevenue:0});
+    db.clients.push({id:newCid,name:toLastFirst(name),email:'',phone:'',location:'',preferredAirline:'',preferredHotel:'',notesLog:[],joined:today(),totalTrips:0,totalRevenue:0});
     saveDB();
     window._importState.resolutions[name]=newCid;
     overlay.style.display='none';
@@ -1570,7 +1569,7 @@ function importCSV(){
             skipped++;
             continue;
           }
-          db.clients.push({id:newId('C',db.clients),name:toLastFirst(name),email:email,phone:phone,location:location,tier:'Standard',points:0,preferredAirline:'',preferredHotel:'',notes:'',joined:today(),totalTrips:0,notesLog:[]});
+          db.clients.push({id:newId('C',db.clients),name:toLastFirst(name),email:email,phone:phone,location:location,preferredAirline:'',preferredHotel:'',notes:'',joined:today(),totalTrips:0,notesLog:[]});
           added++;
         }
         snapshot('Import contacts');
@@ -2909,8 +2908,6 @@ function renderClients(){
       '<th style="width:32px"><input type="checkbox" id="client-check-all" style="width:14px;height:14px"></th>'+
       '<th class="sort-th-c" data-sort="name" style="cursor:pointer">Client'+clientSortArrow('name')+'</th>'+
       '<th class="sort-th-c" data-sort="email" style="cursor:pointer">Contact'+clientSortArrow('email')+'</th>'+
-      '<th class="sort-th-c" data-sort="tier" style="cursor:pointer">Tier'+clientSortArrow('tier')+'</th>'+
-      '<th class="sort-th-c" data-sort="points" style="cursor:pointer">Points'+clientSortArrow('points')+'</th>'+
       '<th class="sort-th-c" data-sort="totalRevenue" style="cursor:pointer">Revenue'+clientSortArrow('totalRevenue')+'</th>'+
       '<th class="sort-th-c" data-sort="trips" style="cursor:pointer">Trips'+clientSortArrow('trips')+'</th>'+
       '<th class="sort-th-c" data-sort="notes" style="cursor:pointer">Notes'+clientSortArrow('notes')+'</th>'+
@@ -2923,8 +2920,6 @@ function renderClients(){
       '<td style="width:32px"><input type="checkbox" class="client-row-cb" data-id="'+c.id+'" style="width:14px;height:14px"></td>'+
       '<td><div style="display:flex;align-items:center;gap:8px">'+av(c.name)+'<div><div style="font-weight:600;color:#111"><span class="open-client" data-id="'+c.id+'" style="color:#2563eb;cursor:pointer;text-decoration:underline">'+c.name+'</span></div><div style="font-size:10px;color:#aaa">'+c.id+'</div></div></div></td>'+
       '<td><div>'+(c.email?'<a href="mailto:'+c.email+'" style="color:#2563eb;text-decoration:none" title="Send email">'+c.email+'</a>':'')+'</div><div style="font-size:11px;color:#aaa">'+(c.phone||'')+'</div></td>'+
-      '<td>'+badge(c.tier||'Standard')+'</td>'+
-      '<td>'+fmt(c.points)+'</td>'+
       '<td>'+(function(){var rev=db.trips.filter(function(t){return t.clientId===c.id;}).reduce(function(a,t){return a+(t.totalValue||0);},0);return rev?'$'+fmt(rev):'—';})()+'</td>'+
       '<td><button class="trips-btn" data-cid="'+c.id+'">'+countDistinctTrips(c.id)+' trips &rarr;</button></td>'+
       '<td><button class="trips-btn" data-edit="'+c.id+'">'+(c.notesLog||[]).length+' notes</button></td>'+
@@ -2932,7 +2927,7 @@ function renderClients(){
       '<td style="text-align:center"><input type="checkbox" class="client-paying-cb" data-id="'+c.id+'" '+(c.isPayingClient?'checked':'')+' style="width:15px;height:15px;cursor:pointer"></td>'+
       '<td style="text-align:center"><input type="checkbox" class="client-sub-cb" data-id="'+c.id+'" '+(c.isSubscriber?'checked':'')+' style="width:15px;height:15px;cursor:pointer"></td>'+
       '<td style="white-space:nowrap"><button class="icon-btn edit-client" data-id="'+c.id+'" style="color:#2563eb">&#9999;&#65039;</button><button class="icon-btn del-client" data-id="'+c.id+'" style="color:#dc2626">&#128465;&#65039;</button></td>'+
-    '</tr>';}).join(''):'<tr><td colspan="11"><div class="empty">No clients found</div></td></tr>')+
+    '</tr>';}).join(''):'<tr><td colspan="9"><div class="empty">No clients found</div></td></tr>')+
     '</tbody></table></div>';
 
   $('btn-add-client').addEventListener('click',function(){openClientForm();});
@@ -3269,6 +3264,42 @@ function selOpts(opts,val){return opts.map(function(o){return '<option value="'+
 function fld(label,html,full){return '<div class="field'+(full?' full':'')+'"><label>'+label+'</label>'+html+'</div>';}
 function inp(id,type,val,ph){return '<input id="'+id+'" type="'+(type||'text')+'" value="'+(val||'').toString().replace(/"/g,'&quot;')+'" placeholder="'+(ph||'')+'">';}
 function sel(id,opts,val){return '<select id="'+id+'"><option value="">Select...</option>'+selOpts(opts,val)+'</select>';}
+function balanceGrid(label,idPrefix,list,data,statusList){
+  return '<div class="field full"><label>'+label+'</label>'+
+    '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax('+(statusList?'300px':'220px')+',1fr));gap:8px;border:1px solid #e5e7eb;border-radius:8px;padding:10px;background:#fafafa">'+
+      list.map(function(name,i){
+        var entry=(data&&data[name])||{};
+        var bal=statusList?(entry.balance||''):((data&&data[name])||'');
+        var status=statusList?(entry.status||''):'';
+        var isOther=status&&statusList&&statusList.indexOf(status)===-1;
+        var statusHtml=statusList?('<select id="'+idPrefix+'-st-'+i+'" class="balance-status-sel" data-custom-id="'+idPrefix+'-st-custom-'+i+'" style="width:110px;padding:5px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12px;font-family:inherit">'+
+          '<option value="">Status...</option>'+statusList.map(function(s){return '<option value="'+s+'"'+(s===status?' selected':'')+'>'+s+'</option>';}).join('')+
+          '<option value="Other"'+(isOther?' selected':'')+'>Other</option>'+
+          '</select>'+
+          '<input id="'+idPrefix+'-st-custom-'+i+'" type="text" value="'+(isOther?status.toString().replace(/"/g,'&quot;'):'')+'" placeholder="Enter status" style="width:100px;padding:5px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12px;font-family:inherit;display:'+(isOther?'inline-block':'none')+'">'):'';
+        return '<div style="display:flex;align-items:center;gap:8px">'+
+          '<span style="flex:1;font-size:12px;color:#374151">'+name+'</span>'+
+          '<input id="'+idPrefix+'-'+i+'" type="number" min="0" value="'+bal+'" placeholder="0" style="width:90px;padding:5px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12px;font-family:inherit">'+
+          statusHtml+
+        '</div>';
+      }).join('')+
+    '</div>'+
+  '</div>';
+}
+function readBalanceGrid(idPrefix,list,statusList){
+  var out={};
+  list.forEach(function(name,i){
+    var v=gn(idPrefix+'-'+i);
+    var s=statusList?gv(idPrefix+'-st-'+i):'';
+    if(s==='Other') s=gv(idPrefix+'-st-custom-'+i);
+    if(statusList){
+      if(v||s) out[name]={balance:v||0,status:s||''};
+    }else if(v){
+      out[name]=v;
+    }
+  });
+  return out;
+}
 
 function openClientForm(id){
   const d=id?(db.clients.find(function(c){return c.id===id;})||{}):{};
@@ -3299,8 +3330,11 @@ function openClientForm(id){
     '<div class="fg">'+
       fld('Full Name',inp('fn','text',toFirstLast(d.name)))+fld('Email',inp('fe','email',d.email))+
       fld('Phone',inp('fp','text',d.phone,'(xxx) xxx-xxxx'))+fld('Location',inp('fl','text',d.location,'City, State'))+
-      fld('Tier',sel('ft',TIERS,d.tier||'Standard'))+fld('Points Balance',inp('fpts','number',d.points||0))+
+      fld('Birthdate',inp('fbd','date',d.birthdate))+
       fld('Preferred Airline',sel('fpa',AIRLINES,d.preferredAirline))+fld('Preferred Hotel',sel('fph',HOTELS,d.preferredHotel))+fld('Preferred Cruise Line',sel('fpc',CRUISE_LINES,d.preferredCruiseLine))+
+      balanceGrid('Mileage Balances','mb',AIRLINES,d.mileageBalances,ELITE_STATUS)+
+      balanceGrid('Hotel Point Balances','hb',HOTELS,d.hotelBalances,ELITE_STATUS)+
+      balanceGrid('Credit Card Point Balances','cb',CREDIT_CARDS,d.creditCardBalances)+
       '<div class="field full" style="flex-direction:row;align-items:center;gap:24px;padding-top:6px">'+
         '<label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#374151;text-transform:none;font-weight:500;cursor:pointer"><input type="checkbox" id="f-paying" '+(d.isPayingClient?'checked':'')+' style="width:15px;height:15px"> Paying Client</label>'+
         '<label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#374151;text-transform:none;font-weight:500;cursor:pointer"><input type="checkbox" id="f-subscriber" '+(d.isSubscriber?'checked':'')+' style="width:15px;height:15px"> Subscriber</label>'+
@@ -3391,6 +3425,20 @@ function openClientForm(id){
   $('modal-close').addEventListener('click',closeModal);
   $('modal-cancel').addEventListener('click',closeModal);
   $('btn-add-note').addEventListener('click',addNoteEntry);
+
+  document.querySelectorAll('.balance-status-sel').forEach(function(selEl){
+    selEl.addEventListener('change',function(){
+      var customInput=document.getElementById(selEl.dataset.customId);
+      if(!customInput) return;
+      if(selEl.value==='Other'){
+        customInput.style.display='inline-block';
+        customInput.focus();
+      }else{
+        customInput.style.display='none';
+        customInput.value='';
+      }
+    });
+  });
 
   // Attachments — stored as name + URL links (e.g. Google Drive share links)
   var clientAttachments = Array.isArray(d.attachments) ? d.attachments.slice() : [];
@@ -3595,7 +3643,10 @@ function saveClient(id){
     const noteType=(typeEl&&typeEl.value)||'';
     return {ts:ts.trim(),text:text.trim(),noteType:noteType};
   }).filter(function(n){return n.text;});
-  const data={name:name,email:email,phone:gv('fp'),location:gv('fl'),tier:gv('ft')||'Standard',points:gn('fpts'),preferredAirline:gv('fpa'),preferredHotel:gv('fph'),preferredCruiseLine:gv('fpc'),notesLog:notesLog,isPayingClient:document.getElementById('f-paying')?document.getElementById('f-paying').checked:false,isSubscriber:document.getElementById('f-subscriber')?document.getElementById('f-subscriber').checked:false,attachments:window._currentClientAttachments||[]};
+  const mileageBalances=readBalanceGrid('mb',AIRLINES,ELITE_STATUS);
+  const hotelBalances=readBalanceGrid('hb',HOTELS,ELITE_STATUS);
+  const creditCardBalances=readBalanceGrid('cb',CREDIT_CARDS);
+  const data={name:name,email:email,phone:gv('fp'),location:gv('fl'),birthdate:gv('fbd'),preferredAirline:gv('fpa'),preferredHotel:gv('fph'),preferredCruiseLine:gv('fpc'),mileageBalances:mileageBalances,hotelBalances:hotelBalances,creditCardBalances:creditCardBalances,notesLog:notesLog,isPayingClient:document.getElementById('f-paying')?document.getElementById('f-paying').checked:false,isSubscriber:document.getElementById('f-subscriber')?document.getElementById('f-subscriber').checked:false,attachments:window._currentClientAttachments||[]};
   if(id){
     db.clients=db.clients.map(function(c){return c.id===id?Object.assign({},c,data):c;});
     toast('Client updated');
