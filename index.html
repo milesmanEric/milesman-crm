@@ -642,6 +642,7 @@ async function getValidMsToken(autoRedirect){
 }
 async function fetchEmails(token,clientEmail,lastSyncDate){
   const results = [];
+  const errors = [];
   const clientLower = clientEmail.toLowerCase();
 
   // No lastSyncDate means "full sync" — use a wide window (5 years) rather than
@@ -656,16 +657,31 @@ async function fetchEmails(token,clientEmail,lastSyncDate){
 
   // Follow @odata.nextLink to page through all results, up to a safety cap
   // so a single sync can't run forever on a huge mailbox.
-  async function fetchAllPages(url, label){
+  // Filtering on from/emailAddress/address together with $orderby requires
+  // Graph's "advanced query capabilities" (ConsistencyLevel: eventual), or
+  // Graph rejects it with 400 "restriction or sort order is too complex".
+  async function fetchAllPages(url, label, advanced){
     var all = [];
     var next = url;
     var pages = 0;
     var MAX_PAGES = 10; // 10 x 50 = up to 500 messages per folder per client
+    var headers = {Authorization:'Bearer '+token};
+    if(advanced) headers.ConsistencyLevel='eventual';
     while(next && pages < MAX_PAGES){
       pages++;
-      const r = await fetch(next,{headers:{Authorization:'Bearer '+token}});
+      let r = await fetch(next,{headers:headers});
+      if(r.status===429){
+        const retryAfter = parseInt(r.headers.get('Retry-After')||'2',10);
+        debugLog(label+': throttled (429), retrying after '+retryAfter+'s...');
+        await new Promise(res=>setTimeout(res,retryAfter*1000));
+        r = await fetch(next,{headers:headers});
+      }
       const d = await r.json();
-      if(!r.ok){ debugLog(label+' error (page '+pages+'): '+(d.error&&d.error.message||'status '+r.status)); break; }
+      if(!r.ok){
+        const msg=d.error&&d.error.message||'status '+r.status;
+        debugLog(label+' error (page '+pages+'): '+msg);
+        throw new Error(label+': '+msg);
+      }
       all.push.apply(all,(d.value||[]));
       next = d['@odata.nextLink']||null;
     }
@@ -680,13 +696,28 @@ async function fetchEmails(token,clientEmail,lastSyncDate){
     const emailFilter = encodeURIComponent("from/emailAddress/address eq '"+clientEmail.replace(/'/g,"''")+"'");
     const u1 = 'https://graph.microsoft.com/v1.0/me/messages'+
       '?$select=subject,receivedDateTime,from,toRecipients,body,isDraft'+
-      '&$orderby=receivedDateTime desc&$top=50'+
+      '&$count=true&$orderby=receivedDateTime desc&$top=50'+
       '&$filter='+emailFilter+'+and+receivedDateTime+ge+'+sinceParam;
     debugLog('Fetching inbox for '+clientEmail+'...');
-    const inboxMsgs = await fetchAllPages(u1,'Inbox');
+    let inboxMsgs;
+    try{
+      inboxMsgs = await fetchAllPages(u1,'Inbox',true);
+    }catch(filterErr){
+      // Fall back to an unfiltered date-window fetch + client-side match,
+      // so a rejected/unsupported server-side filter doesn't drop emails entirely.
+      debugLog('Inbox filtered query failed ('+filterErr.message+'), falling back to unfiltered fetch');
+      const u1b = 'https://graph.microsoft.com/v1.0/me/messages'+
+        '?$select=subject,receivedDateTime,from,toRecipients,body,isDraft'+
+        '&$orderby=receivedDateTime desc&$top=50'+
+        '&$filter=receivedDateTime+ge+'+sinceParam;
+      const allInbox = await fetchAllPages(u1b,'Inbox (fallback)',false);
+      inboxMsgs = allInbox.filter(function(m){
+        return (m.from&&m.from.emailAddress&&m.from.emailAddress.address||'').toLowerCase()===clientLower;
+      });
+    }
     debugLog('Inbox: count='+inboxMsgs.length);
     results.push.apply(results,inboxMsgs);
-  }catch(e){ debugLog('Inbox error: '+e.message); }
+  }catch(e){ debugLog('Inbox error: '+e.message); errors.push('Inbox: '+e.message); }
 
   // Fetch sent items — Graph doesn't reliably support server-side filtering on
   // toRecipients, so we page through everything in the date window and match client-side.
@@ -704,10 +735,10 @@ async function fetchEmails(token,clientEmail,lastSyncDate){
     });
     debugLog('Sent: fetched='+sentMsgs.length+' matched='+matched.length);
     results.push.apply(results,matched);
-  }catch(e){ debugLog('Sent error: '+e.message); }
+  }catch(e){ debugLog('Sent error: '+e.message); errors.push('Sent: '+e.message); }
 
   debugLog('Total for '+clientEmail+': '+results.length);
-  return results;
+  return {messages:results,errors:errors};
 }
 function stripHtml(html){
   return (html||'')
@@ -754,10 +785,15 @@ async function syncOutlook(){
     debugLog('Fetching ALL emails (no date filter)');
 
     let totalNew=0;
+    const clientErrors=[];
     for(const client of clients){
       debugLog('--- Fetching emails for: '+client.email+' ---');
       try{
-        const emails=await fetchEmails(token,client.email,lastSync);
+        const fetched=await fetchEmails(token,client.email,lastSync);
+        const emails=fetched.messages;
+        if(fetched.errors.length){
+          clientErrors.push(client.email+' ('+fetched.errors.join('; ')+')');
+        }
         debugLog('Emails returned for '+client.email+': '+emails.length);
         if(!emails.length){debugLog('No emails found for '+client.email);continue;}
 
@@ -778,13 +814,18 @@ async function syncOutlook(){
       }catch(e){
         debugLog('ERROR for '+client.email+': '+e.message);
         console.error('Email fetch error for '+client.email,e);
+        clientErrors.push(client.email+' ('+e.message+')');
       }
     }
     localStorage.setItem('mm_last_outlook_sync',new Date().toISOString());
     saveDB();render();
     btn.textContent=orig;btn.style.color='#059669';btn.style.borderColor='#6ee7b7';
-    debugLog('=== Sync Complete: '+totalNew+' new emails ===');
-    toast(totalNew?'Synced '+totalNew+' new emails':'No new emails found','ok');
+    debugLog('=== Sync Complete: '+totalNew+' new emails, '+clientErrors.length+' client(s) with errors ===');
+    if(clientErrors.length){
+      toast((totalNew?'Synced '+totalNew+' new emails, but ':'')+clientErrors.length+' client(s) failed — see Debug Log','err');
+    }else{
+      toast(totalNew?'Synced '+totalNew+' new emails':'No new emails found','ok');
+    }
   }catch(e){
     debugLog('FATAL ERROR: '+e.message);
     console.error('Outlook sync error:',e);
