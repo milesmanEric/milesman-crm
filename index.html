@@ -720,18 +720,19 @@ async function fetchEmails(token,clientEmail,lastSyncDate){
   }catch(e){ debugLog('Inbox error: '+e.message); errors.push('Inbox: '+e.message); }
 
   // Fetch sent items — Graph doesn't reliably support server-side filtering on
-  // toRecipients, so we page through everything in the date window and match client-side.
+  // recipients, so we page through everything in the date window and match client-side.
   try{
     const sinceParam = encodeURIComponent(since);
     const u2 = 'https://graph.microsoft.com/v1.0/me/mailFolders/SentItems/messages'+
-      '?$select=subject,receivedDateTime,from,toRecipients,body,isDraft'+
+      '?$select=subject,receivedDateTime,from,toRecipients,ccRecipients,bccRecipients,body,isDraft'+
       '&$orderby=receivedDateTime desc&$top=50'+
       '&$filter=receivedDateTime+ge+'+sinceParam;
     debugLog('Fetching sent for '+clientEmail+'...');
     const sentMsgs = await fetchAllPages(u2,'Sent');
     const matched = sentMsgs.filter(function(m){
-      const to=(m.toRecipients||[]).map(function(r){return(r.emailAddress&&r.emailAddress.address||'').toLowerCase();});
-      return to.indexOf(clientLower)>=0;
+      const addrs=[].concat(m.toRecipients||[],m.ccRecipients||[],m.bccRecipients||[])
+        .map(function(r){return(r.emailAddress&&r.emailAddress.address||'').toLowerCase();});
+      return addrs.indexOf(clientLower)>=0;
     });
     debugLog('Sent: fetched='+sentMsgs.length+' matched='+matched.length);
     results.push.apply(results,matched);
