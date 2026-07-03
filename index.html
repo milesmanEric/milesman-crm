@@ -1702,6 +1702,36 @@ function matchOption(val,opts){
   const found=opts.find(function(o){return o.toLowerCase()===val.toLowerCase().trim();});
   return found||'';
 }
+// Parses free-text answers like "UNITED: Lawrence 34,213" into
+// {United:{balance:34213,status:''}}. Only recognizes airlines already in
+// the AIRLINES list; anything else in the text (traveler names, etc.) is
+// ignored rather than guessed at.
+function extractMileageBalances(text){
+  if(!text) return null;
+  const out={};
+  AIRLINES.forEach(function(airline){
+    const re=new RegExp(airline.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'[^\\d]*([\\d][\\d,]*)','i');
+    const m=re.exec(text);
+    if(m){
+      const n=parseInt(m[1].replace(/,/g,''),10);
+      if(!isNaN(n)) out[airline]={balance:n,status:''};
+    }
+  });
+  return Object.keys(out).length?out:null;
+}
+// Adds any newly-found airline balances without touching an airline that
+// already has a recorded balance on the client.
+function mergeMileageBalances(existingBalances,newBalances){
+  const merged=Object.assign({},existingBalances||{});
+  const added=[];
+  Object.keys(newBalances||{}).forEach(function(airline){
+    if(!merged[airline]||!merged[airline].balance){
+      merged[airline]=newBalances[airline];
+      added.push(airline);
+    }
+  });
+  return {merged:merged,added:added};
+}
 async function importTripFormPDF(){
   const i=document.createElement('input');i.type='file';i.accept='application/pdf';i.multiple=true;
   i.onchange=async function(e){
@@ -1721,6 +1751,7 @@ async function importTripFormPDF(){
         const preferredAirline=matchOption(extractLabelValue(flatText,'Preferred Airline'),AIRLINES);
         const preferredHotel=matchOption(extractLabelValue(flatText,'Preferred Hotel'),HOTELS);
         const preferredCruiseLine=matchOption(extractLabelValue(flatText,'Preferred Cruise Line'),CRUISE_LINES);
+        const mileageBalances=extractMileageBalances(extractLabelValue(flatText,'Please list all airline points balances you have in your name'));
 
         if(!name&&!email){debugLog('Trip form PDF: no name or email found in '+file.name);skipped++;continue;}
 
@@ -1743,6 +1774,10 @@ async function importTripFormPDF(){
           Object.keys(fieldsToFill).forEach(function(k){
             if(fieldsToFill[k] && !existing[k]){existing[k]=fieldsToFill[k];filled.push(k);}
           });
+          if(mileageBalances){
+            const merge=mergeMileageBalances(existing.mileageBalances,mileageBalances);
+            if(merge.added.length){existing.mileageBalances=merge.merged;filled.push('mileageBalances ('+merge.added.join(', ')+')');}
+          }
           if(filled.length){debugLog('Trip form PDF: enriched '+existing.name+' with '+filled.join(', ')+' from '+file.name);enriched++;}
           skipped++;
           continue;
@@ -1750,7 +1785,7 @@ async function importTripFormPDF(){
 
         if(!name){skipped++;continue;} // no name to create a new client with
 
-        db.clients.push(Object.assign({id:newId('C',db.clients),name:toLastFirst(name),email:'',phone:'',location:'',preferredAirline:'',preferredHotel:'',preferredCruiseLine:'',notes:'',joined:today(),totalTrips:0,totalRevenue:0,notesLog:[]},fieldsToFill));
+        db.clients.push(Object.assign({id:newId('C',db.clients),name:toLastFirst(name),email:'',phone:'',location:'',preferredAirline:'',preferredHotel:'',preferredCruiseLine:'',mileageBalances:mileageBalances||{},notes:'',joined:today(),totalTrips:0,totalRevenue:0,notesLog:[]},fieldsToFill));
         added++;
       }catch(err){
         debugLog('Trip form PDF error for '+file.name+': '+err.message);
