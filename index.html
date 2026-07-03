@@ -1653,9 +1653,10 @@ const TRIP_FORM_LABELS=[
   {label:'Address', find:function(lower){var m=/(?<!email )address/.exec(lower); return m?m.index:-1;}},
   {label:'How many travelers?'},
   {label:"Other travelers' names and ages"},
-  {label:'Please list all airline points balances you have in your name'},
-  {label:"Please list all airline points balances you have in your spouse's name"},
-  {label:'Please list all credit card points balances you have in your name'},
+  {label:'Please list all airline points balances you have in your name. Do not list account numbers.'},
+  {label:"Please list all airline points balances you have in your spouse's name. Do not list account numbers. Type N/A if not applicable."},
+  {label:'Please list all hotel points balances you have in your name. Do not list account numbers.'},
+  {label:'Please list all credit card points balances you have in your name. Do not list account numbers, but do list specific card (i.e. Chase Sapphire Reserve)'},
   {label:'If looking for hotel, what types of hotels will you consider?'},
   {label:'Do you need a rental car?'},
   {label:'How many people are traveling?'},
@@ -1702,6 +1703,84 @@ function matchOption(val,opts){
   const found=opts.find(function(o){return o.toLowerCase()===val.toLowerCase().trim();});
   return found||'';
 }
+// Parses free-text answers like "UNITED: Lawrence 34,213" into
+// {United:34213}. Only recognizes names already in the given option list
+// (AIRLINES or HOTELS); anything else in the text (traveler names, etc.) is
+// ignored rather than guessed at. Assumes the option name and its number
+// appear in that order, which holds for airline/hotel brand names.
+function extractPointsBalances(text,optionsList){
+  if(!text) return null;
+  const out={};
+  optionsList.forEach(function(opt){
+    const re=new RegExp(opt.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'[^\\d]*([\\d][\\d,]*)','i');
+    const m=re.exec(text);
+    if(m){
+      const n=parseInt(m[1].replace(/,/g,''),10);
+      if(!isNaN(n)) out[opt]=n;
+    }
+  });
+  return Object.keys(out).length?out:null;
+}
+// Same as extractPointsBalances but wraps each number in the {balance,status}
+// shape used by mileageBalances/hotelBalances (status left blank — the form
+// doesn't ask for elite status).
+function extractBalanceObjects(text,optionsList){
+  const raw=extractPointsBalances(text,optionsList);
+  if(!raw) return null;
+  const out={};
+  Object.keys(raw).forEach(function(k){ out[k]={balance:raw[k],status:''}; });
+  return out;
+}
+// Credit card names are often written in a different word order than the
+// canonical CREDIT_CARDS entries (e.g. "Platinum American Express" for "Amex
+// Platinum"), so this matches all significant words regardless of order
+// instead of requiring an exact substring.
+function extractCreditCardBalances(text){
+  if(!text) return null;
+  const normalized=text.replace(/american express/gi,'Amex');
+  const out={};
+  CREDIT_CARDS.forEach(function(card){
+    const words=card.split(/\s+/);
+    const allPresent=words.every(function(w){
+      return new RegExp('\\b'+w.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\b','i').test(normalized);
+    });
+    if(allPresent){
+      const m=/([\d][\d,]*)/.exec(normalized);
+      if(m){
+        const n=parseInt(m[1].replace(/,/g,''),10);
+        if(!isNaN(n)) out[card]=n;
+      }
+    }
+  });
+  return Object.keys(out).length?out:null;
+}
+// Adds any newly-found balances without touching an entry that already has
+// a recorded balance on the client. Shared by mileageBalances/hotelBalances
+// ({balance,status} objects).
+function mergeBalanceObjects(existingBalances,newBalances){
+  const merged=Object.assign({},existingBalances||{});
+  const added=[];
+  Object.keys(newBalances||{}).forEach(function(name){
+    if(!merged[name]||!merged[name].balance){
+      merged[name]=newBalances[name];
+      added.push(name);
+    }
+  });
+  return {merged:merged,added:added};
+}
+// Same, but for creditCardBalances, which stores plain numbers rather than
+// {balance,status} objects.
+function mergeCreditCardBalances(existingBalances,newBalances){
+  const merged=Object.assign({},existingBalances||{});
+  const added=[];
+  Object.keys(newBalances||{}).forEach(function(card){
+    if(!merged[card]){
+      merged[card]=newBalances[card];
+      added.push(card);
+    }
+  });
+  return {merged:merged,added:added};
+}
 async function importTripFormPDF(){
   const i=document.createElement('input');i.type='file';i.accept='application/pdf';i.multiple=true;
   i.onchange=async function(e){
@@ -1721,6 +1800,9 @@ async function importTripFormPDF(){
         const preferredAirline=matchOption(extractLabelValue(flatText,'Preferred Airline'),AIRLINES);
         const preferredHotel=matchOption(extractLabelValue(flatText,'Preferred Hotel'),HOTELS);
         const preferredCruiseLine=matchOption(extractLabelValue(flatText,'Preferred Cruise Line'),CRUISE_LINES);
+        const mileageBalances=extractBalanceObjects(extractLabelValue(flatText,'Please list all airline points balances you have in your name. Do not list account numbers.'),AIRLINES);
+        const hotelBalances=extractBalanceObjects(extractLabelValue(flatText,'Please list all hotel points balances you have in your name. Do not list account numbers.'),HOTELS);
+        const creditCardBalances=extractCreditCardBalances(extractLabelValue(flatText,'Please list all credit card points balances you have in your name. Do not list account numbers, but do list specific card (i.e. Chase Sapphire Reserve)'));
 
         if(!name&&!email){debugLog('Trip form PDF: no name or email found in '+file.name);skipped++;continue;}
 
@@ -1743,6 +1825,18 @@ async function importTripFormPDF(){
           Object.keys(fieldsToFill).forEach(function(k){
             if(fieldsToFill[k] && !existing[k]){existing[k]=fieldsToFill[k];filled.push(k);}
           });
+          if(mileageBalances){
+            const merge=mergeBalanceObjects(existing.mileageBalances,mileageBalances);
+            if(merge.added.length){existing.mileageBalances=merge.merged;filled.push('mileageBalances ('+merge.added.join(', ')+')');}
+          }
+          if(hotelBalances){
+            const merge=mergeBalanceObjects(existing.hotelBalances,hotelBalances);
+            if(merge.added.length){existing.hotelBalances=merge.merged;filled.push('hotelBalances ('+merge.added.join(', ')+')');}
+          }
+          if(creditCardBalances){
+            const merge=mergeCreditCardBalances(existing.creditCardBalances,creditCardBalances);
+            if(merge.added.length){existing.creditCardBalances=merge.merged;filled.push('creditCardBalances ('+merge.added.join(', ')+')');}
+          }
           if(filled.length){debugLog('Trip form PDF: enriched '+existing.name+' with '+filled.join(', ')+' from '+file.name);enriched++;}
           skipped++;
           continue;
@@ -1750,7 +1844,7 @@ async function importTripFormPDF(){
 
         if(!name){skipped++;continue;} // no name to create a new client with
 
-        db.clients.push(Object.assign({id:newId('C',db.clients),name:toLastFirst(name),email:'',phone:'',location:'',preferredAirline:'',preferredHotel:'',preferredCruiseLine:'',notes:'',joined:today(),totalTrips:0,totalRevenue:0,notesLog:[]},fieldsToFill));
+        db.clients.push(Object.assign({id:newId('C',db.clients),name:toLastFirst(name),email:'',phone:'',location:'',preferredAirline:'',preferredHotel:'',preferredCruiseLine:'',mileageBalances:mileageBalances||{},hotelBalances:hotelBalances||{},creditCardBalances:creditCardBalances||{},notes:'',joined:today(),totalTrips:0,totalRevenue:0,notesLog:[]},fieldsToFill));
         added++;
       }catch(err){
         debugLog('Trip form PDF error for '+file.name+': '+err.message);
