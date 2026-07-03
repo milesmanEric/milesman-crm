@@ -435,7 +435,7 @@ function countDistinctInvoicesIn(tripList){
   return count;
 }
 const gv = id => $(id) ? $(id).value.trim() : '';
-const gn = id => Number($(id) ? $(id).value : 0);
+const gn = id => Number(($(id) ? $(id).value : '0').toString().replace(/,/g,''));
 const fmt = n => Number(n||0).toLocaleString();
 const today = () => new Date().toISOString().slice(0,10);
 function tsNow(){
@@ -3558,7 +3558,7 @@ function balanceGrid(label,idPrefix,list,data,statusList){
           '<input id="'+idPrefix+'-st-custom-'+i+'" type="text" value="'+(isOther?status.toString().replace(/"/g,'&quot;'):'')+'" placeholder="Enter status" style="width:100px;padding:5px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12px;font-family:inherit;display:'+(isOther?'inline-block':'none')+'">'):'';
         return '<div style="display:flex;align-items:center;gap:8px">'+
           '<span style="flex:1;font-size:12px;color:#374151">'+name+'</span>'+
-          '<input id="'+idPrefix+'-'+i+'" type="number" min="0" value="'+bal+'" placeholder="0" style="width:90px;padding:5px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12px;font-family:inherit">'+
+          '<input id="'+idPrefix+'-'+i+'" class="balance-num-input" type="text" inputmode="numeric" value="'+(bal?Number(bal).toLocaleString():'')+'" placeholder="0" style="width:90px;padding:5px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12px;font-family:inherit">'+
           statusHtml+
         '</div>';
       }).join('')+
@@ -3704,6 +3704,13 @@ function openClientForm(id){
   $('modal-close').addEventListener('click',closeModal);
   $('modal-cancel').addEventListener('click',closeModal);
   $('btn-add-note').addEventListener('click',addNoteEntry);
+
+  document.querySelectorAll('.balance-num-input').forEach(function(numEl){
+    numEl.addEventListener('input',function(){
+      var digits=numEl.value.replace(/[^\d]/g,'');
+      numEl.value = digits ? Number(digits).toLocaleString() : '';
+    });
+  });
 
   document.querySelectorAll('.balance-status-sel').forEach(function(selEl){
     selEl.addEventListener('change',function(){
