@@ -764,10 +764,10 @@ async function syncOutlook(){
       btn.textContent=orig;btn.disabled=false;return;
     }
 
-    // Clear last sync date to fetch all emails
-    const lastSync=null; // fetch everything
-    debugLog('Fetching ALL emails (no date filter)');
+    const lastSync=localStorage.getItem('mm_last_outlook_sync')||null;
+    debugLog(lastSync?'Fetching emails since last sync: '+lastSync:'No previous sync found — fetching all emails');
 
+    const syncStartedAt=new Date().toISOString();
     const mailbox=await fetchMailbox(token,lastSync);
     const clientErrors=mailbox.errors.slice();
 
@@ -798,7 +798,11 @@ async function syncOutlook(){
         clientErrors.push(client.email+' ('+e.message+')');
       }
     }
-    localStorage.setItem('mm_last_outlook_sync',new Date().toISOString());
+    if(mailbox.errors.length){
+      debugLog('Not advancing last-sync marker due to fetch errors — this window will be retried next sync');
+    }else{
+      localStorage.setItem('mm_last_outlook_sync',syncStartedAt);
+    }
     saveDB();render();
     btn.textContent=orig;btn.style.color='#059669';btn.style.borderColor='#6ee7b7';
     debugLog('=== Sync Complete: '+totalNew+' new emails, '+clientErrors.length+' error(s) ===');
