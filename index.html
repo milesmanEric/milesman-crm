@@ -255,6 +255,7 @@ tr:last-child td{border-bottom:none}
         <button class="sync-btn" id="btn-import-suppliers-sb" style="color:#059669;border-color:#6ee7b7">&#127981; Import Suppliers CSV</button>
         <button class="sync-btn" id="btn-import-revenue" style="color:#059669;border-color:#6ee7b7">&#128178; Import Revenue CSV</button>
         <button class="sync-btn" id="btn-import-csv" style="color:#059669;border-color:#6ee7b7">&#128203; Import Clients CSV</button>
+        <button class="sync-btn" id="btn-import-tripform" style="color:#059669;border-color:#6ee7b7">&#9992;&#65039; Import Book a Trip Form CSV</button>
         <button class="sync-btn" id="btn-clear-trips" style="color:#dc2626;border-color:#fca5a5">&#128465; Clear All Trips</button>
       </div>
 
@@ -1601,6 +1602,98 @@ function importCSV(){
         snapshot('Import contacts');
         saveDB();render();
         toast('Imported '+added+' contacts'+(skipped?' ('+skipped+' skipped)':'')+(enriched?', enriched '+enriched+' existing':'')+' ✓');
+      }catch(err){toast('Could not read CSV: '+err.message,'err');}
+    };r.readAsText(f);
+  };i.click();
+}
+
+// Imports a "Book a Trip" Google Form CSV export. Only maps columns onto fields
+// that already exist on the client record (name, email, phone, location,
+// birthdate, preferred airline/hotel/cruise line) — any other form question
+// (trip destination, dates, budget, etc.) has no matching client field and is
+// intentionally ignored rather than inventing a new field to hold it.
+function importTripFormCSV(){
+  const i=document.createElement('input');i.type='file';i.accept='.csv';
+  i.onchange=function(e){
+    const f=e.target.files[0];if(!f)return;
+    const r=new FileReader();
+    r.onload=function(ev){
+      try{
+        const lines=ev.target.result.split('\n').map(function(l){return l.trim();}).filter(function(l){return l;});
+        if(lines.length<2){toast('CSV appears empty','err');return;}
+        const headers=lines[0].split(',').map(function(h){return h.replace(/"/g,'').trim().toLowerCase();});
+        const firstIdx=headers.findIndex(function(h){return h.includes('first name');});
+        const lastIdx=headers.findIndex(function(h){return h.includes('last name');});
+        const nameIdx=headers.findIndex(function(h){return h.includes('name')&&!h.includes('first name')&&!h.includes('last name');});
+        const emailIdx=headers.findIndex(function(h){return h.includes('email');});
+        const phoneIdx=headers.findIndex(function(h){return h.includes('phone');});
+        const locIdx=headers.findIndex(function(h){return h.includes('location')||h.includes('city');});
+        const bdIdx=headers.findIndex(function(h){return h.includes('birth')||h.includes('dob');});
+        const airlineIdx=headers.findIndex(function(h){return h.includes('airline');});
+        const hotelIdx=headers.findIndex(function(h){return h.includes('hotel');});
+        const cruiseIdx=headers.findIndex(function(h){return h.includes('cruise');});
+        if(firstIdx===-1&&lastIdx===-1&&nameIdx===-1&&emailIdx===-1){
+          toast('No name or email column found in CSV','err');return;
+        }
+        function matchOption(val,opts){
+          if(!val) return '';
+          const found=opts.find(function(o){return o.toLowerCase()===val.toLowerCase().trim();});
+          return found||'';
+        }
+        let added=0,enriched=0,skipped=0;
+        for(let ri=1;ri<lines.length;ri++){
+          const cols=lines[ri].split(',');
+          const clean=cols.map(function(c){return (c||'').replace(/^"|"$/g,'').trim();});
+          let name='';
+          if(firstIdx>=0||lastIdx>=0){
+            const first=firstIdx>=0?(clean[firstIdx]||''):'';
+            const last=lastIdx>=0?(clean[lastIdx]||''):'';
+            name=(first+' '+last).trim();
+          }else if(nameIdx>=0){
+            name=clean[nameIdx]||'';
+          }
+          const email=emailIdx>=0?(clean[emailIdx]||''):'';
+          const phone=phoneIdx>=0?(clean[phoneIdx]||''):'';
+          const location=locIdx>=0?(clean[locIdx]||''):'';
+          const birthdate=bdIdx>=0?(clean[bdIdx]||''):'';
+          const preferredAirline=matchOption(airlineIdx>=0?clean[airlineIdx]:'',AIRLINES);
+          const preferredHotel=matchOption(hotelIdx>=0?clean[hotelIdx]:'',HOTELS);
+          const preferredCruiseLine=matchOption(cruiseIdx>=0?clean[cruiseIdx]:'',CRUISE_LINES);
+
+          if(!name&&!email){skipped++;continue;}
+
+          const nameFirst=getFirstName(name).toLowerCase();
+          const nameLast=getLastName(name).toLowerCase();
+          const existing=db.clients.find(function(c){
+            if(email && c.email && c.email.toLowerCase()===email.toLowerCase()) return true;
+            if(!name) return false;
+            const cFull=(c.name||'').toLowerCase().trim();
+            if(cFull===name.toLowerCase().trim()) return true;
+            const cFirst=getFirstName(c.name).toLowerCase();
+            const cLast=getLastName(c.name).toLowerCase();
+            return nameFirst && nameLast && nameFirst!==nameLast && cFirst===nameFirst && cLast===nameLast;
+          });
+
+          const fieldsToFill={email:email,phone:phone,location:location,birthdate:birthdate,preferredAirline:preferredAirline,preferredHotel:preferredHotel,preferredCruiseLine:preferredCruiseLine};
+
+          if(existing){
+            const filled=[];
+            Object.keys(fieldsToFill).forEach(function(k){
+              if(fieldsToFill[k] && !existing[k]){existing[k]=fieldsToFill[k];filled.push(k);}
+            });
+            if(filled.length){debugLog('Trip form import: enriched '+existing.name+' with '+filled.join(', '));enriched++;}
+            skipped++;
+            continue;
+          }
+
+          if(!name){skipped++;continue;} // no name to create a new client with
+
+          db.clients.push(Object.assign({id:newId('C',db.clients),name:toLastFirst(name),email:'',phone:'',location:'',preferredAirline:'',preferredHotel:'',preferredCruiseLine:'',notes:'',joined:today(),totalTrips:0,totalRevenue:0,notesLog:[]},fieldsToFill));
+          added++;
+        }
+        snapshot('Import trip form');
+        saveDB();render();
+        toast('Trip form import: '+added+' new client'+(added!==1?'s':'')+(enriched?', enriched '+enriched+' existing':'')+(skipped?' ('+skipped+' skipped)':''),'ok');
       }catch(err){toast('Could not read CSV: '+err.message,'err');}
     };r.readAsText(f);
   };i.click();
@@ -3793,6 +3886,7 @@ function bindClick(id, handler){
   bindClick('btn-mass-email', massEmail);
   bindClick('btn-log-mailchimp', openLogMailchimpModal);
   bindClick('btn-import-csv', importCSV);
+  bindClick('btn-import-tripform', importTripFormCSV);
   bindClick('btn-import-revenue', importRevenue);
   bindClick('btn-clear-trips', function(){
     if(confirm('Delete ALL trips? This cannot be undone.')){
