@@ -3691,6 +3691,38 @@ function openClientForm(id){
           '</tr></thead>'+
           '<tbody>'+tripRows+supRows+'</tbody></table></div></div>';
       })() : '') +
+      (id ? (function(){
+        var clientTasks = db.planner.filter(function(t){return t.clientId===id;}).sort(function(a,b){
+          if(!!a.done !== !!b.done) return a.done ? 1 : -1;
+          var ad=a.dueDate||'9999-99-99', bd=b.dueDate||'9999-99-99';
+          return ad.localeCompare(bd);
+        });
+        var addBtn = '<button type="button" class="client-add-task-btn" style="padding:3px 10px;border-radius:6px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:11px;font-family:inherit">+ Add Task</button>';
+        if(!clientTasks.length){
+          return '<div class="field full" style="margin-bottom:12px">'+
+            '<div style="display:flex;justify-content:space-between;align-items:center"><label>Tasks (0)</label>'+addBtn+'</div>'+
+            '<div style="color:#aaa;font-size:12px;padding:8px 0">No tasks yet.</div>'+
+          '</div>';
+        }
+        var rows = clientTasks.map(function(t){
+          var overdue = t.dueDate && !t.done && t.dueDate<today();
+          return '<tr class="client-task-row" data-task-id="'+t.id+'" style="cursor:pointer">'+
+            '<td style="font-size:12px;padding:8px 10px;color:'+(t.done?'#aaa':'#111')+';text-decoration:'+(t.done?'line-through':'none')+'">'+t.title+'</td>'+
+            '<td style="font-size:11px;padding:8px 10px;white-space:nowrap;color:'+(overdue?'#dc2626':'#555')+'">'+(t.dueDate||'—')+(overdue?' (overdue)':'')+'</td>'+
+            '<td style="padding:8px 10px">'+(t.done?'<span class="badge b-blue">Done</span>':'<span class="badge b-amber">Open</span>')+'</td>'+
+          '</tr>';
+        }).join('');
+        return '<div class="field full" style="margin-bottom:12px">'+
+          '<div style="display:flex;justify-content:space-between;align-items:center"><label>Tasks ('+clientTasks.length+')</label>'+addBtn+'</div>'+
+          '<div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;max-height:220px;overflow-y:auto">'+
+          '<table style="width:100%;border-collapse:collapse">'+
+          '<thead><tr style="background:#f3f4f6">'+
+            '<th style="text-align:left;padding:6px 10px;font-size:10px;font-weight:700;color:#888;text-transform:uppercase">Task</th>'+
+            '<th style="text-align:left;padding:6px 10px;font-size:10px;font-weight:700;color:#888;text-transform:uppercase">Due</th>'+
+            '<th style="text-align:left;padding:6px 10px;font-size:10px;font-weight:700;color:#888;text-transform:uppercase">Status</th>'+
+          '</tr></thead>'+
+          '<tbody>'+rows+'</tbody></table></div></div>';
+      })() : '') +
       '<div class="field full"><label>Notes Log</label>'+
         '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'+
           '<select id="note-type-filter" style="padding:5px 10px;border-radius:6px;border:1px solid #d1d5db;font-size:12px;font-family:inherit;color:#555;background:#fff">'+
@@ -3715,6 +3747,21 @@ function openClientForm(id){
   $('modal-close').addEventListener('click',closeModal);
   $('modal-cancel').addEventListener('click',closeModal);
   $('btn-add-note').addEventListener('click',addNoteEntry);
+
+  document.querySelectorAll('.client-task-row').forEach(function(row){
+    row.addEventListener('click', function(){
+      closeModal();
+      openTaskNotes(row.dataset.taskId);
+    });
+  });
+  document.querySelectorAll('.client-add-task-btn').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      closeModal();
+      openTaskForm();
+      var sel=document.getElementById('tk-client');
+      if(sel) sel.value=id;
+    });
+  });
 
   document.querySelectorAll('.balance-num-input').forEach(function(numEl){
     numEl.addEventListener('input',function(){
@@ -4114,6 +4161,11 @@ function saveTask(id){
   var title = gv('tk-title');
   if(!title){toast('Task title is required','err');return;}
   snapshot(id?'Edit task':'Add task');
+  var wasDone = false;
+  if(id){
+    var existing = db.planner.find(function(t){return t.id===id;});
+    wasDone = existing ? !!existing.done : false;
+  }
   var data = {
     title:title,
     dueDate:gv('tk-due'),
@@ -4132,13 +4184,33 @@ function saveTask(id){
     db.planner.push(data);
     toast('Task added');
   }
+  if(!wasDone && data.done) logTaskCompletionNote(db.planner.find(function(t){return t.id===(id||data.id);}));
   saveDB();closeModal();render();
 }
 
 function toggleTaskDone(id){
+  var task = db.planner.find(function(t){return t.id===id;});
+  if(!task) return;
+  var wasDone = !!task.done;
   snapshot('Toggle task');
   db.planner = db.planner.map(function(t){return t.id===id?Object.assign({},t,{done:!t.done}):t;});
+  if(!wasDone) logTaskCompletionNote(db.planner.find(function(t){return t.id===id;}));
   saveDB();render();
+}
+
+// Marking a task done logs it as a note on the linked client record, so
+// closing out a follow-up leaves a trail on the client without extra steps.
+function logTaskCompletionNote(task){
+  if(!task || !task.clientId) return;
+  var client = db.clients.find(function(c){return c.id===task.clientId;});
+  if(!client) return;
+  var text = 'Task completed: '+task.title+(task.desc?('\n'+task.desc):'');
+  db.clients = db.clients.map(function(c){
+    if(c.id!==task.clientId) return c;
+    var nl = Array.isArray(c.notesLog)?c.notesLog.slice():[];
+    nl.push({ts:tsNow(),text:text,noteType:'General',source:'planner'});
+    return Object.assign({},c,{notesLog:nl});
+  });
 }
 
 function deleteTask(id){
