@@ -221,6 +221,7 @@ tr:last-child td{border-bottom:none}
       <button class="nb" id="nb-clients">&#128100; Clients <span class="nc" id="nc-clients">0</span></button>
       <button class="nb" id="nb-trips">&#9992;&#65039; Trips <span class="nc" id="nc-trips">0</span></button>
       <button class="nb" id="nb-vendors">&#127981; Suppliers <span class="nc" id="nc-vendors">0</span></button>
+      <button class="nb" id="nb-planner">&#128203; Planner <span class="nc" id="nc-planner">0</span></button>
       <button class="nb" id="nb-reports">&#128202; Reports</button>
       <button class="nb" id="nb-calendar">&#128197; Calendar</button>
       <button class="nb" id="nb-email">&#9993;&#65039; Email</button>
@@ -344,7 +345,7 @@ const STATUSES = ['Planning','Confirmed','Completed','Cancelled'];
 const TYPES    = ['Leisure','Business','Honeymoon','Family','Adventure','Cruise'];
 const CLASSES  = ['Economy','Premium Economy','Business','First'];
 
-let db = {clients:[],trips:[],vendors:[]};
+let db = {clients:[],trips:[],vendors:[],planner:[]};
 const UNDO_STACK = [];
 const MAX_UNDO = 20;
 function snapshot(label){
@@ -470,6 +471,7 @@ function loadDB(){
     db.clients=Array.isArray(d.clients)?d.clients:[];
     db.trips=Array.isArray(d.trips)?d.trips:[];
     db.vendors=Array.isArray(d.vendors)?d.vendors:[];
+    db.planner=Array.isArray(d.planner)?d.planner:[];
     // Always normalize client names to 'Last, First' format on every load
     // (safe to run repeatedly since it skips names that already have a comma)
     var migrated=0;
@@ -483,7 +485,7 @@ function loadDB(){
       saveDB();
       console.log('[CRM] Normalized '+migrated+' client names to Last, First format');
     }
-  }catch(e){db={clients:[],trips:[],vendors:[]};}
+  }catch(e){db={clients:[],trips:[],vendors:[],planner:[]};}
 }
 
 // ── Toast ─────────────────────────────────────────────────────────────────
@@ -1092,7 +1094,8 @@ async function driveRestore(){
       db={
         clients:Array.isArray(d.clients)?d.clients:[],
         trips:Array.isArray(d.trips)?d.trips:[],
-        vendors:Array.isArray(d.vendors)?d.vendors:[]
+        vendors:Array.isArray(d.vendors)?d.vendors:[],
+        planner:Array.isArray(d.planner)?d.planner:[]
       };
       db.clients.forEach(function(c){ if(c.name && !c.name.includes(',')) c.name=toLastFirst(c.name); });
       saveDB();render();
@@ -1126,7 +1129,7 @@ function importJSON(){
     r.onload=function(ev){
       try{
         const d=JSON.parse(ev.target.result);
-        if(Array.isArray(d.clients)&&Array.isArray(d.trips)){db=d;(db.clients||[]).forEach(function(c){ if(c.name && !c.name.includes(',')) c.name=toLastFirst(c.name); });saveDB();toast('Data imported');render();}
+        if(Array.isArray(d.clients)&&Array.isArray(d.trips)){db=d;if(!Array.isArray(db.vendors))db.vendors=[];if(!Array.isArray(db.planner))db.planner=[];(db.clients||[]).forEach(function(c){ if(c.name && !c.name.includes(',')) c.name=toLastFirst(c.name); });saveDB();toast('Data imported');render();}
         else toast('Invalid backup file','err');
       }catch(ex){toast('Could not read file','err');}
     };r.readAsText(f);
@@ -1864,7 +1867,7 @@ function go(v,cid){
   view=v;
   selCid=(v==='trips'&&cid)?cid:null;
   fSearch='';fStatus='';
-  ['dashboard','clients','trips','reports','calendar','email','vendors'].forEach(function(x){var el=$('nb-'+x);if(el)el.classList.toggle('active',x===v);});
+  ['dashboard','clients','trips','reports','calendar','email','vendors','planner'].forEach(function(x){var el=$('nb-'+x);if(el)el.classList.toggle('active',x===v);});
   render();
 }
 
@@ -1873,6 +1876,7 @@ function render(){
   $('nc-clients').textContent=db.clients.length;
   $('nc-trips').textContent=db.trips.length;
   var ncv=$('nc-vendors'); if(ncv) ncv.textContent=db.vendors.length;
+  var ncp=$('nc-planner'); if(ncp) ncp.textContent=db.planner.filter(function(t){return !t.done;}).length;
   if(view==='dashboard') renderDash();
   else if(view==='clients') renderClients();
   else if(view==='trips') renderTrips();
@@ -1880,6 +1884,7 @@ function render(){
   else if(view==='calendar') renderCalendar();
   else if(view==='email') renderEmail();
   else if(view==='vendors') renderVendors();
+  else if(view==='planner') renderPlanner();
 }
 
 function renderReports(){
@@ -3978,6 +3983,249 @@ function delTrip(id){
   saveDB();toast('Trip deleted');render();
 }
 
+// ── Planner ───────────────────────────────────────────────────────────────
+function renderPlanner(){
+  var statusFilter = window._plannerStatus||'';
+  var tasks = db.planner.filter(function(t){
+    if(statusFilter==='open' && t.done) return false;
+    if(statusFilter==='done' && !t.done) return false;
+    return true;
+  }).sort(function(a,b){
+    if(!!a.done !== !!b.done) return a.done ? 1 : -1;
+    var ad=a.dueDate||'9999-99-99', bd=b.dueDate||'9999-99-99';
+    return ad.localeCompare(bd);
+  });
+  var openCount = db.planner.filter(function(t){return !t.done;}).length;
+
+  function entityBadges(t){
+    var out=[];
+    if(t.clientId){
+      var c=db.clients.find(function(x){return x.id===t.clientId;});
+      if(c) out.push('<span class="badge b-blue">&#128100; '+c.name+'</span>');
+    }
+    if(t.vendorId){
+      var v=db.vendors.find(function(x){return x.id===t.vendorId;});
+      if(v) out.push('<span class="badge b-green">&#127981; '+v.name+'</span>');
+    }
+    if(t.tripId){
+      var tr=db.trips.find(function(x){return x.id===t.tripId;});
+      if(tr) out.push('<span class="badge b-amber">&#9992;&#65039; '+(tr.destination||'Trip')+'</span>');
+    }
+    return out.join(' ');
+  }
+
+  $('main').innerHTML =
+    '<div class="page-hdr"><div class="page-title">Planner</div><button class="add-btn" id="btn-add-task">+ Add Task</button></div>'+
+    '<div class="stats-grid" style="grid-template-columns:repeat(2,1fr)">'+
+      '<div class="stat"><div class="stat-lbl">Open Tasks</div><div class="stat-val">'+openCount+'</div></div>'+
+      '<div class="stat"><div class="stat-lbl">Total Tasks</div><div class="stat-val">'+db.planner.length+'</div></div>'+
+    '</div>'+
+    '<div class="search-row">'+
+      '<input id="planner-search" placeholder="Search tasks..."/>'+
+      '<select id="planner-status-filter">'+
+        '<option value=""'+(statusFilter===''?' selected':'')+'>All</option>'+
+        '<option value="open"'+(statusFilter==='open'?' selected':'')+'>Open</option>'+
+        '<option value="done"'+(statusFilter==='done'?' selected':'')+'>Done</option>'+
+      '</select>'+
+    '</div>'+
+    (tasks.length ? '<div class="tbl-wrap">'+tasks.map(function(t){
+      var overdue = t.dueDate && !t.done && t.dueDate < today();
+      var badgesHtml = entityBadges(t);
+      return '<div class="cli-row" style="align-items:flex-start;border-bottom:1px solid #f0f0f0;padding:10px 8px" data-task-id="'+t.id+'">'+
+        '<input type="checkbox" class="task-done-cb" data-id="'+t.id+'" '+(t.done?'checked':'')+' style="width:15px;height:15px;margin-top:3px">'+
+        '<div style="flex:1;min-width:0">'+
+          '<div class="task-title-link" data-id="'+t.id+'" style="font-size:14px;font-weight:600;color:'+(t.done?'#aaa':'#2563eb')+';cursor:pointer;text-decoration:'+(t.done?'line-through':'underline')+'">'+t.title+'</div>'+
+          '<div style="margin-top:4px;font-size:11px;color:'+(overdue?'#dc2626':'#888')+'">'+(t.dueDate?'Due '+t.dueDate+(overdue?' (overdue)':''):'No due date')+'</div>'+
+          (badgesHtml ? '<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">'+badgesHtml+'</div>' : '')+
+          (t.desc ? '<div style="margin-top:6px;font-size:12px;color:#666">'+t.desc+'</div>' : '')+
+        '</div>'+
+        '<div style="display:flex;gap:4px">'+
+          '<button class="icon-btn edit-task" data-id="'+t.id+'" title="Edit task">&#9998;&#65039;</button>'+
+          '<button class="icon-btn del-task" data-id="'+t.id+'" style="color:#dc2626" title="Delete task">&#128465;&#65039;</button>'+
+        '</div>'+
+      '</div>';
+    }).join('')+'</div>' : '<div class="empty">No tasks yet — add one to start planning follow-ups tied to clients, suppliers, or trips</div>');
+
+  $('btn-add-task').addEventListener('click', function(){openTaskForm();});
+  $('planner-search').addEventListener('input', function(){
+    var qv = this.value.toLowerCase();
+    document.querySelectorAll('[data-task-id]').forEach(function(row){
+      var txt = row.textContent.toLowerCase();
+      row.style.display = !qv || txt.includes(qv) ? '' : 'none';
+    });
+  });
+  $('planner-status-filter').addEventListener('change', function(){ window._plannerStatus=this.value; renderPlanner(); });
+
+  document.querySelectorAll('.task-done-cb').forEach(function(cb){
+    cb.addEventListener('click', function(e){ e.stopPropagation(); });
+    cb.addEventListener('change', function(){ toggleTaskDone(this.dataset.id); });
+  });
+  document.querySelectorAll('.task-title-link').forEach(function(el){
+    el.addEventListener('click', function(){ openTaskNotes(this.dataset.id); });
+  });
+  document.querySelectorAll('.edit-task').forEach(function(btn){
+    btn.addEventListener('click', function(){ openTaskForm(this.dataset.id); });
+  });
+  document.querySelectorAll('.del-task').forEach(function(btn){
+    btn.addEventListener('click', function(){ deleteTask(this.dataset.id); });
+  });
+}
+
+function openTaskForm(id){
+  var d = id ? (db.planner.find(function(t){return t.id===id;})||{}) : {};
+  var sortedClients = [...db.clients].sort(function(a,b){return (a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase());});
+  var sortedVendors = [...db.vendors].sort(function(a,b){return (a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase());});
+  var sortedTrips = [...db.trips].sort(function(a,b){return (b.departDate||'').localeCompare(a.departDate||'');});
+
+  var clientOpts = sortedClients.map(function(c){return '<option value="'+c.id+'"'+(c.id===d.clientId?' selected':'')+'>'+c.name+'</option>';}).join('');
+  var vendorOpts = sortedVendors.map(function(v){return '<option value="'+v.id+'"'+(v.id===d.vendorId?' selected':'')+'>'+v.name+'</option>';}).join('');
+  var tripOpts = sortedTrips.map(function(t){
+    var c = db.clients.find(function(x){return x.id===t.clientId;});
+    var label = (t.destination||'Trip')+(c?' — '+c.name:'')+(t.departDate?' ('+t.departDate+')':'');
+    return '<option value="'+t.id+'"'+(t.id===d.tripId?' selected':'')+'>'+label+'</option>';
+  }).join('');
+
+  $('modal').innerHTML=
+    '<div class="modal-hdr"><div class="modal-title">'+(id?'Edit Task':'Add Task')+'</div><button class="close-btn" id="modal-close">&#x2715;</button></div>'+
+    '<div class="fg">'+
+      fld('Task Title', inp('tk-title','text',d.title,'e.g. Follow up on quote'), true)+
+      fld('Due Date', inp('tk-due','date',d.dueDate))+
+      fld('Status','<select id="tk-done"><option value="0"'+(!d.done?' selected':'')+'>Open</option><option value="1"'+(d.done?' selected':'')+'>Done</option></select>')+
+      fld('Linked Client','<select id="tk-client"><option value="">None</option>'+clientOpts+'</select>')+
+      fld('Linked Supplier','<select id="tk-vendor"><option value="">None</option>'+vendorOpts+'</select>')+
+      fld('Linked Trip','<select id="tk-trip"><option value="">None</option>'+tripOpts+'</select>')+
+      fld('Description', '<textarea id="tk-desc" rows="3">'+(d.desc||'')+'</textarea>', true)+
+    '</div>'+
+    '<div class="form-actions"><button class="cancel-btn" id="modal-cancel">Cancel</button><button class="save-btn" id="modal-save-task" data-id="'+(id||'')+'">Save Task</button></div>';
+
+  $('overlay').classList.add('open');
+  $('modal-close').addEventListener('click', closeModal);
+  $('modal-cancel').addEventListener('click', closeModal);
+  $('modal-save-task').addEventListener('click', function(){ saveTask(this.dataset.id); });
+}
+
+function saveTask(id){
+  var title = gv('tk-title');
+  if(!title){toast('Task title is required','err');return;}
+  snapshot(id?'Edit task':'Add task');
+  var data = {
+    title:title,
+    dueDate:gv('tk-due'),
+    done: gv('tk-done')==='1',
+    clientId: gv('tk-client'),
+    vendorId: gv('tk-vendor'),
+    tripId: gv('tk-trip'),
+    desc: gv('tk-desc')
+  };
+  if(id){
+    db.planner = db.planner.map(function(t){return t.id===id?Object.assign({},t,data):t;});
+    toast('Task updated');
+  } else {
+    data.id = newId('PL', db.planner);
+    data.createdAt = today();
+    db.planner.push(data);
+    toast('Task added');
+  }
+  saveDB();closeModal();render();
+}
+
+function toggleTaskDone(id){
+  snapshot('Toggle task');
+  db.planner = db.planner.map(function(t){return t.id===id?Object.assign({},t,{done:!t.done}):t;});
+  saveDB();render();
+}
+
+function deleteTask(id){
+  if(!confirm('Delete this task?')) return;
+  snapshot('Delete task');
+  db.planner = db.planner.filter(function(t){return t.id!==id;});
+  saveDB();render();
+  toast('Task deleted');
+}
+
+// Clicking a task opens this "notes" window — a note typed here is appended to
+// the notesLog of every client/supplier linked to the task (and to the linked
+// trip's notes field), not stored on the task itself.
+function openTaskNotes(id){
+  var task = db.planner.find(function(t){return t.id===id;});
+  if(!task) return;
+  var client = task.clientId ? db.clients.find(function(c){return c.id===task.clientId;}) : null;
+  var vendor = task.vendorId ? db.vendors.find(function(v){return v.id===task.vendorId;}) : null;
+  var trip = task.tripId ? db.trips.find(function(t){return t.id===task.tripId;}) : null;
+
+  var links = [];
+  if(client) links.push('<span class="badge b-blue task-link-jump" data-jump="client" data-id="'+client.id+'" style="cursor:pointer">&#128100; '+client.name+'</span>');
+  if(vendor) links.push('<span class="badge b-green task-link-jump" data-jump="vendor" data-id="'+vendor.id+'" style="cursor:pointer">&#127981; '+vendor.name+'</span>');
+  if(trip) links.push('<span class="badge b-amber task-link-jump" data-jump="trip" data-id="'+trip.id+'" style="cursor:pointer">&#9992;&#65039; '+(trip.destination||'Trip')+'</span>');
+  var linksHTML = links.length ? links.join(' ') : '<span style="color:#aaa;font-size:12px">No client, supplier, or trip linked — edit the task to add a link.</span>';
+
+  $('modal').innerHTML=
+    '<div class="modal-hdr"><div class="modal-title">'+task.title+'</div><button class="close-btn" id="modal-close">&#x2715;</button></div>'+
+    '<div class="field full" style="margin-bottom:14px"><label>Linked to</label><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px">'+linksHTML+'</div></div>'+
+    '<div class="fg">'+
+      fld('Note Type', sel('task-note-type', ['Email Sent','Email Received','Initial Call','Follow-up','General','Text Message','Lead'], 'General'))+
+      fld('Note', '<textarea id="task-note-txt" rows="5" placeholder="Add a note for the linked client, supplier, and/or trip..."></textarea>', true)+
+    '</div>'+
+    '<div class="form-actions"><button class="cancel-btn" id="modal-cancel">Cancel</button><button class="save-btn" id="modal-save-task-note" data-id="'+task.id+'">Save Note</button></div>';
+
+  $('overlay').classList.add('open');
+  $('modal-close').addEventListener('click', closeModal);
+  $('modal-cancel').addEventListener('click', closeModal);
+  $('modal-save-task-note').addEventListener('click', function(){ saveTaskNote(this.dataset.id); });
+  document.querySelectorAll('.task-link-jump').forEach(function(el){
+    el.addEventListener('click', function(){
+      var kind = el.dataset.jump, jid = el.dataset.id;
+      closeModal();
+      if(kind==='client'){ go('clients'); setTimeout(function(){openClientForm(jid);},100); }
+      else if(kind==='vendor'){ go('vendors'); setTimeout(function(){openVendorForm(jid);},100); }
+      else if(kind==='trip'){ go('trips'); setTimeout(function(){openTripForm(jid);},100); }
+    });
+  });
+}
+
+function saveTaskNote(id){
+  var task = db.planner.find(function(t){return t.id===id;});
+  if(!task) return;
+  var text = gv('task-note-txt');
+  if(!text){toast('Note text is required','err');return;}
+  if(!task.clientId && !task.vendorId && !task.tripId){
+    toast('This task has no linked client, supplier, or trip','err');
+    return;
+  }
+  var noteType = gv('task-note-type')||'General';
+  snapshot('Add task note');
+  var ts = tsNow();
+  var count = 0;
+  if(task.clientId){
+    db.clients = db.clients.map(function(c){
+      if(c.id!==task.clientId) return c;
+      var nl = Array.isArray(c.notesLog)?c.notesLog.slice():[];
+      nl.push({ts:ts,text:text,noteType:noteType,source:'planner'});
+      return Object.assign({},c,{notesLog:nl});
+    });
+    count++;
+  }
+  if(task.vendorId){
+    db.vendors = db.vendors.map(function(v){
+      if(v.id!==task.vendorId) return v;
+      var nl = Array.isArray(v.notesLog)?v.notesLog.slice():[];
+      nl.push({ts:ts,text:text,noteType:noteType,source:'planner'});
+      return Object.assign({},v,{notesLog:nl});
+    });
+    count++;
+  }
+  if(task.tripId){
+    db.trips = db.trips.map(function(t){
+      if(t.id!==task.tripId) return t;
+      var appended = t.notes ? t.notes+'\n\n['+ts+'] '+text : '['+ts+'] '+text;
+      return Object.assign({},t,{notes:appended});
+    });
+    count++;
+  }
+  saveDB();closeModal();render();
+  toast('Note added to '+count+' linked record'+(count!==1?'s':''),'ok');
+}
+
 // ── Check for MS OAuth redirect ───────────────────────────────────────────
 (function checkMsRedirect(){
   const params=new URLSearchParams(window.location.search);
@@ -4043,6 +4291,7 @@ function bindClick(id, handler){
   bindClick('nb-calendar', function(){go('calendar');closeMobileNav();});
   bindClick('nb-email', function(){go('email');closeMobileNav();});
   bindClick('nb-vendors', function(){go('vendors');closeMobileNav();});
+  bindClick('nb-planner', function(){go('planner');closeMobileNav();});
   bindClick('outlook-btn', syncOutlook);
   bindClick('drive-btn', driveBackup);
   bindClick('drive-restore-btn', driveRestore);
