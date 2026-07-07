@@ -4069,7 +4069,11 @@ function renderPlanner(){
   }
 
   $('main').innerHTML =
-    '<div class="page-hdr"><div class="page-title">Planner</div><button class="add-btn" id="btn-add-task">+ Add Task</button></div>'+
+    '<div class="page-hdr" style="display:grid;grid-template-columns:1fr auto 1fr">'+
+      '<div class="page-title">Planner</div>'+
+      '<button class="add-btn" id="btn-add-task">+ Add Task</button>'+
+      '<div></div>'+
+    '</div>'+
     '<div class="stats-grid" style="grid-template-columns:repeat(2,1fr)">'+
       '<div class="stat"><div class="stat-lbl">Open Tasks</div><div class="stat-val">'+openCount+'</div></div>'+
       '<div class="stat"><div class="stat-lbl">Total Tasks</div><div class="stat-val">'+db.planner.length+'</div></div>'+
