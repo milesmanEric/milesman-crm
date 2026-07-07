@@ -188,12 +188,13 @@ tr:last-child td{border-bottom:none}
 .overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;z-index:999}
 .overlay.open{display:flex}
 .modal{background:#fff;border-radius:12px;border:1px solid #e5e7eb;padding:26px;width:620px;max-height:88vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.15)}
+.modal-wide{width:880px}
 .modal-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px}
 .modal-title{font-size:17px;font-weight:700;color:#111}
 .close-btn{background:none;border:none;cursor:pointer;color:#888;font-size:20px;font-family:inherit;line-height:1}
 .fg{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:4px}
 .full{grid-column:1/-1}
-.field{display:flex;flex-direction:column;gap:4px}
+.field{display:flex;flex-direction:column;gap:4px;min-width:0}
 .field label{font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em}
 .field input,.field select,.field textarea{padding:8px 11px;border-radius:7px;border:1px solid #d1d5db;font-size:13px;font-family:inherit;color:#111;background:#fafafa}
 .field textarea{resize:vertical;min-height:58px}
@@ -3969,7 +3970,7 @@ function openTripForm(id){
   $('modal-save-trip').addEventListener('click',function(){saveTrip(this.dataset.id);});
 }
 
-function closeModal(){$('overlay').classList.remove('open');}
+function closeModal(){$('overlay').classList.remove('open');$('modal').classList.remove('modal-wide');}
 $('overlay').addEventListener('click',function(e){if(e.target===$('overlay'))closeModal();});
 
 // ── CRUD ──────────────────────────────────────────────────────────────────
@@ -4151,6 +4152,7 @@ function openTaskForm(id){
     '</div>'+
     '<div class="form-actions"><button class="cancel-btn" id="modal-cancel">Cancel</button><button class="save-btn" id="modal-save-task" data-id="'+(id||'')+'">Save Task</button></div>';
 
+  $('modal').classList.add('modal-wide');
   $('overlay').classList.add('open');
   $('modal-close').addEventListener('click', closeModal);
   $('modal-cancel').addEventListener('click', closeModal);
