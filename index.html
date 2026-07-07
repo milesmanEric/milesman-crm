@@ -417,6 +417,14 @@ function extractDateFromText(text){
   if(mo<1||mo>12||da<1||da>31) return '';
   return yr+'-'+String(mo).padStart(2,'0')+'-'+String(da).padStart(2,'0');
 }
+function taskClientId(t){
+  if(t.clientId) return t.clientId;
+  if(t.tripId){
+    var trip = db.trips.find(function(tr){return tr.id===t.tripId;});
+    if(trip) return trip.clientId||null;
+  }
+  return null;
+}
 function countDistinctTrips(clientId){
   var trips = db.trips.filter(function(t){return t.clientId===clientId;});
   var seen = {};
@@ -3693,7 +3701,7 @@ function openClientForm(id){
           '<tbody>'+tripRows+supRows+'</tbody></table></div></div>';
       })() : '') +
       (id ? (function(){
-        var clientTasks = db.planner.filter(function(t){return t.clientId===id;}).sort(function(a,b){
+        var clientTasks = db.planner.filter(function(t){return taskClientId(t)===id;}).sort(function(a,b){
           if(!!a.done !== !!b.done) return a.done ? 1 : -1;
           var ad=a.dueDate||'9999-99-99', bd=b.dueDate||'9999-99-99';
           return ad.localeCompare(bd);
@@ -4052,8 +4060,9 @@ function renderPlanner(){
   var openCount = db.planner.filter(function(t){return !t.done;}).length;
 
   function clientName(t){
-    if(!t.clientId) return null;
-    var c=db.clients.find(function(x){return x.id===t.clientId;});
+    var cid=taskClientId(t);
+    if(!cid) return null;
+    var c=db.clients.find(function(x){return x.id===cid;});
     return c ? c.name : null;
   }
 
@@ -4211,12 +4220,14 @@ function toggleTaskDone(id){
 // Marking a task done logs it as a note on the linked client record, so
 // closing out a follow-up leaves a trail on the client without extra steps.
 function logTaskCompletionNote(task){
-  if(!task || !task.clientId) return;
-  var client = db.clients.find(function(c){return c.id===task.clientId;});
+  if(!task) return;
+  var taskCid = taskClientId(task);
+  if(!taskCid) return;
+  var client = db.clients.find(function(c){return c.id===taskCid;});
   if(!client) return;
   var text = 'Task completed: '+task.title+(task.desc?('\n'+task.desc):'');
   db.clients = db.clients.map(function(c){
-    if(c.id!==task.clientId) return c;
+    if(c.id!==taskCid) return c;
     var nl = Array.isArray(c.notesLog)?c.notesLog.slice():[];
     nl.push({ts:tsNow(),text:text,noteType:'General',source:'planner'});
     return Object.assign({},c,{notesLog:nl});
@@ -4237,7 +4248,8 @@ function deleteTask(id){
 function openTaskNotes(id){
   var task = db.planner.find(function(t){return t.id===id;});
   if(!task) return;
-  var client = task.clientId ? db.clients.find(function(c){return c.id===task.clientId;}) : null;
+  var taskCid = taskClientId(task);
+  var client = taskCid ? db.clients.find(function(c){return c.id===taskCid;}) : null;
   var vendor = task.vendorId ? db.vendors.find(function(v){return v.id===task.vendorId;}) : null;
   var trip = task.tripId ? db.trips.find(function(t){return t.id===task.tripId;}) : null;
 
@@ -4284,9 +4296,10 @@ function saveTaskNote(id){
   snapshot('Add task note');
   var ts = tsNow();
   var count = 0;
-  if(task.clientId){
+  var taskCid = taskClientId(task);
+  if(taskCid){
     db.clients = db.clients.map(function(c){
-      if(c.id!==task.clientId) return c;
+      if(c.id!==taskCid) return c;
       var nl = Array.isArray(c.notesLog)?c.notesLog.slice():[];
       nl.push({ts:ts,text:text,noteType:noteType,source:'planner'});
       return Object.assign({},c,{notesLog:nl});
