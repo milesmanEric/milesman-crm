@@ -4473,12 +4473,11 @@ function closeNoteExpand(){
 
 // ── Auto-save every 5 minutes ────────────────────────────────────────────
 function startAutosave(){
-  // Local save every 5 minutes
-  setInterval(function(){
-    saveDB();
-    var now = new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
-    console.log('[CRM] Auto-saved locally at', now);
-  }, 5 * 60 * 1000);
+  // Every actual change already calls saveDB() immediately (see saveClient,
+  // saveTask, delTrip, etc.) — a blind periodic re-save of each tab's
+  // in-memory db would clobber newer data written by OTHER open tabs since
+  // this tab last loaded, silently erasing anything added there. Don't add
+  // one back without a cross-tab freshness check.
 
   // Google Drive backup every 5 minutes. Uses a silent token refresh (no login
   // redirect) so it works even if the user never manually clicked Backup/Restore
