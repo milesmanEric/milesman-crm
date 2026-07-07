@@ -4051,12 +4051,14 @@ function renderPlanner(){
   });
   var openCount = db.planner.filter(function(t){return !t.done;}).length;
 
+  function clientName(t){
+    if(!t.clientId) return null;
+    var c=db.clients.find(function(x){return x.id===t.clientId;});
+    return c ? c.name : null;
+  }
+
   function entityBadges(t){
     var out=[];
-    if(t.clientId){
-      var c=db.clients.find(function(x){return x.id===t.clientId;});
-      if(c) out.push('<span class="badge b-blue">&#128100; '+c.name+'</span>');
-    }
     if(t.vendorId){
       var v=db.vendors.find(function(x){return x.id===t.vendorId;});
       if(v) out.push('<span class="badge b-green">&#127981; '+v.name+'</span>');
@@ -4089,11 +4091,13 @@ function renderPlanner(){
     (tasks.length ? '<div class="tbl-wrap">'+tasks.map(function(t){
       var overdue = t.dueDate && !t.done && t.dueDate < today();
       var badgesHtml = entityBadges(t);
+      var cName = clientName(t);
       return '<div class="cli-row" style="align-items:flex-start;border-bottom:1px solid #f0f0f0;padding:10px 8px" data-task-id="'+t.id+'">'+
         '<input type="checkbox" class="task-done-cb" data-id="'+t.id+'" '+(t.done?'checked':'')+' style="width:15px;height:15px;margin-top:3px">'+
         '<div style="flex:1;min-width:0">'+
           '<div class="task-title-link" data-id="'+t.id+'" style="font-size:14px;font-weight:600;color:'+(t.done?'#aaa':'#2563eb')+';cursor:pointer;text-decoration:'+(t.done?'line-through':'underline')+'">'+t.title+'</div>'+
           '<div style="margin-top:4px;font-size:11px;color:'+(overdue?'#dc2626':'#888')+'">'+(t.dueDate?'Due '+t.dueDate+(overdue?' (overdue)':''):'No due date')+'</div>'+
+          '<div style="margin-top:4px;font-size:11px;color:#555">&#128100; '+(cName?('<span style="color:#2563eb">'+cName+'</span>'):'<span style="color:#aaa">No client linked</span>')+'</div>'+
           (badgesHtml ? '<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">'+badgesHtml+'</div>' : '')+
           (t.desc ? '<div style="margin-top:6px;font-size:12px;color:#666">'+t.desc+'</div>' : '')+
         '</div>'+
