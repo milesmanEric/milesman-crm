@@ -257,6 +257,7 @@ tr:last-child td{border-bottom:none}
         <button class="sync-btn" id="outlook-btn">&#128424; Sync Outlook Emails</button>
         <button class="sync-btn" id="btn-mass-email" style="color:#7c3aed;border-color:#c4b5fd">&#128231; Email All Clients</button>
         <button class="sync-btn" id="btn-log-mailchimp" style="color:#7c3aed;border-color:#c4b5fd">&#128226; Log Mailchimp Campaign</button>
+        <button class="sync-btn" id="btn-sync-mailchimp" style="color:#7c3aed;border-color:#c4b5fd">&#128260; Sync Mailchimp Activity</button>
         <button class="sync-btn" id="btn-ms-signout" style="color:#888;border-color:#ddd;font-size:11px">&#128274; Reset Outlook Login</button>
       </div>
 
@@ -1131,6 +1132,178 @@ async function driveRestore(){
     else{toast('Restore failed: '+e,'err');}
   }
   if(btn){btn.textContent='Restore from Google Drive';btn.disabled=false;}
+}
+
+// ── Mailchimp Activity Sync ─────────────────────────────────────────────────
+// Mailchimp's API has no CORS support, so this goes through the same
+// milesman-auth Vercel proxy used for Google Drive (api/mailchimp.js there
+// holds the API key server-side). Pulls each client's send/open/click
+// activity for one chosen Mailchimp audience and logs it to their notesLog,
+// the same way Outlook sync does.
+const MAILCHIMP_LIST_KEY = 'mm_mailchimp_list_id';
+
+// Minimal MD5 (RFC 1321) — Mailchimp's per-member endpoints are keyed by
+// "subscriber_hash", which is just MD5 of the lowercased email address.
+function md5hex(str){
+  function safeAdd(x,y){var lsw=(x&0xffff)+(y&0xffff),msw=(x>>16)+(y>>16)+(lsw>>16);return (msw<<16)|(lsw&0xffff);}
+  function rol(num,cnt){return (num<<cnt)|(num>>>(32-cnt));}
+  function cmn(q,a,b,x,s,t){return safeAdd(rol(safeAdd(safeAdd(a,q),safeAdd(x,t)),s),b);}
+  function ff(a,b,c,d,x,s,t){return cmn((b&c)|(~b&d),a,b,x,s,t);}
+  function gg(a,b,c,d,x,s,t){return cmn((b&d)|(c&~d),a,b,x,s,t);}
+  function hh(a,b,c,d,x,s,t){return cmn(b^c^d,a,b,x,s,t);}
+  function ii(a,b,c,d,x,s,t){return cmn(c^(b|~d),a,b,x,s,t);}
+
+  function coreMD5(x,len){
+    x[len>>5]|=0x80<<(len%32);
+    x[(((len+64)>>>9)<<4)+14]=len;
+    var a=1732584193,b=-271733879,c=-1732584194,d=271733878;
+    for(var i=0;i<x.length;i+=16){
+      var oa=a,ob=b,oc=c,od=d;
+      a=ff(a,b,c,d,x[i],7,-680876936);d=ff(d,a,b,c,x[i+1],12,-389564586);c=ff(c,d,a,b,x[i+2],17,606105819);b=ff(b,c,d,a,x[i+3],22,-1044525330);
+      a=ff(a,b,c,d,x[i+4],7,-176418897);d=ff(d,a,b,c,x[i+5],12,1200080426);c=ff(c,d,a,b,x[i+6],17,-1473231341);b=ff(b,c,d,a,x[i+7],22,-45705983);
+      a=ff(a,b,c,d,x[i+8],7,1770035416);d=ff(d,a,b,c,x[i+9],12,-1958414417);c=ff(c,d,a,b,x[i+10],17,-42063);b=ff(b,c,d,a,x[i+11],22,-1990404162);
+      a=ff(a,b,c,d,x[i+12],7,1804603682);d=ff(d,a,b,c,x[i+13],12,-40341101);c=ff(c,d,a,b,x[i+14],17,-1502002290);b=ff(b,c,d,a,x[i+15],22,1236535329);
+      a=gg(a,b,c,d,x[i+1],5,-165796510);d=gg(d,a,b,c,x[i+6],9,-1069501632);c=gg(c,d,a,b,x[i+11],14,643717713);b=gg(b,c,d,a,x[i],20,-373897302);
+      a=gg(a,b,c,d,x[i+5],5,-701558691);d=gg(d,a,b,c,x[i+10],9,38016083);c=gg(c,d,a,b,x[i+15],14,-660478335);b=gg(b,c,d,a,x[i+4],20,-405537848);
+      a=gg(a,b,c,d,x[i+9],5,568446438);d=gg(d,a,b,c,x[i+14],9,-1019803690);c=gg(c,d,a,b,x[i+3],14,-187363961);b=gg(b,c,d,a,x[i+8],20,1163531501);
+      a=gg(a,b,c,d,x[i+13],5,-1444681467);d=gg(d,a,b,c,x[i+2],9,-51403784);c=gg(c,d,a,b,x[i+7],14,1735328473);b=gg(b,c,d,a,x[i+12],20,-1926607734);
+      a=hh(a,b,c,d,x[i+5],4,-378558);d=hh(d,a,b,c,x[i+8],11,-2022574463);c=hh(c,d,a,b,x[i+11],16,1839030562);b=hh(b,c,d,a,x[i+14],23,-35309556);
+      a=hh(a,b,c,d,x[i+1],4,-1530992060);d=hh(d,a,b,c,x[i+4],11,1272893353);c=hh(c,d,a,b,x[i+7],16,-155497632);b=hh(b,c,d,a,x[i+10],23,-1094730640);
+      a=hh(a,b,c,d,x[i+13],4,681279174);d=hh(d,a,b,c,x[i],11,-358537222);c=hh(c,d,a,b,x[i+3],16,-722521979);b=hh(b,c,d,a,x[i+6],23,76029189);
+      a=hh(a,b,c,d,x[i+9],4,-640364487);d=hh(d,a,b,c,x[i+12],11,-421815835);c=hh(c,d,a,b,x[i+15],16,530742520);b=hh(b,c,d,a,x[i+2],23,-995338651);
+      a=ii(a,b,c,d,x[i],6,-198630844);d=ii(d,a,b,c,x[i+7],10,1126891415);c=ii(c,d,a,b,x[i+14],15,-1416354905);b=ii(b,c,d,a,x[i+5],21,-57434055);
+      a=ii(a,b,c,d,x[i+12],6,1700485571);d=ii(d,a,b,c,x[i+3],10,-1894986606);c=ii(c,d,a,b,x[i+10],15,-1051523);b=ii(b,c,d,a,x[i+1],21,-2054922799);
+      a=ii(a,b,c,d,x[i+8],6,1873313359);d=ii(d,a,b,c,x[i+15],10,-30611744);c=ii(c,d,a,b,x[i+6],15,-1560198380);b=ii(b,c,d,a,x[i+13],21,1309151649);
+      a=ii(a,b,c,d,x[i+4],6,-145523070);d=ii(d,a,b,c,x[i+11],10,-1120210379);c=ii(c,d,a,b,x[i+2],15,718787259);b=ii(b,c,d,a,x[i+9],21,-343485551);
+      a=safeAdd(a,oa);b=safeAdd(b,ob);c=safeAdd(c,oc);d=safeAdd(d,od);
+    }
+    return [a,b,c,d];
+  }
+  function rhex(n){
+    var hexChr='0123456789abcdef',s='';
+    for(var j=0;j<4;j++) s+=hexChr.charAt((n>>(j*8+4))&0x0f)+hexChr.charAt((n>>(j*8))&0x0f);
+    return s;
+  }
+  var utf8=unescape(encodeURIComponent(str));
+  var bytes=[];
+  for(var i=0;i<utf8.length;i++) bytes.push(utf8.charCodeAt(i));
+  var bitLen=bytes.length*8;
+  var x=[];
+  for(i=0;i<bitLen;i+=8) x[i>>5]|=(bytes[i/8]&0xff)<<(i%32);
+  return coreMD5(x,bitLen).map(rhex).join('');
+}
+
+async function mailchimpProxyGet(path){
+  const r = await fetch(DRIVE_AUTH_SERVER+'/api/mailchimp?path='+encodeURIComponent(path));
+  const d = await r.json();
+  if(!r.ok){
+    var err = new Error((d && (d.detail||d.error_description||d.title)) || ('Mailchimp API returned '+r.status));
+    err.status = r.status;
+    throw err;
+  }
+  return d;
+}
+
+async function pickMailchimpList(){
+  const d = await mailchimpProxyGet('/lists?count=100');
+  const lists = d.lists||[];
+  if(!lists.length) throw new Error('No audiences found in this Mailchimp account');
+  if(lists.length===1){
+    localStorage.setItem(MAILCHIMP_LIST_KEY, lists[0].id);
+    debugLog('Mailchimp: auto-selected only audience "'+lists[0].name+'"');
+    return lists[0].id;
+  }
+  return new Promise(function(resolve, reject){
+    var opts = lists.map(function(l){
+      var count = l.stats&&l.stats.member_count!=null ? l.stats.member_count : '?';
+      return '<option value="'+l.id+'">'+l.name+' ('+count+' members)</option>';
+    }).join('');
+    $('modal').innerHTML =
+      '<div class="modal-hdr"><div class="modal-title">Choose Mailchimp Audience</div><button class="close-btn" id="modal-close">&#x2715;</button></div>'+
+      '<div class="fg"><div class="field full"><label>Audience to sync from</label><select id="mc-list-pick">'+opts+'</select></div></div>'+
+      '<div class="form-actions"><button class="cancel-btn" id="modal-cancel">Cancel</button><button class="save-btn" id="mc-list-pick-save">Use This Audience</button></div>';
+    $('overlay').classList.add('open');
+    function cancelPick(){ closeModal(); reject(new Error('No audience selected')); }
+    $('modal-close').addEventListener('click', cancelPick);
+    $('modal-cancel').addEventListener('click', cancelPick);
+    $('mc-list-pick-save').addEventListener('click', function(){
+      var id = $('mc-list-pick').value;
+      localStorage.setItem(MAILCHIMP_LIST_KEY, id);
+      closeModal();
+      resolve(id);
+    });
+  });
+}
+
+async function getMailchimpListId(){
+  var id = localStorage.getItem(MAILCHIMP_LIST_KEY);
+  return id || await pickMailchimpList();
+}
+
+function mailchimpActivityToNote(item){
+  var when = item.timestamp || item.create_time_ip || item.updated_at || '';
+  var dt = when ? new Date(when) : null;
+  var ts = (dt && !isNaN(dt)) ? dt.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})+' '+dt.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}) : tsNow();
+  var action = item.action || item.activity_type || 'activity';
+  var title = item.title || item.campaign_title || item.subject_line || '';
+  var noteType = action==='open' ? 'Email Received' : (action==='sent' ? 'Email Sent' : 'General');
+  return {
+    ts:ts,
+    text:'Mailchimp '+action+(title?': '+title:''),
+    noteType:noteType,
+    source:'mailchimp',
+    mcKey:[action, item.campaign_id||'', when].join('|')
+  };
+}
+
+async function syncMailchimpEmails(){
+  const btn=$('btn-sync-mailchimp');
+  const orig=btn?btn.textContent:'';
+  if(btn){btn.textContent='Syncing...';btn.disabled=true;}
+  try{
+    debugLog('=== Mailchimp Sync Started ===');
+    const listId = await getMailchimpListId();
+    debugLog('Mailchimp: using audience '+listId);
+
+    const clients = db.clients.filter(function(c){return c.email && c.email.includes('@');});
+    if(!clients.length){ toast('Add clients with email addresses first','err'); if(btn){btn.textContent=orig;btn.disabled=false;} return; }
+
+    var totalNew=0, notFound=0, errors=0;
+    for(const client of clients){
+      try{
+        const hash = md5hex(client.email.trim().toLowerCase());
+        var feed;
+        try{
+          feed = await mailchimpProxyGet('/lists/'+listId+'/members/'+hash+'/activity-feed?count=50');
+        }catch(feedErr){
+          feed = await mailchimpProxyGet('/lists/'+listId+'/members/'+hash+'/activity?count=50');
+        }
+        const items = feed.activity||[];
+        debugLog('Mailchimp: '+client.email+' — '+items.length+' activity item(s)');
+        if(!items.length) continue;
+
+        const existingKeys = new Set((client.notesLog||[]).filter(function(n){return n.mcKey;}).map(function(n){return n.mcKey;}));
+        const newNotes = items.map(mailchimpActivityToNote).filter(function(n){return !existingKeys.has(n.mcKey);});
+        if(newNotes.length){
+          const notesLog = (client.notesLog||[]).concat(newNotes);
+          db.clients = db.clients.map(function(c){return c.id===client.id?Object.assign({},c,{notesLog:notesLog}):c;});
+          totalNew += newNotes.length;
+        }
+      }catch(e){
+        if(e && e.status===404){ notFound++; }
+        else { errors++; debugLog('Mailchimp: error for '+client.email+' — '+(e&&e.message||e)); }
+      }
+    }
+
+    saveDB(); render();
+    debugLog('=== Mailchimp Sync Complete: '+totalNew+' new notes, '+notFound+' not on list, '+errors+' error(s) ===');
+    toast((totalNew?'Synced '+totalNew+' new Mailchimp note'+(totalNew!==1?'s':''):'No new Mailchimp activity found')+(errors?' — '+errors+' error(s), see Debug Log':''), errors?'err':'ok');
+  }catch(e){
+    console.error('Mailchimp sync error:', e);
+    debugLog('Mailchimp sync FATAL: '+(e&&e.message||e));
+    toast('Mailchimp sync failed: '+(e&&e.message||e),'err');
+  }
+  if(btn){btn.textContent=orig;btn.disabled=false;}
 }
 
 // ── Clean Supplier File ───────────────────────────────────────────────────
@@ -4780,6 +4953,7 @@ function bindClick(id, handler){
   bindClick('btn-restore', importJSON);
   bindClick('btn-mass-email', massEmail);
   bindClick('btn-log-mailchimp', openLogMailchimpModal);
+  bindClick('btn-sync-mailchimp', syncMailchimpEmails);
   bindClick('btn-import-csv', importCSV);
   bindClick('btn-import-tripform', importTripFormPDF);
   bindClick('btn-import-revenue', importRevenue);
