@@ -4516,6 +4516,7 @@ function openTripForm(id){
       fld('Hotel Brand',sel('tho',HOTELS,d.hotel))+fld('Hotel Nights',inp('thn','number',d.hotelNights||0))+
       fld('Points Used',inp('tpu','number',d.pointsUsed||0))+fld('Cash Paid ($)',inp('tcp','number',d.cashPaid||0))+
       fld('Total Value ($)',inp('tva','number',d.totalValue||0))+fld('Booking Reference',inp('tbr','text',d.bookingRef,'e.g. UA-44129LHR'))+
+      fld('Product',inp('tpr','text',d.product,'e.g. Airline Booking:Roundtrip Intl Business'))+
       '<div id="trip-balance-sections">'+tripBalanceSectionsHtml(initCid)+'</div>'+
       fld('Notes','<textarea id="tno">'+(d.notes||'')+'</textarea>',true)+
     '</div>'+
@@ -4571,7 +4572,7 @@ function saveTrip(id){
   const client=db.clients.find(function(c){return c.id===clientId;});
   const supplierId=gv('tsup');
   const supplier=supplierId?db.vendors.find(function(v){return v.id===supplierId;}):null;
-  const data={clientId:clientId,clientName:client?client.name:'',supplierId:supplierId,supplierName:supplier?supplier.name:'',origin:gv('tor'),destination:dest,departDate:gv('tdd'),returnDate:gv('trd'),status:gv('tst')||'Planning',type:gv('tty')||'Leisure',airline:gv('tai'),flightClass:gv('tcl')||'Economy',hotel:gv('tho'),hotelNights:gn('thn'),pointsUsed:gn('tpu'),cashPaid:gn('tcp'),totalValue:gn('tva'),bookingRef:gv('tbr'),notes:gv('tno')};
+  const data={clientId:clientId,clientName:client?client.name:'',supplierId:supplierId,supplierName:supplier?supplier.name:'',origin:gv('tor'),destination:dest,departDate:gv('tdd'),returnDate:gv('trd'),status:gv('tst')||'Planning',type:gv('tty')||'Leisure',airline:gv('tai'),flightClass:gv('tcl')||'Economy',hotel:gv('tho'),hotelNights:gn('thn'),pointsUsed:gn('tpu'),cashPaid:gn('tcp'),totalValue:gn('tva'),bookingRef:gv('tbr'),product:gv('tpr'),notes:gv('tno')};
   if(client){
     client.mileageBalances=readBalanceGrid('mb',AIRLINES,ELITE_STATUS);
     client.hotelBalances=readBalanceGrid('hb',HOTELS,ELITE_STATUS);
