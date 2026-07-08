@@ -243,6 +243,7 @@ tr:last-child td{border-bottom:none}
         <button class="sync-btn" id="btn-drive-signout" style="color:#888;border-color:#ddd;font-size:11px">&#9729;&#65039; Reset Drive Login</button>
         <button class="sync-btn" id="btn-clean-supplier-file" style="color:#7c3aed;border-color:#c4b5fd">&#129529; Clean Supplier File</button>
         <button class="sync-btn" id="btn-clean-revenue-file" style="color:#7c3aed;border-color:#c4b5fd">&#129529; Clean Revenue File</button>
+        <button class="sync-btn" id="btn-reset-clean-folder" style="color:#888;border-color:#ddd;font-size:11px">&#128193; Reset Cleaned-File Save Folder</button>
         <div class="io-row">
           <button class="io-btn" id="btn-clients-csv">&#11015; Clients CSV</button>
           <button class="io-btn" id="btn-trips-csv">&#11015; Trips CSV</button>
@@ -1255,30 +1256,75 @@ function rowsToCSV(header, rows){
   rows.forEach(function(row){ lines.push(row.map(esc).join(',')); });
   return lines.join('\r\n');
 }
-async function findDriveFileByName(token, name){
-  const q=encodeURIComponent("name='"+name.replace(/'/g,"\\'")+"' and trashed=false");
-  const r=await fetch('https://www.googleapis.com/drive/v3/files?q='+q+'&orderBy=modifiedTime desc&fields=files(id,name,modifiedTime)',{
-    headers:{Authorization:'Bearer '+token}
+// Saves cleaned CSVs directly into a folder the user picks once (e.g. a
+// Google-Drive-for-desktop synced folder like "G:\My Drive\..."), via the
+// File System Access API, instead of the browser's default Downloads
+// folder. The chosen folder handle is persisted in IndexedDB (localStorage
+// can't store handles) so later saves go straight there with no dialog,
+// as long as the browser still grants permission. Chrome/Edge only.
+const CLEAN_FILE_DIR_KEY = 'mm-clean-file-dir';
+function idbGetHandle(key){
+  return new Promise(function(resolve,reject){
+    var req = indexedDB.open('mm-fs-handles', 1);
+    req.onupgradeneeded = function(){ req.result.createObjectStore('handles'); };
+    req.onsuccess = function(){
+      var tx = req.result.transaction('handles','readonly');
+      var getReq = tx.objectStore('handles').get(key);
+      getReq.onsuccess = function(){ resolve(getReq.result||null); };
+      getReq.onerror = function(){ reject(getReq.error); };
+    };
+    req.onerror = function(){ reject(req.error); };
   });
-  const d=await r.json();
-  return (d.files&&d.files[0])||null;
 }
-async function uploadNamedFileToDrive(token, name, content, mimeType){
-  const existing = await findDriveFileByName(token, name);
-  if(existing){
-    const r=await fetch('https://www.googleapis.com/upload/drive/v3/files/'+existing.id+'?uploadType=media',{
-      method:'PATCH', headers:{Authorization:'Bearer '+token,'Content-Type':mimeType}, body:content
-    });
-    if(!r.ok) throw new Error('Drive returned '+r.status+' on upload');
-  } else {
-    const meta=new Blob([JSON.stringify({name:name,mimeType:mimeType})],{type:'application/json'});
-    const data=new Blob([content],{type:mimeType});
-    const form=new FormData();form.append('metadata',meta);form.append('file',data);
-    const r=await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',{
-      method:'POST', headers:{Authorization:'Bearer '+token}, body:form
-    });
-    if(!r.ok) throw new Error('Drive returned '+r.status+' on upload');
+function idbSetHandle(key, value){
+  return new Promise(function(resolve,reject){
+    var req = indexedDB.open('mm-fs-handles', 1);
+    req.onupgradeneeded = function(){ req.result.createObjectStore('handles'); };
+    req.onsuccess = function(){
+      var tx = req.result.transaction('handles','readwrite');
+      tx.objectStore('handles').put(value, key);
+      tx.oncomplete = function(){ resolve(); };
+      tx.onerror = function(){ reject(tx.error); };
+    };
+    req.onerror = function(){ reject(req.error); };
+  });
+}
+function idbDeleteHandle(key){
+  return new Promise(function(resolve,reject){
+    var req = indexedDB.open('mm-fs-handles', 1);
+    req.onupgradeneeded = function(){ req.result.createObjectStore('handles'); };
+    req.onsuccess = function(){
+      var tx = req.result.transaction('handles','readwrite');
+      tx.objectStore('handles').delete(key);
+      tx.oncomplete = function(){ resolve(); };
+      tx.onerror = function(){ reject(tx.error); };
+    };
+    req.onerror = function(){ reject(req.error); };
+  });
+}
+async function getCleanFileSaveDir(){
+  if(!window.showDirectoryPicker){
+    throw new Error("This browser can't choose a save folder (needs Chrome or Edge)");
   }
+  var handle = await idbGetHandle(CLEAN_FILE_DIR_KEY);
+  if(handle){
+    try{
+      var perm = await handle.queryPermission({mode:'readwrite'});
+      if(perm!=='granted') perm = await handle.requestPermission({mode:'readwrite'});
+      if(perm==='granted') return handle;
+    }catch(e){ debugLog('Clean file save folder handle stale, re-picking: '+e.message); }
+  }
+  handle = await window.showDirectoryPicker({id:'mm-clean-file-dir', mode:'readwrite'});
+  await idbSetHandle(CLEAN_FILE_DIR_KEY, handle);
+  return handle;
+}
+async function saveCsvToChosenFolder(filename, content){
+  var dirHandle = await getCleanFileSaveDir();
+  var fileHandle = await dirHandle.getFileHandle(filename, {create:true});
+  var writable = await fileHandle.createWritable();
+  await writable.write(content);
+  await writable.close();
+  return dirHandle.name;
 }
 function cleanSupplierFile(){
   const i=document.createElement('input');
@@ -1306,21 +1352,15 @@ function cleanSupplierFile(){
       debugLog('Clean Supplier File: '+summary);
 
       const outName = file.name.replace(/\.(csv|xlsx|xls)$/i,'')+'-cleaned.csv';
-      if(!confirm(summary+'\n\nSave "'+outName+'" to Google Drive?')){
+      if(!confirm(summary+'\n\nSave "'+outName+'"?')){
         toast('Clean Supplier File cancelled','info');
         return;
       }
 
-      let token = await getDriveTokenSilent();
-      if(!token){
-        toast('Connect Google Drive first (File → Backup to Google Drive), then try again','err');
-        return;
-      }
-      toast('Saving cleaned file to Drive...','info');
       const csv = rowsToCSV(result.header, result.rows);
-      await uploadNamedFileToDrive(token, outName, csv, 'text/csv');
-      toast('Cleaned CSV saved to Google Drive: '+outName,'ok');
-      debugLog('Clean Supplier File: saved '+outName+' to Drive');
+      const folderName = await saveCsvToChosenFolder(outName, csv);
+      toast('Cleaned CSV saved to "'+folderName+'": '+outName,'ok');
+      debugLog('Clean Supplier File: saved '+outName+' to folder "'+folderName+'"');
     }catch(err){
       console.error(err);
       debugLog('Clean Supplier File FAILED: '+err.message);
@@ -1387,9 +1427,9 @@ function cleanRevenueFile(){
 
       const csv = rowsToCSV(result.header, result.rows);
       const outName = file.name.replace(/\.(csv|xlsx|xls)$/i,'')+'-cleaned.csv';
-      const b=new Blob([csv],{type:'text/csv'});
-      const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=outName;a.click();
-      toast(summary,'ok');
+      const folderName = await saveCsvToChosenFolder(outName, csv);
+      toast(summary+' Saved to "'+folderName+'".','ok');
+      debugLog('Clean Revenue File: saved '+outName+' to folder "'+folderName+'"');
     }catch(err){
       console.error(err);
       debugLog('Clean Revenue File FAILED: '+err.message);
@@ -4710,6 +4750,10 @@ function bindClick(id, handler){
   bindClick('drive-restore-btn', driveRestore);
   bindClick('btn-clean-supplier-file', cleanSupplierFile);
   bindClick('btn-clean-revenue-file', cleanRevenueFile);
+  bindClick('btn-reset-clean-folder', async function(){
+    await idbDeleteHandle(CLEAN_FILE_DIR_KEY);
+    toast('Save folder reset — next Clean File will ask you to pick one again','ok');
+  });
   bindClick('btn-clients-csv', function(){exportCSV('clients');});
   bindClick('btn-trips-csv', function(){exportCSV('trips');});
   bindClick('btn-backup', exportJSON);
