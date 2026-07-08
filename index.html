@@ -4475,7 +4475,8 @@ function addNoteEntry(){
 function tripBalanceSectionsHtml(clientId){
   var c = clientId ? db.clients.find(function(x){return x.id===clientId;}) : null;
   return balanceGrid('Mileage Balances','mb',AIRLINES,c?c.mileageBalances:null,ELITE_STATUS)+
-         balanceGrid('Hotel Point Balances','hb',HOTELS,c?c.hotelBalances:null,ELITE_STATUS);
+         balanceGrid('Hotel Point Balances','hb',HOTELS,c?c.hotelBalances:null,ELITE_STATUS)+
+         balanceGrid('Credit Card Point Balances','cb',CREDIT_CARDS,c?c.creditCardBalances:null);
 }
 function bindTripBalanceListeners(){
   document.querySelectorAll('.balance-num-input').forEach(function(numEl){
@@ -4574,6 +4575,7 @@ function saveTrip(id){
   if(client){
     client.mileageBalances=readBalanceGrid('mb',AIRLINES,ELITE_STATUS);
     client.hotelBalances=readBalanceGrid('hb',HOTELS,ELITE_STATUS);
+    client.creditCardBalances=readBalanceGrid('cb',CREDIT_CARDS);
   }
   if(supplier && !(supplier.clientIds||[]).includes(clientId)){
     if(!supplier.clientIds) supplier.clientIds=[];
