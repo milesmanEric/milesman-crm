@@ -82,6 +82,13 @@ nav{padding:10px 8px}
   .tbl-wrap table tr td:nth-child(4):before{content:'Notes'}
   .tbl-wrap table tr td:nth-child(5):before{content:'Joined'}
 
+  /* Planner table mobile labels (overrides the client labels above by class specificity) */
+  .tbl-wrap table.tbl-planner tr td:nth-child(1):before{content:none}
+  .tbl-wrap table.tbl-planner tr td:nth-child(2):before{content:'Task'}
+  .tbl-wrap table.tbl-planner tr td:nth-child(3):before{content:'Due Date'}
+  .tbl-wrap table.tbl-planner tr td:nth-child(4):before{content:'Client'}
+  .tbl-wrap table.tbl-planner tr td:nth-child(5):before{content:'Linked'}
+
   /* Stats grid 2 col on mobile */
   .stats-grid{grid-template-columns:repeat(2,1fr)}
 
@@ -4046,16 +4053,28 @@ function delTrip(id){
 }
 
 // ── Planner ───────────────────────────────────────────────────────────────
+function plannerSortArrow(col){
+  var c = window._plannerSortCol || 'dueDate';
+  var d = window._plannerSortDir || 'asc';
+  if(c!==col) return '';
+  return d==='asc' ? ' &#9650;' : ' &#9660;';
+}
+
 function renderPlanner(){
   var statusFilter = window._plannerStatus||'';
+  var plannerSortCol = window._plannerSortCol || 'dueDate';
+  var plannerSortDir = window._plannerSortDir || 'asc';
   var tasks = db.planner.filter(function(t){
     if(statusFilter==='open' && t.done) return false;
     if(statusFilter==='done' && !t.done) return false;
     return true;
   }).sort(function(a,b){
     if(!!a.done !== !!b.done) return a.done ? 1 : -1;
-    var ad=a.dueDate||'9999-99-99', bd=b.dueDate||'9999-99-99';
-    return ad.localeCompare(bd);
+    var av=(a[plannerSortCol]||'').toString().toLowerCase();
+    var bv=(b[plannerSortCol]||'').toString().toLowerCase();
+    if(av<bv) return plannerSortDir==='asc'?-1:1;
+    if(av>bv) return plannerSortDir==='asc'?1:-1;
+    return 0;
   });
   var openCount = db.planner.filter(function(t){return !t.done;}).length;
 
@@ -4097,25 +4116,32 @@ function renderPlanner(){
         '<option value="done"'+(statusFilter==='done'?' selected':'')+'>Done</option>'+
       '</select>'+
     '</div>'+
-    (tasks.length ? '<div class="tbl-wrap">'+tasks.map(function(t){
+    (tasks.length ? '<div class="tbl-wrap"><table class="tbl-planner"><thead><tr>'+
+      '<th style="width:32px"></th>'+
+      '<th class="sort-th-pl" data-sort="title" style="cursor:pointer">Task'+plannerSortArrow('title')+'</th>'+
+      '<th class="sort-th-pl" data-sort="dueDate" style="cursor:pointer">Due Date'+plannerSortArrow('dueDate')+'</th>'+
+      '<th>Client</th>'+
+      '<th>Linked</th>'+
+      '<th></th>'+
+    '</tr></thead><tbody>'+tasks.map(function(t){
       var overdue = t.dueDate && !t.done && t.dueDate < today();
       var badgesHtml = entityBadges(t);
       var cName = clientName(t);
-      return '<div class="cli-row" style="align-items:flex-start;border-bottom:1px solid #f0f0f0;padding:10px 8px" data-task-id="'+t.id+'">'+
-        '<input type="checkbox" class="task-done-cb" data-id="'+t.id+'" '+(t.done?'checked':'')+' style="width:15px;height:15px;margin-top:3px">'+
-        '<div style="flex:1;min-width:0">'+
+      return '<tr data-task-id="'+t.id+'">'+
+        '<td style="width:32px"><input type="checkbox" class="task-done-cb" data-id="'+t.id+'" '+(t.done?'checked':'')+' style="width:15px;height:15px"></td>'+
+        '<td>'+
           '<div class="task-title-link" data-id="'+t.id+'" style="font-size:14px;font-weight:600;color:'+(t.done?'#aaa':'#2563eb')+';cursor:pointer;text-decoration:'+(t.done?'line-through':'underline')+'">'+t.title+'</div>'+
-          '<div style="margin-top:4px;font-size:11px;color:'+(overdue?'#dc2626':'#888')+'">'+(t.dueDate?'Due '+t.dueDate+(overdue?' (overdue)':''):'No due date')+'</div>'+
-          '<div style="margin-top:4px;font-size:11px;color:#555">&#128100; '+(cName?('<span style="color:#2563eb">'+cName+'</span>'):'<span style="color:#aaa">No client linked</span>')+'</div>'+
-          (badgesHtml ? '<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">'+badgesHtml+'</div>' : '')+
-          (t.desc ? '<div style="margin-top:6px;font-size:12px;color:#666">'+t.desc+'</div>' : '')+
-        '</div>'+
-        '<div style="display:flex;gap:4px">'+
+          (t.desc ? '<div style="margin-top:4px;font-size:12px;color:#666">'+t.desc+'</div>' : '')+
+        '</td>'+
+        '<td style="white-space:nowrap;color:'+(overdue?'#dc2626':'#555')+'">'+(t.dueDate?t.dueDate+(overdue?' (overdue)':''):'<span style="color:#aaa">No due date</span>')+'</td>'+
+        '<td>'+(cName?('<span style="color:#2563eb">'+cName+'</span>'):'<span style="color:#aaa">No client linked</span>')+'</td>'+
+        '<td>'+(badgesHtml||'')+'</td>'+
+        '<td style="white-space:nowrap">'+
           '<button class="icon-btn edit-task" data-id="'+t.id+'" title="Edit task">&#9998;&#65039;</button>'+
           '<button class="icon-btn del-task" data-id="'+t.id+'" style="color:#dc2626" title="Delete task">&#128465;&#65039;</button>'+
-        '</div>'+
-      '</div>';
-    }).join('')+'</div>' : '<div class="empty">No tasks yet — add one to start planning follow-ups tied to clients, suppliers, or trips</div>');
+        '</td>'+
+      '</tr>';
+    }).join('')+'</tbody></table></div>' : '<div class="empty">No tasks yet — add one to start planning follow-ups tied to clients, suppliers, or trips</div>');
 
   $('btn-add-task').addEventListener('click', function(){openTaskForm();});
   $('planner-search').addEventListener('input', function(){
@@ -4126,6 +4152,18 @@ function renderPlanner(){
     });
   });
   $('planner-status-filter').addEventListener('change', function(){ window._plannerStatus=this.value; renderPlanner(); });
+  document.querySelectorAll('.sort-th-pl').forEach(function(th){
+    th.addEventListener('click', function(){
+      var col = th.dataset.sort;
+      if(window._plannerSortCol === col){
+        window._plannerSortDir = (window._plannerSortDir==='asc') ? 'desc' : 'asc';
+      } else {
+        window._plannerSortCol = col;
+        window._plannerSortDir = 'asc';
+      }
+      renderPlanner();
+    });
+  });
 
   document.querySelectorAll('.task-done-cb').forEach(function(cb){
     cb.addEventListener('click', function(e){ e.stopPropagation(); });
