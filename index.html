@@ -4132,7 +4132,7 @@ function renderPlanner(){
     cb.addEventListener('change', function(){ toggleTaskDone(this.dataset.id); });
   });
   document.querySelectorAll('.task-title-link').forEach(function(el){
-    el.addEventListener('click', function(){ openTaskNotes(this.dataset.id); });
+    el.addEventListener('click', function(){ openTaskForm(this.dataset.id); });
   });
   document.querySelectorAll('.edit-task').forEach(function(btn){
     btn.addEventListener('click', function(){ openTaskForm(this.dataset.id); });
