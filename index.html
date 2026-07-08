@@ -243,7 +243,7 @@ tr:last-child td{border-bottom:none}
         <button class="sync-btn" id="btn-drive-signout" style="color:#888;border-color:#ddd;font-size:11px">&#9729;&#65039; Reset Drive Login</button>
         <button class="sync-btn" id="btn-clean-supplier-file" style="color:#7c3aed;border-color:#c4b5fd">&#129529; Clean Supplier File</button>
         <button class="sync-btn" id="btn-clean-revenue-file" style="color:#7c3aed;border-color:#c4b5fd">&#129529; Clean Revenue File</button>
-        <button class="sync-btn" id="btn-reset-clean-folder" style="color:#888;border-color:#ddd;font-size:11px">&#128193; Reset Cleaned-File Save Folder</button>
+        <button class="sync-btn" id="btn-reset-clean-folder" style="color:#888;border-color:#ddd;font-size:11px">&#128193; Choose Cleaned-File Save Folder</button>
         <div class="io-row">
           <button class="io-btn" id="btn-clients-csv">&#11015; Clients CSV</button>
           <button class="io-btn" id="btn-trips-csv">&#11015; Trips CSV</button>
@@ -1289,33 +1289,40 @@ function idbSetHandle(key, value){
     req.onerror = function(){ reject(req.error); };
   });
 }
-function idbDeleteHandle(key){
-  return new Promise(function(resolve,reject){
-    var req = indexedDB.open('mm-fs-handles', 1);
-    req.onupgradeneeded = function(){ req.result.createObjectStore('handles'); };
-    req.onsuccess = function(){
-      var tx = req.result.transaction('handles','readwrite');
-      tx.objectStore('handles').delete(key);
-      tx.oncomplete = function(){ resolve(); };
-      tx.onerror = function(){ reject(tx.error); };
-    };
-    req.onerror = function(){ reject(req.error); };
-  });
-}
-async function getCleanFileSaveDir(){
+// Picks (or re-picks) the save folder. Must be called directly from a real
+// click handler with no async work before it — showDirectoryPicker() needs
+// an active user gesture, and a chain of awaits (file reads, library loads,
+// cleaning) burns through that window, which is exactly what caused
+// "Must be handling a user gesture to show a file picker" when this used
+// to be triggered lazily from inside the clean-file flow.
+async function chooseCleanFileSaveFolder(){
   if(!window.showDirectoryPicker){
-    throw new Error("This browser can't choose a save folder (needs Chrome or Edge)");
+    toast("This browser can't choose a save folder (needs Chrome or Edge)",'err');
+    return;
   }
+  try{
+    var handle = await window.showDirectoryPicker({id:'mm-clean-file-dir', mode:'readwrite'});
+    await idbSetHandle(CLEAN_FILE_DIR_KEY, handle);
+    toast('Cleaned files will now save to "'+handle.name+'"','ok');
+  }catch(err){
+    if(err && err.name==='AbortError'){ toast('Cancelled — save folder unchanged','info'); return; }
+    toast('Could not set save folder: '+err.message,'err');
+  }
+}
+// Read-only lookup used by the clean-file flows themselves. Deliberately
+// does NOT call showDirectoryPicker or requestPermission — both need a
+// fresh user gesture that's no longer reliably available by this point in
+// the flow. If no folder is set (or access was revoked), it throws and
+// tells the user to use the dedicated "Choose Save Folder" button instead.
+async function getCleanFileSaveDir(){
   var handle = await idbGetHandle(CLEAN_FILE_DIR_KEY);
-  if(handle){
-    try{
-      var perm = await handle.queryPermission({mode:'readwrite'});
-      if(perm!=='granted') perm = await handle.requestPermission({mode:'readwrite'});
-      if(perm==='granted') return handle;
-    }catch(e){ debugLog('Clean file save folder handle stale, re-picking: '+e.message); }
+  if(!handle){
+    throw new Error('No save folder chosen yet — click "Choose Cleaned-File Save Folder" in the File menu first, then try again');
   }
-  handle = await window.showDirectoryPicker({id:'mm-clean-file-dir', mode:'readwrite'});
-  await idbSetHandle(CLEAN_FILE_DIR_KEY, handle);
+  var perm = await handle.queryPermission({mode:'readwrite'});
+  if(perm!=='granted'){
+    throw new Error('Save folder access was revoked — click "Choose Cleaned-File Save Folder" in the File menu to reconnect it');
+  }
   return handle;
 }
 async function saveCsvToChosenFolder(filename, content){
@@ -4795,10 +4802,7 @@ function bindClick(id, handler){
   bindClick('drive-restore-btn', driveRestore);
   bindClick('btn-clean-supplier-file', cleanSupplierFile);
   bindClick('btn-clean-revenue-file', cleanRevenueFile);
-  bindClick('btn-reset-clean-folder', async function(){
-    await idbDeleteHandle(CLEAN_FILE_DIR_KEY);
-    toast('Save folder reset — next Clean File will ask you to pick one again','ok');
-  });
+  bindClick('btn-reset-clean-folder', chooseCleanFileSaveFolder);
   bindClick('btn-clients-csv', function(){exportCSV('clients');});
   bindClick('btn-trips-csv', function(){exportCSV('trips');});
   bindClick('btn-backup', exportJSON);
