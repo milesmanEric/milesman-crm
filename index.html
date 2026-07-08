@@ -1765,7 +1765,7 @@ function showImportMatchModal(name){
 
 function finalizeImport(){
   const state=window._importState;
-  let imported=0,skipped=0,totalRev=0;
+  let imported=0,skipped=0,totalRev=0,relinked=0;
   var seenInBatch={}; // track signature counts seen so far in THIS import batch
   state.rows.forEach(function(row){
     // Find client by name
@@ -1824,7 +1824,35 @@ function finalizeImport(){
     // Only treat as duplicate if we've already accounted for at least as many occurrences
     // as already exist in db.trips (this allows legitimate repeated line items within a batch)
     var dupExists = occurrenceIndex < existingMatchCount;
-    if(dupExists){debugLog('Revenue: duplicate skipped for '+client.name);skipped++;return;}
+    if(dupExists){
+      // Backfill: the matching trip may have been imported before its supplier
+      // existed in the Suppliers list (so it has no supplierId), and this row
+      // can now resolve one. Without this, a supplier added later can never
+      // get credit for trips imported earlier — every re-import just sees an
+      // existing duplicate and skips it, forever.
+      if(row.supplierId){
+        var dupTrip = db.trips.find(function(t){
+          if(row.invoiceNum && t.invoiceNum){
+            return t.clientId===cid && t.invoiceNum===row.invoiceNum && t.cashPaid===row.amt && !t.supplierId;
+          }
+          return t.clientId===cid && !t.supplierId && t.cashPaid===row.amt &&
+                 (t.departDate||'').slice(0,10)===(row.date?row.date.slice(0,10):today());
+        });
+        if(dupTrip){
+          dupTrip.supplierId=row.supplierId;
+          dupTrip.supplierName=row.supplierName;
+          var supx=db.vendors.find(function(v){return v.id===row.supplierId;});
+          if(supx&&!(supx.clientIds||[]).includes(cid)){
+            if(!supx.clientIds)supx.clientIds=[];
+            supx.clientIds.push(cid);
+          }
+          relinked++;
+          debugLog('Revenue: backfilled supplier link for existing trip '+dupTrip.id+' -> '+row.supplierName);
+          return;
+        }
+      }
+      debugLog('Revenue: duplicate skipped for '+client.name);skipped++;return;
+    }
 
     // Build destination: use memo, or supplier+date, or 'Imported Trip'
     const tripId=newId('T',db.trips);
@@ -1870,7 +1898,9 @@ function finalizeImport(){
   snapshot('Import trips');
   saveDB();render();
   window._importState=null;
-  toast('Imported '+imported+' trips — $'+totalRev.toLocaleString()+(skipped?' ('+skipped+' skipped)':''),'ok');
+  toast('Imported '+imported+' trips — $'+totalRev.toLocaleString()+
+    (relinked?', relinked '+relinked+' existing trip'+(relinked!==1?'s':'')+' to a supplier':'')+
+    (skipped?' ('+skipped+' skipped)':''),'ok');
 }
 
 function importCSV(){
