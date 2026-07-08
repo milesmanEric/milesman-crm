@@ -1166,11 +1166,17 @@ function loadTableFromFile(file){
         try{
           var XLSX = await loadXlsxLib();
           var wb = XLSX.read(ev.target.result, {type:'array'});
-          var wsName = wb.SheetNames[0];
-          if(!wsName){reject(new Error('No sheets found in the Excel file'));return;}
-          var ws = wb.Sheets[wsName];
-          var rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:'', raw:false, blankrows:false});
-          resolve(rows);
+          if(!wb.SheetNames.length){reject(new Error('No sheets found in the Excel file'));return;}
+          // Some exports (e.g. QuickBooks Desktop) put an instructions/cover
+          // sheet first. Use whichever sheet actually has the most rows
+          // rather than assuming the data is on the first one.
+          var best = null;
+          wb.SheetNames.forEach(function(name){
+            var rows = XLSX.utils.sheet_to_json(wb.Sheets[name], {header:1, defval:'', raw:false, blankrows:false});
+            if(!best || rows.length>best.rows.length) best = {name:name, rows:rows};
+          });
+          if(!best.rows.length){reject(new Error('No data found in any sheet of the Excel file'));return;}
+          resolve(best.rows);
         }catch(err){ reject(new Error('Could not parse Excel file: '+err.message)); }
       };
       reader.readAsArrayBuffer(file);
