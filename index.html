@@ -4472,10 +4472,12 @@ function openTripForm(id){
   const d=id?(db.trips.find(function(t){return t.id===id;})||{}):{};
   const initCid=d.clientId||selCid||'';
   const copts=[...db.clients].sort(function(a,b){return (a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase());}).map(function(c){return '<option value="'+c.id+'"'+(c.id===initCid?' selected':'')+'>'+c.name+' ('+c.id+')</option>';}).join('');
+  const vopts=[...db.vendors].sort(function(a,b){return (a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase());}).map(function(v){return '<option value="'+v.id+'"'+(v.id===d.supplierId?' selected':'')+'>'+v.name+'</option>';}).join('');
   $('modal').innerHTML=
     '<div class="modal-hdr"><div class="modal-title">'+(id?'Edit Trip':'Add Trip')+'</div><button class="close-btn" id="modal-close">&#x2715;</button></div>'+
     '<div class="fg">'+
       fld('Client','<select id="tc"><option value="">Select client...</option>'+copts+'</select>',true)+
+      fld('Supplier','<select id="tsup"><option value="">None</option>'+vopts+'</select>')+
       fld('Origin',inp('tor','text',d.origin,'e.g. JFK'))+fld('Destination',inp('tde','text',d.destination,'e.g. Tokyo, Japan'))+
       fld('Depart Date',inp('tdd','date',d.departDate))+fld('Return Date',inp('trd','date',d.returnDate))+
       fld('Status',sel('tst',STATUSES,d.status||'Planning'))+fld('Trip Type',sel('tty',TYPES,d.type||'Leisure'))+
@@ -4529,7 +4531,13 @@ function saveTrip(id){
   if(!clientId||!dest){toast('Client and destination are required','err');return;}
   snapshot(id?'Edit trip':'Add trip');
   const client=db.clients.find(function(c){return c.id===clientId;});
-  const data={clientId:clientId,clientName:client?client.name:'',origin:gv('tor'),destination:dest,departDate:gv('tdd'),returnDate:gv('trd'),status:gv('tst')||'Planning',type:gv('tty')||'Leisure',airline:gv('tai'),flightClass:gv('tcl')||'Economy',hotel:gv('tho'),hotelNights:gn('thn'),pointsUsed:gn('tpu'),cashPaid:gn('tcp'),totalValue:gn('tva'),bookingRef:gv('tbr'),notes:gv('tno')};
+  const supplierId=gv('tsup');
+  const supplier=supplierId?db.vendors.find(function(v){return v.id===supplierId;}):null;
+  const data={clientId:clientId,clientName:client?client.name:'',supplierId:supplierId,supplierName:supplier?supplier.name:'',origin:gv('tor'),destination:dest,departDate:gv('tdd'),returnDate:gv('trd'),status:gv('tst')||'Planning',type:gv('tty')||'Leisure',airline:gv('tai'),flightClass:gv('tcl')||'Economy',hotel:gv('tho'),hotelNights:gn('thn'),pointsUsed:gn('tpu'),cashPaid:gn('tcp'),totalValue:gn('tva'),bookingRef:gv('tbr'),notes:gv('tno')};
+  if(supplier && !(supplier.clientIds||[]).includes(clientId)){
+    if(!supplier.clientIds) supplier.clientIds=[];
+    supplier.clientIds.push(clientId);
+  }
   if(id){
     db.trips=db.trips.map(function(t){return t.id===id?Object.assign({},t,data):t;});
     toast('Trip updated');
