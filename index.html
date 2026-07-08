@@ -1240,22 +1240,21 @@ async function getMailchimpListId(){
   return id || await pickMailchimpList();
 }
 
-function mailchimpActivityToNote(item){
-  // activity-feed uses created_at_timestamp/activity_type/campaign_title;
-  // the older activity endpoint (fallback only) uses timestamp/action and
-  // has no campaign_title at all — verified against the real API for both.
-  var when = item.created_at_timestamp || item.timestamp || item.create_time_ip || item.updated_at || '';
-  var dt = when ? new Date(when) : null;
-  var ts = (dt && !isNaN(dt)) ? dt.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})+' '+dt.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}) : tsNow();
-  var action = item.activity_type || item.action || 'activity';
-  var title = item.campaign_title || item.title || item.subject_line || '';
-  var noteType = action==='open' ? 'Email Received' : (action==='sent' ? 'Email Sent' : 'General');
+// Fetches the most recently SENT campaign and its full body (plain_text,
+// falling back to stripped HTML — verified against the real API that
+// plain_text is populated directly, no stripping needed in practice).
+async function getLatestSentCampaign(){
+  const d = await mailchimpProxyGet('/campaigns?count=1&sort_field=send_time&sort_dir=DESC&status=sent');
+  const c = (d.campaigns||[])[0];
+  if(!c) throw new Error('No sent campaigns found in this Mailchimp account');
+  const content = await mailchimpProxyGet('/campaigns/'+c.id+'/content');
+  var body = (content.plain_text||'').trim();
+  if(!body && content.html) body = stripHtml(content.html);
   return {
-    ts:ts,
-    text:'Mailchimp '+action+(title?': '+title:''),
-    noteType:noteType,
-    source:'mailchimp',
-    mcKey:[action, item.campaign_id||'', when].join('|')
+    id: c.id,
+    subject: (c.settings && (c.settings.subject_line || c.settings.title)) || '(no subject)',
+    sendTime: c.send_time,
+    body: body
   };
 }
 
@@ -1268,12 +1267,23 @@ async function syncMailchimpEmails(){
     const listId = await getMailchimpListId();
     debugLog('Mailchimp: using audience '+listId);
 
+    const campaign = await getLatestSentCampaign();
+    debugLog('Mailchimp: latest campaign "'+campaign.subject+'" sent '+campaign.sendTime+' ('+campaign.body.length+' body chars)');
+
     const clients = db.clients.filter(function(c){return c.email && c.email.includes('@');});
     if(!clients.length){ toast('Add clients with email addresses first','err'); if(btn){btn.textContent=orig;btn.disabled=false;} return; }
 
-    var totalNew=0, notFound=0, errors=0;
+    const mcKey = 'sent|'+campaign.id;
+    const dt = new Date(campaign.sendTime);
+    const ts = !isNaN(dt) ? dt.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})+' '+dt.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}) : tsNow();
+    const noteText = 'Mailchimp: '+campaign.subject+(campaign.body?'\n'+campaign.body:'');
+
+    var totalNew=0, notRecipient=0, errors=0;
     for(const client of clients){
       try{
+        const already = (client.notesLog||[]).some(function(n){return n.mcKey===mcKey;});
+        if(already) continue;
+
         const hash = md5hex(client.email.trim().toLowerCase());
         var feed;
         try{
@@ -1282,25 +1292,25 @@ async function syncMailchimpEmails(){
           feed = await mailchimpProxyGet('/lists/'+listId+'/members/'+hash+'/activity?count=50');
         }
         const items = feed.activity||[];
-        debugLog('Mailchimp: '+client.email+' — '+items.length+' activity item(s)');
-        if(!items.length) continue;
+        const wasSent = items.some(function(it){
+          var action = it.activity_type || it.action;
+          return action==='sent' && it.campaign_id===campaign.id;
+        });
+        if(!wasSent){ notRecipient++; continue; }
 
-        const existingKeys = new Set((client.notesLog||[]).filter(function(n){return n.mcKey;}).map(function(n){return n.mcKey;}));
-        const newNotes = items.map(mailchimpActivityToNote).filter(function(n){return !existingKeys.has(n.mcKey);});
-        if(newNotes.length){
-          const notesLog = (client.notesLog||[]).concat(newNotes);
-          db.clients = db.clients.map(function(c){return c.id===client.id?Object.assign({},c,{notesLog:notesLog}):c;});
-          totalNew += newNotes.length;
-        }
+        const note = {ts:ts, text:noteText, noteType:'Email Sent', source:'mailchimp', mcKey:mcKey};
+        const notesLog = (client.notesLog||[]).concat([note]);
+        db.clients = db.clients.map(function(c){return c.id===client.id?Object.assign({},c,{notesLog:notesLog}):c;});
+        totalNew++;
       }catch(e){
-        if(e && e.status===404){ notFound++; }
+        if(e && e.status===404){ notRecipient++; }
         else { errors++; debugLog('Mailchimp: error for '+client.email+' — '+(e&&e.message||e)); }
       }
     }
 
     saveDB(); render();
-    debugLog('=== Mailchimp Sync Complete: '+totalNew+' new notes, '+notFound+' not on list, '+errors+' error(s) ===');
-    toast((totalNew?'Synced '+totalNew+' new Mailchimp note'+(totalNew!==1?'s':''):'No new Mailchimp activity found')+(errors?' — '+errors+' error(s), see Debug Log':''), errors?'err':'ok');
+    debugLog('=== Mailchimp Sync Complete: '+totalNew+' new notes, '+notRecipient+' not recipients, '+errors+' error(s) ===');
+    toast((totalNew?'Logged latest campaign for '+totalNew+' client'+(totalNew!==1?'s':''):'No new clients to log (already logged, or not a recipient)')+(errors?' — '+errors+' error(s), see Debug Log':''), errors?'err':'ok');
   }catch(e){
     console.error('Mailchimp sync error:', e);
     debugLog('Mailchimp sync FATAL: '+(e&&e.message||e));
