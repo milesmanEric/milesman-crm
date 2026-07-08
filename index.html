@@ -241,6 +241,7 @@ tr:last-child td{border-bottom:none}
         <button class="sync-btn" id="drive-btn" style="color:#1a73e8;border-color:#93c5fd">&#9729; Backup to Google Drive</button>
         <button class="sync-btn" id="drive-restore-btn" style="color:#1a73e8;border-color:#93c5fd">&#9729; Restore from Google Drive</button>
         <button class="sync-btn" id="btn-drive-signout" style="color:#888;border-color:#ddd;font-size:11px">&#9729;&#65039; Reset Drive Login</button>
+        <button class="sync-btn" id="btn-clean-supplier-file" style="color:#7c3aed;border-color:#c4b5fd">&#129529; Clean Supplier File</button>
         <div class="io-row">
           <button class="io-btn" id="btn-clients-csv">&#11015; Clients CSV</button>
           <button class="io-btn" id="btn-trips-csv">&#11015; Trips CSV</button>
@@ -1129,6 +1130,197 @@ async function driveRestore(){
     else{toast('Restore failed: '+e,'err');}
   }
   if(btn){btn.textContent='Restore from Google Drive';btn.disabled=false;}
+}
+
+// ── Clean Supplier File ───────────────────────────────────────────────────
+// Cleans a raw supplier/revenue spreadsheet export (CSV or Excel) using a
+// fixed set of rules, then saves the result as a CSV to Google Drive. Does
+// not touch db/localStorage — this is a standalone file utility.
+let _xlsxLibPromise=null;
+function loadXlsxLib(){
+  if(!_xlsxLibPromise){
+    _xlsxLibPromise=new Promise(function(resolve,reject){
+      if(window.XLSX){resolve(window.XLSX);return;}
+      var s=document.createElement('script');
+      s.src='https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+      s.onload=function(){resolve(window.XLSX);};
+      s.onerror=function(){reject(new Error('Failed to load the Excel parser library'));};
+      document.head.appendChild(s);
+    });
+  }
+  return _xlsxLibPromise;
+}
+function isEmptyCell(v){
+  return v===undefined || v===null || String(v).trim()==='';
+}
+// Loads a CSV or Excel file into an array of rows (each row an array of
+// cell strings), row 0 being whatever is in the file's first row.
+function loadTableFromFile(file){
+  return new Promise(function(resolve,reject){
+    var isExcel = /\.(xlsx|xls)$/i.test(file.name);
+    var reader = new FileReader();
+    reader.onerror=function(){reject(new Error('Could not read the file'));};
+    if(isExcel){
+      reader.onload=async function(ev){
+        try{
+          var XLSX = await loadXlsxLib();
+          var wb = XLSX.read(ev.target.result, {type:'array'});
+          var wsName = wb.SheetNames[0];
+          if(!wsName){reject(new Error('No sheets found in the Excel file'));return;}
+          var ws = wb.Sheets[wsName];
+          var rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:'', raw:false, blankrows:false});
+          resolve(rows);
+        }catch(err){ reject(new Error('Could not parse Excel file: '+err.message)); }
+      };
+      reader.readAsArrayBuffer(file);
+    } else {
+      reader.onload=function(ev){
+        try{
+          var text = ev.target.result;
+          var lines = text.split(/\r\n|\n|\r/).filter(function(l){return l.trim()!=='';});
+          if(!lines.length){reject(new Error('File appears to be empty'));return;}
+          resolve(lines.map(parseCSVLine));
+        }catch(err){ reject(new Error('Could not parse CSV file: '+err.message)); }
+      };
+      reader.readAsText(file);
+    }
+  });
+}
+// Applies the fixed cleanup pipeline: drop rows with no value in column E,
+// drop columns with no value in any data row, drop rows with an empty
+// Class, then drop rows where Name exactly equals Class.
+function cleanSupplierTable(rows){
+  if(!rows.length) throw new Error('File appears to be empty');
+  var header = rows[0];
+  var body = rows.slice(1);
+
+  var removedNoColE = 0;
+  body = body.filter(function(row){
+    var keep = !isEmptyCell(row[4]);
+    if(!keep) removedNoColE++;
+    return keep;
+  });
+
+  var numCols = header.length;
+  var colHasValue = new Array(numCols).fill(false);
+  body.forEach(function(row){
+    for(var i=0;i<numCols;i++){ if(!isEmptyCell(row[i])) colHasValue[i]=true; }
+  });
+  var keepColIdx = [];
+  for(var i=0;i<numCols;i++){ if(colHasValue[i]) keepColIdx.push(i); }
+  var removedCols = numCols - keepColIdx.length;
+  header = keepColIdx.map(function(i){return header[i];});
+  body = body.map(function(row){ return keepColIdx.map(function(i){return row[i]!==undefined?row[i]:'';}); });
+
+  var classIdx = header.findIndex(function(h){return (h||'').toString().trim().toLowerCase()==='class';});
+  var nameIdx  = header.findIndex(function(h){return (h||'').toString().trim().toLowerCase()==='name';});
+  if(classIdx===-1) throw new Error('Required "class" column not found in the file');
+  if(nameIdx===-1) throw new Error('Required "name" column not found in the file');
+
+  var removedEmptyClass = 0;
+  body = body.filter(function(row){
+    var keep = !isEmptyCell(row[classIdx]);
+    if(!keep) removedEmptyClass++;
+    return keep;
+  });
+
+  var removedNameEqClass = 0;
+  body = body.filter(function(row){
+    var n=(row[nameIdx]||'').toString().trim();
+    var c=(row[classIdx]||'').toString().trim();
+    var keep = !(n && c && n===c);
+    if(!keep) removedNameEqClass++;
+    return keep;
+  });
+
+  return {header:header, rows:body, stats:{
+    removedNoColE:removedNoColE, removedCols:removedCols,
+    removedEmptyClass:removedEmptyClass, removedNameEqClass:removedNameEqClass
+  }};
+}
+function rowsToCSV(header, rows){
+  function esc(v){
+    v = v===undefined||v===null ? '' : String(v);
+    if(/[",\n\r]/.test(v)) return '"'+v.replace(/"/g,'""')+'"';
+    return v;
+  }
+  var lines = [header.map(esc).join(',')];
+  rows.forEach(function(row){ lines.push(row.map(esc).join(',')); });
+  return lines.join('\r\n');
+}
+async function findDriveFileByName(token, name){
+  const q=encodeURIComponent("name='"+name.replace(/'/g,"\\'")+"' and trashed=false");
+  const r=await fetch('https://www.googleapis.com/drive/v3/files?q='+q+'&orderBy=modifiedTime desc&fields=files(id,name,modifiedTime)',{
+    headers:{Authorization:'Bearer '+token}
+  });
+  const d=await r.json();
+  return (d.files&&d.files[0])||null;
+}
+async function uploadNamedFileToDrive(token, name, content, mimeType){
+  const existing = await findDriveFileByName(token, name);
+  if(existing){
+    const r=await fetch('https://www.googleapis.com/upload/drive/v3/files/'+existing.id+'?uploadType=media',{
+      method:'PATCH', headers:{Authorization:'Bearer '+token,'Content-Type':mimeType}, body:content
+    });
+    if(!r.ok) throw new Error('Drive returned '+r.status+' on upload');
+  } else {
+    const meta=new Blob([JSON.stringify({name:name,mimeType:mimeType})],{type:'application/json'});
+    const data=new Blob([content],{type:mimeType});
+    const form=new FormData();form.append('metadata',meta);form.append('file',data);
+    const r=await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',{
+      method:'POST', headers:{Authorization:'Bearer '+token}, body:form
+    });
+    if(!r.ok) throw new Error('Drive returned '+r.status+' on upload');
+  }
+}
+function cleanSupplierFile(){
+  const i=document.createElement('input');
+  i.type='file'; i.accept='.csv,.xlsx,.xls';
+  i.onchange=async function(e){
+    const file=e.target.files[0];
+    if(!file) return;
+    try{
+      debugLog('Clean Supplier File: reading '+file.name);
+      const rows = await loadTableFromFile(file);
+      let result;
+      try{
+        result = cleanSupplierTable(rows);
+      }catch(err){
+        toast(err.message,'err');
+        debugLog('Clean Supplier File: '+err.message);
+        return;
+      }
+      const s = result.stats;
+      const summary = 'Removed '+s.removedNoColE+' row'+(s.removedNoColE!==1?'s':'')+' with no value in column E, '+
+        s.removedCols+' empty column'+(s.removedCols!==1?'s':'')+', '+
+        s.removedEmptyClass+' row'+(s.removedEmptyClass!==1?'s':'')+' with no Class, and '+
+        s.removedNameEqClass+' row'+(s.removedNameEqClass!==1?'s':'')+' where Name matched Class. '+
+        result.rows.length+' row'+(result.rows.length!==1?'s':'')+' remain.';
+      debugLog('Clean Supplier File: '+summary);
+
+      const outName = file.name.replace(/\.(csv|xlsx|xls)$/i,'')+'-cleaned.csv';
+      if(!confirm(summary+'\n\nSave "'+outName+'" to Google Drive?')){
+        toast('Clean Supplier File cancelled','info');
+        return;
+      }
+
+      let token = await getDriveTokenSilent();
+      if(!token){
+        toast('Connect Google Drive first (File → Backup to Google Drive), then try again','err');
+        return;
+      }
+      toast('Saving cleaned file to Drive...','info');
+      const csv = rowsToCSV(result.header, result.rows);
+      await uploadNamedFileToDrive(token, outName, csv, 'text/csv');
+      toast('Cleaned CSV saved to Google Drive: '+outName,'ok');
+      debugLog('Clean Supplier File: saved '+outName+' to Drive');
+    }catch(err){
+      console.error(err);
+      debugLog('Clean Supplier File FAILED: '+err.message);
+      toast('Clean Supplier File failed: '+err.message,'err');
+    }
+  };
+  i.click();
 }
 
 // ── Export / Import ───────────────────────────────────────────────────────
@@ -4440,6 +4632,7 @@ function bindClick(id, handler){
   bindClick('outlook-btn', syncOutlook);
   bindClick('drive-btn', driveBackup);
   bindClick('drive-restore-btn', driveRestore);
+  bindClick('btn-clean-supplier-file', cleanSupplierFile);
   bindClick('btn-clients-csv', function(){exportCSV('clients');});
   bindClick('btn-trips-csv', function(){exportCSV('trips');});
   bindClick('btn-backup', exportJSON);
