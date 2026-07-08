@@ -4468,6 +4468,36 @@ function addNoteEntry(){
   log.scrollTop=log.scrollHeight;
 }
 
+// Trip form's balance grids mirror the linked client's current mileage/hotel
+// point balances (balances live on the client record, not the trip) — shown
+// here so booking a trip and updating the balance it used doesn't require
+// separately opening the client's own edit form.
+function tripBalanceSectionsHtml(clientId){
+  var c = clientId ? db.clients.find(function(x){return x.id===clientId;}) : null;
+  return balanceGrid('Mileage Balances','mb',AIRLINES,c?c.mileageBalances:null,ELITE_STATUS)+
+         balanceGrid('Hotel Point Balances','hb',HOTELS,c?c.hotelBalances:null,ELITE_STATUS);
+}
+function bindTripBalanceListeners(){
+  document.querySelectorAll('.balance-num-input').forEach(function(numEl){
+    numEl.addEventListener('input',function(){
+      var digits=numEl.value.replace(/[^\d]/g,'');
+      numEl.value = digits ? Number(digits).toLocaleString() : '';
+    });
+  });
+  document.querySelectorAll('.balance-status-sel').forEach(function(selEl){
+    selEl.addEventListener('change',function(){
+      var customInput=document.getElementById(selEl.dataset.customId);
+      if(!customInput) return;
+      if(selEl.value==='Other'){
+        customInput.style.display='inline-block';
+        customInput.focus();
+      }else{
+        customInput.style.display='none';
+        customInput.value='';
+      }
+    });
+  });
+}
 function openTripForm(id){
   const d=id?(db.trips.find(function(t){return t.id===id;})||{}):{};
   const initCid=d.clientId||selCid||'';
@@ -4485,13 +4515,20 @@ function openTripForm(id){
       fld('Hotel Brand',sel('tho',HOTELS,d.hotel))+fld('Hotel Nights',inp('thn','number',d.hotelNights||0))+
       fld('Points Used',inp('tpu','number',d.pointsUsed||0))+fld('Cash Paid ($)',inp('tcp','number',d.cashPaid||0))+
       fld('Total Value ($)',inp('tva','number',d.totalValue||0))+fld('Booking Reference',inp('tbr','text',d.bookingRef,'e.g. UA-44129LHR'))+
+      '<div id="trip-balance-sections">'+tripBalanceSectionsHtml(initCid)+'</div>'+
       fld('Notes','<textarea id="tno">'+(d.notes||'')+'</textarea>',true)+
     '</div>'+
     '<div class="form-actions"><button class="cancel-btn" id="modal-cancel">Cancel</button><button class="save-btn" id="modal-save-trip" data-id="'+(id||'')+'">Save Trip</button></div>';
+  $('modal').classList.add('modal-wide');
   $('overlay').classList.add('open');
   $('modal-close').addEventListener('click',closeModal);
   $('modal-cancel').addEventListener('click',closeModal);
   $('modal-save-trip').addEventListener('click',function(){saveTrip(this.dataset.id);});
+  $('tc').addEventListener('change',function(){
+    document.getElementById('trip-balance-sections').innerHTML = tripBalanceSectionsHtml(this.value);
+    bindTripBalanceListeners();
+  });
+  bindTripBalanceListeners();
 }
 
 function closeModal(){$('overlay').classList.remove('open');$('modal').classList.remove('modal-wide');}
@@ -4534,6 +4571,10 @@ function saveTrip(id){
   const supplierId=gv('tsup');
   const supplier=supplierId?db.vendors.find(function(v){return v.id===supplierId;}):null;
   const data={clientId:clientId,clientName:client?client.name:'',supplierId:supplierId,supplierName:supplier?supplier.name:'',origin:gv('tor'),destination:dest,departDate:gv('tdd'),returnDate:gv('trd'),status:gv('tst')||'Planning',type:gv('tty')||'Leisure',airline:gv('tai'),flightClass:gv('tcl')||'Economy',hotel:gv('tho'),hotelNights:gn('thn'),pointsUsed:gn('tpu'),cashPaid:gn('tcp'),totalValue:gn('tva'),bookingRef:gv('tbr'),notes:gv('tno')};
+  if(client){
+    client.mileageBalances=readBalanceGrid('mb',AIRLINES,ELITE_STATUS);
+    client.hotelBalances=readBalanceGrid('hb',HOTELS,ELITE_STATUS);
+  }
   if(supplier && !(supplier.clientIds||[]).includes(clientId)){
     if(!supplier.clientIds) supplier.clientIds=[];
     supplier.clientIds.push(clientId);
