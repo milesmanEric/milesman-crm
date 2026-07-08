@@ -1241,11 +1241,14 @@ async function getMailchimpListId(){
 }
 
 function mailchimpActivityToNote(item){
-  var when = item.timestamp || item.create_time_ip || item.updated_at || '';
+  // activity-feed uses created_at_timestamp/activity_type/campaign_title;
+  // the older activity endpoint (fallback only) uses timestamp/action and
+  // has no campaign_title at all — verified against the real API for both.
+  var when = item.created_at_timestamp || item.timestamp || item.create_time_ip || item.updated_at || '';
   var dt = when ? new Date(when) : null;
   var ts = (dt && !isNaN(dt)) ? dt.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})+' '+dt.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}) : tsNow();
-  var action = item.action || item.activity_type || 'activity';
-  var title = item.title || item.campaign_title || item.subject_line || '';
+  var action = item.activity_type || item.action || 'activity';
+  var title = item.campaign_title || item.title || item.subject_line || '';
   var noteType = action==='open' ? 'Email Received' : (action==='sent' ? 'Email Sent' : 'General');
   return {
     ts:ts,
