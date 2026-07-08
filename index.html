@@ -4070,8 +4070,14 @@ function renderPlanner(){
     return true;
   }).sort(function(a,b){
     if(!!a.done !== !!b.done) return a.done ? 1 : -1;
-    var av=(a[plannerSortCol]||'').toString().toLowerCase();
-    var bv=(b[plannerSortCol]||'').toString().toLowerCase();
+    var av, bv;
+    if(plannerSortCol==='client'){
+      av=(clientName(a)||'').toLowerCase();
+      bv=(clientName(b)||'').toLowerCase();
+    } else {
+      av=(a[plannerSortCol]||'').toString().toLowerCase();
+      bv=(b[plannerSortCol]||'').toString().toLowerCase();
+    }
     if(av<bv) return plannerSortDir==='asc'?-1:1;
     if(av>bv) return plannerSortDir==='asc'?1:-1;
     return 0;
@@ -4120,7 +4126,7 @@ function renderPlanner(){
       '<th style="width:32px"></th>'+
       '<th class="sort-th-pl" data-sort="title" style="cursor:pointer">Task'+plannerSortArrow('title')+'</th>'+
       '<th class="sort-th-pl" data-sort="dueDate" style="cursor:pointer">Due Date'+plannerSortArrow('dueDate')+'</th>'+
-      '<th>Client</th>'+
+      '<th class="sort-th-pl" data-sort="client" style="cursor:pointer">Client'+plannerSortArrow('client')+'</th>'+
       '<th>Linked</th>'+
       '<th></th>'+
     '</tr></thead><tbody>'+tasks.map(function(t){
