@@ -87,7 +87,7 @@ nav{padding:10px 8px}
   .tbl-wrap table.tbl-planner tr td:nth-child(2):before{content:'Task'}
   .tbl-wrap table.tbl-planner tr td:nth-child(3):before{content:'Due Date'}
   .tbl-wrap table.tbl-planner tr td:nth-child(4):before{content:'Client'}
-  .tbl-wrap table.tbl-planner tr td:nth-child(5):before{content:'Linked'}
+  .tbl-wrap table.tbl-planner tr td:nth-child(5):before{content:'Trip'}
 
   /* Stats grid 2 col on mobile */
   .stats-grid{grid-template-columns:repeat(2,1fr)}
@@ -4437,7 +4437,7 @@ function renderPlanner(){
     }
     if(t.tripId){
       var tr=db.trips.find(function(x){return x.id===t.tripId;});
-      if(tr) out.push('<span class="badge b-amber">&#9992;&#65039; '+(tr.destination||'Trip')+'</span>');
+      if(tr) out.push('<span class="badge b-amber planner-trip-link" data-id="'+tr.id+'" style="cursor:pointer" title="Open trip">&#9992;&#65039; '+(tr.destination||'Trip')+'</span>');
     }
     return out.join(' ');
   }
@@ -4465,11 +4465,12 @@ function renderPlanner(){
       '<th class="sort-th-pl" data-sort="title" style="cursor:pointer">Task'+plannerSortArrow('title')+'</th>'+
       '<th class="sort-th-pl" data-sort="dueDate" style="cursor:pointer">Due Date'+plannerSortArrow('dueDate')+'</th>'+
       '<th class="sort-th-pl" data-sort="client" style="cursor:pointer">Client'+plannerSortArrow('client')+'</th>'+
-      '<th>Linked</th>'+
+      '<th>Trip</th>'+
       '<th></th>'+
     '</tr></thead><tbody>'+tasks.map(function(t){
       var overdue = t.dueDate && !t.done && t.dueDate < today();
       var badgesHtml = entityBadges(t);
+      var cid = taskClientId(t);
       var cName = clientName(t);
       return '<tr data-task-id="'+t.id+'">'+
         '<td style="width:32px"><input type="checkbox" class="task-done-cb" data-id="'+t.id+'" '+(t.done?'checked':'')+' style="width:15px;height:15px"></td>'+
@@ -4478,7 +4479,7 @@ function renderPlanner(){
           (t.desc ? '<div style="margin-top:4px;font-size:12px;color:#666">'+t.desc+'</div>' : '')+
         '</td>'+
         '<td style="white-space:nowrap;color:'+(overdue?'#dc2626':'#555')+'">'+(t.dueDate?t.dueDate+(overdue?' (overdue)':''):'<span style="color:#aaa">No due date</span>')+'</td>'+
-        '<td>'+(cName?('<span style="color:#2563eb">'+cName+'</span>'):'<span style="color:#aaa">No client linked</span>')+'</td>'+
+        '<td>'+(cName?('<span class="planner-client-link" data-id="'+cid+'" style="color:#2563eb;cursor:pointer;text-decoration:underline">'+cName+'</span>'):'<span style="color:#aaa">No client linked</span>')+'</td>'+
         '<td>'+(badgesHtml||'')+'</td>'+
         '<td style="white-space:nowrap">'+
           '<button class="icon-btn edit-task" data-id="'+t.id+'" title="Edit task">&#9998;&#65039;</button>'+
@@ -4515,6 +4516,20 @@ function renderPlanner(){
   });
   document.querySelectorAll('.task-title-link').forEach(function(el){
     el.addEventListener('click', function(){ openTaskForm(this.dataset.id); });
+  });
+  document.querySelectorAll('.planner-client-link').forEach(function(el){
+    el.addEventListener('click', function(e){
+      e.stopPropagation();
+      var cid=this.dataset.id;
+      go('clients'); setTimeout(function(){openClientForm(cid);},100);
+    });
+  });
+  document.querySelectorAll('.planner-trip-link').forEach(function(el){
+    el.addEventListener('click', function(e){
+      e.stopPropagation();
+      var tid=this.dataset.id;
+      go('trips'); setTimeout(function(){openTripForm(tid);},100);
+    });
   });
   document.querySelectorAll('.edit-task').forEach(function(btn){
     btn.addEventListener('click', function(){ openTaskForm(this.dataset.id); });
