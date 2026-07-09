@@ -357,6 +357,7 @@ const CRUISE_LINES = ['Virgin Voyages','Royal Caribbean','Carnival','Norwegian',
 const STATUSES = ['Planning','Confirmed','Completed','Cancelled'];
 const TYPES    = ['Leisure','Business','Honeymoon','Family','Adventure','Cruise'];
 const CLASSES  = ['Economy','Premium Economy','Business','First'];
+const NOTE_TYPES = ['Email Sent','Email Received','Initial Call','Follow-up','General','Trip Import','Text Message','Lead','Mailchimp Email Sent','Facebook Message'];
 
 let db = {clients:[],trips:[],vendors:[],planner:[]};
 const UNDO_STACK = [];
@@ -4879,6 +4880,7 @@ function openTaskForm(id){
       fld('Due Date', inp('tk-due','date',d.dueDate))+
       fld('Time', inp('tk-time','time',d.dueTime))+
       fld('Status','<select id="tk-done"><option value="0"'+(!d.done?' selected':'')+'>Open</option><option value="1"'+(d.done?' selected':'')+'>Done</option></select>')+
+      fld('Completion Note Type', sel('tk-note-type', NOTE_TYPES, d.completionNoteType||'General'))+
       fld('Linked Client','<select id="tk-client"><option value="">None</option>'+clientOpts+'</select>')+
       fld('Linked Supplier','<select id="tk-vendor"><option value="">None</option>'+vendorOpts+'</select>')+
       fld('Linked Trip','<select id="tk-trip"><option value="">None</option>'+tripOpts+'</select>')+
@@ -4907,6 +4909,7 @@ function saveTaskAndNew(id){
   var clientId = gv('tk-client');
   var vendorId = gv('tk-vendor');
   var tripId = gv('tk-trip');
+  var noteType = gv('tk-note-type');
   var desc = gv('tk-desc');
 
   saveTask(id);
@@ -4916,6 +4919,7 @@ function saveTaskAndNew(id){
   var clientSel=document.getElementById('tk-client'); if(clientSel) clientSel.value=clientId;
   var vendorSel=document.getElementById('tk-vendor'); if(vendorSel) vendorSel.value=vendorId;
   var tripSel=document.getElementById('tk-trip'); if(tripSel) tripSel.value=tripId;
+  var noteTypeSel=document.getElementById('tk-note-type'); if(noteTypeSel) noteTypeSel.value=noteType;
   document.getElementById('tk-desc').value = 'Follow-up to: "'+title+'"'+(desc?'\n'+desc:'');
   document.getElementById('tk-title').focus();
 }
@@ -4934,6 +4938,7 @@ function saveTask(id){
     dueDate:gv('tk-due'),
     dueTime:gv('tk-time'),
     done: gv('tk-done')==='1',
+    completionNoteType: gv('tk-note-type')||'General',
     clientId: gv('tk-client'),
     vendorId: gv('tk-vendor'),
     tripId: gv('tk-trip'),
@@ -4974,7 +4979,7 @@ function logTaskCompletionNote(task){
   db.clients = db.clients.map(function(c){
     if(c.id!==taskCid) return c;
     var nl = Array.isArray(c.notesLog)?c.notesLog.slice():[];
-    nl.push({ts:tsNow(),text:text,noteType:'General',source:'planner'});
+    nl.push({ts:tsNow(),text:text,noteType:task.completionNoteType||'General',source:'planner'});
     return Object.assign({},c,{notesLog:nl});
   });
 }
