@@ -4144,6 +4144,16 @@ function openClientForm(id){
       fld('Full Name',inp('fn','text',toFirstLast(d.name)))+fld('Email',inp('fe','email',d.email))+
       fld('Phone',inp('fp','text',d.phone,'(xxx) xxx-xxxx'))+fld('Location',inp('fl','text',d.location,'City, State'))+
       fld('Birthdate',inp('fbd','date',d.birthdate))+
+      fld('Referred By','<select id="fref"><option value="">-- Select --</option>'+
+        '<option value="Subscriber"'+(d.referredBy==='Subscriber'?' selected':'')+'>Subscriber</option>'+
+        '<option value="Ad"'+(d.referredBy==='Ad'?' selected':'')+'>Ad</option>'+
+        '<option value="Event"'+(d.referredBy==='Event'?' selected':'')+'>Event</option>'+
+        '<option value="Person"'+(d.referredBy==='Person'?' selected':'')+'>Person</option>'+
+      '</select>')+
+      '<div class="field" id="fref-detail-wrap" style="display:'+((d.referredBy==='Event'||d.referredBy==='Person')?'flex':'none')+'">'+
+        '<label id="fref-detail-label">'+(d.referredBy==='Person'?'Person Name':'Event Name')+'</label>'+
+        '<input id="frefdetail" type="text" value="'+(d.referredByDetail||'').toString().replace(/"/g,'&quot;')+'" placeholder="Enter name">'+
+      '</div>'+
       fld('Preferred Airline',sel('fpa',AIRLINES,d.preferredAirline))+fld('Preferred Hotel',sel('fph',HOTELS,d.preferredHotel))+fld('Preferred Cruise Line',sel('fpc',CRUISE_LINES,d.preferredCruiseLine))+
       balanceGrid('Mileage Balances','mb',AIRLINES,d.mileageBalances,ELITE_STATUS)+
       balanceGrid('Hotel Point Balances','hb',HOTELS,d.hotelBalances,ELITE_STATUS)+
@@ -4308,6 +4318,19 @@ function openClientForm(id){
         customInput.value='';
       }
     });
+  });
+
+  $('fref').addEventListener('change',function(){
+    var wrap=document.getElementById('fref-detail-wrap');
+    var label=document.getElementById('fref-detail-label');
+    if(this.value==='Event'||this.value==='Person'){
+      wrap.style.display='flex';
+      label.textContent=this.value==='Person'?'Person Name':'Event Name';
+      document.getElementById('frefdetail').focus();
+    }else{
+      wrap.style.display='none';
+      document.getElementById('frefdetail').value='';
+    }
   });
 
   // Attachments — stored as name + URL links (e.g. Google Drive share links)
@@ -4557,7 +4580,9 @@ function saveClient(id){
   const mileageBalances=readBalanceGrid('mb',AIRLINES,ELITE_STATUS);
   const hotelBalances=readBalanceGrid('hb',HOTELS,ELITE_STATUS);
   const creditCardBalances=readBalanceGrid('cb',CREDIT_CARDS);
-  const data={name:name,email:email,phone:gv('fp'),location:gv('fl'),birthdate:gv('fbd'),preferredAirline:gv('fpa'),preferredHotel:gv('fph'),preferredCruiseLine:gv('fpc'),mileageBalances:mileageBalances,hotelBalances:hotelBalances,creditCardBalances:creditCardBalances,notesLog:notesLog,isPayingClient:document.getElementById('f-paying')?document.getElementById('f-paying').checked:false,isSubscriber:document.getElementById('f-subscriber')?document.getElementById('f-subscriber').checked:false,attachments:window._currentClientAttachments||[]};
+  const referredBy=gv('fref');
+  const referredByDetail=(referredBy==='Event'||referredBy==='Person')?gv('frefdetail'):'';
+  const data={name:name,email:email,phone:gv('fp'),location:gv('fl'),birthdate:gv('fbd'),referredBy:referredBy,referredByDetail:referredByDetail,preferredAirline:gv('fpa'),preferredHotel:gv('fph'),preferredCruiseLine:gv('fpc'),mileageBalances:mileageBalances,hotelBalances:hotelBalances,creditCardBalances:creditCardBalances,notesLog:notesLog,isPayingClient:document.getElementById('f-paying')?document.getElementById('f-paying').checked:false,isSubscriber:document.getElementById('f-subscriber')?document.getElementById('f-subscriber').checked:false,attachments:window._currentClientAttachments||[]};
   if(id){
     db.clients=db.clients.map(function(c){return c.id===id?Object.assign({},c,data):c;});
     toast('Client updated');
