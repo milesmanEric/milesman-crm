@@ -470,19 +470,54 @@ function newId(p,list){
 }
 
 // ── Storage ───────────────────────────────────────────────────────────────
+// Auto Drive backup fails silently (see runAutoDriveBackup) whenever the
+// Google sign-in has expired — previously nothing surfaced that, so backups
+// could silently stop for hours and a later "Restore from Drive" would then
+// overwrite recent local work with that stale copy. This surfaces a warning
+// in the sync-lbl instead, and keeps it visible across normal saves rather
+// than letting every saveDB() call silently paper over it with "Saved".
+const DRIVE_BACKUP_STALE_MS = 20*60*1000; // 20 min — well past the 5 min auto-backup interval
+let _driveBackupStale = false;
+function formatAgo(ms){
+  var mins = Math.round(ms/60000);
+  if(mins<60) return mins+'m ago';
+  return Math.round(mins/60)+'h ago';
+}
+function computeDriveStale(){
+  var everConnected = !!localStorage.getItem('mm_drive_refresh') || !!localStorage.getItem('mm_last_drive_backup');
+  if(!everConnected) return false; // Drive backup was never set up on this device — nothing to warn about
+  var lastBackup = parseInt(localStorage.getItem('mm_last_drive_backup')||'0',10);
+  return !lastBackup || (Date.now()-lastBackup) > DRIVE_BACKUP_STALE_MS;
+}
+function updateSyncStatusDisplay(){
+  var lbl=document.getElementById('sync-lbl');
+  if(!lbl) return;
+  _driveBackupStale = computeDriveStale();
+  if(_driveBackupStale){
+    var lastBackup = parseInt(localStorage.getItem('mm_last_drive_backup')||'0',10);
+    var ageText = lastBackup ? formatAgo(Date.now()-lastBackup) : 'never';
+    lbl.innerHTML = '&#9888;&#65039; Drive backup stale ('+ageText+')';
+    lbl.title = 'Google Drive hasn\'t backed up recently — restoring now could overwrite recent local changes. Click "Backup to Google Drive" in the File menu to reconnect and sync.';
+    lbl.style.color = '#dc2626';
+  }
+}
 function saveDB(){
   try{
     localStorage.setItem(LS_KEY,JSON.stringify(db));
     var lbl=document.getElementById('sync-lbl');
     if(lbl){
-      var now=new Date();
-      var timeStr=now.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
-      lbl.innerHTML='&#9679; Saved '+timeStr;
-      lbl.style.color='#059669';
-      clearTimeout(window._syncLblTimer);
-      window._syncLblTimer=setTimeout(function(){
-        if(lbl) lbl.style.color='';
-      },2000);
+      if(_driveBackupStale){
+        updateSyncStatusDisplay();
+      }else{
+        var now=new Date();
+        var timeStr=now.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+        lbl.innerHTML='&#9679; Saved '+timeStr;
+        lbl.style.color='#059669';
+        clearTimeout(window._syncLblTimer);
+        window._syncLblTimer=setTimeout(function(){
+          if(lbl) lbl.style.color='';
+        },2000);
+      }
     }
   }catch(e){}
 }
@@ -1054,12 +1089,13 @@ async function driveBackup(silent){
       if(!r.ok){ throw new Error('Drive returned '+r.status+' on backup upload'); }
     }
     if(!silent){btn.textContent='Backed up to Drive';btn.style.color='#059669';btn.style.borderColor='#6ee7b7';}
-    var now=new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
-    localStorage.setItem('mm_last_drive_backup', now);
+    var nowStr=new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+    localStorage.setItem('mm_last_drive_backup', String(Date.now()));
+    _driveBackupStale=false;
     var lbl=document.getElementById('sync-lbl');
-    if(lbl){ lbl.innerHTML='&#9729; Drive synced '+now; lbl.style.color='#1a73e8'; }
-    if(!silent){ debugLog('Manual backup finished successfully at '+now); toast('Drive backup saved at '+now,'ok'); }
-    console.log('[CRM] Drive backup complete at', now);
+    if(lbl){ lbl.innerHTML='&#9729; Drive synced '+nowStr; lbl.title=''; lbl.style.color='#1a73e8'; }
+    if(!silent){ debugLog('Manual backup finished successfully at '+nowStr); toast('Drive backup saved at '+nowStr,'ok'); }
+    console.log('[CRM] Drive backup complete at', nowStr);
   }catch(e){
     console.error(e);driveToken=null;
     if(!silent){ debugLog('Manual backup FAILED: '+e.message); toast('Drive backup failed: '+e,'err'); btn.textContent='Backup to Google Drive'; }
@@ -5223,6 +5259,7 @@ async function runAutoDriveBackup(){
   const token = await getDriveTokenSilent();
   if(!token){
     debugLog('Auto-backup skipped — not signed in on this device (no valid token or refresh token)');
+    updateSyncStatusDisplay();
     return;
   }
   _autoBackupInFlight = true;
@@ -5243,6 +5280,7 @@ loadDebugLog();
 startAutosave();
 updateUndoBtn();
 checkDriveRedirect();
+updateSyncStatusDisplay();
 console.log('[CRM] Ready. Clients:', db.clients.length, 'Trips:', db.trips.length);
 </script>
 </body>
