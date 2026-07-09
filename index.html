@@ -4746,7 +4746,7 @@ function renderPlanner(){
           '<div class="task-title-link" data-id="'+t.id+'" style="font-size:14px;font-weight:600;color:'+(t.done?'#aaa':'#2563eb')+';cursor:pointer;text-decoration:'+(t.done?'line-through':'underline')+'">'+t.title+'</div>'+
           (t.desc ? '<div style="margin-top:4px;font-size:12px;color:#666">'+t.desc+'</div>' : '')+
         '</td>'+
-        '<td style="white-space:nowrap;color:'+(overdue?'#dc2626':'#555')+'">'+(t.dueDate?t.dueDate+(overdue?' (overdue)':''):'<span style="color:#aaa">No due date</span>')+'</td>'+
+        '<td style="white-space:nowrap;color:'+(overdue?'#dc2626':'#555')+'">'+(t.dueDate?t.dueDate+(t.dueTime?' '+t.dueTime:'')+(overdue?' (overdue)':''):'<span style="color:#aaa">No due date</span>')+'</td>'+
         '<td>'+(cName?('<span class="planner-client-link" data-id="'+cid+'" style="color:#2563eb;cursor:pointer;text-decoration:underline">'+cName+'</span>'):'<span style="color:#aaa">No client linked</span>')+'</td>'+
         '<td>'+(badgesHtml||'')+'</td>'+
         '<td style="white-space:nowrap">'+
@@ -4826,6 +4826,7 @@ function openTaskForm(id){
     '<div class="fg">'+
       fld('Task Title', inp('tk-title','text',d.title,'e.g. Follow up on quote'), true)+
       fld('Due Date', inp('tk-due','date',d.dueDate))+
+      fld('Time', inp('tk-time','time',d.dueTime))+
       fld('Status','<select id="tk-done"><option value="0"'+(!d.done?' selected':'')+'>Open</option><option value="1"'+(d.done?' selected':'')+'>Done</option></select>')+
       fld('Linked Client','<select id="tk-client"><option value="">None</option>'+clientOpts+'</select>')+
       fld('Linked Supplier','<select id="tk-vendor"><option value="">None</option>'+vendorOpts+'</select>')+
@@ -4853,6 +4854,7 @@ function saveTask(id){
   var data = {
     title:title,
     dueDate:gv('tk-due'),
+    dueTime:gv('tk-time'),
     done: gv('tk-done')==='1',
     clientId: gv('tk-client'),
     vendorId: gv('tk-vendor'),
