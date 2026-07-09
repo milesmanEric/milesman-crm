@@ -4113,6 +4113,13 @@ function readBalanceGrid(idPrefix,list,statusList){
   return out;
 }
 
+const REF_DETAIL_TYPES=['Event','Person','Other'];
+function refDetailLabel(referredBy){
+  if(referredBy==='Person') return 'Person Name';
+  if(referredBy==='Event') return 'Event Name';
+  if(referredBy==='Other') return 'Other Detail';
+  return '';
+}
 function openClientForm(id){
   const d=id?(db.clients.find(function(c){return c.id===id;})||{}):{};
   const notesLog=Array.isArray(d.notesLog)?[...d.notesLog].sort(function(a,b){var ta=new Date(a.ts),tb=new Date(b.ts);return (isNaN(tb)?0:tb)-(isNaN(ta)?0:ta);}):[];
@@ -4149,9 +4156,11 @@ function openClientForm(id){
         '<option value="Ad"'+(d.referredBy==='Ad'?' selected':'')+'>Ad</option>'+
         '<option value="Event"'+(d.referredBy==='Event'?' selected':'')+'>Event</option>'+
         '<option value="Person"'+(d.referredBy==='Person'?' selected':'')+'>Person</option>'+
+        '<option value="Outbound Solicit"'+(d.referredBy==='Outbound Solicit'?' selected':'')+'>Outbound Solicit</option>'+
+        '<option value="Other"'+(d.referredBy==='Other'?' selected':'')+'>Other</option>'+
       '</select>')+
-      '<div class="field" id="fref-detail-wrap" style="display:'+((d.referredBy==='Event'||d.referredBy==='Person')?'flex':'none')+'">'+
-        '<label id="fref-detail-label">'+(d.referredBy==='Person'?'Person Name':'Event Name')+'</label>'+
+      '<div class="field" id="fref-detail-wrap" style="display:'+(REF_DETAIL_TYPES.indexOf(d.referredBy)!==-1?'flex':'none')+'">'+
+        '<label id="fref-detail-label">'+refDetailLabel(d.referredBy)+'</label>'+
         '<input id="frefdetail" type="text" value="'+(d.referredByDetail||'').toString().replace(/"/g,'&quot;')+'" placeholder="Enter name">'+
       '</div>'+
       fld('Preferred Airline',sel('fpa',AIRLINES,d.preferredAirline))+fld('Preferred Hotel',sel('fph',HOTELS,d.preferredHotel))+fld('Preferred Cruise Line',sel('fpc',CRUISE_LINES,d.preferredCruiseLine))+
@@ -4323,9 +4332,9 @@ function openClientForm(id){
   $('fref').addEventListener('change',function(){
     var wrap=document.getElementById('fref-detail-wrap');
     var label=document.getElementById('fref-detail-label');
-    if(this.value==='Event'||this.value==='Person'){
+    if(REF_DETAIL_TYPES.indexOf(this.value)!==-1){
       wrap.style.display='flex';
-      label.textContent=this.value==='Person'?'Person Name':'Event Name';
+      label.textContent=refDetailLabel(this.value);
       document.getElementById('frefdetail').focus();
     }else{
       wrap.style.display='none';
@@ -4581,7 +4590,7 @@ function saveClient(id){
   const hotelBalances=readBalanceGrid('hb',HOTELS,ELITE_STATUS);
   const creditCardBalances=readBalanceGrid('cb',CREDIT_CARDS);
   const referredBy=gv('fref');
-  const referredByDetail=(referredBy==='Event'||referredBy==='Person')?gv('frefdetail'):'';
+  const referredByDetail=REF_DETAIL_TYPES.indexOf(referredBy)!==-1?gv('frefdetail'):'';
   const data={name:name,email:email,phone:gv('fp'),location:gv('fl'),birthdate:gv('fbd'),referredBy:referredBy,referredByDetail:referredByDetail,preferredAirline:gv('fpa'),preferredHotel:gv('fph'),preferredCruiseLine:gv('fpc'),mileageBalances:mileageBalances,hotelBalances:hotelBalances,creditCardBalances:creditCardBalances,notesLog:notesLog,isPayingClient:document.getElementById('f-paying')?document.getElementById('f-paying').checked:false,isSubscriber:document.getElementById('f-subscriber')?document.getElementById('f-subscriber').checked:false,attachments:window._currentClientAttachments||[]};
   if(id){
     db.clients=db.clients.map(function(c){return c.id===id?Object.assign({},c,data):c;});
