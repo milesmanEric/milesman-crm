@@ -4912,6 +4912,7 @@ function saveTaskAndNew(id){
   saveTask(id);
 
   openTaskForm();
+  document.getElementById('tk-title').value = title;
   var clientSel=document.getElementById('tk-client'); if(clientSel) clientSel.value=clientId;
   var vendorSel=document.getElementById('tk-vendor'); if(vendorSel) vendorSel.value=vendorId;
   var tripSel=document.getElementById('tk-trip'); if(tripSel) tripSel.value=tripId;
