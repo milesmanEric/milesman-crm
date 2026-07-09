@@ -3961,7 +3961,7 @@ function renderTrips(){
       '<th class="sort-th" data-sort="invoiceNum" style="cursor:pointer">Invoice #'+sortArrow('invoiceNum')+'</th>'+
       '<th></th>'+
     '</tr></thead><tbody>'+
-    (list.length?list.map(function(t){return '<tr data-trip-id="'+t.id+'">'+
+    (list.length?list.map(function(t){return '<tr class="trip-list-row" data-trip-id="'+t.id+'" style="cursor:pointer">'+
       '<td style="width:32px"><input type="checkbox" class="trip-row-cb" data-id="'+t.id+'" style="width:14px;height:14px"></td>'+
       '<td><div><span class="open-client" data-id="'+t.clientId+'" style="font-weight:600;color:#2563eb;cursor:pointer;text-decoration:underline">'+(t.clientName||'')+'</span></div><div style="font-size:10px;color:#aaa">'+t.id+'</div></td>'+
       '<td><div style="font-weight:600;color:#111">'+(t.destination||'')+'</div><div style="font-size:11px;color:#888">from '+(t.origin||'')+'</div></td>'+
@@ -4025,6 +4025,12 @@ function renderTrips(){
     span.addEventListener('click',function(e){
       e.stopPropagation();
       openClientForm(span.dataset.id);
+    });
+  });
+  document.querySelectorAll('.trip-list-row').forEach(function(row){
+    row.addEventListener('click',function(e){
+      if(e.target.closest('input, button, .open-client, .trip-sup-link, .trip-invoice-link')) return;
+      openTripForm(row.dataset.tripId);
     });
   });
 
