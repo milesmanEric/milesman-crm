@@ -4151,7 +4151,7 @@ function openClientForm(id){
       '</div>'+
       '<textarea class="note-txt" id="note-txt-'+i+'" rows="2">'+n.text+'</textarea>'+
     '</div>';
-  }).join(''):'<div style="color:#aaa;font-size:12px;padding:6px 0">No notes yet</div>';
+  }).join(''):'<div id="notes-log-empty" style="color:#aaa;font-size:12px;padding:6px 0">No notes yet</div>';
 
   $('modal').innerHTML=
     '<div class="modal-hdr"><div class="modal-title">'+(id?'Edit Client':'Add Client')+'</div><button class="close-btn" id="modal-close">&#x2715;</button></div>'+
@@ -4310,7 +4310,11 @@ function openClientForm(id){
   });
   document.querySelectorAll('.client-add-task-btn').forEach(function(btn){
     btn.addEventListener('click', function(){
-      closeModal();
+      // This button only exists when editing an existing client (id is set).
+      // Must actually save first, not just closeModal() — that discarded
+      // any unsaved edits in this form (e.g. a note just typed but not yet
+      // saved) since nothing had persisted them to db yet.
+      saveClient(id);
       openTaskForm();
       var sel=document.getElementById('tk-client');
       if(sel) sel.value=id;
@@ -4486,7 +4490,11 @@ function openClientForm(id){
 
 function addNoteEntry(){
   const log=$('notes-log');
-  const empty=log.querySelector('div[style]');
+  // Must target the "No notes yet" placeholder specifically by id — the
+  // previous 'div[style]' selector matched ANY styled div in the container,
+  // including an existing note's own header row (ts/type/delete), silently
+  // stripping it when a new note was added alongside existing ones.
+  const empty=document.getElementById('notes-log-empty');
   if(empty) empty.remove();
   const idx=log.querySelectorAll('.note-entry').length;
   const div=document.createElement('div');
