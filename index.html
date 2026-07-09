@@ -4243,12 +4243,12 @@ function openClientForm(id){
           '</tr></thead>'+
           '<tbody>'+tripRows+supRows+'</tbody></table></div></div>';
       })() : '') +
-      (id ? (function(){
-        var clientTasks = db.planner.filter(function(t){return taskClientId(t)===id;}).sort(function(a,b){
+      (function(){
+        var clientTasks = id ? db.planner.filter(function(t){return taskClientId(t)===id;}).sort(function(a,b){
           if(!!a.done !== !!b.done) return a.done ? 1 : -1;
           var ad=a.dueDate||'9999-99-99', bd=b.dueDate||'9999-99-99';
           return ad.localeCompare(bd);
-        });
+        }) : [];
         var addBtn = '<button type="button" class="client-add-task-btn" style="padding:3px 10px;border-radius:6px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:11px;font-family:inherit">+ Add Task</button>';
         if(!clientTasks.length){
           return '<div class="field full" style="margin-bottom:12px">'+
@@ -4274,7 +4274,7 @@ function openClientForm(id){
             '<th style="text-align:left;padding:6px 10px;font-size:10px;font-weight:700;color:#888;text-transform:uppercase">Status</th>'+
           '</tr></thead>'+
           '<tbody>'+rows+'</tbody></table></div></div>';
-      })() : '') +
+      })() +
       '<div class="field full"><label>Notes Log</label>'+
         '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'+
           '<select id="note-type-filter" style="padding:5px 10px;border-radius:6px;border:1px solid #d1d5db;font-size:12px;font-family:inherit;color:#555;background:#fff">'+
@@ -4310,14 +4310,18 @@ function openClientForm(id){
   });
   document.querySelectorAll('.client-add-task-btn').forEach(function(btn){
     btn.addEventListener('click', function(){
-      // This button only exists when editing an existing client (id is set).
-      // Must actually save first, not just closeModal() — that discarded
-      // any unsaved edits in this form (e.g. a note just typed but not yet
-      // saved) since nothing had persisted them to db yet.
-      saveClient(id);
+      // Must actually save first, not just closeModal() — that discarded any
+      // unsaved edits in this form (e.g. a note just typed but not yet saved)
+      // since nothing had persisted them to db yet. For a brand-new client
+      // (id not set yet), this also creates the client record so the new
+      // task has a real clientId to link to — saveClient returns null if
+      // required fields are missing, in which case stay put so the user can
+      // fix them rather than silently losing the task-link intent.
+      var savedId = saveClient(id);
+      if(!savedId) return;
       openTaskForm();
       var sel=document.getElementById('tk-client');
-      if(sel) sel.value=id;
+      if(sel) sel.value=savedId;
     });
   });
 
@@ -4592,7 +4596,7 @@ $('overlay').addEventListener('click',function(e){if(e.target===$('overlay'))clo
 // ── CRUD ──────────────────────────────────────────────────────────────────
 function saveClient(id){
   const name=toLastFirst(gv('fn')),email=gv('fe');
-  if(!name||!email){toast('Name and email are required','err');return;}
+  if(!name||!email){toast('Name and email are required','err');return null;}
   snapshot(id?'Edit client':'Add client');
   const entries=Array.from(document.querySelectorAll('.note-entry'));
   var noteEntryEls = Array.from(document.querySelectorAll('.note-entry'));
@@ -4610,14 +4614,17 @@ function saveClient(id){
   const referredBy=gv('fref');
   const referredByDetail=REF_DETAIL_TYPES.indexOf(referredBy)!==-1?gv('frefdetail'):'';
   const data={name:name,email:email,phone:gv('fp'),location:gv('fl'),birthdate:gv('fbd'),referredBy:referredBy,referredByDetail:referredByDetail,preferredAirline:gv('fpa'),preferredHotel:gv('fph'),preferredCruiseLine:gv('fpc'),mileageBalances:mileageBalances,hotelBalances:hotelBalances,creditCardBalances:creditCardBalances,notesLog:notesLog,isPayingClient:document.getElementById('f-paying')?document.getElementById('f-paying').checked:false,isSubscriber:document.getElementById('f-subscriber')?document.getElementById('f-subscriber').checked:false,attachments:window._currentClientAttachments||[]};
+  var resultId = id;
   if(id){
     db.clients=db.clients.map(function(c){return c.id===id?Object.assign({},c,data):c;});
     toast('Client updated');
   }else{
-    db.clients.push(Object.assign({},data,{id:newId('C',db.clients),joined:today(),totalTrips:0}));
+    resultId = newId('C',db.clients);
+    db.clients.push(Object.assign({},data,{id:resultId,joined:today(),totalTrips:0}));
     toast('Client added');
   }
   saveDB();closeModal();render();
+  return resultId;
 }
 
 function saveTrip(id){
@@ -4679,9 +4686,10 @@ function renderPlanner(){
   var plannerSortCol = window._plannerSortCol || 'dueDate';
   var plannerSortDir = window._plannerSortDir || 'asc';
   var tasks = db.planner.filter(function(t){
-    if(statusFilter==='open' && t.done) return false;
-    if(statusFilter==='done' && !t.done) return false;
-    return true;
+    // Marking a task done removes it from the planner view entirely — the
+    // only way to see completed tasks is explicitly picking the Done filter.
+    if(statusFilter==='done') return !!t.done;
+    return !t.done;
   }).sort(function(a,b){
     if(!!a.done !== !!b.done) return a.done ? 1 : -1;
     var av, bv;
@@ -4731,8 +4739,7 @@ function renderPlanner(){
     '<div class="search-row">'+
       '<input id="planner-search" placeholder="Search tasks..."/>'+
       '<select id="planner-status-filter">'+
-        '<option value=""'+(statusFilter===''?' selected':'')+'>All</option>'+
-        '<option value="open"'+(statusFilter==='open'?' selected':'')+'>Open</option>'+
+        '<option value=""'+(statusFilter===''?' selected':'')+'>Open</option>'+
         '<option value="done"'+(statusFilter==='done'?' selected':'')+'>Done</option>'+
       '</select>'+
     '</div>'+
@@ -4841,13 +4848,39 @@ function openTaskForm(id){
       fld('Linked Trip','<select id="tk-trip"><option value="">None</option>'+tripOpts+'</select>')+
       fld('Description', '<textarea id="tk-desc" rows="3">'+(d.desc||'')+'</textarea>', true)+
     '</div>'+
-    '<div class="form-actions"><button class="cancel-btn" id="modal-cancel">Cancel</button><button class="save-btn" id="modal-save-task" data-id="'+(id||'')+'">Save Task</button></div>';
+    '<div class="form-actions">'+
+      '<button class="cancel-btn" id="modal-cancel">Cancel</button>'+
+      '<button class="cancel-btn" id="modal-save-new-task" data-id="'+(id||'')+'" style="color:#2563eb;border-color:#2563eb">Save &amp; New</button>'+
+      '<button class="save-btn" id="modal-save-task" data-id="'+(id||'')+'">Save Task</button>'+
+    '</div>';
 
   $('modal').classList.add('modal-wide');
   $('overlay').classList.add('open');
   $('modal-close').addEventListener('click', closeModal);
   $('modal-cancel').addEventListener('click', closeModal);
   $('modal-save-task').addEventListener('click', function(){ saveTask(this.dataset.id); });
+  $('modal-save-new-task').addEventListener('click', function(){ saveTaskAndNew(this.dataset.id); });
+}
+// Saves the current task as-is, then opens a fresh blank task form for the
+// user to schedule next — carrying forward the same client/supplier/trip
+// links and leaving a history trail (the just-saved task's title + notes)
+// in the new task's description, so context isn't lost between follow-ups.
+function saveTaskAndNew(id){
+  var title = gv('tk-title');
+  if(!title){toast('Task title is required','err');return;}
+  var clientId = gv('tk-client');
+  var vendorId = gv('tk-vendor');
+  var tripId = gv('tk-trip');
+  var desc = gv('tk-desc');
+
+  saveTask(id);
+
+  openTaskForm();
+  var clientSel=document.getElementById('tk-client'); if(clientSel) clientSel.value=clientId;
+  var vendorSel=document.getElementById('tk-vendor'); if(vendorSel) vendorSel.value=vendorId;
+  var tripSel=document.getElementById('tk-trip'); if(tripSel) tripSel.value=tripId;
+  document.getElementById('tk-desc').value = 'Follow-up to: "'+title+'"'+(desc?'\n'+desc:'');
+  document.getElementById('tk-title').focus();
 }
 
 function saveTask(id){
