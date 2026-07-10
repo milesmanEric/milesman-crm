@@ -440,7 +440,7 @@ function taskClientId(t){
   return null;
 }
 function countDistinctTrips(clientId){
-  var trips = db.trips.filter(function(t){return t.clientId===clientId;});
+  var trips = db.trips.filter(function(t){return t.clientId===clientId || (t.clientIds||[]).includes(clientId);});
   var seen = {};
   var count = 0;
   trips.forEach(function(t){
@@ -4409,7 +4409,7 @@ function openClientForm(id){
       '</div>'+
       (id ? (function(){
         // Direct trips for this client
-        var clientTrips = db.trips.filter(function(t){return t.clientId===id;}).sort(function(a,b){return (b.departDate||'').localeCompare(a.departDate||'');});
+        var clientTrips = db.trips.filter(function(t){return t.clientId===id || (t.clientIds||[]).includes(id);}).sort(function(a,b){return (b.departDate||'').localeCompare(a.departDate||'');});
 
         // Supplier trips now show as CRM trips via revenue import
         var supplierTrips = [];
@@ -4429,7 +4429,7 @@ function openClientForm(id){
             '<td style="font-size:11px;font-weight:600;color:#111;padding:8px 10px">$'+(t.totalValue?Number(t.totalValue).toLocaleString():'—')+'</td>'+
             '<td style="font-size:11px;color:#555;padding:8px 10px">'+(t.invoiceNum||t.bookingRef||'—')+'</td>'+
             '<td style="font-size:11px;color:#555;padding:8px 10px">'+(t.product||'—')+'</td>'+
-            '<td style="font-size:11px;color:#059669;font-weight:600;padding:8px 10px">CRM</td>'+
+            '<td style="font-size:11px;color:#059669;font-weight:600;padding:8px 10px">'+(t.clientId===id?'Primary':'Companion')+'</td>'+
           '</tr>';
         }).join('');
 
@@ -4777,11 +4777,23 @@ function openTripForm(id){
   const initCid=d.clientId||selCid||'';
   const copts=[...db.clients].sort(function(a,b){return (a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase());}).map(function(c){return '<option value="'+c.id+'"'+(c.id===initCid?' selected':'')+'>'+c.name+' ('+c.id+')</option>';}).join('');
   const vopts=[...db.vendors].sort(function(a,b){return (a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase());}).map(function(v){return '<option value="'+v.id+'"'+(v.id===d.supplierId?' selected':'')+'>'+v.name+'</option>';}).join('');
+  const additionalClientChecks=[...db.clients].sort(function(a,b){return (a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase());}).map(function(c){
+    var checked=(d.clientIds||[]).includes(c.id)?'checked':'';
+    return '<label style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:13px;cursor:pointer">'+
+      '<input type="checkbox" class="trip-client-cb" value="'+c.id+'" '+checked+' style="width:14px;height:14px">'+
+      '<span>'+c.name+'</span>'+
+    '</label>';
+  }).join('');
   $('modal').innerHTML=
     '<div class="modal-hdr"><div class="modal-title">'+(id?'Edit Trip':'Add Trip')+'</div><button class="close-btn" id="modal-close">&#x2715;</button></div>'+
     '<div class="fg">'+
       fld('Client','<select id="tc"><option value="">Select client...</option>'+copts+'</select>',true)+
       fld('Supplier','<select id="tsup"><option value="">None</option>'+vopts+'</select>')+
+      '<div class="field full"><label>Additional Clients <span class="hint" style="text-transform:none;font-weight:400">(if more than one client is on this trip)</span></label>'+
+        '<div style="border:1px solid #e5e7eb;border-radius:8px;padding:10px;max-height:180px;overflow-y:auto;background:#fafafa">'+
+          (additionalClientChecks || '<div style="color:#aaa;font-size:12px">No clients yet</div>')+
+        '</div>'+
+      '</div>'+
       fld('Origin',inp('tor','text',d.origin,'e.g. JFK'))+fld('Destination',inp('tde','text',d.destination,'e.g. Tokyo, Japan'))+
       fld('Depart Date',inp('tdd','date',d.departDate))+fld('Return Date',inp('trd','date',d.returnDate))+
       fld('Status',sel('tst',STATUSES,d.status||'Planning'))+fld('Trip Type',sel('tty',TYPES,d.type||'Leisure'))+
@@ -4850,7 +4862,11 @@ function saveTrip(id){
   const client=db.clients.find(function(c){return c.id===clientId;});
   const supplierId=gv('tsup');
   const supplier=supplierId?db.vendors.find(function(v){return v.id===supplierId;}):null;
-  const data={clientId:clientId,clientName:client?client.name:'',supplierId:supplierId,supplierName:supplier?supplier.name:'',origin:gv('tor'),destination:dest,departDate:gv('tdd'),returnDate:gv('trd'),status:gv('tst')||'Planning',type:gv('tty')||'Leisure',airline:gv('tai'),flightClass:gv('tcl')||'Economy',hotel:gv('tho'),hotelNights:gn('thn'),pointsUsed:gn('tpu'),cashPaid:gn('tcp'),totalValue:gn('tva'),bookingRef:gv('tbr'),product:gv('tpr'),notes:gv('tno')};
+  // clientId/clientName stay the primary/billing contact (revenue, CSV export,
+  // and invoice-dedup logic all key off this) — clientIds is purely additional
+  // travelers linked to the same trip so it also shows on their own records.
+  const additionalClientIds=Array.from(document.querySelectorAll('.trip-client-cb:checked')).map(function(cb){return cb.value;}).filter(function(cid){return cid!==clientId;});
+  const data={clientId:clientId,clientName:client?client.name:'',clientIds:additionalClientIds,supplierId:supplierId,supplierName:supplier?supplier.name:'',origin:gv('tor'),destination:dest,departDate:gv('tdd'),returnDate:gv('trd'),status:gv('tst')||'Planning',type:gv('tty')||'Leisure',airline:gv('tai'),flightClass:gv('tcl')||'Economy',hotel:gv('tho'),hotelNights:gn('thn'),pointsUsed:gn('tpu'),cashPaid:gn('tcp'),totalValue:gn('tva'),bookingRef:gv('tbr'),product:gv('tpr'),notes:gv('tno')};
   if(client){
     client.mileageBalances=readBalanceGrid('mb',AIRLINES,ELITE_STATUS);
     client.hotelBalances=readBalanceGrid('hb',HOTELS,ELITE_STATUS);
