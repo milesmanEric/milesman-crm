@@ -270,6 +270,7 @@ tr:last-child td{border-bottom:none}
         <button class="sync-btn" id="btn-clean-import-revenue" style="color:#7c3aed;border-color:#c4b5fd">&#129529; Clean &amp; Import Revenue File</button>
         <button class="sync-btn" id="btn-import-csv" style="color:#059669;border-color:#6ee7b7">&#128203; Import Clients CSV</button>
         <button class="sync-btn" id="btn-import-tripform" style="color:#059669;border-color:#6ee7b7">&#9992;&#65039; Import Book a Trip Form PDF(s)</button>
+        <button class="sync-btn" id="btn-import-formspree" style="color:#059669;border-color:#6ee7b7">&#128231; Import Formspree Submissions</button>
         <button class="sync-btn" id="btn-clear-trips" style="color:#dc2626;border-color:#fca5a5">&#128465; Clear All Trips</button>
       </div>
 
@@ -2167,6 +2168,113 @@ function importCSV(){
       }catch(err){toast('Could not read CSV: '+err.message,'err');}
     };r.readAsText(f);
   };i.click();
+}
+
+// ── Formspree intake form import ──────────────────────────────────────────
+// Imports submissions exported (as CSV) from the Formspree dashboard behind
+// intake-form.html — matches/enriches a client record by name+email, same
+// as importCSV, then also creates a follow-up Planner task from whatever
+// trip-request fields were filled in. Doesn't create a Trip record directly
+// — a form submission is a request, not a confirmed booking, so it becomes
+// a task to review and turn into a real trip once quoted/booked.
+function importFormspreeSubmissions(){
+  const i=document.createElement('input');
+  i.type='file'; i.accept='.csv,.xlsx,.xls';
+  i.onchange=async function(e){
+    const file=e.target.files[0];
+    if(!file) return;
+    try{
+      const rows = await loadTableFromFile(file);
+      if(!rows.length){toast('File appears to be empty','err');return;}
+      const hdrsLower = rows[0].map(function(h){return (h||'').toString().trim().toLowerCase();});
+      function col(row, name){
+        var idx = hdrsLower.indexOf(name.toLowerCase());
+        return idx>=0 ? (row[idx]||'').toString().trim() : '';
+      }
+
+      var added=0, enriched=0, tasksCreated=0, skipped=0;
+      for(var ri=1; ri<rows.length; ri++){
+        var row = rows[ri];
+        var name = col(row,'Full Name');
+        if(!name){ skipped++; continue; }
+        var email = col(row,'Email');
+        var phone = col(row,'Phone');
+        var location = col(row,'Location');
+        var birthdate = col(row,'Birthdate');
+        var referredBy = col(row,'Referred By');
+        var referredByDetail = col(row,'Referred By Detail');
+        var preferredAirline = col(row,'Preferred Airline');
+        var preferredHotel = col(row,'Preferred Hotel');
+        var preferredCruiseLine = col(row,'Preferred Cruise Line');
+
+        var nameFirst=getFirstName(name).toLowerCase(), nameLast=getLastName(name).toLowerCase();
+        var client = db.clients.find(function(c){
+          if(email && c.email && c.email.toLowerCase()===email.toLowerCase()) return true;
+          if((c.name||'').toLowerCase().trim()===name.toLowerCase().trim()) return true;
+          var cFirst=getFirstName(c.name).toLowerCase(), cLast=getLastName(c.name).toLowerCase();
+          return nameFirst && nameLast && nameFirst!==nameLast && cFirst===nameFirst && cLast===nameLast;
+        });
+
+        if(client){
+          var filled=[];
+          if(email && !client.email){client.email=email;filled.push('email');}
+          if(phone && !client.phone){client.phone=phone;filled.push('phone');}
+          if(location && !client.location){client.location=location;filled.push('location');}
+          if(birthdate && !client.birthdate){client.birthdate=birthdate;filled.push('birthdate');}
+          if(referredBy && !client.referredBy){client.referredBy=referredBy;client.referredByDetail=referredByDetail;filled.push('referredBy');}
+          if(preferredAirline && !client.preferredAirline){client.preferredAirline=preferredAirline;filled.push('preferredAirline');}
+          if(preferredHotel && !client.preferredHotel){client.preferredHotel=preferredHotel;filled.push('preferredHotel');}
+          if(preferredCruiseLine && !client.preferredCruiseLine){client.preferredCruiseLine=preferredCruiseLine;filled.push('preferredCruiseLine');}
+          if(filled.length) enriched++;
+        } else {
+          client = {id:newId('C',db.clients), name:toLastFirst(name), email:email, phone:phone, location:location,
+            birthdate:birthdate, referredBy:referredBy, referredByDetail:referredByDetail,
+            preferredAirline:preferredAirline, preferredHotel:preferredHotel, preferredCruiseLine:preferredCruiseLine,
+            notes:'', joined:today(), totalTrips:0, notesLog:[]};
+          db.clients.push(client);
+          added++;
+        }
+
+        var destination = col(row,'Destination');
+        var tripLines=[];
+        function addLine(label,val){ if(val) tripLines.push(label+': '+val); }
+        addLine('Origin', col(row,'Origin'));
+        addLine('Destination', destination);
+        addLine('Depart Date', col(row,'Depart Date'));
+        addLine('Return Date', col(row,'Return Date'));
+        addLine('Trip Type', col(row,'Trip Type'));
+        addLine('Class of Service', col(row,'Class of Service'));
+        addLine('Hotel Nights', col(row,'Hotel Nights'));
+        addLine('Points To Use', col(row,'Points To Use'));
+        addLine('Budget', col(row,'Budget'));
+        addLine('Booking Reference', col(row,'Booking Reference'));
+        addLine('Airline Points Balances', col(row,'Airline Points Balances'));
+        addLine('Hotel Points Balances', col(row,'Hotel Points Balances'));
+        addLine('Credit Card Points Balances', col(row,'Credit Card Points Balances'));
+        addLine('Notes', col(row,'Notes'));
+
+        if(tripLines.length){
+          db.planner.push({
+            id:newId('PL',db.planner),
+            title:'New trip request'+(destination?': '+destination:''),
+            dueDate:today(), done:false, clientId:client.id,
+            completionNoteType:'General',
+            desc: tripLines.join('\n'),
+            createdAt: today()
+          });
+          tasksCreated++;
+        }
+      }
+
+      snapshot('Import Formspree submissions');
+      saveDB(); render();
+      toast('Imported '+added+' new client'+(added!==1?'s':'')+(enriched?', enriched '+enriched+' existing':'')+', created '+tasksCreated+' follow-up task'+(tasksCreated!==1?'s':'')+(skipped?' ('+skipped+' skipped)':''),'ok');
+    }catch(err){
+      console.error(err);
+      toast('Could not read file: '+err.message,'err');
+    }
+  };
+  i.click();
 }
 
 // ── Book a Trip Form PDF import ──────────────────────────────────────────
@@ -5155,6 +5263,7 @@ function bindClick(id, handler){
   bindClick('btn-log-mailchimp', openLogMailchimpModal);
   bindClick('btn-sync-mailchimp', syncMailchimpEmails);
   bindClick('btn-import-csv', importCSV);
+  bindClick('btn-import-formspree', importFormspreeSubmissions);
   bindClick('btn-import-tripform', importTripFormPDF);
   bindClick('btn-import-revenue', importRevenue);
   bindClick('btn-clean-import-revenue', cleanAndImportRevenue);

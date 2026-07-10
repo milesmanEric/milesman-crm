@@ -62,8 +62,12 @@
       </div>
       <div class="field">
         <label>Email *</label>
-        <input type="email" name="_replyto" required placeholder="jane@example.com">
+        <input type="email" id="email-field" name="Email" required placeholder="jane@example.com">
       </div>
+      <!-- Mirrors the Email field into Formspree's special _replyto name so
+           the notification email's Reply-To is set, without giving the CSV
+           export a "_replyto" column instead of a proper "Email" one. -->
+      <input type="hidden" id="replyto-field" name="_replyto">
       <div class="field">
         <label>Phone</label>
         <input type="tel" name="Phone" placeholder="(555) 555-5555">
@@ -216,6 +220,9 @@
   });
 
   var form = document.getElementById('intake-form');
+  document.getElementById('email-field').addEventListener('input', function(){
+    document.getElementById('replyto-field').value = this.value;
+  });
   form.addEventListener('submit', function(e){
     if(form.action.indexOf('YOUR_FORM_ID') !== -1){
       e.preventDefault();
