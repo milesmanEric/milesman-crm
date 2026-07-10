@@ -121,7 +121,7 @@
           <option>Other</option>
         </select>
       </div>
-      <div class="field full">
+      <div class="field">
         <label>Preferred Cruise Line</label>
         <select name="Preferred Cruise Line">
           <option value="">No preference</option>
@@ -130,6 +130,10 @@
           <option>Disney Cruise Line</option><option>Holland America</option>
           <option>MSC Cruises</option><option>Viking</option><option>Other</option>
         </select>
+      </div>
+      <div class="field full">
+        <label>Cruise Loyalty Level <span class="hint">(optional — e.g. "Princess Captain's Circle Platinum")</span></label>
+        <input type="text" name="Cruise Loyalty Level" placeholder="Program and tier">
       </div>
       <div class="field full">
         <label>Airline Mileage Balances <span class="hint">(optional — fill in whichever apply)</span></label>
@@ -167,11 +171,53 @@
       </div>
       <div class="field">
         <label>Trip Type</label>
-        <select name="Trip Type">
+        <select id="trip-type-select" name="Trip Type">
           <option value="">-- Select --</option>
           <option>Leisure</option><option>Business</option><option>Honeymoon</option>
           <option>Family</option><option>Adventure</option><option>Cruise</option>
         </select>
+      </div>
+      <div class="field full" id="cruise-details-wrap" style="display:none">
+        <div class="section-title" style="margin-top:8px">Cruise Details</div>
+        <div class="fg">
+          <div class="field">
+            <label>Cruise Line</label>
+            <select name="Cruise Line">
+              <option value="">-- Select --</option>
+              <option>Virgin Voyages</option><option>Royal Caribbean</option><option>Carnival</option>
+              <option>Norwegian</option><option>Princess</option><option>Celebrity</option>
+              <option>Disney Cruise Line</option><option>Holland America</option>
+              <option>MSC Cruises</option><option>Viking</option><option>Other</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Number of Nights</label>
+            <input type="number" name="Cruise Nights" min="0" placeholder="7">
+          </div>
+          <div class="field">
+            <label>Sailing Date</label>
+            <input type="date" name="Sailing Date">
+          </div>
+          <div class="field">
+            <label>Departure Port</label>
+            <input type="text" name="Departure Port" placeholder="e.g. Fort Lauderdale, FL">
+          </div>
+          <div class="field">
+            <label>Cabin Type</label>
+            <select name="Cabin Type">
+              <option value="">-- Select --</option>
+              <option>Interior</option><option>Window</option><option>Balcony</option><option>Suite</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>People in Cabin</label>
+            <input type="number" name="People In Cabin" min="1" placeholder="2">
+          </div>
+          <div class="field full">
+            <label>Loyalty Number <span class="hint">(for the cruise line above, if you have one)</span></label>
+            <input type="text" name="Cruise Loyalty Number" placeholder="e.g. Captain's Circle #12345678">
+          </div>
+        </div>
       </div>
       <div class="field">
         <label>Class of Service</label>
@@ -250,7 +296,8 @@
         '<div class="field"><label>Birthdate</label><input type="date" name="'+p+' - Birthdate"></div>'+
         '<div class="field"><label>Preferred Airline</label><select name="'+p+' - Preferred Airline">'+selectOptionsHtml(AIRLINES)+'</select></div>'+
         '<div class="field"><label>Preferred Hotel Brand</label><select name="'+p+' - Preferred Hotel">'+selectOptionsHtml(HOTELS)+'</select></div>'+
-        '<div class="field full"><label>Preferred Cruise Line</label><select name="'+p+' - Preferred Cruise Line">'+selectOptionsHtml(CRUISE_LINES)+'</select></div>'+
+        '<div class="field"><label>Preferred Cruise Line</label><select name="'+p+' - Preferred Cruise Line">'+selectOptionsHtml(CRUISE_LINES)+'</select></div>'+
+        '<div class="field full"><label>Cruise Loyalty Level <span class="hint">(optional)</span></label><input type="text" name="'+p+' - Cruise Loyalty Level" placeholder="Program and tier"></div>'+
         '<div class="field full"><label>Airline Mileage Balances <span class="hint">(optional)</span></label><div class="balance-grid">'+balanceGridHtml(AIRLINES,p+' Airline',true)+'</div></div>'+
         '<div class="field full"><label>Hotel Points Balances <span class="hint">(optional)</span></label><div class="balance-grid">'+balanceGridHtml(HOTELS,p+' Hotel',true)+'</div></div>'+
         '<div class="field full"><label>Credit Card Points Balances <span class="hint">(optional)</span></label><div class="balance-grid">'+balanceGridHtml(CREDIT_CARDS,p+' Credit Card',false)+'</div></div>'+
@@ -289,6 +336,12 @@
       refWrap.style.display = 'none';
       refDetail.value = '';
     }
+  });
+
+  var tripTypeSelect = document.getElementById('trip-type-select');
+  var cruiseWrap = document.getElementById('cruise-details-wrap');
+  tripTypeSelect.addEventListener('change', function(){
+    cruiseWrap.style.display = this.value==='Cruise' ? 'block' : 'none';
   });
 
   var form = document.getElementById('intake-form');
