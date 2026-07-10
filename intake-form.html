@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Miles Man — Travel Request Form</title>
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:#f7f8fa;color:#111;padding:24px 16px 60px}
+  .wrap{max-width:640px;margin:0 auto}
+  .hdr{text-align:center;margin-bottom:24px}
+  .hdr .tag{font-size:13px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#2563eb}
+  .hdr h1{font-size:24px;margin:6px 0 8px}
+  .hdr p{font-size:14px;color:#666;margin:0}
+  form{background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:28px 24px;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+  .section-title{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#2563eb;margin:28px 0 14px;padding-top:14px;border-top:1px solid #f0f0f0}
+  .section-title:first-of-type{margin-top:0;padding-top:0;border-top:none}
+  .fg{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .field{display:flex;flex-direction:column;gap:5px;min-width:0;margin-bottom:14px}
+  .field.full{grid-column:1/-1}
+  .field label{font-size:12px;font-weight:600;color:#444}
+  .field .hint{font-size:11px;color:#888;font-weight:400}
+  .field input,.field select,.field textarea{padding:10px 12px;border-radius:8px;border:1px solid #d1d5db;font-size:14px;font-family:inherit;color:#111;background:#fafafa}
+  .field input:focus,.field select:focus,.field textarea:focus{outline:2px solid #93c5fd;border-color:#2563eb}
+  .field textarea{resize:vertical;min-height:64px}
+  .radio-row{display:flex;flex-wrap:wrap;gap:14px}
+  .radio-row label{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:500;color:#333;cursor:pointer}
+  .radio-row input{width:15px;height:15px}
+  #ref-detail-wrap{display:none}
+  .submit-row{margin-top:24px}
+  button[type="submit"]{width:100%;padding:13px;border-radius:9px;border:none;background:#2563eb;color:#fff;font-size:15px;font-weight:600;font-family:inherit;cursor:pointer}
+  button[type="submit"]:hover{background:#1d4ed8}
+  .footnote{text-align:center;font-size:12px;color:#999;margin-top:16px}
+  #ok-msg{display:none;background:#d1fae5;color:#065f46;border:1px solid #6ee7b7;border-radius:10px;padding:16px;text-align:center;font-size:14px;font-weight:600;margin-bottom:20px}
+  @media(max-width:520px){.fg{grid-template-columns:1fr}.field.full{grid-column:auto}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hdr">
+    <div class="tag">Miles Man</div>
+    <h1>Plan Your Next Trip</h1>
+    <p>Tell us about yourself and where you'd like to go — we'll follow up to build your itinerary.</p>
+  </div>
+
+  <div id="ok-msg">Thanks! Your request has been sent — we'll be in touch shortly.</div>
+
+  <!--
+    SETUP: replace YOUR_FORM_ID below with your real Formspree endpoint.
+    Sign up at https://formspree.io, create a new form, and copy the ID
+    from the URL Formspree gives you (formspree.io/f/XXXXXXX).
+  -->
+  <form id="intake-form" action="https://formspree.io/f/YOUR_FORM_ID" method="POST">
+    <input type="hidden" name="_subject" value="New Travel Request — Miles Man website">
+    <input type="text" name="_gotcha" style="display:none">
+
+    <div class="section-title">Your Information</div>
+    <div class="fg">
+      <div class="field full">
+        <label>Full Name *</label>
+        <input type="text" name="Full Name" required placeholder="Jane Smith">
+      </div>
+      <div class="field">
+        <label>Email *</label>
+        <input type="email" name="_replyto" required placeholder="jane@example.com">
+      </div>
+      <div class="field">
+        <label>Phone</label>
+        <input type="tel" name="Phone" placeholder="(555) 555-5555">
+      </div>
+      <div class="field full">
+        <label>Location <span class="hint">(city, state)</span></label>
+        <input type="text" name="Location" placeholder="Westfield, NJ">
+      </div>
+      <div class="field">
+        <label>Birthdate</label>
+        <input type="date" name="Birthdate">
+      </div>
+      <div class="field">
+        <label>How did you hear about us?</label>
+        <select id="ref-select" name="Referred By">
+          <option value="">-- Select --</option>
+          <option value="Subscriber">Newsletter Subscriber</option>
+          <option value="Ad">Ad</option>
+          <option value="Event">Event</option>
+          <option value="Person">Referred by a Person</option>
+          <option value="Outbound Solicit">Outbound Solicit</option>
+          <option value="Other">Other</option>
+        </select>
+      </div>
+      <div class="field full" id="ref-detail-wrap">
+        <label id="ref-detail-label">Details</label>
+        <input type="text" id="ref-detail" name="Referred By Detail" placeholder="Event or person's name">
+      </div>
+      <div class="field">
+        <label>Preferred Airline</label>
+        <select name="Preferred Airline">
+          <option value="">No preference</option>
+          <option>American</option><option>United</option><option>Delta</option>
+          <option>Southwest</option><option>JetBlue</option><option>Qatar Airways</option>
+          <option>ANA</option><option>Emirates</option><option>Lufthansa</option>
+          <option>British Airways</option><option>Air France</option><option>Virgin Atlantic</option>
+          <option>Other</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Preferred Hotel Brand</label>
+        <select name="Preferred Hotel">
+          <option value="">No preference</option>
+          <option>Marriott</option><option>Hilton</option><option>Hyatt</option><option>IHG</option>
+          <option>Wyndham</option><option>Four Seasons</option><option>Ritz-Carlton</option>
+          <option>W Hotels</option><option>Kimpton</option><option>Conrad</option>
+          <option>Other</option>
+        </select>
+      </div>
+      <div class="field full">
+        <label>Preferred Cruise Line</label>
+        <select name="Preferred Cruise Line">
+          <option value="">No preference</option>
+          <option>Virgin Voyages</option><option>Royal Caribbean</option><option>Carnival</option>
+          <option>Norwegian</option><option>Princess</option><option>Celebrity</option>
+          <option>Disney Cruise Line</option><option>Holland America</option>
+          <option>MSC Cruises</option><option>Viking</option><option>Other</option>
+        </select>
+      </div>
+      <div class="field full">
+        <label>Airline Points Balances <span class="hint">(optional — e.g. "United: 45,000, Delta: 12,000")</span></label>
+        <textarea name="Airline Points Balances" rows="2"></textarea>
+      </div>
+      <div class="field full">
+        <label>Hotel Points Balances <span class="hint">(optional)</span></label>
+        <textarea name="Hotel Points Balances" rows="2"></textarea>
+      </div>
+      <div class="field full">
+        <label>Credit Card Points Balances <span class="hint">(optional — please list card name, no account numbers)</span></label>
+        <textarea name="Credit Card Points Balances" rows="2"></textarea>
+      </div>
+    </div>
+
+    <div class="section-title">Trip Details</div>
+    <div class="fg">
+      <div class="field">
+        <label>Departure City / Airport</label>
+        <input type="text" name="Origin" placeholder="e.g. JFK">
+      </div>
+      <div class="field">
+        <label>Destination *</label>
+        <input type="text" name="Destination" required placeholder="e.g. Tokyo, Japan">
+      </div>
+      <div class="field">
+        <label>Depart Date</label>
+        <input type="date" name="Depart Date">
+      </div>
+      <div class="field">
+        <label>Return Date</label>
+        <input type="date" name="Return Date">
+      </div>
+      <div class="field">
+        <label>Trip Type</label>
+        <select name="Trip Type">
+          <option value="">-- Select --</option>
+          <option>Leisure</option><option>Business</option><option>Honeymoon</option>
+          <option>Family</option><option>Adventure</option><option>Cruise</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Class of Service</label>
+        <select name="Class of Service">
+          <option value="">-- Select --</option>
+          <option>Economy</option><option>Premium Economy</option>
+          <option>Business</option><option>First</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Hotel Nights Needed</label>
+        <input type="number" name="Hotel Nights" min="0" placeholder="0">
+      </div>
+      <div class="field">
+        <label>Points You'd Like to Use</label>
+        <input type="text" name="Points To Use" placeholder="e.g. 60,000 United miles">
+      </div>
+      <div class="field full">
+        <label>Approximate Budget <span class="hint">(optional, cash portion)</span></label>
+        <input type="text" name="Budget" placeholder="e.g. $2,000">
+      </div>
+      <div class="field full">
+        <label>Existing Booking Reference <span class="hint">(if you already booked something)</span></label>
+        <input type="text" name="Booking Reference" placeholder="e.g. UA-44129LHR">
+      </div>
+      <div class="field full">
+        <label>Notes / Special Requests</label>
+        <textarea name="Notes" rows="4" placeholder="Anything else we should know — number of travelers, special occasions, seat preferences, etc."></textarea>
+      </div>
+    </div>
+
+    <div class="submit-row">
+      <button type="submit">Send Request</button>
+    </div>
+  </form>
+  <div class="footnote">We'll never share your information. Questions? Call (908) 419-7700.</div>
+</div>
+
+<script>
+  var refSelect = document.getElementById('ref-select');
+  var refWrap = document.getElementById('ref-detail-wrap');
+  var refLabel = document.getElementById('ref-detail-label');
+  var refDetail = document.getElementById('ref-detail');
+  refSelect.addEventListener('change', function(){
+    if(this.value==='Event' || this.value==='Person' || this.value==='Other'){
+      refWrap.style.display = 'flex';
+      refLabel.textContent = this.value==='Person' ? 'Person\'s Name' : (this.value==='Event' ? 'Event Name' : 'Please specify');
+    } else {
+      refWrap.style.display = 'none';
+      refDetail.value = '';
+    }
+  });
+
+  var form = document.getElementById('intake-form');
+  form.addEventListener('submit', function(e){
+    if(form.action.indexOf('YOUR_FORM_ID') !== -1){
+      e.preventDefault();
+      alert('Form setup incomplete: replace YOUR_FORM_ID in the form action with your real Formspree endpoint.');
+      return;
+    }
+    e.preventDefault();
+    var data = new FormData(form);
+    fetch(form.action, {
+      method: 'POST',
+      body: data,
+      headers: { 'Accept': 'application/json' }
+    }).then(function(resp){
+      if(resp.ok){
+        form.style.display = 'none';
+        document.getElementById('ok-msg').style.display = 'block';
+      } else {
+        alert('Something went wrong submitting the form. Please try again or call us directly.');
+      }
+    }).catch(function(){
+      alert('Something went wrong submitting the form. Please try again or call us directly.');
+    });
+  });
+</script>
+</body>
+</html>
