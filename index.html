@@ -2276,7 +2276,31 @@ function importFormspreeSubmissions(){
         addLine('Points To Use', col(row,'Points To Use'));
         addLine('Budget', col(row,'Budget'));
         addLine('Booking Reference', col(row,'Booking Reference'));
+        addLine('Number of Travelers', col(row,'Number of Travelers'));
         addLine('Notes', col(row,'Notes'));
+
+        // Companion travelers (Traveler 2+) aren't turned into separate client
+        // records — just compiled into the task so the agent has their prefs
+        // and balances on hand when planning, same fields as the primary
+        // contact minus contact/lead-source info that only applies to them.
+        var travelerCount = parseInt(col(row,'Number of Travelers'),10)||1;
+        for(var tn=2; tn<=travelerCount; tn++){
+          var tp='Traveler '+tn;
+          var tName=col(row,tp+' - Full Name');
+          if(!tName) continue;
+          var tParts=[tName];
+          var tBirthdate=col(row,tp+' - Birthdate'); if(tBirthdate) tParts.push('DOB '+tBirthdate);
+          var tAirline=col(row,tp+' - Preferred Airline'); if(tAirline) tParts.push('Airline: '+tAirline);
+          var tHotel=col(row,tp+' - Preferred Hotel'); if(tHotel) tParts.push('Hotel: '+tHotel);
+          var tCruise=col(row,tp+' - Preferred Cruise Line'); if(tCruise) tParts.push('Cruise: '+tCruise);
+          var tAirlineBal=extractBalances(row,AIRLINES,tp+' Airline',true);
+          var tHotelBal=extractBalances(row,HOTELS,tp+' Hotel',true);
+          var tCcBal=extractBalances(row,CREDIT_CARDS,tp+' Credit Card',false);
+          if(tAirlineBal) tParts.push('Airline balances: '+Object.keys(tAirlineBal).map(function(k){return k+' '+tAirlineBal[k].balance;}).join(', '));
+          if(tHotelBal) tParts.push('Hotel balances: '+Object.keys(tHotelBal).map(function(k){return k+' '+tHotelBal[k].balance;}).join(', '));
+          if(tCcBal) tParts.push('Credit card balances: '+Object.keys(tCcBal).map(function(k){return k+' '+tCcBal[k];}).join(', '));
+          tripLines.push(tp+': '+tParts.join(' | '));
+        }
 
         if(tripLines.length){
           db.planner.push({

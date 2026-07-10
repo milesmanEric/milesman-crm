@@ -77,6 +77,10 @@
         <input type="text" name="Location" placeholder="Westfield, NJ">
       </div>
       <div class="field">
+        <label>Number of Travelers <span class="hint">(including you)</span></label>
+        <input type="number" id="num-travelers" name="Number of Travelers" min="1" value="1">
+      </div>
+      <div class="field">
         <label>Birthdate</label>
         <input type="date" name="Birthdate">
       </div>
@@ -140,6 +144,8 @@
         <div class="balance-grid" id="cc-balances-grid"></div>
       </div>
     </div>
+
+    <div id="additional-travelers"></div>
 
     <div class="section-title">Trip Details</div>
     <div class="fg">
@@ -211,20 +217,65 @@
   var AIRLINES = ['American','United','Delta','Southwest','JetBlue','Qatar Airways','ANA','Emirates','Lufthansa','British Airways','Air France','Virgin Atlantic'];
   var HOTELS = ['Marriott','Hilton','Hyatt','IHG','Wyndham','Four Seasons','Ritz-Carlton','W Hotels','Kimpton','Conrad'];
   var CREDIT_CARDS = ['Chase Sapphire Preferred','Chase Sapphire Reserve','Chase Ink Business Preferred','Amex Platinum','Amex Gold','Amex Business Platinum','Capital One Venture X','Citi Premier','Citi Prestige','Bilt Mastercard'];
+  var CRUISE_LINES = ['Virgin Voyages','Royal Caribbean','Carnival','Norwegian','Princess','Celebrity','Disney Cruise Line','Holland America','MSC Cruises','Viking'];
   var ELITE_STATUS = ['None','Silver','Gold','Platinum','Diamond'];
 
-  function buildBalanceGrid(containerId, list, prefix, includeStatus){
-    var container = document.getElementById(containerId);
-    container.innerHTML = list.map(function(name){
+  function balanceGridHtml(list, prefix, includeStatus){
+    return list.map(function(name){
       var statusHtml = includeStatus
         ? '<select name="'+prefix+' Status - '+name+'"><option value="">Status</option>'+ELITE_STATUS.map(function(s){return '<option>'+s+'</option>';}).join('')+'</select>'
         : '';
       return '<div class="balance-row"><span>'+name+'</span><input type="number" min="0" name="'+prefix+' - '+name+'" placeholder="0">'+statusHtml+'</div>';
     }).join('');
   }
+  function buildBalanceGrid(containerId, list, prefix, includeStatus){
+    document.getElementById(containerId).innerHTML = balanceGridHtml(list, prefix, includeStatus);
+  }
   buildBalanceGrid('airline-balances-grid', AIRLINES, 'Airline', true);
   buildBalanceGrid('hotel-balances-grid', HOTELS, 'Hotel', true);
   buildBalanceGrid('cc-balances-grid', CREDIT_CARDS, 'Credit Card', false);
+
+  // Additional travelers get the same personal-info + balance fields as
+  // Traveler 1, minus the contact/lead-source fields (Email, Phone,
+  // Referred By) which describe the primary contact, not each traveler.
+  function selectOptionsHtml(list){
+    return '<option value="">No preference</option>'+list.map(function(x){return '<option>'+x+'</option>';}).join('')+'<option>Other</option>';
+  }
+  function travelerBlockHtml(n){
+    var p = 'Traveler '+n;
+    return (
+      '<div class="section-title">'+p+'</div>'+
+      '<div class="fg">'+
+        '<div class="field full"><label>Full Name</label><input type="text" name="'+p+' - Full Name" placeholder="'+p+' full name"></div>'+
+        '<div class="field"><label>Birthdate</label><input type="date" name="'+p+' - Birthdate"></div>'+
+        '<div class="field"><label>Preferred Airline</label><select name="'+p+' - Preferred Airline">'+selectOptionsHtml(AIRLINES)+'</select></div>'+
+        '<div class="field"><label>Preferred Hotel Brand</label><select name="'+p+' - Preferred Hotel">'+selectOptionsHtml(HOTELS)+'</select></div>'+
+        '<div class="field full"><label>Preferred Cruise Line</label><select name="'+p+' - Preferred Cruise Line">'+selectOptionsHtml(CRUISE_LINES)+'</select></div>'+
+        '<div class="field full"><label>Airline Mileage Balances <span class="hint">(optional)</span></label><div class="balance-grid">'+balanceGridHtml(AIRLINES,p+' Airline',true)+'</div></div>'+
+        '<div class="field full"><label>Hotel Points Balances <span class="hint">(optional)</span></label><div class="balance-grid">'+balanceGridHtml(HOTELS,p+' Hotel',true)+'</div></div>'+
+        '<div class="field full"><label>Credit Card Points Balances <span class="hint">(optional)</span></label><div class="balance-grid">'+balanceGridHtml(CREDIT_CARDS,p+' Credit Card',false)+'</div></div>'+
+      '</div>'
+    );
+  }
+  function collectValues(container){
+    var vals = {};
+    container.querySelectorAll('input, select').forEach(function(el){ if(el.name) vals[el.name] = el.value; });
+    return vals;
+  }
+  function restoreValues(container, vals){
+    container.querySelectorAll('input, select').forEach(function(el){ if(el.name && vals[el.name]!==undefined) el.value = vals[el.name]; });
+  }
+  var travelersContainer = document.getElementById('additional-travelers');
+  function renderAdditionalTravelers(){
+    var count = Math.max(1, parseInt(document.getElementById('num-travelers').value, 10) || 1);
+    var savedValues = collectValues(travelersContainer);
+    var html = '';
+    for(var n=2; n<=count; n++){ html += travelerBlockHtml(n); }
+    travelersContainer.innerHTML = html;
+    restoreValues(travelersContainer, savedValues);
+  }
+  document.getElementById('num-travelers').addEventListener('input', renderAdditionalTravelers);
+  renderAdditionalTravelers();
 
   var refSelect = document.getElementById('ref-select');
   var refWrap = document.getElementById('ref-detail-wrap');
