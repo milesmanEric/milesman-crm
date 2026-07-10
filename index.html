@@ -2191,6 +2191,18 @@ function importFormspreeSubmissions(){
         var idx = hdrsLower.indexOf(name.toLowerCase());
         return idx>=0 ? (row[idx]||'').toString().trim() : '';
       }
+      // Reads the per-brand "Airline - American" / "Airline Status - American"
+      // style columns the intake form's balance grids submit, matching the
+      // exact field names buildBalanceGrid() in intake-form.html generates.
+      function extractBalances(row, list, prefix, includeStatus){
+        var out = {};
+        list.forEach(function(brand){
+          var bal = parseFloat(col(row, prefix+' - '+brand).replace(/[,$]/g,''))||0;
+          var status = includeStatus ? col(row, prefix+' Status - '+brand) : '';
+          if(bal || status) out[brand] = includeStatus ? {balance:bal, status:status} : bal;
+        });
+        return Object.keys(out).length ? out : null;
+      }
 
       var added=0, enriched=0, tasksCreated=0, skipped=0;
       for(var ri=1; ri<rows.length; ri++){
@@ -2206,6 +2218,9 @@ function importFormspreeSubmissions(){
         var preferredAirline = col(row,'Preferred Airline');
         var preferredHotel = col(row,'Preferred Hotel');
         var preferredCruiseLine = col(row,'Preferred Cruise Line');
+        var mileageBalances = extractBalances(row, AIRLINES, 'Airline', true);
+        var hotelBalances = extractBalances(row, HOTELS, 'Hotel', true);
+        var creditCardBalances = extractBalances(row, CREDIT_CARDS, 'Credit Card', false);
 
         var nameFirst=getFirstName(name).toLowerCase(), nameLast=getLastName(name).toLowerCase();
         var client = db.clients.find(function(c){
@@ -2225,11 +2240,24 @@ function importFormspreeSubmissions(){
           if(preferredAirline && !client.preferredAirline){client.preferredAirline=preferredAirline;filled.push('preferredAirline');}
           if(preferredHotel && !client.preferredHotel){client.preferredHotel=preferredHotel;filled.push('preferredHotel');}
           if(preferredCruiseLine && !client.preferredCruiseLine){client.preferredCruiseLine=preferredCruiseLine;filled.push('preferredCruiseLine');}
+          if(mileageBalances){
+            var mm=mergeBalanceObjects(client.mileageBalances,mileageBalances);
+            if(mm.added.length){client.mileageBalances=mm.merged;filled.push('mileageBalances ('+mm.added.join(', ')+')');}
+          }
+          if(hotelBalances){
+            var hm=mergeBalanceObjects(client.hotelBalances,hotelBalances);
+            if(hm.added.length){client.hotelBalances=hm.merged;filled.push('hotelBalances ('+hm.added.join(', ')+')');}
+          }
+          if(creditCardBalances){
+            var cm=mergeCreditCardBalances(client.creditCardBalances,creditCardBalances);
+            if(cm.added.length){client.creditCardBalances=cm.merged;filled.push('creditCardBalances ('+cm.added.join(', ')+')');}
+          }
           if(filled.length) enriched++;
         } else {
           client = {id:newId('C',db.clients), name:toLastFirst(name), email:email, phone:phone, location:location,
             birthdate:birthdate, referredBy:referredBy, referredByDetail:referredByDetail,
             preferredAirline:preferredAirline, preferredHotel:preferredHotel, preferredCruiseLine:preferredCruiseLine,
+            mileageBalances:mileageBalances||{}, hotelBalances:hotelBalances||{}, creditCardBalances:creditCardBalances||{},
             notes:'', joined:today(), totalTrips:0, notesLog:[]};
           db.clients.push(client);
           added++;
@@ -2248,9 +2276,6 @@ function importFormspreeSubmissions(){
         addLine('Points To Use', col(row,'Points To Use'));
         addLine('Budget', col(row,'Budget'));
         addLine('Booking Reference', col(row,'Booking Reference'));
-        addLine('Airline Points Balances', col(row,'Airline Points Balances'));
-        addLine('Hotel Points Balances', col(row,'Hotel Points Balances'));
-        addLine('Credit Card Points Balances', col(row,'Credit Card Points Balances'));
         addLine('Notes', col(row,'Notes'));
 
         if(tripLines.length){

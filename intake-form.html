@@ -27,6 +27,11 @@
   .radio-row label{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:500;color:#333;cursor:pointer}
   .radio-row input{width:15px;height:15px}
   #ref-detail-wrap{display:none}
+  .balance-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:8px;border:1px solid #e5e7eb;border-radius:8px;padding:10px;background:#fafafa}
+  .balance-row{display:flex;align-items:center;gap:6px}
+  .balance-row span{flex:1;font-size:12px;color:#374151;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .balance-row input[type="number"]{width:88px;padding:6px 8px;font-size:12px;flex:none}
+  .balance-row select{width:96px;padding:6px 8px;font-size:12px;flex:none}
   .submit-row{margin-top:24px}
   button[type="submit"]{width:100%;padding:13px;border-radius:9px;border:none;background:#2563eb;color:#fff;font-size:15px;font-weight:600;font-family:inherit;cursor:pointer}
   button[type="submit"]:hover{background:#1d4ed8}
@@ -45,12 +50,7 @@
 
   <div id="ok-msg">Thanks! Your request has been sent — we'll be in touch shortly.</div>
 
-  <!--
-    SETUP: replace YOUR_FORM_ID below with your real Formspree endpoint.
-    Sign up at https://formspree.io, create a new form, and copy the ID
-    from the URL Formspree gives you (formspree.io/f/XXXXXXX).
-  -->
-  <form id="intake-form" action="https://formspree.io/f/YOUR_FORM_ID" method="POST">
+  <form id="intake-form" action="https://formspree.io/f/xykqrdee" method="POST">
     <input type="hidden" name="_subject" value="New Travel Request — Miles Man website">
     <input type="text" name="_gotcha" style="display:none">
 
@@ -128,16 +128,16 @@
         </select>
       </div>
       <div class="field full">
-        <label>Airline Points Balances <span class="hint">(optional — e.g. "United: 45,000, Delta: 12,000")</span></label>
-        <textarea name="Airline Points Balances" rows="2"></textarea>
+        <label>Airline Mileage Balances <span class="hint">(optional — fill in whichever apply)</span></label>
+        <div class="balance-grid" id="airline-balances-grid"></div>
       </div>
       <div class="field full">
         <label>Hotel Points Balances <span class="hint">(optional)</span></label>
-        <textarea name="Hotel Points Balances" rows="2"></textarea>
+        <div class="balance-grid" id="hotel-balances-grid"></div>
       </div>
       <div class="field full">
-        <label>Credit Card Points Balances <span class="hint">(optional — please list card name, no account numbers)</span></label>
-        <textarea name="Credit Card Points Balances" rows="2"></textarea>
+        <label>Credit Card Points Balances <span class="hint">(optional — card name only, no account numbers)</span></label>
+        <div class="balance-grid" id="cc-balances-grid"></div>
       </div>
     </div>
 
@@ -205,6 +205,27 @@
 </div>
 
 <script>
+  // Mirrors the exact brand/status lists used by the CRM's own client
+  // balance grids, so field names line up 1:1 with what the CRM's
+  // "Import Formspree Submissions" importer expects.
+  var AIRLINES = ['American','United','Delta','Southwest','JetBlue','Qatar Airways','ANA','Emirates','Lufthansa','British Airways','Air France','Virgin Atlantic'];
+  var HOTELS = ['Marriott','Hilton','Hyatt','IHG','Wyndham','Four Seasons','Ritz-Carlton','W Hotels','Kimpton','Conrad'];
+  var CREDIT_CARDS = ['Chase Sapphire Preferred','Chase Sapphire Reserve','Chase Ink Business Preferred','Amex Platinum','Amex Gold','Amex Business Platinum','Capital One Venture X','Citi Premier','Citi Prestige','Bilt Mastercard'];
+  var ELITE_STATUS = ['None','Silver','Gold','Platinum','Diamond'];
+
+  function buildBalanceGrid(containerId, list, prefix, includeStatus){
+    var container = document.getElementById(containerId);
+    container.innerHTML = list.map(function(name){
+      var statusHtml = includeStatus
+        ? '<select name="'+prefix+' Status - '+name+'"><option value="">Status</option>'+ELITE_STATUS.map(function(s){return '<option>'+s+'</option>';}).join('')+'</select>'
+        : '';
+      return '<div class="balance-row"><span>'+name+'</span><input type="number" min="0" name="'+prefix+' - '+name+'" placeholder="0">'+statusHtml+'</div>';
+    }).join('');
+  }
+  buildBalanceGrid('airline-balances-grid', AIRLINES, 'Airline', true);
+  buildBalanceGrid('hotel-balances-grid', HOTELS, 'Hotel', true);
+  buildBalanceGrid('cc-balances-grid', CREDIT_CARDS, 'Credit Card', false);
+
   var refSelect = document.getElementById('ref-select');
   var refWrap = document.getElementById('ref-detail-wrap');
   var refLabel = document.getElementById('ref-detail-label');
@@ -224,11 +245,6 @@
     document.getElementById('replyto-field').value = this.value;
   });
   form.addEventListener('submit', function(e){
-    if(form.action.indexOf('YOUR_FORM_ID') !== -1){
-      e.preventDefault();
-      alert('Form setup incomplete: replace YOUR_FORM_ID in the form action with your real Formspree endpoint.');
-      return;
-    }
     e.preventDefault();
     var data = new FormData(form);
     fetch(form.action, {
