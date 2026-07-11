@@ -257,7 +257,7 @@ tr:last-child td{border-bottom:none}
       <button class="menu-toggle-btn" data-menu="menu-email">&#9993;&#65039; Email <span class="menu-caret">&#9656;</span></button>
       <div class="menu-group" id="menu-email" style="display:none">
         <button class="sync-btn" id="outlook-btn">&#128424; Sync Outlook Emails</button>
-        <button class="sync-btn" id="btn-mass-email" style="color:#7c3aed;border-color:#c4b5fd">&#128231; Email All Clients</button>
+        <button class="sync-btn" id="btn-mass-email" style="color:#7c3aed;border-color:#c4b5fd">&#128231; Email Clients</button>
         <button class="sync-btn" id="btn-log-mailchimp" style="color:#7c3aed;border-color:#c4b5fd">&#128226; Log Mailchimp Campaign</button>
         <button class="sync-btn" id="btn-sync-mailchimp" style="color:#7c3aed;border-color:#c4b5fd">&#128260; Sync Mailchimp Activity</button>
         <button class="sync-btn" id="btn-ms-signout" style="color:#888;border-color:#ddd;font-size:11px">&#128274; Reset Outlook Login</button>
@@ -721,11 +721,12 @@ async function fetchMailbox(token,lastSyncDate){
 
   // Follow @odata.nextLink to page through all results, up to a safety cap
   // so a single sync can't run forever on a huge mailbox.
+  var truncated = false;
   async function fetchAllPages(url, label){
     var all = [];
     var next = url;
     var pages = 0;
-    var MAX_PAGES = 20; // 20 x 50 = up to 1000 messages per folder, fetched once for the whole sync
+    var MAX_PAGES = 80; // 80 x 100 = up to 8000 messages per folder, fetched once for the whole sync
     var headers = {Authorization:'Bearer '+token};
     while(next && pages < MAX_PAGES){
       pages++;
@@ -745,7 +746,10 @@ async function fetchMailbox(token,lastSyncDate){
       all.push.apply(all,(d.value||[]));
       next = d['@odata.nextLink']||null;
     }
-    if(next) debugLog(label+': stopped after '+MAX_PAGES+' pages ('+all.length+' messages) — there may be more');
+    if(next){
+      debugLog(label+': stopped after '+MAX_PAGES+' pages ('+all.length+' messages) — there may be more');
+      truncated = true;
+    }
     return all;
   }
 
@@ -753,7 +757,7 @@ async function fetchMailbox(token,lastSyncDate){
   try{
     const u1 = 'https://graph.microsoft.com/v1.0/me/messages'+
       '?$select=subject,receivedDateTime,from,toRecipients,body,isDraft'+
-      '&$orderby=receivedDateTime desc&$top=50'+
+      '&$orderby=receivedDateTime desc&$top=100'+
       '&$filter=receivedDateTime+ge+'+sinceParam;
     debugLog('Fetching inbox...');
     inbox = await fetchAllPages(u1,'Inbox');
@@ -764,14 +768,14 @@ async function fetchMailbox(token,lastSyncDate){
   try{
     const u2 = 'https://graph.microsoft.com/v1.0/me/mailFolders/SentItems/messages'+
       '?$select=subject,receivedDateTime,from,toRecipients,ccRecipients,bccRecipients,body,isDraft'+
-      '&$orderby=receivedDateTime desc&$top=50'+
+      '&$orderby=receivedDateTime desc&$top=100'+
       '&$filter=receivedDateTime+ge+'+sinceParam;
     debugLog('Fetching sent...');
     sent = await fetchAllPages(u2,'Sent');
     debugLog('Sent: count='+sent.length);
   }catch(e){ debugLog('Sent error: '+e.message); errors.push('Sent: '+e.message); }
 
-  return {inbox:inbox,sent:sent,errors:errors};
+  return {inbox:inbox,sent:sent,errors:errors,truncated:truncated};
 }
 function matchInbox(inbox,clientLower){
   return inbox.filter(function(m){
@@ -869,6 +873,8 @@ async function syncOutlook(){
     debugLog('=== Sync Complete: '+totalNew+' new emails, '+clientErrors.length+' error(s) ===');
     if(clientErrors.length){
       toast((totalNew?'Synced '+totalNew+' new emails, but ':'')+clientErrors.length+' error(s) — see Debug Log','err');
+    }else if(mailbox.truncated){
+      toast((totalNew?'Synced '+totalNew+' new emails, but ':'')+'mailbox has more history than one sync pass could cover — some older emails may be missing. See Debug Log.','err');
     }else{
       toast(totalNew?'Synced '+totalNew+' new emails':'No new emails found','ok');
     }
@@ -1666,21 +1672,57 @@ function exportCSV(type){
   const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=filename;a.click();
   toast('CSV downloaded');
 }
-function massEmail(){
-  const withEmail=db.clients.filter(c=>c.email&&c.email.includes('@'));
+function openMassEmailModal(){
+  var withEmail=[...db.clients].filter(function(c){return c.email&&c.email.includes('@');})
+    .sort(function(a,b){return (a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase());});
   if(!withEmail.length){toast('No client emails found','err');return;}
-  const bcc=withEmail.map(c=>c.email).join(';');
-  const mailto='mailto:?bcc='+encodeURIComponent(bcc)+'&subject='+encodeURIComponent('Miles Man Travel Update');
-  window.location.href=mailto;
-  const ts=tsNow();
-  const note={ts,text:'Mass email sent to '+withEmail.length+' clients'};
-  db.clients=db.clients.map(c=>{
-    if(!c.email||!c.email.includes('@'))return c;
-    const notesLog=Array.isArray(c.notesLog)?c.notesLog.concat([note]):[note];
-    return Object.assign({},c,{notesLog:notesLog});
+  var clientChecks = withEmail.map(function(c){
+    return '<label style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:13px;cursor:pointer">'+
+      '<input type="checkbox" class="me-client-cb" value="'+c.id+'" checked style="width:14px;height:14px">'+
+      '<span>'+c.name+' <span style="color:#999">('+c.email+')</span></span>'+
+    '</label>';
+  }).join('');
+
+  $('modal').innerHTML =
+    '<div class="modal-hdr"><div class="modal-title">Email Clients</div><button class="close-btn" id="modal-close">&#x2715;</button></div>'+
+    '<div class="fg">'+
+      fld('Subject', inp('me-subject','text','Miles Man Travel Update'), true)+
+      '<div class="field full"><label>Recipients (BCC)</label>'+
+        '<div style="margin-bottom:6px"><button type="button" id="me-select-all" style="font-size:11px;color:#2563eb;background:none;border:none;cursor:pointer;text-decoration:underline">Select All</button> · <button type="button" id="me-select-none" style="font-size:11px;color:#2563eb;background:none;border:none;cursor:pointer;text-decoration:underline">Select None</button></div>'+
+        '<div style="border:1px solid #e5e7eb;border-radius:8px;padding:10px;max-height:280px;overflow-y:auto;background:#fafafa">'+
+          clientChecks+
+        '</div>'+
+      '</div>'+
+    '</div>'+
+    '<div class="form-actions"><button class="cancel-btn" id="modal-cancel">Cancel</button><button class="save-btn" id="me-send">Email Clients</button></div>';
+
+  $('overlay').classList.add('open');
+  $('modal-close').addEventListener('click', closeModal);
+  $('modal-cancel').addEventListener('click', closeModal);
+  document.getElementById('me-select-all').addEventListener('click', function(){
+    document.querySelectorAll('.me-client-cb').forEach(function(cb){cb.checked=true;});
   });
-  saveDB();
-  toast('Opening Outlook with '+withEmail.length+' clients in BCC','ok');
+  document.getElementById('me-select-none').addEventListener('click', function(){
+    document.querySelectorAll('.me-client-cb').forEach(function(cb){cb.checked=false;});
+  });
+  document.getElementById('me-send').addEventListener('click', function(){
+    var selectedIds = Array.from(document.querySelectorAll('.me-client-cb:checked')).map(function(cb){return cb.value;});
+    if(!selectedIds.length){toast('Select at least one client','err');return;}
+    var subject = gv('me-subject')||'Miles Man Travel Update';
+    var selected = withEmail.filter(function(c){return selectedIds.indexOf(c.id)!==-1;});
+    var bcc = selected.map(function(c){return c.email;}).join(';');
+    var mailto='mailto:?bcc='+encodeURIComponent(bcc)+'&subject='+encodeURIComponent(subject);
+    window.location.href=mailto;
+    var ts=tsNow();
+    var note={ts:ts,text:'Mass email sent to '+selected.length+' client'+(selected.length!==1?'s':'')};
+    db.clients=db.clients.map(function(c){
+      if(selectedIds.indexOf(c.id)===-1) return c;
+      var notesLog=Array.isArray(c.notesLog)?c.notesLog.concat([note]):[note];
+      return Object.assign({},c,{notesLog:notesLog});
+    });
+    saveDB(); closeModal(); render();
+    toast('Opening Outlook with '+selected.length+' client'+(selected.length!==1?'s':'')+' in BCC','ok');
+  });
 }
 function openLogMailchimpModal(){
   var sortedClients = [...db.clients].sort(function(a,b){return (a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase());});
@@ -5358,7 +5400,7 @@ function bindClick(id, handler){
   bindClick('btn-trips-csv', function(){exportCSV('trips');});
   bindClick('btn-backup', exportJSON);
   bindClick('btn-restore', importJSON);
-  bindClick('btn-mass-email', massEmail);
+  bindClick('btn-mass-email', openMassEmailModal);
   bindClick('btn-log-mailchimp', openLogMailchimpModal);
   bindClick('btn-sync-mailchimp', syncMailchimpEmails);
   bindClick('btn-import-csv', importCSV);
