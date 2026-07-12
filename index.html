@@ -376,9 +376,10 @@ const VIRGIN_VOYAGES_FARE_TIERS = ['Basic','Essential','Premium'];
 // Essential/Premium fare tiers) plus a Lock-It-In Rate alongside Price;
 // every other line falls back to generic cabin types and one Insurance/
 // Add-ons column.
+const PRINCESS_CABIN_TYPES = ['Interior','Window','Balcony','Mini-Suite','Suite'];
 const QUOTE_CRUISE_CONFIG = {
-  'Princess': {insuranceCols:['Cancellation','Platinum'], addonCols:['Princess Premier','Princess Premier Plus']},
-  'Virgin Voyages': {cabinTypes:VIRGIN_VOYAGES_CABIN_TYPES, fareTiers:VIRGIN_VOYAGES_FARE_TIERS, priceCols:['Price','Lock-It-In Rate']}
+  'Princess': {cabinTypes:PRINCESS_CABIN_TYPES, insuranceCols:['Cancellation','Platinum'], addonCols:['Princess Premier','Princess Premier Plus']},
+  'Virgin Voyages': {cabinTypes:VIRGIN_VOYAGES_CABIN_TYPES, fareTiers:VIRGIN_VOYAGES_FARE_TIERS, priceCols:['Price','Lock-It-In Rate'], addonCols:['Add-ons','Gratuities']}
 };
 function getQuoteConfig(cruiseLine){
   var base = {cabinTypes:CABIN_TYPES, fareTiers:null, priceCols:['Price'], insuranceCols:['Insurance'], addonCols:['Add-ons']};
