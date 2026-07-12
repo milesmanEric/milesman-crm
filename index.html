@@ -369,23 +369,28 @@ const SHIPS_BY_CRUISE_LINE = {
   'MSC Cruises': ['MSC World America','MSC World Europa','MSC Euribia','MSC Seascape','MSC Seashore','MSC Grandiosa','MSC Virtuosa','MSC Bellissima','MSC Meraviglia','MSC Divina','MSC Preziosa','MSC Splendida','MSC Fantasia','MSC Magnifica','MSC Poesia'],
   'Viking': ['Viking Star','Viking Sea','Viking Sky','Viking Sun','Viking Orion','Viking Jupiter','Viking Venus','Viking Mars','Viking Neptune','Viking Saturn','Viking Octantis','Viking Polaris']
 };
-const VIRGIN_VOYAGES_CABIN_TYPES = ['Insider','Oceanview',
-  'XL Sea Terrace','Central Sea Terrace','Sea Terrace','Sea Terrace Slightly Smaller Balcony','Limited View Sea Terrace',
-  'Seriously Suite','Brilliant Suite','Sweet Aft Suite Biggest Terrace','Sweet Aft Suite Even Bigger Terrace','Sweet Aft Suite Pretty Big Terrace','Cheeky Corner Suite Biggest Terrace','Cheeky Corner Suite Even Bigger Terrace','Cheeky Corner Suite Pretty Big Terrace',
-  'Massive Suite','Fab Suite','Posh Suite','Gorgeous Suite'];
+const VIRGIN_VOYAGES_CABIN_GROUPS = [
+  {label:'Insider', types:['Insider']},
+  {label:'Sea View', types:['Oceanview']},
+  {label:'Sea Terrace', types:['XL Sea Terrace','Central Sea Terrace','Sea Terrace','Sea Terrace Slightly Smaller Balcony','Limited View Sea Terrace']},
+  {label:'Rockstar', types:['Seriously Suite','Brilliant Suite','Sweet Aft Suite Biggest Terrace','Sweet Aft Suite Even Bigger Terrace','Sweet Aft Suite Pretty Big Terrace','Cheeky Corner Suite Biggest Terrace','Cheeky Corner Suite Even Bigger Terrace','Cheeky Corner Suite Pretty Big Terrace']},
+  {label:'Mega Rockstar', types:['Massive Suite','Fab Suite','Posh Suite','Gorgeous Suite']}
+];
+const VIRGIN_VOYAGES_CABIN_TYPES = VIRGIN_VOYAGES_CABIN_GROUPS.reduce(function(a,g){return a.concat(g.types);},[]);
 const VIRGIN_VOYAGES_FARE_TIERS = ['Basic','Essential','Premium'];
 // Princess pricing has named tiers instead of a single generic Insurance/Add-ons
-// column; Virgin Voyages has its own cabin sub-types (crossed with Basic/
-// Essential/Premium fare tiers) plus a Lock-It-In Rate alongside Price;
+// column; Virgin Voyages has its own cabin sub-types, grouped under summary
+// headers (Insider/Sea View/Sea Terrace/Rockstar/Mega Rockstar), crossed with
+// Basic/Essential/Premium fare tiers, plus a Lock-It-In Rate alongside Price;
 // every other line falls back to generic cabin types and one Insurance/
-// Add-ons column.
+// Add-ons column with no group headers.
 const PRINCESS_CABIN_TYPES = ['Interior','Window','Balcony','Mini-Suite','Suite'];
 const QUOTE_CRUISE_CONFIG = {
   'Princess': {cabinTypes:PRINCESS_CABIN_TYPES, insuranceCols:['Cancellation','Platinum'], addonCols:['Princess Premier','Princess Premier Plus']},
-  'Virgin Voyages': {cabinTypes:VIRGIN_VOYAGES_CABIN_TYPES, fareTiers:VIRGIN_VOYAGES_FARE_TIERS, priceCols:['Price','Lock-It-In Rate'], addonCols:['Add-ons','Gratuities']}
+  'Virgin Voyages': {cabinTypes:VIRGIN_VOYAGES_CABIN_TYPES, cabinGroups:VIRGIN_VOYAGES_CABIN_GROUPS, fareTiers:VIRGIN_VOYAGES_FARE_TIERS, priceCols:['Price','Lock-It-In Rate'], addonCols:['Add-ons','Gratuities']}
 };
 function getQuoteConfig(cruiseLine){
-  var base = {cabinTypes:CABIN_TYPES, fareTiers:null, priceCols:['Price'], insuranceCols:['Insurance'], addonCols:['Add-ons']};
+  var base = {cabinTypes:CABIN_TYPES, cabinGroups:null, fareTiers:null, priceCols:['Price'], insuranceCols:['Insurance'], addonCols:['Add-ons']};
   return Object.assign({}, base, QUOTE_CRUISE_CONFIG[cruiseLine]||{});
 }
 function quoteRowLabels(cfg){
@@ -395,6 +400,24 @@ function quoteRowLabels(cfg){
     cfg.fareTiers.forEach(function(tier){ rows.push(cabin+' — '+tier); });
   });
   return rows;
+}
+// Table rendering needs group header rows interleaved with cabin rows;
+// quoteRowLabels() stays flat (no group markers) since it's also used by
+// the send handler to collect entered prices by row label.
+function quoteTableStructure(cfg){
+  var groups = cfg.cabinGroups || [{label:null, types:cfg.cabinTypes}];
+  var structure = [];
+  groups.forEach(function(g){
+    if(g.label) structure.push({kind:'group', label:g.label});
+    g.types.forEach(function(cabin){
+      if(cfg.fareTiers){
+        cfg.fareTiers.forEach(function(tier){ structure.push({kind:'row', label:cabin+' — '+tier}); });
+      }else{
+        structure.push({kind:'row', label:cabin});
+      }
+    });
+  });
+  return structure;
 }
 const STATUSES = ['Planning','Confirmed','Completed','Cancelled'];
 const TYPES    = ['Leisure','Business','Honeymoon','Family','Adventure','Cruise'];
@@ -1768,14 +1791,17 @@ function openMassEmailModal(){
 function quoteTableHtml(cruiseLine){
   var cfg = getQuoteConfig(cruiseLine);
   var cols = cfg.priceCols.concat(cfg.insuranceCols).concat(cfg.addonCols);
-  var rows = quoteRowLabels(cfg);
+  var structure = quoteTableStructure(cfg);
   var headerHtml = '<th style="text-align:left;padding:6px 8px;font-size:11px;color:#666;text-transform:uppercase">Cabin Type</th>'+
     cols.map(function(c){return '<th style="text-align:left;padding:6px 8px;font-size:11px;color:#666;text-transform:uppercase;white-space:nowrap">'+c+'</th>';}).join('');
-  var rowsHtml = rows.map(function(rowLabel){
+  var rowsHtml = structure.map(function(entry){
+    if(entry.kind==='group'){
+      return '<tr><td colspan="'+(cols.length+1)+'" style="padding:10px 8px 4px;font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.03em;color:#7c3aed;border-top:1px solid #e5e7eb">'+entry.label+'</td></tr>';
+    }
     var cellsHtml = cols.map(function(c){
-      return '<td style="padding:4px 6px"><input type="text" class="quote-cell" data-cabin="'+rowLabel+'" data-col="'+c+'" placeholder="$0" style="width:100px;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;font-family:inherit"></td>';
+      return '<td style="padding:4px 6px"><input type="text" class="quote-cell" data-cabin="'+entry.label+'" data-col="'+c+'" placeholder="$0" style="width:100px;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;font-family:inherit"></td>';
     }).join('');
-    return '<tr><td style="padding:6px 8px;font-weight:600;font-size:13px;white-space:nowrap">'+rowLabel+'</td>'+cellsHtml+'</tr>';
+    return '<tr><td style="padding:6px 8px;font-weight:600;font-size:13px;white-space:nowrap">'+entry.label+'</td>'+cellsHtml+'</tr>';
   }).join('');
   return '<table style="width:100%;border-collapse:collapse"><thead><tr>'+headerHtml+'</tr></thead><tbody>'+rowsHtml+'</tbody></table>';
 }
