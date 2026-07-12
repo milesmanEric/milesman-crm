@@ -369,13 +369,28 @@ const SHIPS_BY_CRUISE_LINE = {
   'MSC Cruises': ['MSC World America','MSC World Europa','MSC Euribia','MSC Seascape','MSC Seashore','MSC Grandiosa','MSC Virtuosa','MSC Bellissima','MSC Meraviglia','MSC Divina','MSC Preziosa','MSC Splendida','MSC Fantasia','MSC Magnifica','MSC Poesia'],
   'Viking': ['Viking Star','Viking Sea','Viking Sky','Viking Sun','Viking Orion','Viking Jupiter','Viking Venus','Viking Mars','Viking Neptune','Viking Saturn','Viking Octantis','Viking Polaris']
 };
+const VIRGIN_VOYAGES_CABIN_TYPES = ['Insider','Oceanview','Sea Terrace','XL Sea Terrace','Rockstar Quarters','Rockstar Quarters with Terrace','Duplex Rockstar Quarters','Mega Rockstar Suite','Two-Story Mega Rockstar Suite'];
+const VIRGIN_VOYAGES_FARE_TIERS = ['Basic','Essential','Premium'];
 // Princess pricing has named tiers instead of a single generic Insurance/Add-ons
-// column; every other line falls back to one Insurance and one Add-ons column.
+// column; Virgin Voyages has its own cabin sub-types (crossed with Basic/
+// Essential/Premium fare tiers) plus a Lock-It-In Rate alongside Price;
+// every other line falls back to generic cabin types and one Insurance/
+// Add-ons column.
 const QUOTE_CRUISE_CONFIG = {
-  'Princess': {insuranceCols:['Cancellation','Platinum'], addonCols:['Princess Premier','Princess Premier Plus']}
+  'Princess': {insuranceCols:['Cancellation','Platinum'], addonCols:['Princess Premier','Princess Premier Plus']},
+  'Virgin Voyages': {cabinTypes:VIRGIN_VOYAGES_CABIN_TYPES, fareTiers:VIRGIN_VOYAGES_FARE_TIERS, priceCols:['Price','Lock-It-In Rate']}
 };
 function getQuoteConfig(cruiseLine){
-  return QUOTE_CRUISE_CONFIG[cruiseLine] || {insuranceCols:['Insurance'], addonCols:['Add-ons']};
+  var base = {cabinTypes:CABIN_TYPES, fareTiers:null, priceCols:['Price'], insuranceCols:['Insurance'], addonCols:['Add-ons']};
+  return Object.assign({}, base, QUOTE_CRUISE_CONFIG[cruiseLine]||{});
+}
+function quoteRowLabels(cfg){
+  if(!cfg.fareTiers) return cfg.cabinTypes.slice();
+  var rows=[];
+  cfg.cabinTypes.forEach(function(cabin){
+    cfg.fareTiers.forEach(function(tier){ rows.push(cabin+' — '+tier); });
+  });
+  return rows;
 }
 const STATUSES = ['Planning','Confirmed','Completed','Cancelled'];
 const TYPES    = ['Leisure','Business','Honeymoon','Family','Adventure','Cruise'];
@@ -1748,14 +1763,15 @@ function openMassEmailModal(){
 }
 function quoteTableHtml(cruiseLine){
   var cfg = getQuoteConfig(cruiseLine);
-  var cols = ['Price'].concat(cfg.insuranceCols).concat(cfg.addonCols);
+  var cols = cfg.priceCols.concat(cfg.insuranceCols).concat(cfg.addonCols);
+  var rows = quoteRowLabels(cfg);
   var headerHtml = '<th style="text-align:left;padding:6px 8px;font-size:11px;color:#666;text-transform:uppercase">Cabin Type</th>'+
     cols.map(function(c){return '<th style="text-align:left;padding:6px 8px;font-size:11px;color:#666;text-transform:uppercase;white-space:nowrap">'+c+'</th>';}).join('');
-  var rowsHtml = CABIN_TYPES.map(function(cabin){
+  var rowsHtml = rows.map(function(rowLabel){
     var cellsHtml = cols.map(function(c){
-      return '<td style="padding:4px 6px"><input type="text" class="quote-cell" data-cabin="'+cabin+'" data-col="'+c+'" placeholder="$0" style="width:100px;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;font-family:inherit"></td>';
+      return '<td style="padding:4px 6px"><input type="text" class="quote-cell" data-cabin="'+rowLabel+'" data-col="'+c+'" placeholder="$0" style="width:100px;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;font-family:inherit"></td>';
     }).join('');
-    return '<tr><td style="padding:6px 8px;font-weight:600;font-size:13px;white-space:nowrap">'+cabin+'</td>'+cellsHtml+'</tr>';
+    return '<tr><td style="padding:6px 8px;font-weight:600;font-size:13px;white-space:nowrap">'+rowLabel+'</td>'+cellsHtml+'</tr>';
   }).join('');
   return '<table style="width:100%;border-collapse:collapse"><thead><tr>'+headerHtml+'</tr></thead><tbody>'+rowsHtml+'</tbody></table>';
 }
@@ -1801,16 +1817,17 @@ function openEmailQuoteModal(){
     var notes = gv('eq-notes');
 
     var cfg = getQuoteConfig(cruiseLine);
-    var cols = ['Price'].concat(cfg.insuranceCols).concat(cfg.addonCols);
+    var cols = cfg.priceCols.concat(cfg.insuranceCols).concat(cfg.addonCols);
+    var rows = quoteRowLabels(cfg);
     var cellsByKey = {};
     document.querySelectorAll('.quote-cell').forEach(function(el){
       cellsByKey[el.dataset.cabin+'|'+el.dataset.col] = el.value.trim();
     });
     var lines = [];
-    CABIN_TYPES.forEach(function(cabin){
-      var cellVals = cols.map(function(c){return cellsByKey[cabin+'|'+c]||'';});
+    rows.forEach(function(rowLabel){
+      var cellVals = cols.map(function(c){return cellsByKey[rowLabel+'|'+c]||'';});
       if(cellVals.some(function(v){return v;})){
-        lines.push(cabin+': '+cols.map(function(c,i){return c+' '+(cellVals[i]||'-');}).join(', '));
+        lines.push(rowLabel+': '+cols.map(function(c,i){return c+' '+(cellVals[i]||'-');}).join(', '));
       }
     });
     if(!lines.length){toast('Enter at least one price','err');return;}
