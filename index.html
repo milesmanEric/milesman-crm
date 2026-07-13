@@ -1928,8 +1928,8 @@ function quoteEmailBodyHtml(opts){
 '</tr>'+
 '<tr>'+
 '<td style="padding:32px 32px 8px 32px;">'+
-'<p style="font-size:16px; color:#111111; margin:0 0 16px 0;">Hi '+escHtml(opts.clientFirstName||'there')+',</p>'+
-'<p style="font-size:15px; color:#333333; line-height:1.5; margin:0 0 16px 0;">'+opts.introText+'</p>'+
+'<p style="font-family:\'Times New Roman\',Times,serif; font-size:14px; color:#111111; margin:0 0 16px 0;">Hi '+escHtml(opts.clientFirstName||'there')+',</p>'+
+'<p style="font-family:\'Times New Roman\',Times,serif; font-size:14px; color:#333333; line-height:1.5; margin:0 0 16px 0;">'+opts.introText+'</p>'+
 '</td>'+
 '</tr>'+
 '<tr>'+
@@ -1937,10 +1937,10 @@ function quoteEmailBodyHtml(opts){
 '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f0f2ff; border-left:4px solid #1a1aff; border-radius:6px;">'+
 '<tr>'+
 '<td style="padding:20px 24px;">'+
-'<p style="margin:0 0 10px 0; font-size:15px; color:#0d0d66;"><strong>Ship:</strong> '+escHtml(opts.ship||'')+'</p>'+
-'<p style="margin:0 0 10px 0; font-size:15px; color:#0d0d66;"><strong>Itinerary:</strong> '+escHtml(opts.itinerary||'')+'</p>'+
-'<p style="margin:0 0 10px 0; font-size:15px; color:#0d0d66;"><strong>Sail Dates:</strong> '+sailDatesLine+'</p>'+
-'<p style="margin:0; font-size:15px; color:#0d0d66;"><strong>Guests:</strong> '+escHtml(opts.guests||'')+'</p>'+
+'<p style="font-family:\'Times New Roman\',Times,serif; margin:0 0 10px 0; font-size:14px; color:#0d0d66;"><strong>Ship:</strong> '+escHtml(opts.ship||'')+'</p>'+
+'<p style="font-family:\'Times New Roman\',Times,serif; margin:0 0 10px 0; font-size:14px; color:#0d0d66;"><strong>Itinerary:</strong> '+escHtml(opts.itinerary||'')+'</p>'+
+'<p style="font-family:\'Times New Roman\',Times,serif; margin:0 0 10px 0; font-size:14px; color:#0d0d66;"><strong>Sail Dates:</strong> '+sailDatesLine+'</p>'+
+'<p style="font-family:\'Times New Roman\',Times,serif; margin:0; font-size:14px; color:#0d0d66;"><strong>Guests:</strong> '+escHtml(opts.guests||'')+'</p>'+
 '</td>'+
 '</tr>'+
 '</table>'+
@@ -1948,47 +1948,42 @@ function quoteEmailBodyHtml(opts){
 '</tr>'+
 '<tr>'+
 '<td style="padding:20px 32px 0 32px;">'+
-'<p style="font-size:15px; color:#333333; margin:0 0 10px 0;"><strong>Cabin Options &amp; Pricing:</strong></p>'+
+'<p style="font-family:\'Times New Roman\',Times,serif; font-size:14px; color:#333333; margin:0 0 10px 0;"><strong>Cabin Options &amp; Pricing:</strong></p>'+
 '<table role="presentation" width="536" cellpadding="0" cellspacing="0" style="border:1px solid #dcdfff; border-radius:6px; overflow:hidden; width:536px;">'+
 '<tr style="background-color:#1a1aff;">'+opts.pricingHeaderHtml+'</tr>'+
 opts.pricingRowsHtml+
 '</table>'+
-'<p style="font-size:12px; color:#777777; margin:8px 0 0 0;">'+opts.pricingCaption+'</p>'+
+'<p style="font-family:\'Times New Roman\',Times,serif; font-size:14px; color:#777777; margin:8px 0 0 0;">'+opts.pricingCaption+'</p>'+
 '</td>'+
 '</tr>'+
 '<tr>'+
 '<td style="padding:24px 32px 0 32px;">'+
-'<p style="font-size:15px; color:#333333; line-height:1.5; margin:0 0 8px 0;"><strong>What\'s included:</strong></p>'+
-'<ul style="font-size:14px; color:#333333; line-height:1.6; margin:0 0 16px 0; padding-left:20px;">'+opts.includedItemsHtml+'</ul>'+
-'<p style="font-size:14px; color:#555555; line-height:1.5; margin:0 0 16px 0;">'+opts.notIncludedText+'</p>'+
+'<p style="font-family:\'Times New Roman\',Times,serif; font-size:14px; color:#333333; line-height:1.5; margin:0 0 8px 0;"><strong>What\'s included:</strong></p>'+
+'<ul style="font-family:\'Times New Roman\',Times,serif; font-size:14px; color:#333333; line-height:1.6; margin:0 0 16px 0; padding-left:20px;">'+opts.includedItemsHtml+'</ul>'+
+(opts.extraIncludedHtml||'')+
 '</td>'+
 '</tr>'+
 (opts.notes?(
 '<tr>'+
 '<td style="padding:0 32px;">'+
-'<p style="font-size:15px; color:#333333; line-height:1.5; margin:0 0 16px 0;"><strong>Additional Notes:</strong><br>'+escHtml(opts.notes).replace(/\n/g,'<br>')+'</p>'+
+'<p style="font-family:\'Times New Roman\',Times,serif; font-size:14px; color:#333333; line-height:1.5; margin:0 0 16px 0;"><strong>Additional Notes:</strong><br>'+escHtml(opts.notes).replace(/\n/g,'<br>')+'</p>'+
 '</td>'+
 '</tr>'
 ):'')+
 '<tr>'+
 '<td style="padding:0 32px;">'+
-'<p style="font-size:15px; color:#333333; line-height:1.5; margin:0 0 16px 0;">'+
+'<p style="font-family:\'Times New Roman\',Times,serif; font-size:14px; color:#333333; line-height:1.5; margin:0 0 16px 0;">'+
 '<strong>Deposit:</strong> $'+escHtml(opts.depositAmount||'0')+' due to hold this rate, refundable until '+(opts.paymentDeadline?fmtDate(opts.paymentDeadline):'[PAYMENT DEADLINE DATE]')+'.<br>'+
 '<strong>Final Payment Due:</strong> '+(opts.finalPaymentDate?fmtDate(opts.finalPaymentDate):'[FINAL PAYMENT DATE]')+
 '</p>'+
-'<p style="font-size:15px; color:#333333; line-height:1.5; margin:0 0 16px 0;">'+
+'<p style="font-family:\'Times New Roman\',Times,serif; font-size:14px; color:#333333; line-height:1.5; margin:0 0 16px 0;">'+
 'This rate is subject to availability and can change if not booked. Let me know if you\'d like to move forward or if you\'d like me to look at other cabin categories, sail dates, or ways to use points/miles toward this trip.'+
 '</p>'+
 '</td>'+
 '</tr>'+
 '<tr>'+
-'<td style="padding:8px 32px 24px 32px;" align="center">'+
-'<a href="mailto:eric@themilesman.com" style="display:inline-block; background-color:#1a1aff; color:#ffffff; text-decoration:none; font-size:15px; font-weight:bold; padding:12px 28px; border-radius:6px;">Reply to Book This Trip</a>'+
-'</td>'+
-'</tr>'+
-'<tr>'+
 '<td style="padding:0 32px 32px 32px; border-top:1px solid #eeeeee;">'+
-'<p style="font-size:14px; color:#333333; line-height:1.5; margin:20px 0 0 0;">'+
+'<p style="font-family:\'Times New Roman\',Times,serif; font-size:14px; color:#333333; line-height:1.5; margin:20px 0 0 0;">'+
 'Looking forward to getting you on board!<br><br>'+
 '<strong>Eric</strong><br>'+
 'Chief Mileage Officer, Miles Man<br>'+
@@ -2008,28 +2003,29 @@ function quoteEmailShellHtml(opts){
 '<meta charset="UTF-8">'+
 '<title>'+escHtml(opts.docTitle)+'</title>'+
 '</head>'+
-'<body style="margin:0; padding:0; background-color:#f4f5f7; font-family: Arial, Helvetica, sans-serif;">'+
+'<body style="margin:0; padding:0; background-color:#f4f5f7; font-family:\'Times New Roman\',Times,serif; font-size:14px;">'+
 quoteEmailBodyHtml(opts)+
 '</body>'+
 '</html>';
 }
 // entries: array of {cabin, fareType, price, gratuities, protection} (fareType/gratuities/protection optional)
 function virginVoyagesQuoteOpts(entries, meta){
+  var hf="font-family:'Times New Roman',Times,serif; ";
   var headerHtml =
-    '<td width="160" style="padding:10px 14px; color:#ffffff; font-size:13px; font-weight:bold; width:160px;">Cabin Category</td>'+
-    '<td width="90" style="padding:10px 14px; color:#ffffff; font-size:13px; font-weight:bold; width:90px;">Fare Type</td>'+
-    '<td width="96" style="padding:10px 14px; color:#ffffff; font-size:13px; font-weight:bold; width:96px;" align="right">Total Price</td>'+
-    '<td width="90" style="padding:10px 14px; color:#ffffff; font-size:13px; font-weight:bold; width:90px;" align="right">Gratuities</td>'+
-    '<td width="100" style="padding:10px 14px; color:#ffffff; font-size:13px; font-weight:bold; width:100px;" align="right">Voyage Protection</td>';
+    '<td width="160" style="'+hf+'padding:10px 14px; color:#ffffff; font-size:14px; font-weight:bold; width:160px;">Cabin Category</td>'+
+    '<td width="90" style="'+hf+'padding:10px 14px; color:#ffffff; font-size:14px; font-weight:bold; width:90px;">Fare Type</td>'+
+    '<td width="96" style="'+hf+'padding:10px 14px; color:#ffffff; font-size:14px; font-weight:bold; width:96px;" align="right">Total Price</td>'+
+    '<td width="90" style="'+hf+'padding:10px 14px; color:#ffffff; font-size:14px; font-weight:bold; width:90px;" align="right">Gratuities</td>'+
+    '<td width="100" style="'+hf+'padding:10px 14px; color:#ffffff; font-size:14px; font-weight:bold; width:100px;" align="right">Voyage Protection</td>';
   var rowsHtml = entries.map(function(r,i){
     var bg = i%2===0?'#f8f9ff':'#ffffff';
     var bd = i===entries.length-1?'':'border-bottom:1px solid #eeeeee;';
     return '<tr style="background-color:'+bg+';">'+
-      '<td width="160" style="padding:10px 14px; font-size:14px; color:#333333; width:160px; '+bd+'">'+escHtml(r.cabin)+'</td>'+
-      '<td width="90" style="padding:10px 14px; font-size:14px; color:#333333; width:90px; '+bd+'">'+escHtml(r.fareType||'')+'</td>'+
-      '<td width="96" style="padding:10px 14px; font-size:14px; color:#333333; width:96px; '+bd+'" align="right">$'+escHtml(r.price)+'</td>'+
-      '<td width="90" style="padding:10px 14px; font-size:14px; color:#333333; width:90px; '+bd+'" align="right">$'+escHtml(r.gratuities||'0')+'</td>'+
-      '<td width="100" style="padding:10px 14px; font-size:14px; color:#333333; width:100px; '+bd+'" align="right">$'+escHtml(r.protection||'0')+'</td>'+
+      '<td width="160" style="'+hf+'padding:10px 14px; font-size:14px; color:#333333; width:160px; '+bd+'">'+escHtml(r.cabin)+'</td>'+
+      '<td width="90" style="'+hf+'padding:10px 14px; font-size:14px; color:#333333; width:90px; '+bd+'">'+escHtml(r.fareType||'')+'</td>'+
+      '<td width="96" style="'+hf+'padding:10px 14px; font-size:14px; color:#333333; width:96px; '+bd+'" align="right">$'+escHtml(r.price)+'</td>'+
+      '<td width="90" style="'+hf+'padding:10px 14px; font-size:14px; color:#333333; width:90px; '+bd+'" align="right">$'+escHtml(r.gratuities||'0')+'</td>'+
+      '<td width="100" style="'+hf+'padding:10px 14px; font-size:14px; color:#333333; width:100px; '+bd+'" align="right">$'+escHtml(r.protection||'0')+'</td>'+
     '</tr>';
   }).join('');
   return Object.assign({
@@ -2043,39 +2039,50 @@ function virginVoyagesQuoteOpts(entries, meta){
       '<li>Gratuities</li>'+
       '<li>WiFi</li>'+
       '<li>Basic dining across restaurants (no main dining room/buffet — all restaurant-style)</li>'+
-      '<li>Soft drinks, coffee, and tea</li>',
-    notIncludedText:'Not included: alcoholic beverages (unless a bar package is added), shore excursions, and travel insurance.'
+      '<li>Soft drinks, coffee, and tea</li>'
   }, meta);
 }
 function virginVoyagesQuoteHtml(entries, meta){ return quoteEmailShellHtml(virginVoyagesQuoteOpts(entries, meta)); }
 function virginVoyagesQuoteBodyHtml(entries, meta){ return quoteEmailBodyHtml(virginVoyagesQuoteOpts(entries, meta)); }
 // entries: array of {cabin, farePackage, price, cancellation, platinum, princessPlus, princessPremier}
 function princessQuoteOpts(entries, meta){
+  var hf="font-family:'Times New Roman',Times,serif; ";
   var headerHtml =
-    '<td width="75" style="padding:8px 8px; color:#ffffff; font-size:13px; font-weight:bold; width:75px;">Cabin Type</td>'+
-    '<td width="65" style="padding:8px 8px; color:#ffffff; font-size:13px; font-weight:bold; width:65px;" align="right">Fare</td>'+
-    '<td width="115" style="padding:8px 8px; color:#ffffff; font-size:13px; font-weight:bold; width:115px;" align="right">Fare with cancellation insurance</td>'+
-    '<td width="105" style="padding:8px 8px; color:#ffffff; font-size:13px; font-weight:bold; width:105px;" align="right">Fare with Platinum insurance</td>'+
-    '<td width="88" style="padding:8px 8px; color:#ffffff; font-size:13px; font-weight:bold; width:88px;" align="right">Princess Plus add-on</td>'+
-    '<td width="88" style="padding:8px 8px; color:#ffffff; font-size:13px; font-weight:bold; width:88px;" align="right">Princess Premier add-on</td>';
+    '<td width="75" style="'+hf+'padding:8px 8px; color:#ffffff; font-size:14px; font-weight:bold; width:75px;">Cabin Type</td>'+
+    '<td width="65" style="'+hf+'padding:8px 8px; color:#ffffff; font-size:14px; font-weight:bold; width:65px;" align="right">Fare</td>'+
+    '<td width="115" style="'+hf+'padding:8px 8px; color:#ffffff; font-size:14px; font-weight:bold; width:115px;" align="right">Fare with cancellation insurance</td>'+
+    '<td width="105" style="'+hf+'padding:8px 8px; color:#ffffff; font-size:14px; font-weight:bold; width:105px;" align="right">Fare with Platinum insurance</td>'+
+    '<td width="88" style="'+hf+'padding:8px 8px; color:#ffffff; font-size:14px; font-weight:bold; width:88px;" align="right">Princess Plus add-on</td>'+
+    '<td width="88" style="'+hf+'padding:8px 8px; color:#ffffff; font-size:14px; font-weight:bold; width:88px;" align="right">Princess Premier add-on</td>';
   var rowsHtml = entries.map(function(r,i){
     var bg = i%2===0?'#f8f9ff':'#ffffff';
     var bd = i===entries.length-1?'':'border-bottom:1px solid #eeeeee;';
     return '<tr style="background-color:'+bg+';">'+
-      '<td width="75" style="padding:8px 8px; font-size:14px; color:#333333; width:75px; '+bd+'">'+escHtml(r.cabin)+'</td>'+
-      '<td width="65" style="padding:8px 8px; font-size:14px; color:#333333; width:65px; '+bd+'" align="right">$'+escHtml(r.price)+'</td>'+
-      '<td width="115" style="padding:8px 8px; font-size:14px; color:#333333; width:115px; '+bd+'" align="right">'+(r.fareWithCancellation?'$'+escHtml(r.fareWithCancellation):'-')+'</td>'+
-      '<td width="105" style="padding:8px 8px; font-size:14px; color:#333333; width:105px; '+bd+'" align="right">'+(r.fareWithPlatinum?'$'+escHtml(r.fareWithPlatinum):'-')+'</td>'+
-      '<td width="88" style="padding:8px 8px; font-size:14px; color:#333333; width:88px; '+bd+'" align="right">'+(r.princessPlus?'$'+escHtml(r.princessPlus):'-')+'</td>'+
-      '<td width="88" style="padding:8px 8px; font-size:14px; color:#333333; width:88px; '+bd+'" align="right">'+(r.princessPremier?'$'+escHtml(r.princessPremier):'-')+'</td>'+
+      '<td width="75" style="'+hf+'padding:8px 8px; font-size:14px; color:#333333; width:75px; '+bd+'">'+escHtml(r.cabin)+'</td>'+
+      '<td width="65" style="'+hf+'padding:8px 8px; font-size:14px; color:#333333; width:65px; '+bd+'" align="right">$'+escHtml(r.price)+'</td>'+
+      '<td width="115" style="'+hf+'padding:8px 8px; font-size:14px; color:#333333; width:115px; '+bd+'" align="right">'+(r.fareWithCancellation?'$'+escHtml(r.fareWithCancellation):'-')+'</td>'+
+      '<td width="105" style="'+hf+'padding:8px 8px; font-size:14px; color:#333333; width:105px; '+bd+'" align="right">'+(r.fareWithPlatinum?'$'+escHtml(r.fareWithPlatinum):'-')+'</td>'+
+      '<td width="88" style="'+hf+'padding:8px 8px; font-size:14px; color:#333333; width:88px; '+bd+'" align="right">'+(r.princessPlus?'$'+escHtml(r.princessPlus):'-')+'</td>'+
+      '<td width="88" style="'+hf+'padding:8px 8px; font-size:14px; color:#333333; width:88px; '+bd+'" align="right">'+(r.princessPremier?'$'+escHtml(r.princessPremier):'-')+'</td>'+
     '</tr>';
   }).join('');
-  var usesPremiumPackage = entries.some(function(r){return r.princessPlus||r.princessPremier;});
   var includedItemsHtml =
     '<li>Main dining room &amp; buffet dining</li>'+
     '<li>Onboard entertainment &amp; activities</li>'+
-    '<li>Stateroom accommodations</li>'+
-    (usesPremiumPackage?'<li>Selected cabins include Princess Plus/Premier (WiFi, drinks package, gratuities, and crew appreciation)</li>':'');
+    '<li>Stateroom accommodations</li>';
+  var extraIncludedHtml =
+    '<p style="'+hf+'font-size:14px; color:#333333; line-height:1.5; margin:0 0 8px 0;"><strong>Princess Plus includes:</strong></p>'+
+    '<ul style="'+hf+'font-size:14px; color:#333333; line-height:1.6; margin:0 0 16px 0; padding-left:20px;">'+
+      '<li>15 alcoholic drinks per day (up to $15 each)</li>'+
+      '<li>Unlimited specialty coffees and teas</li>'+
+      '<li>Cocktails, wine, beer, spirits, fountain soft drinks, and zero-alcohol cocktails</li>'+
+      '<li>Up to 12 bottles of water (500 mL) per day</li>'+
+      '<li>4 casual dining meals per guest</li>'+
+      '<li>OceanNow&reg; delivery</li>'+
+      '<li>Room service</li>'+
+      '<li>Crew appreciation (gratuities)</li>'+
+      '<li>MedallionNet&reg; Max Wi-Fi for 1 device per guest</li>'+
+    '</ul>';
   return Object.assign({
     docTitle:'Princess Cruises Quote - Miles Man',
     introText:'Thanks for reaching out! I\'ve put together a Princess Cruises quote based on what you\'re looking for. Here are the details:',
@@ -2083,7 +2090,7 @@ function princessQuoteOpts(entries, meta){
     pricingRowsHtml:rowsHtml,
     pricingCaption:'All prices per stateroom, based on double occupancy.',
     includedItemsHtml:includedItemsHtml,
-    notIncludedText:'Not included: gratuities (unless Princess Plus/Premier selected), specialty dining, shore excursions, alcoholic beverages (unless a drinks package is included), and travel insurance.'
+    extraIncludedHtml:extraIncludedHtml
   }, meta);
 }
 function princessQuoteHtml(entries, meta){ return quoteEmailShellHtml(princessQuoteOpts(entries, meta)); }
