@@ -342,7 +342,7 @@ window.onerror = function(msg, src, line, col, err) {
 const MS_CLIENT_ID     = 'f59cebe9-632b-4361-bdab-71dda33c174c';
 const MS_TENANT_ID     = 'a9346e69-975d-4abb-861a-dea6e2464642';
 const MS_AUTH_SERVER   = 'https://milesman-auth.vercel.app'; // no secret in browser code
-const MS_SCOPE         = 'https://graph.microsoft.com/Mail.Read offline_access';
+const MS_SCOPE         = 'https://graph.microsoft.com/Mail.Read https://graph.microsoft.com/Mail.ReadWrite offline_access';
 const MS_REDIRECT      = 'https://milesmaneric.github.io/milesman-crm';
 const DRIVE_CLIENT_ID  = '1055867383042-an9l58o1qg22pt7o4ak8vaneeftv54ib.apps.googleusercontent.com';
 const DRIVE_SCOPE      = 'https://www.googleapis.com/auth/drive.file';
@@ -952,6 +952,30 @@ async function syncOutlook(){
     btn.textContent=orig;
   }
   btn.disabled=false;
+}
+// Creates a draft message directly in the signed-in mailbox via Graph (needs
+// the Mail.ReadWrite scope, added alongside Mail.Read) instead of relying on
+// mailto:/clipboard hand-off — used by Email Quote so a Virgin Voyages/
+// Princess quote lands fully formatted without the user needing to paste it
+// in manually. Returns the created message (its webLink opens it in OWA).
+async function createOutlookDraft(token, opts){
+  var body = {
+    subject: opts.subject,
+    body: {contentType:'HTML', content:opts.htmlBody}
+  };
+  if(opts.toEmail) body.toRecipients = [{emailAddress:{address:opts.toEmail}}];
+  var r = await fetch('https://graph.microsoft.com/v1.0/me/messages', {
+    method:'POST',
+    headers:{'Authorization':'Bearer '+token, 'Content-Type':'application/json'},
+    body: JSON.stringify(body)
+  });
+  var d = await r.json();
+  if(!r.ok){
+    var err = new Error((d.error&&d.error.message)||('Graph API returned '+r.status));
+    err.status = r.status;
+    throw err;
+  }
+  return d;
 }
 
 // ── Google Drive ──────────────────────────────────────────────────────────
@@ -2145,7 +2169,34 @@ function openEmailQuoteModal(){
     wrap.scrollIntoView({behavior:'smooth', block:'nearest'});
   });
 
-  document.getElementById('eq-send').addEventListener('click', function(){
+  function logQuoteNote(d, subject){
+    if(!d.client) return;
+    var ts = tsNow();
+    var noteBody = ['Cruise Line: '+d.cruiseLine];
+    if(d.ship) noteBody.push('Ship: '+d.ship);
+    if(d.sailingDate) noteBody.push('Sailing Date: '+d.sailingDate);
+    noteBody.push('');
+    noteBody = noteBody.concat(d.lines);
+    var note = {ts:ts, text:'Quote: '+subject+'\n'+noteBody.join('\n'), noteType:'Email Sent'};
+    db.clients = db.clients.map(function(c){
+      if(c.id!==d.client.id) return c;
+      var notesLog = Array.isArray(c.notesLog)?c.notesLog.concat([note]):[note];
+      return Object.assign({},c,{notesLog:notesLog});
+    });
+    saveDB(); render();
+  }
+  function sendViaClipboardFallback(d, subject, bodyHtml, extraToastPrefix){
+    var copied = copyHtmlToClipboard(bodyHtml);
+    var mailto = 'mailto:'+(d.client&&d.client.email?encodeURIComponent(d.client.email):'')+'?subject='+encodeURIComponent(subject);
+    window.location.href = mailto;
+    if(copied){
+      toast((extraToastPrefix||'')+'Quote copied — paste into the email body in Outlook (Ctrl+V)'+(d.client?' for '+d.client.name:''),'ok');
+    }else{
+      toast((extraToastPrefix||'')+'Could not copy the quote automatically — click Preview, then select all (Ctrl+A) and copy (Ctrl+C) from there to paste into Outlook','err');
+    }
+  }
+
+  document.getElementById('eq-send').addEventListener('click', async function(){
     var d = collectQuoteData();
     if(!d) return;
     var subject = d.cruiseLine+' Cruise Quote'+(d.ship?' - '+d.ship:'');
@@ -2155,13 +2206,30 @@ function openEmailQuoteModal(){
 
     if(isTemplateLine){
       var bodyHtml = buildTemplateBodyHtml(d);
-      var copied = copyHtmlToClipboard(bodyHtml);
-      var mailto = 'mailto:'+(d.client&&d.client.email?encodeURIComponent(d.client.email):'')+'?subject='+encodeURIComponent(subject);
-      window.location.href = mailto;
-      if(copied){
-        toast('Quote copied — paste into the email body in Outlook (Ctrl+V)'+(d.client?' for '+d.client.name:''),'ok');
-      }else{
-        toast('Could not copy the quote automatically — click Preview, then select all (Ctrl+A) and copy (Ctrl+C) from there to paste into Outlook','err');
+      var btn = document.getElementById('eq-send');
+      btn.disabled = true; btn.textContent = 'Creating draft...';
+      var token = await getValidMsToken(true);
+      if(!token){
+        // getValidMsToken already kicked off a Microsoft login redirect —
+        // the page is navigating away, nothing left to do here.
+        return;
+      }
+      try{
+        var draft = await createOutlookDraft(token, {toEmail:(d.client&&d.client.email)||'', subject:subject, htmlBody:bodyHtml});
+        if(draft.webLink) window.open(draft.webLink, '_blank');
+        toast('Draft created in Outlook'+(d.client?' for '+d.client.name:'')+' — review and hit Send','ok');
+        logQuoteNote(d, subject);
+        closeModal();
+        return;
+      }catch(e){
+        debugLog('Create Outlook draft failed: '+e.message);
+        btn.disabled = false; btn.textContent = 'Email Quote';
+        if(e.status===401||e.status===403){
+          localStorage.removeItem('mm_ms_token'); localStorage.removeItem('mm_ms_refresh'); localStorage.removeItem('mm_ms_expiry');
+          sendViaClipboardFallback(d, subject, bodyHtml, 'Outlook needs one more permission — click "Reset Outlook Login" and sign in again for next time. For now: ');
+        }else{
+          sendViaClipboardFallback(d, subject, bodyHtml, 'Could not create the Outlook draft ('+e.message+'). ');
+        }
       }
     }else{
       var bodyParts = ['Cruise Line: '+d.cruiseLine];
@@ -2176,21 +2244,7 @@ function openEmailQuoteModal(){
       toast('Opening Outlook with quote'+(d.client?' for '+d.client.name:''),'ok');
     }
 
-    if(d.client){
-      var ts = tsNow();
-      var noteBody = ['Cruise Line: '+d.cruiseLine];
-      if(d.ship) noteBody.push('Ship: '+d.ship);
-      if(d.sailingDate) noteBody.push('Sailing Date: '+d.sailingDate);
-      noteBody.push('');
-      noteBody = noteBody.concat(d.lines);
-      var note = {ts:ts, text:'Quote: '+subject+'\n'+noteBody.join('\n'), noteType:'Email Sent'};
-      db.clients = db.clients.map(function(c){
-        if(c.id!==d.client.id) return c;
-        var notesLog = Array.isArray(c.notesLog)?c.notesLog.concat([note]):[note];
-        return Object.assign({},c,{notesLog:notesLog});
-      });
-      saveDB(); render();
-    }
+    logQuoteNote(d, subject);
     closeModal();
   });
 }
