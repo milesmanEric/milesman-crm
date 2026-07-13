@@ -342,7 +342,7 @@ window.onerror = function(msg, src, line, col, err) {
 const MS_CLIENT_ID     = 'f59cebe9-632b-4361-bdab-71dda33c174c';
 const MS_TENANT_ID     = 'a9346e69-975d-4abb-861a-dea6e2464642';
 const MS_AUTH_SERVER   = 'https://milesman-auth.vercel.app'; // no secret in browser code
-const MS_SCOPE         = 'https://graph.microsoft.com/Mail.Read https://graph.microsoft.com/Mail.ReadWrite offline_access';
+const MS_SCOPE         = 'https://graph.microsoft.com/Mail.Read offline_access';
 const MS_REDIRECT      = 'https://milesmaneric.github.io/milesman-crm';
 const DRIVE_CLIENT_ID  = '1055867383042-an9l58o1qg22pt7o4ak8vaneeftv54ib.apps.googleusercontent.com';
 const DRIVE_SCOPE      = 'https://www.googleapis.com/auth/drive.file';
@@ -952,30 +952,6 @@ async function syncOutlook(){
     btn.textContent=orig;
   }
   btn.disabled=false;
-}
-// Creates a draft message directly in the signed-in mailbox via Graph (needs
-// the Mail.ReadWrite scope, added alongside Mail.Read) instead of relying on
-// mailto:/clipboard hand-off — used by Email Quote so a Virgin Voyages/
-// Princess quote lands fully formatted without the user needing to paste it
-// in manually. Returns the created message (its webLink opens it in OWA).
-async function createOutlookDraft(token, opts){
-  var body = {
-    subject: opts.subject,
-    body: {contentType:'HTML', content:opts.htmlBody}
-  };
-  if(opts.toEmail) body.toRecipients = [{emailAddress:{address:opts.toEmail}}];
-  var r = await fetch('https://graph.microsoft.com/v1.0/me/messages', {
-    method:'POST',
-    headers:{'Authorization':'Bearer '+token, 'Content-Type':'application/json'},
-    body: JSON.stringify(body)
-  });
-  var d = await r.json();
-  if(!r.ok){
-    var err = new Error((d.error&&d.error.message)||('Graph API returned '+r.status));
-    err.status = r.status;
-    throw err;
-  }
-  return d;
 }
 
 // ── Google Drive ──────────────────────────────────────────────────────────
@@ -1918,7 +1894,7 @@ function quoteEmailBodyHtml(opts){
 '<tr>'+
 '<td style="padding:20px 32px 0 32px;">'+
 '<p style="font-size:15px; color:#333333; margin:0 0 10px 0;"><strong>Cabin Options &amp; Pricing:</strong></p>'+
-'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #dcdfff; border-radius:6px; overflow:hidden;">'+
+'<table role="presentation" width="536" cellpadding="0" cellspacing="0" style="border:1px solid #dcdfff; border-radius:6px; overflow:hidden; width:536px;">'+
 '<tr style="background-color:#1a1aff;">'+opts.pricingHeaderHtml+'</tr>'+
 opts.pricingRowsHtml+
 '</table>'+
@@ -1978,20 +1954,20 @@ quoteEmailBodyHtml(opts)+
 // entries: array of {cabin, fareType, price, gratuities, protection} (fareType/gratuities/protection optional)
 function virginVoyagesQuoteOpts(entries, meta){
   var headerHtml =
-    '<td style="padding:10px 14px; color:#ffffff; font-size:13px; font-weight:bold;">Cabin Category</td>'+
-    '<td style="padding:10px 14px; color:#ffffff; font-size:13px; font-weight:bold;">Fare Type</td>'+
-    '<td style="padding:10px 14px; color:#ffffff; font-size:13px; font-weight:bold;" align="right">Total Price</td>'+
-    '<td style="padding:10px 14px; color:#ffffff; font-size:13px; font-weight:bold;" align="right">Gratuities</td>'+
-    '<td style="padding:10px 14px; color:#ffffff; font-size:13px; font-weight:bold;" align="right">Voyage Protection</td>';
+    '<td width="160" style="padding:10px 14px; color:#ffffff; font-size:13px; font-weight:bold; width:160px;">Cabin Category</td>'+
+    '<td width="90" style="padding:10px 14px; color:#ffffff; font-size:13px; font-weight:bold; width:90px;">Fare Type</td>'+
+    '<td width="96" style="padding:10px 14px; color:#ffffff; font-size:13px; font-weight:bold; width:96px;" align="right">Total Price</td>'+
+    '<td width="90" style="padding:10px 14px; color:#ffffff; font-size:13px; font-weight:bold; width:90px;" align="right">Gratuities</td>'+
+    '<td width="100" style="padding:10px 14px; color:#ffffff; font-size:13px; font-weight:bold; width:100px;" align="right">Voyage Protection</td>';
   var rowsHtml = entries.map(function(r,i){
     var bg = i%2===0?'#f8f9ff':'#ffffff';
     var bd = i===entries.length-1?'':'border-bottom:1px solid #eeeeee;';
     return '<tr style="background-color:'+bg+';">'+
-      '<td style="padding:10px 14px; font-size:14px; color:#333333; '+bd+'">'+escHtml(r.cabin)+'</td>'+
-      '<td style="padding:10px 14px; font-size:14px; color:#333333; '+bd+'">'+escHtml(r.fareType||'')+'</td>'+
-      '<td style="padding:10px 14px; font-size:14px; color:#333333; '+bd+'" align="right">$'+escHtml(r.price)+'</td>'+
-      '<td style="padding:10px 14px; font-size:14px; color:#333333; '+bd+'" align="right">$'+escHtml(r.gratuities||'0')+'</td>'+
-      '<td style="padding:10px 14px; font-size:14px; color:#333333; '+bd+'" align="right">$'+escHtml(r.protection||'0')+'</td>'+
+      '<td width="160" style="padding:10px 14px; font-size:14px; color:#333333; width:160px; '+bd+'">'+escHtml(r.cabin)+'</td>'+
+      '<td width="90" style="padding:10px 14px; font-size:14px; color:#333333; width:90px; '+bd+'">'+escHtml(r.fareType||'')+'</td>'+
+      '<td width="96" style="padding:10px 14px; font-size:14px; color:#333333; width:96px; '+bd+'" align="right">$'+escHtml(r.price)+'</td>'+
+      '<td width="90" style="padding:10px 14px; font-size:14px; color:#333333; width:90px; '+bd+'" align="right">$'+escHtml(r.gratuities||'0')+'</td>'+
+      '<td width="100" style="padding:10px 14px; font-size:14px; color:#333333; width:100px; '+bd+'" align="right">$'+escHtml(r.protection||'0')+'</td>'+
     '</tr>';
   }).join('');
   return Object.assign({
@@ -2014,16 +1990,16 @@ function virginVoyagesQuoteBodyHtml(entries, meta){ return quoteEmailBodyHtml(vi
 // entries: array of {cabin, farePackage, price}
 function princessQuoteOpts(entries, meta){
   var headerHtml =
-    '<td style="padding:10px 14px; color:#ffffff; font-size:13px; font-weight:bold;">Cabin Type</td>'+
-    '<td style="padding:10px 14px; color:#ffffff; font-size:13px; font-weight:bold;">Fare Package</td>'+
-    '<td style="padding:10px 14px; color:#ffffff; font-size:13px; font-weight:bold;" align="right">Total Price</td>';
+    '<td width="180" style="padding:10px 14px; color:#ffffff; font-size:13px; font-weight:bold; width:180px;">Cabin Type</td>'+
+    '<td width="220" style="padding:10px 14px; color:#ffffff; font-size:13px; font-weight:bold; width:220px;">Fare Package</td>'+
+    '<td width="136" style="padding:10px 14px; color:#ffffff; font-size:13px; font-weight:bold; width:136px;" align="right">Total Price</td>';
   var rowsHtml = entries.map(function(r,i){
     var bg = i%2===0?'#f8f9ff':'#ffffff';
     var bd = i===entries.length-1?'':'border-bottom:1px solid #eeeeee;';
     return '<tr style="background-color:'+bg+';">'+
-      '<td style="padding:10px 14px; font-size:14px; color:#333333; '+bd+'">'+escHtml(r.cabin)+'</td>'+
-      '<td style="padding:10px 14px; font-size:14px; color:#333333; '+bd+'">'+escHtml(r.farePackage||'Standard')+'</td>'+
-      '<td style="padding:10px 14px; font-size:14px; color:#333333; '+bd+'" align="right">$'+escHtml(r.price)+'</td>'+
+      '<td width="180" style="padding:10px 14px; font-size:14px; color:#333333; width:180px; '+bd+'">'+escHtml(r.cabin)+'</td>'+
+      '<td width="220" style="padding:10px 14px; font-size:14px; color:#333333; width:220px; '+bd+'">'+escHtml(r.farePackage||'Standard')+'</td>'+
+      '<td width="136" style="padding:10px 14px; font-size:14px; color:#333333; width:136px; '+bd+'" align="right">$'+escHtml(r.price)+'</td>'+
     '</tr>';
   }).join('');
   var usesPremiumPackage = entries.some(function(r){return r.farePackage==='Princess Premier'||r.farePackage==='Princess Premier Plus';});
@@ -2185,18 +2161,7 @@ function openEmailQuoteModal(){
     });
     saveDB(); render();
   }
-  function sendViaClipboardFallback(d, subject, bodyHtml, extraToastPrefix){
-    var copied = copyHtmlToClipboard(bodyHtml);
-    var mailto = 'mailto:'+(d.client&&d.client.email?encodeURIComponent(d.client.email):'')+'?subject='+encodeURIComponent(subject);
-    window.location.href = mailto;
-    if(copied){
-      toast((extraToastPrefix||'')+'Quote copied — paste into the email body in Outlook (Ctrl+V)'+(d.client?' for '+d.client.name:''),'ok');
-    }else{
-      toast((extraToastPrefix||'')+'Could not copy the quote automatically — click Preview, then select all (Ctrl+A) and copy (Ctrl+C) from there to paste into Outlook','err');
-    }
-  }
-
-  document.getElementById('eq-send').addEventListener('click', async function(){
+  document.getElementById('eq-send').addEventListener('click', function(){
     var d = collectQuoteData();
     if(!d) return;
     var subject = d.cruiseLine+' Cruise Quote'+(d.ship?' - '+d.ship:'');
@@ -2206,30 +2171,13 @@ function openEmailQuoteModal(){
 
     if(isTemplateLine){
       var bodyHtml = buildTemplateBodyHtml(d);
-      var btn = document.getElementById('eq-send');
-      btn.disabled = true; btn.textContent = 'Creating draft...';
-      var token = await getValidMsToken(true);
-      if(!token){
-        // getValidMsToken already kicked off a Microsoft login redirect —
-        // the page is navigating away, nothing left to do here.
-        return;
-      }
-      try{
-        var draft = await createOutlookDraft(token, {toEmail:(d.client&&d.client.email)||'', subject:subject, htmlBody:bodyHtml});
-        if(draft.webLink) window.open(draft.webLink, '_blank');
-        toast('Draft created in Outlook'+(d.client?' for '+d.client.name:'')+' — review and hit Send','ok');
-        logQuoteNote(d, subject);
-        closeModal();
-        return;
-      }catch(e){
-        debugLog('Create Outlook draft failed: '+e.message);
-        btn.disabled = false; btn.textContent = 'Email Quote';
-        if(e.status===401||e.status===403){
-          localStorage.removeItem('mm_ms_token'); localStorage.removeItem('mm_ms_refresh'); localStorage.removeItem('mm_ms_expiry');
-          sendViaClipboardFallback(d, subject, bodyHtml, 'Outlook needs one more permission — click "Reset Outlook Login" and sign in again for next time. For now: ');
-        }else{
-          sendViaClipboardFallback(d, subject, bodyHtml, 'Could not create the Outlook draft ('+e.message+'). ');
-        }
+      var copied = copyHtmlToClipboard(bodyHtml);
+      var mailto = 'mailto:'+(d.client&&d.client.email?encodeURIComponent(d.client.email):'')+'?subject='+encodeURIComponent(subject);
+      window.location.href = mailto;
+      if(copied){
+        toast('Quote copied — paste into the email body in Outlook (Ctrl+V)'+(d.client?' for '+d.client.name:''),'ok');
+      }else{
+        toast('Could not copy the quote automatically — click Preview, then select all (Ctrl+A) and copy (Ctrl+C) from there to paste into Outlook','err');
       }
     }else{
       var bodyParts = ['Cruise Line: '+d.cruiseLine];
