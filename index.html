@@ -354,7 +354,50 @@ const LS_KEY           = 'milesman_crm_v2';
 const AIRLINES = ['American','United','Delta','Southwest','JetBlue','Qatar Airways','ANA','Emirates','Lufthansa','British Airways','Air France','Virgin Atlantic'];
 const HOTELS   = ['Marriott','Hilton','Hyatt','IHG','Wyndham','Four Seasons','Ritz-Carlton','W Hotels','Kimpton','Conrad'];
 const CREDIT_CARDS = ['Chase Sapphire Preferred','Chase Sapphire Reserve','Chase Ink Business Preferred','Amex Platinum','Amex Gold','Amex Business Platinum','Capital One Venture X','Citi Premier','Citi Prestige','Bilt Mastercard'];
-const ELITE_STATUS = ['None','Silver','Gold','Platinum','Diamond'];
+// Real elite/status tier names per loyalty program, lowest to highest, used
+// to drive the per-brand status dropdown in each balance grid row (instead
+// of one generic Silver/Gold/Platinum/Diamond list applied to everything —
+// most programs don't actually use those names, or use them in a different
+// order/count of tiers). Each grid still offers an "Other" + free-text
+// fallback for anything wrong or missing here.
+const AIRLINE_STATUS = {
+  'American': ['Gold','Platinum','Platinum Pro','Executive Platinum'],
+  'United': ['Premier Silver','Premier Gold','Premier Platinum','Premier 1K'],
+  'Delta': ['Silver Medallion','Gold Medallion','Platinum Medallion','Diamond Medallion'],
+  'Southwest': ['A-List','A-List Preferred'],
+  'JetBlue': ['Mosaic 1','Mosaic 2','Mosaic 3','Mosaic 4'],
+  'Qatar Airways': ['Burgundy','Silver','Gold','Platinum'],
+  'ANA': ['Bronze Service','Platinum Service','Diamond Service'],
+  'Emirates': ['Blue','Silver','Gold','Platinum'],
+  'Lufthansa': ['Frequent Traveller','Senator','HON Circle Member'],
+  'British Airways': ['Bronze','Silver','Gold','Gold Guest List'],
+  'Air France': ['Explorer','Silver','Gold','Platinum'],
+  'Virgin Atlantic': ['Red','Silver','Gold']
+};
+const HOTEL_STATUS = {
+  'Marriott': ['Silver Elite','Gold Elite','Platinum Elite','Titanium Elite','Ambassador Elite'],
+  'Hilton': ['Silver','Gold','Diamond'],
+  'Hyatt': ['Discoverist','Explorist','Globalist'],
+  'IHG': ['Silver Elite','Gold Elite','Platinum Elite','Diamond Elite','Spire Elite'],
+  'Wyndham': ['Blue','Gold','Platinum','Diamond'],
+  'Four Seasons': ['Preferred Partner'],
+  'Ritz-Carlton': ['Silver Elite','Gold Elite','Platinum Elite','Titanium Elite','Ambassador Elite'],
+  'W Hotels': ['Silver Elite','Gold Elite','Platinum Elite','Titanium Elite','Ambassador Elite'],
+  'Kimpton': ['Silver Elite','Gold Elite','Platinum Elite','Diamond Elite','Spire Elite'],
+  'Conrad': ['Silver','Gold','Diamond']
+};
+const CRUISE_STATUS = {
+  'Virgin Voyages': ['Sailor'],
+  'Royal Caribbean': ['Gold','Platinum','Emerald','Diamond','Diamond Plus','Pinnacle Club'],
+  'Carnival': ['Blue','Red','Gold','Platinum','Diamond'],
+  'Norwegian': ['Bronze','Silver','Gold','Platinum','Ambassador'],
+  'Princess': ['Gold','Ruby','Platinum','Elite'],
+  'Celebrity': ['Preview','Classic','Select','Elite','Elite Plus','Zenith'],
+  'Disney Cruise Line': ['Silver','Gold','Platinum','Platinum Plus'],
+  'Holland America': ['Mariner','2-Star Mariner','3-Star Mariner','4-Star Mariner','5-Star Mariner'],
+  'MSC Cruises': ['Classic','Silver','Gold','Platinum','Diamond'],
+  'Viking': ['Explorer Society Member']
+};
 const CRUISE_LINES = ['Virgin Voyages','Royal Caribbean','Carnival','Norwegian','Princess','Celebrity','Disney Cruise Line','Holland America','MSC Cruises','Viking'];
 const CABIN_TYPES = ['Interior','Window','Balcony','Suite'];
 const SHIPS_BY_CRUISE_LINE = {
@@ -869,6 +912,13 @@ function stripHtml(html){
 }
 function escHtml(v){
   return (v==null?'':String(v)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+// Stored client emails can carry stray leading/trailing (or, from bad
+// imports, internal) whitespace. An unencoded space in a mailto: URL breaks
+// parsing for most mail-client handlers, silently dropping the recipient —
+// so every mailto: address goes through this rather than being used raw.
+function mailtoAddr(email){
+  return (email||'').replace(/\s+/g,'');
 }
 function emailToNote(msg){
   const dt=new Date(msg.receivedDateTime);
@@ -1782,7 +1832,7 @@ function openMassEmailModal(){
     if(!selectedIds.length){toast('Select at least one client','err');return;}
     var subject = gv('me-subject')||'Miles Man Travel Update';
     var selected = withEmail.filter(function(c){return selectedIds.indexOf(c.id)!==-1;});
-    var bcc = selected.map(function(c){return c.email;}).join(';');
+    var bcc = selected.map(function(c){return mailtoAddr(c.email);}).join(';');
     var mailto='mailto:?bcc='+bcc+'&subject='+encodeURIComponent(subject);
     window.location.href=mailto;
     var ts=tsNow();
@@ -2183,7 +2233,7 @@ function openEmailQuoteModal(){
     if(isTemplateLine){
       var bodyHtml = buildTemplateBodyHtml(d);
       var copied = copyHtmlToClipboard(bodyHtml);
-      var mailto = 'mailto:'+(d.client&&d.client.email?d.client.email:'')+'?subject='+encodeURIComponent(subject);
+      var mailto = 'mailto:'+(d.client&&d.client.email?mailtoAddr(d.client.email):'')+'?subject='+encodeURIComponent(subject);
       window.location.href = mailto;
       if(copied){
         toast('Quote copied — paste into the email body in Outlook (Ctrl+V)'+(d.client?' for '+d.client.name:''),'ok');
@@ -2198,7 +2248,7 @@ function openEmailQuoteModal(){
       bodyParts=bodyParts.concat(d.lines);
       if(d.notes){bodyParts.push('');bodyParts.push(d.notes);}
       var body = bodyParts.join('\n');
-      var mailto2 = 'mailto:'+(d.client&&d.client.email?d.client.email:'')+'?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(body);
+      var mailto2 = 'mailto:'+(d.client&&d.client.email?mailtoAddr(d.client.email):'')+'?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(body);
       window.location.href = mailto2;
       toast('Opening Outlook with quote'+(d.client?' for '+d.client.name:''),'ok');
     }
@@ -3525,7 +3575,7 @@ function renderEmail(){
       '</div>';
 
     document.getElementById('email-send-btn').addEventListener('click',function(){
-      var mailto='mailto:'+(selClient.email||'')+
+      var mailto='mailto:'+mailtoAddr(selClient.email)+
         '?subject='+encodeURIComponent(subject)+
         '&body='+encodeURIComponent(body);
       window.location.href=mailto;
@@ -3869,7 +3919,7 @@ function renderVendors(){
         '</div>'+
         (v.contactName||v.email||v.phone ? '<div style="font-size:12px;color:#666;margin-top:8px">'+
           (v.contactName?'<span style="margin-right:12px">&#128100; '+v.contactName+'</span>':'')+
-          (v.email?'<a href="mailto:'+v.email+'" style="color:#2563eb;text-decoration:none;margin-right:12px">&#9993; '+v.email+'</a>':'')+
+          (v.email?'<a href="mailto:'+mailtoAddr(v.email)+'" style="color:#2563eb;text-decoration:none;margin-right:12px">&#9993; '+v.email+'</a>':'')+
           (v.phone?'<span>&#128222; '+v.phone+'</span>':'')+
         '</div>':'')+
         '<div style="margin-top:8px">'+
@@ -4484,7 +4534,7 @@ function renderClients(){
     (list.length?list.map(function(c){return '<tr>'+
       '<td style="width:32px"><input type="checkbox" class="client-row-cb" data-id="'+c.id+'" style="width:14px;height:14px"></td>'+
       '<td><div style="display:flex;align-items:center;gap:8px">'+av(c.name)+'<div><div style="font-weight:600;color:#111"><span class="open-client" data-id="'+c.id+'" style="color:#2563eb;cursor:pointer;text-decoration:underline">'+c.name+'</span></div><div style="font-size:10px;color:#aaa">'+c.id+'</div></div></div></td>'+
-      '<td><div>'+(c.email?'<a href="mailto:'+c.email+'" style="color:#2563eb;text-decoration:none" title="Send email">'+c.email+'</a>':'')+'</div><div style="font-size:11px;color:#aaa">'+(c.phone||'')+'</div></td>'+
+      '<td><div>'+(c.email?'<a href="mailto:'+mailtoAddr(c.email)+'" style="color:#2563eb;text-decoration:none" title="Send email">'+c.email+'</a>':'')+'</div><div style="font-size:11px;color:#aaa">'+(c.phone||'')+'</div></td>'+
       '<td>'+(function(){var rev=db.trips.filter(function(t){return t.clientId===c.id;}).reduce(function(a,t){return a+(t.totalValue||0);},0);return rev?'$'+fmt(rev):'—';})()+'</td>'+
       '<td><button class="trips-btn" data-cid="'+c.id+'">'+countDistinctTrips(c.id)+' trips &rarr;</button></td>'+
       '<td><button class="trips-btn" data-edit="'+c.id+'">'+(c.notesLog||[]).length+' notes</button></td>'+
@@ -4835,6 +4885,12 @@ function selOpts(opts,val){return opts.map(function(o){return '<option value="'+
 function fld(label,html,full){return '<div class="field'+(full?' full':'')+'"><label>'+label+'</label>'+html+'</div>';}
 function inp(id,type,val,ph){return '<input id="'+id+'" type="'+(type||'text')+'" value="'+(val||'').toString().replace(/"/g,'&quot;')+'" placeholder="'+(ph||'')+'">';}
 function sel(id,opts,val){return '<select id="'+id+'"><option value="">Select...</option>'+selOpts(opts,val)+'</select>';}
+// statusList can be a flat array (same options for every row) or an object
+// keyed by brand name (each row gets that brand's real status tier names).
+function statusOptionsFor(statusList,name){
+  if(!statusList) return [];
+  return Array.isArray(statusList)?statusList:(statusList[name]||[]);
+}
 function balanceGrid(label,idPrefix,list,data,statusList){
   return '<div class="field full"><label>'+label+'</label>'+
     '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax('+(statusList?'300px':'220px')+',1fr));gap:8px;border:1px solid #e5e7eb;border-radius:8px;padding:10px;background:#fafafa">'+
@@ -4842,9 +4898,10 @@ function balanceGrid(label,idPrefix,list,data,statusList){
         var entry=(data&&data[name])||{};
         var bal=statusList?(entry.balance||''):((data&&data[name])||'');
         var status=statusList?(entry.status||''):'';
-        var isOther=status&&statusList&&statusList.indexOf(status)===-1;
+        var opts=statusOptionsFor(statusList,name);
+        var isOther=status&&statusList&&opts.indexOf(status)===-1;
         var statusHtml=statusList?('<select id="'+idPrefix+'-st-'+i+'" class="balance-status-sel" data-custom-id="'+idPrefix+'-st-custom-'+i+'" style="width:110px;padding:5px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12px;font-family:inherit">'+
-          '<option value="">Status...</option>'+statusList.map(function(s){return '<option value="'+s+'"'+(s===status?' selected':'')+'>'+s+'</option>';}).join('')+
+          '<option value="">Status...</option>'+opts.map(function(s){return '<option value="'+s+'"'+(s===status?' selected':'')+'>'+s+'</option>';}).join('')+
           '<option value="Other"'+(isOther?' selected':'')+'>Other</option>'+
           '</select>'+
           '<input id="'+idPrefix+'-st-custom-'+i+'" type="text" value="'+(isOther?status.toString().replace(/"/g,'&quot;'):'')+'" placeholder="Enter status" style="width:100px;padding:5px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12px;font-family:inherit;display:'+(isOther?'inline-block':'none')+'">'):'';
@@ -4925,8 +4982,9 @@ function openClientForm(id){
       '</div>'+
       fld('Preferred Airline',sel('fpa',AIRLINES,d.preferredAirline))+fld('Preferred Hotel',sel('fph',HOTELS,d.preferredHotel))+fld('Preferred Cruise Line',sel('fpc',CRUISE_LINES,d.preferredCruiseLine))+
       fld('Cruise Loyalty Level',inp('fclvl','text',d.cruiseLoyaltyLevel,'Program and tier'))+
-      balanceGrid('Mileage Balances','mb',AIRLINES,d.mileageBalances,ELITE_STATUS)+
-      balanceGrid('Hotel Point Balances','hb',HOTELS,d.hotelBalances,ELITE_STATUS)+
+      balanceGrid('Mileage Balances','mb',AIRLINES,d.mileageBalances,AIRLINE_STATUS)+
+      balanceGrid('Hotel Point Balances','hb',HOTELS,d.hotelBalances,HOTEL_STATUS)+
+      balanceGrid('Cruise Line Loyalty','cl',CRUISE_LINES,d.cruiseBalances,CRUISE_STATUS)+
       balanceGrid('Credit Card Point Balances','cb',CREDIT_CARDS,d.creditCardBalances)+
       '<div class="field full" style="flex-direction:row;align-items:center;gap:24px;padding-top:6px">'+
         '<label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#374151;text-transform:none;font-weight:500;cursor:pointer"><input type="checkbox" id="f-paying" '+(d.isPayingClient?'checked':'')+' style="width:15px;height:15px"> Paying Client</label>'+
@@ -5284,8 +5342,8 @@ function addNoteEntry(){
 // separately opening the client's own edit form.
 function tripBalanceSectionsHtml(clientId){
   var c = clientId ? db.clients.find(function(x){return x.id===clientId;}) : null;
-  return balanceGrid('Mileage Balances','mb',AIRLINES,c?c.mileageBalances:null,ELITE_STATUS)+
-         balanceGrid('Hotel Point Balances','hb',HOTELS,c?c.hotelBalances:null,ELITE_STATUS)+
+  return balanceGrid('Mileage Balances','mb',AIRLINES,c?c.mileageBalances:null,AIRLINE_STATUS)+
+         balanceGrid('Hotel Point Balances','hb',HOTELS,c?c.hotelBalances:null,HOTEL_STATUS)+
          balanceGrid('Credit Card Point Balances','cb',CREDIT_CARDS,c?c.creditCardBalances:null);
 }
 function bindTripBalanceListeners(){
@@ -5373,12 +5431,13 @@ function saveClient(id){
     const noteType=(typeEl&&typeEl.value)||'';
     return {ts:ts.trim(),text:text.trim(),noteType:noteType};
   }).filter(function(n){return n.text;});
-  const mileageBalances=readBalanceGrid('mb',AIRLINES,ELITE_STATUS);
-  const hotelBalances=readBalanceGrid('hb',HOTELS,ELITE_STATUS);
+  const mileageBalances=readBalanceGrid('mb',AIRLINES,AIRLINE_STATUS);
+  const hotelBalances=readBalanceGrid('hb',HOTELS,HOTEL_STATUS);
   const creditCardBalances=readBalanceGrid('cb',CREDIT_CARDS);
+  const cruiseBalances=readBalanceGrid('cl',CRUISE_LINES,CRUISE_STATUS);
   const referredBy=gv('fref');
   const referredByDetail=REF_DETAIL_TYPES.indexOf(referredBy)!==-1?gv('frefdetail'):'';
-  const data={name:name,email:email,phone:gv('fp'),location:gv('fl'),birthdate:gv('fbd'),referredBy:referredBy,referredByDetail:referredByDetail,preferredAirline:gv('fpa'),preferredHotel:gv('fph'),preferredCruiseLine:gv('fpc'),cruiseLoyaltyLevel:gv('fclvl'),mileageBalances:mileageBalances,hotelBalances:hotelBalances,creditCardBalances:creditCardBalances,notesLog:notesLog,isPayingClient:document.getElementById('f-paying')?document.getElementById('f-paying').checked:false,isSubscriber:document.getElementById('f-subscriber')?document.getElementById('f-subscriber').checked:false,attachments:window._currentClientAttachments||[]};
+  const data={name:name,email:email,phone:gv('fp'),location:gv('fl'),birthdate:gv('fbd'),referredBy:referredBy,referredByDetail:referredByDetail,preferredAirline:gv('fpa'),preferredHotel:gv('fph'),preferredCruiseLine:gv('fpc'),cruiseLoyaltyLevel:gv('fclvl'),mileageBalances:mileageBalances,hotelBalances:hotelBalances,cruiseBalances:cruiseBalances,creditCardBalances:creditCardBalances,notesLog:notesLog,isPayingClient:document.getElementById('f-paying')?document.getElementById('f-paying').checked:false,isSubscriber:document.getElementById('f-subscriber')?document.getElementById('f-subscriber').checked:false,attachments:window._currentClientAttachments||[]};
   var resultId = id;
   if(id){
     db.clients=db.clients.map(function(c){return c.id===id?Object.assign({},c,data):c;});
@@ -5405,8 +5464,8 @@ function saveTrip(id){
   const additionalClientIds=Array.from(document.querySelectorAll('.trip-client-cb:checked')).map(function(cb){return cb.value;}).filter(function(cid){return cid!==clientId;});
   const data={clientId:clientId,clientName:client?client.name:'',clientIds:additionalClientIds,supplierId:supplierId,supplierName:supplier?supplier.name:'',origin:gv('tor'),destination:dest,departDate:gv('tdd'),returnDate:gv('trd'),status:gv('tst')||'Planning',type:gv('tty')||'Leisure',airline:gv('tai'),flightClass:gv('tcl')||'Economy',hotel:gv('tho'),hotelNights:gn('thn'),pointsUsed:gn('tpu'),cashPaid:gn('tcp'),totalValue:gn('tva'),bookingRef:gv('tbr'),product:gv('tpr'),notes:gv('tno')};
   if(client){
-    client.mileageBalances=readBalanceGrid('mb',AIRLINES,ELITE_STATUS);
-    client.hotelBalances=readBalanceGrid('hb',HOTELS,ELITE_STATUS);
+    client.mileageBalances=readBalanceGrid('mb',AIRLINES,AIRLINE_STATUS);
+    client.hotelBalances=readBalanceGrid('hb',HOTELS,HOTEL_STATUS);
     client.creditCardBalances=readBalanceGrid('cb',CREDIT_CARDS);
   }
   if(supplier && !(supplier.clientIds||[]).includes(clientId)){
