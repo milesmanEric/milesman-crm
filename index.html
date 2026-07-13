@@ -1987,19 +1987,23 @@ function virginVoyagesQuoteOpts(entries, meta){
 }
 function virginVoyagesQuoteHtml(entries, meta){ return quoteEmailShellHtml(virginVoyagesQuoteOpts(entries, meta)); }
 function virginVoyagesQuoteBodyHtml(entries, meta){ return quoteEmailBodyHtml(virginVoyagesQuoteOpts(entries, meta)); }
-// entries: array of {cabin, farePackage, price}
+// entries: array of {cabin, farePackage, price, cancellation, platinum}
 function princessQuoteOpts(entries, meta){
   var headerHtml =
-    '<td width="180" style="padding:10px 14px; color:#ffffff; font-size:13px; font-weight:bold; width:180px;">Cabin Type</td>'+
-    '<td width="220" style="padding:10px 14px; color:#ffffff; font-size:13px; font-weight:bold; width:220px;">Fare Package</td>'+
-    '<td width="136" style="padding:10px 14px; color:#ffffff; font-size:13px; font-weight:bold; width:136px;" align="right">Total Price</td>';
+    '<td width="120" style="padding:10px 14px; color:#ffffff; font-size:13px; font-weight:bold; width:120px;">Cabin Type</td>'+
+    '<td width="150" style="padding:10px 14px; color:#ffffff; font-size:13px; font-weight:bold; width:150px;">Fare Package</td>'+
+    '<td width="90" style="padding:10px 14px; color:#ffffff; font-size:13px; font-weight:bold; width:90px;" align="right">Total Price</td>'+
+    '<td width="88" style="padding:10px 14px; color:#ffffff; font-size:13px; font-weight:bold; width:88px;" align="right">Cancellation</td>'+
+    '<td width="88" style="padding:10px 14px; color:#ffffff; font-size:13px; font-weight:bold; width:88px;" align="right">Platinum</td>';
   var rowsHtml = entries.map(function(r,i){
     var bg = i%2===0?'#f8f9ff':'#ffffff';
     var bd = i===entries.length-1?'':'border-bottom:1px solid #eeeeee;';
     return '<tr style="background-color:'+bg+';">'+
-      '<td width="180" style="padding:10px 14px; font-size:14px; color:#333333; width:180px; '+bd+'">'+escHtml(r.cabin)+'</td>'+
-      '<td width="220" style="padding:10px 14px; font-size:14px; color:#333333; width:220px; '+bd+'">'+escHtml(r.farePackage||'Standard')+'</td>'+
-      '<td width="136" style="padding:10px 14px; font-size:14px; color:#333333; width:136px; '+bd+'" align="right">$'+escHtml(r.price)+'</td>'+
+      '<td width="120" style="padding:10px 14px; font-size:14px; color:#333333; width:120px; '+bd+'">'+escHtml(r.cabin)+'</td>'+
+      '<td width="150" style="padding:10px 14px; font-size:14px; color:#333333; width:150px; '+bd+'">'+escHtml(r.farePackage||'Standard')+'</td>'+
+      '<td width="90" style="padding:10px 14px; font-size:14px; color:#333333; width:90px; '+bd+'" align="right">$'+escHtml(r.price)+'</td>'+
+      '<td width="88" style="padding:10px 14px; font-size:14px; color:#333333; width:88px; '+bd+'" align="right">$'+escHtml(r.cancellation||'0')+'</td>'+
+      '<td width="88" style="padding:10px 14px; font-size:14px; color:#333333; width:88px; '+bd+'" align="right">$'+escHtml(r.platinum||'0')+'</td>'+
     '</tr>';
   }).join('');
   var usesPremiumPackage = entries.some(function(r){return r.farePackage==='Princess Premier'||r.farePackage==='Princess Premier Plus';});
@@ -2105,7 +2109,7 @@ function openEmailQuoteModal(){
         templateEntries.push({cabin:parts[0], fareType:parts[1]||'', price:price, gratuities:cellsByKey[rowLabel+'|Gratuities'], protection:cellsByKey[rowLabel+'|Insurance']});
       }else if(cruiseLine==='Princess'){
         var farePackage = cellsByKey[rowLabel+'|Princess Premier Plus'] ? 'Princess Premier Plus' : (cellsByKey[rowLabel+'|Princess Premier'] ? 'Princess Premier' : 'Standard');
-        templateEntries.push({cabin:rowLabel, farePackage:farePackage, price:price});
+        templateEntries.push({cabin:rowLabel, farePackage:farePackage, price:price, cancellation:cellsByKey[rowLabel+'|Cancellation'], platinum:cellsByKey[rowLabel+'|Platinum']});
       }
     });
     if(!lines.length){toast('Enter at least one price','err');return null;}
