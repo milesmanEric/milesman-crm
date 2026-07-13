@@ -386,7 +386,7 @@ const VIRGIN_VOYAGES_FARE_TIERS = ['Basic','Essential','Premium'];
 // Add-ons column with no group headers.
 const PRINCESS_CABIN_TYPES = ['Interior','Window','Balcony','Mini-Suite','Suite'];
 const QUOTE_CRUISE_CONFIG = {
-  'Princess': {cabinTypes:PRINCESS_CABIN_TYPES, insuranceCols:['Cancellation','Platinum'], addonCols:['Princess Premier','Princess Premier Plus']},
+  'Princess': {cabinTypes:PRINCESS_CABIN_TYPES, insuranceCols:['Cancellation','Platinum'], addonCols:['Princess Plus','Princess Premier']},
   'Virgin Voyages': {cabinTypes:VIRGIN_VOYAGES_CABIN_TYPES, cabinGroups:VIRGIN_VOYAGES_CABIN_GROUPS, fareTiers:VIRGIN_VOYAGES_FARE_TIERS, priceCols:['Price','Lock-It-In Rate'], addonCols:['Add-ons','Gratuities']}
 };
 function getQuoteConfig(cruiseLine){
@@ -1987,26 +1987,30 @@ function virginVoyagesQuoteOpts(entries, meta){
 }
 function virginVoyagesQuoteHtml(entries, meta){ return quoteEmailShellHtml(virginVoyagesQuoteOpts(entries, meta)); }
 function virginVoyagesQuoteBodyHtml(entries, meta){ return quoteEmailBodyHtml(virginVoyagesQuoteOpts(entries, meta)); }
-// entries: array of {cabin, farePackage, price, cancellation, platinum}
+// entries: array of {cabin, farePackage, price, cancellation, platinum, princessPlus, princessPremier}
 function princessQuoteOpts(entries, meta){
   var headerHtml =
-    '<td width="120" style="padding:10px 14px; color:#ffffff; font-size:13px; font-weight:bold; width:120px;">Cabin Type</td>'+
-    '<td width="150" style="padding:10px 14px; color:#ffffff; font-size:13px; font-weight:bold; width:150px;">Fare Package</td>'+
-    '<td width="90" style="padding:10px 14px; color:#ffffff; font-size:13px; font-weight:bold; width:90px;" align="right">Total Price</td>'+
-    '<td width="88" style="padding:10px 14px; color:#ffffff; font-size:13px; font-weight:bold; width:88px;" align="right">Cancellation</td>'+
-    '<td width="88" style="padding:10px 14px; color:#ffffff; font-size:13px; font-weight:bold; width:88px;" align="right">Platinum</td>';
+    '<td width="85" style="padding:8px 8px; color:#ffffff; font-size:13px; font-weight:bold; width:85px;">Cabin Type</td>'+
+    '<td width="95" style="padding:8px 8px; color:#ffffff; font-size:13px; font-weight:bold; width:95px;">Fare Package</td>'+
+    '<td width="72" style="padding:8px 8px; color:#ffffff; font-size:13px; font-weight:bold; width:72px;" align="right">Total Price</td>'+
+    '<td width="72" style="padding:8px 8px; color:#ffffff; font-size:13px; font-weight:bold; width:72px;" align="right">Cancellation</td>'+
+    '<td width="62" style="padding:8px 8px; color:#ffffff; font-size:13px; font-weight:bold; width:62px;" align="right">Platinum</td>'+
+    '<td width="75" style="padding:8px 8px; color:#ffffff; font-size:13px; font-weight:bold; width:75px;" align="right">Princess Plus</td>'+
+    '<td width="75" style="padding:8px 8px; color:#ffffff; font-size:13px; font-weight:bold; width:75px;" align="right">Princess Premier</td>';
   var rowsHtml = entries.map(function(r,i){
     var bg = i%2===0?'#f8f9ff':'#ffffff';
     var bd = i===entries.length-1?'':'border-bottom:1px solid #eeeeee;';
     return '<tr style="background-color:'+bg+';">'+
-      '<td width="120" style="padding:10px 14px; font-size:14px; color:#333333; width:120px; '+bd+'">'+escHtml(r.cabin)+'</td>'+
-      '<td width="150" style="padding:10px 14px; font-size:14px; color:#333333; width:150px; '+bd+'">'+escHtml(r.farePackage||'Standard')+'</td>'+
-      '<td width="90" style="padding:10px 14px; font-size:14px; color:#333333; width:90px; '+bd+'" align="right">$'+escHtml(r.price)+'</td>'+
-      '<td width="88" style="padding:10px 14px; font-size:14px; color:#333333; width:88px; '+bd+'" align="right">$'+escHtml(r.cancellation||'0')+'</td>'+
-      '<td width="88" style="padding:10px 14px; font-size:14px; color:#333333; width:88px; '+bd+'" align="right">$'+escHtml(r.platinum||'0')+'</td>'+
+      '<td width="85" style="padding:8px 8px; font-size:14px; color:#333333; width:85px; '+bd+'">'+escHtml(r.cabin)+'</td>'+
+      '<td width="95" style="padding:8px 8px; font-size:14px; color:#333333; width:95px; '+bd+'">'+escHtml(r.farePackage||'Standard')+'</td>'+
+      '<td width="72" style="padding:8px 8px; font-size:14px; color:#333333; width:72px; '+bd+'" align="right">$'+escHtml(r.price)+'</td>'+
+      '<td width="72" style="padding:8px 8px; font-size:14px; color:#333333; width:72px; '+bd+'" align="right">$'+escHtml(r.cancellation||'0')+'</td>'+
+      '<td width="62" style="padding:8px 8px; font-size:14px; color:#333333; width:62px; '+bd+'" align="right">$'+escHtml(r.platinum||'0')+'</td>'+
+      '<td width="75" style="padding:8px 8px; font-size:14px; color:#333333; width:75px; '+bd+'" align="right">$'+escHtml(r.princessPlus||'0')+'</td>'+
+      '<td width="75" style="padding:8px 8px; font-size:14px; color:#333333; width:75px; '+bd+'" align="right">$'+escHtml(r.princessPremier||'0')+'</td>'+
     '</tr>';
   }).join('');
-  var usesPremiumPackage = entries.some(function(r){return r.farePackage==='Princess Premier'||r.farePackage==='Princess Premier Plus';});
+  var usesPremiumPackage = entries.some(function(r){return r.farePackage==='Princess Plus'||r.farePackage==='Princess Premier';});
   var includedItemsHtml =
     '<li>Main dining room &amp; buffet dining</li>'+
     '<li>Onboard entertainment &amp; activities</li>'+
@@ -2108,8 +2112,8 @@ function openEmailQuoteModal(){
         var parts = rowLabel.split(' — ');
         templateEntries.push({cabin:parts[0], fareType:parts[1]||'', price:price, gratuities:cellsByKey[rowLabel+'|Gratuities'], protection:cellsByKey[rowLabel+'|Insurance']});
       }else if(cruiseLine==='Princess'){
-        var farePackage = cellsByKey[rowLabel+'|Princess Premier Plus'] ? 'Princess Premier Plus' : (cellsByKey[rowLabel+'|Princess Premier'] ? 'Princess Premier' : 'Standard');
-        templateEntries.push({cabin:rowLabel, farePackage:farePackage, price:price, cancellation:cellsByKey[rowLabel+'|Cancellation'], platinum:cellsByKey[rowLabel+'|Platinum']});
+        var farePackage = cellsByKey[rowLabel+'|Princess Premier'] ? 'Princess Premier' : (cellsByKey[rowLabel+'|Princess Plus'] ? 'Princess Plus' : 'Standard');
+        templateEntries.push({cabin:rowLabel, farePackage:farePackage, price:price, cancellation:cellsByKey[rowLabel+'|Cancellation'], platinum:cellsByKey[rowLabel+'|Platinum'], princessPlus:cellsByKey[rowLabel+'|Princess Plus'], princessPremier:cellsByKey[rowLabel+'|Princess Premier']});
       }
     });
     if(!lines.length){toast('Enter at least one price','err');return null;}
