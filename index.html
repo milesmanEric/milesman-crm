@@ -1783,7 +1783,7 @@ function openMassEmailModal(){
     var subject = gv('me-subject')||'Miles Man Travel Update';
     var selected = withEmail.filter(function(c){return selectedIds.indexOf(c.id)!==-1;});
     var bcc = selected.map(function(c){return c.email;}).join(';');
-    var mailto='mailto:?bcc='+encodeURIComponent(bcc)+'&subject='+encodeURIComponent(subject);
+    var mailto='mailto:?bcc='+bcc+'&subject='+encodeURIComponent(subject);
     window.location.href=mailto;
     var ts=tsNow();
     var note={ts:ts,text:'Mass email sent to '+selected.length+' client'+(selected.length!==1?'s':'')};
@@ -2183,7 +2183,7 @@ function openEmailQuoteModal(){
     if(isTemplateLine){
       var bodyHtml = buildTemplateBodyHtml(d);
       var copied = copyHtmlToClipboard(bodyHtml);
-      var mailto = 'mailto:'+(d.client&&d.client.email?encodeURIComponent(d.client.email):'')+'?subject='+encodeURIComponent(subject);
+      var mailto = 'mailto:'+(d.client&&d.client.email?d.client.email:'')+'?subject='+encodeURIComponent(subject);
       window.location.href = mailto;
       if(copied){
         toast('Quote copied — paste into the email body in Outlook (Ctrl+V)'+(d.client?' for '+d.client.name:''),'ok');
@@ -2198,7 +2198,7 @@ function openEmailQuoteModal(){
       bodyParts=bodyParts.concat(d.lines);
       if(d.notes){bodyParts.push('');bodyParts.push(d.notes);}
       var body = bodyParts.join('\n');
-      var mailto2 = 'mailto:'+(d.client&&d.client.email?encodeURIComponent(d.client.email):'')+'?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(body);
+      var mailto2 = 'mailto:'+(d.client&&d.client.email?d.client.email:'')+'?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(body);
       window.location.href = mailto2;
       toast('Opening Outlook with quote'+(d.client?' for '+d.client.name:''),'ok');
     }
@@ -3525,7 +3525,7 @@ function renderEmail(){
       '</div>';
 
     document.getElementById('email-send-btn').addEventListener('click',function(){
-      var mailto='mailto:'+encodeURIComponent(selClient.email||'')+
+      var mailto='mailto:'+(selClient.email||'')+
         '?subject='+encodeURIComponent(subject)+
         '&body='+encodeURIComponent(body);
       window.location.href=mailto;
