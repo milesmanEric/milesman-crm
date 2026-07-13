@@ -2165,14 +2165,11 @@ function openEmailQuoteModal(){
         var parts = rowLabel.split(' — ');
         templateEntries.push({cabin:parts[0], fareType:parts[1]||'', price:price, gratuities:cellsByKey[rowLabel+'|Gratuities'], protection:cellsByKey[rowLabel+'|Insurance']});
       }else if(cruiseLine==='Princess'){
-        var cancellationAmt = parseFloat(cellsByKey[rowLabel+'|Cancellation Insurance'])||0;
-        var platinumAmt = parseFloat(cellsByKey[rowLabel+'|Platinum Insurance'])||0;
-        var priceNum = parseFloat(price)||0;
         templateEntries.push({
           cabin:rowLabel,
           price:price,
-          fareWithCancellation: cancellationAmt ? (priceNum+cancellationAmt) : '',
-          fareWithPlatinum: platinumAmt ? (priceNum+platinumAmt) : '',
+          fareWithCancellation: cellsByKey[rowLabel+'|Cancellation Insurance'],
+          fareWithPlatinum: cellsByKey[rowLabel+'|Platinum Insurance'],
           princessPlus:cellsByKey[rowLabel+'|Princess Plus'],
           princessPremier:cellsByKey[rowLabel+'|Princess Premier']
         });
