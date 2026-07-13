@@ -1963,6 +1963,13 @@ opts.pricingRowsHtml+
 '<p style="font-size:14px; color:#555555; line-height:1.5; margin:0 0 16px 0;">'+opts.notIncludedText+'</p>'+
 '</td>'+
 '</tr>'+
+(opts.notes?(
+'<tr>'+
+'<td style="padding:0 32px;">'+
+'<p style="font-size:15px; color:#333333; line-height:1.5; margin:0 0 16px 0;"><strong>Additional Notes:</strong><br>'+escHtml(opts.notes).replace(/\n/g,'<br>')+'</p>'+
+'</td>'+
+'</tr>'
+):'')+
 '<tr>'+
 '<td style="padding:0 32px;">'+
 '<p style="font-size:15px; color:#333333; line-height:1.5; margin:0 0 16px 0;">'+
@@ -2030,7 +2037,7 @@ function virginVoyagesQuoteOpts(entries, meta){
     introText:'Thanks for reaching out! I\'ve put together a Virgin Voyages quote based on what you\'re looking for. Here are the details:',
     pricingHeaderHtml:headerHtml,
     pricingRowsHtml:rowsHtml,
-    pricingCaption:'All prices per stateroom, based on double occupancy, all-inclusive per Virgin\'s pricing. Add or remove rows as needed.',
+    pricingCaption:'All prices per stateroom, based on double occupancy, all-inclusive per Virgin\'s pricing.',
     includedItemsHtml:
       '<li>Group fitness classes &amp; entertainment</li>'+
       '<li>Gratuities</li>'+
@@ -2074,7 +2081,7 @@ function princessQuoteOpts(entries, meta){
     introText:'Thanks for reaching out! I\'ve put together a Princess Cruises quote based on what you\'re looking for. Here are the details:',
     pricingHeaderHtml:headerHtml,
     pricingRowsHtml:rowsHtml,
-    pricingCaption:'All prices per stateroom, based on double occupancy. Add or remove rows as needed.',
+    pricingCaption:'All prices per stateroom, based on double occupancy.',
     includedItemsHtml:includedItemsHtml,
     notIncludedText:'Not included: gratuities (unless Princess Plus/Premier selected), specialty dining, shore excursions, alcoholic beverages (unless a drinks package is included), and travel insurance.'
   }, meta);
@@ -2187,7 +2194,8 @@ function openEmailQuoteModal(){
       guests: gv('eq-guests'),
       depositAmount: gv('eq-deposit'),
       paymentDeadline: gv('eq-payment-deadline'),
-      finalPaymentDate: gv('eq-final-payment')
+      finalPaymentDate: gv('eq-final-payment'),
+      notes: notes
     };
 
     return {cruiseLine:cruiseLine, ship:ship, sailingDate:sailingDate, client:client, notes:notes, lines:lines, templateEntries:templateEntries, meta:meta};
@@ -2260,7 +2268,6 @@ function openEmailQuoteModal(){
     }
 
     logQuoteNote(d, subject);
-    closeModal();
   });
 }
 function openLogMailchimpModal(){
