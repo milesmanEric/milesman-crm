@@ -862,6 +862,9 @@ function stripHtml(html){
     .replace(/&lt;/g,'<').replace(/&gt;/g,'>')
     .replace(/&quot;/g,'"').replace(/\s+/g,' ').trim();
 }
+function escHtml(v){
+  return (v==null?'':String(v)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
 function emailToNote(msg){
   const dt=new Date(msg.receivedDateTime);
   const ts=dt.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})+' '+dt.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
@@ -1805,6 +1808,198 @@ function quoteTableHtml(cruiseLine){
   }).join('');
   return '<table style="width:100%;border-collapse:collapse"><thead><tr>'+headerHtml+'</tr></thead><tbody>'+rowsHtml+'</tbody></table>';
 }
+function fmtDate(s){
+  if(!s) return '';
+  var d = new Date(s+'T12:00:00');
+  if(isNaN(d)) return s;
+  return d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+}
+function computeNights(depart,ret){
+  if(!depart||!ret) return '';
+  var d1=new Date(depart+'T12:00:00'), d2=new Date(ret+'T12:00:00');
+  if(isNaN(d1)||isNaN(d2)) return '';
+  var diff=Math.round((d2-d1)/(1000*60*60*24));
+  return diff>0?diff:'';
+}
+function copyHtmlToClipboard(html){
+  if(navigator.clipboard && window.ClipboardItem){
+    try{
+      var item=new ClipboardItem({
+        'text/html': new Blob([html],{type:'text/html'}),
+        'text/plain': new Blob([stripHtml(html)],{type:'text/plain'})
+      });
+      navigator.clipboard.write([item]).catch(function(e){debugLog('Clipboard write failed: '+e.message);});
+    }catch(e){debugLog('Clipboard write failed: '+e.message);}
+  }
+}
+// Shared HTML-email shell replicating virgin_voyages_quote_template.html /
+// princess_cruises_quote_template.html exactly (header bar, hero, quote
+// details box, pricing table, what's-included, payment terms, CTA,
+// signature) — only the pricing table columns/rows and included/not-
+// included copy differ per cruise line, passed in via opts.
+function quoteEmailShellHtml(opts){
+  var sailDatesLine = (opts.departDate?fmtDate(opts.departDate):'') + (opts.departDate&&opts.returnDate?' – ':'') + (opts.returnDate?fmtDate(opts.returnDate):'') + (opts.nights?' ('+opts.nights+' nights)':'');
+  return '<!DOCTYPE html>'+
+'<html lang="en">'+
+'<head>'+
+'<meta charset="UTF-8">'+
+'<title>'+escHtml(opts.docTitle)+'</title>'+
+'</head>'+
+'<body style="margin:0; padding:0; background-color:#f4f5f7; font-family: Arial, Helvetica, sans-serif;">'+
+'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f5f7; padding:30px 0;">'+
+'<tr>'+
+'<td align="center">'+
+'<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff; border-radius:8px; overflow:hidden;">'+
+'<tr>'+
+'<td style="background-color:#1a1aff; padding:24px 32px;">'+
+'<table role="presentation" width="100%" cellpadding="0" cellspacing="0">'+
+'<tr>'+
+'<td style="color:#ffffff; font-size:22px; font-weight:bold;">Miles Man</td>'+
+'</tr>'+
+'</table>'+
+'</td>'+
+'</tr>'+
+'<tr>'+
+'<td style="padding:32px 32px 8px 32px;">'+
+'<p style="font-size:16px; color:#111111; margin:0 0 16px 0;">Hi '+escHtml(opts.clientFirstName||'there')+',</p>'+
+'<p style="font-size:15px; color:#333333; line-height:1.5; margin:0 0 16px 0;">'+opts.introText+'</p>'+
+'</td>'+
+'</tr>'+
+'<tr>'+
+'<td style="padding:0 32px;">'+
+'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f0f2ff; border-left:4px solid #1a1aff; border-radius:6px;">'+
+'<tr>'+
+'<td style="padding:20px 24px;">'+
+'<p style="margin:0 0 10px 0; font-size:15px; color:#0d0d66;"><strong>Ship:</strong> '+escHtml(opts.ship||'')+'</p>'+
+'<p style="margin:0 0 10px 0; font-size:15px; color:#0d0d66;"><strong>Itinerary:</strong> '+escHtml(opts.itinerary||'')+'</p>'+
+'<p style="margin:0 0 10px 0; font-size:15px; color:#0d0d66;"><strong>Sail Dates:</strong> '+sailDatesLine+'</p>'+
+'<p style="margin:0; font-size:15px; color:#0d0d66;"><strong>Guests:</strong> '+escHtml(opts.guests||'')+'</p>'+
+'</td>'+
+'</tr>'+
+'</table>'+
+'</td>'+
+'</tr>'+
+'<tr>'+
+'<td style="padding:20px 32px 0 32px;">'+
+'<p style="font-size:15px; color:#333333; margin:0 0 10px 0;"><strong>Cabin Options &amp; Pricing:</strong></p>'+
+'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #dcdfff; border-radius:6px; overflow:hidden;">'+
+'<tr style="background-color:#1a1aff;">'+opts.pricingHeaderHtml+'</tr>'+
+opts.pricingRowsHtml+
+'</table>'+
+'<p style="font-size:12px; color:#777777; margin:8px 0 0 0;">'+opts.pricingCaption+'</p>'+
+'</td>'+
+'</tr>'+
+'<tr>'+
+'<td style="padding:24px 32px 0 32px;">'+
+'<p style="font-size:15px; color:#333333; line-height:1.5; margin:0 0 8px 0;"><strong>What\'s included:</strong></p>'+
+'<ul style="font-size:14px; color:#333333; line-height:1.6; margin:0 0 16px 0; padding-left:20px;">'+opts.includedItemsHtml+'</ul>'+
+'<p style="font-size:14px; color:#555555; line-height:1.5; margin:0 0 16px 0;">'+opts.notIncludedText+'</p>'+
+'</td>'+
+'</tr>'+
+'<tr>'+
+'<td style="padding:0 32px;">'+
+'<p style="font-size:15px; color:#333333; line-height:1.5; margin:0 0 16px 0;">'+
+'<strong>Deposit:</strong> $'+escHtml(opts.depositAmount||'0')+' due to hold this rate, refundable until '+(opts.paymentDeadline?fmtDate(opts.paymentDeadline):'[PAYMENT DEADLINE DATE]')+'.<br>'+
+'<strong>Final Payment Due:</strong> '+(opts.finalPaymentDate?fmtDate(opts.finalPaymentDate):'[FINAL PAYMENT DATE]')+
+'</p>'+
+'<p style="font-size:15px; color:#333333; line-height:1.5; margin:0 0 16px 0;">'+
+'This rate is subject to availability and can change if not booked. Let me know if you\'d like to move forward or if you\'d like me to look at other cabin categories, sail dates, or ways to use points/miles toward this trip.'+
+'</p>'+
+'</td>'+
+'</tr>'+
+'<tr>'+
+'<td style="padding:8px 32px 24px 32px;" align="center">'+
+'<a href="mailto:eric@themilesman.com" style="display:inline-block; background-color:#1a1aff; color:#ffffff; text-decoration:none; font-size:15px; font-weight:bold; padding:12px 28px; border-radius:6px;">Reply to Book This Trip</a>'+
+'</td>'+
+'</tr>'+
+'<tr>'+
+'<td style="padding:0 32px 32px 32px; border-top:1px solid #eeeeee;">'+
+'<p style="font-size:14px; color:#333333; line-height:1.5; margin:20px 0 0 0;">'+
+'Looking forward to getting you on board!<br><br>'+
+'<strong>Eric</strong><br>'+
+'Chief Mileage Officer, Miles Man<br>'+
+'themilesman.com | eric@themilesman.com | (908) 419-7700'+
+'</p>'+
+'</td>'+
+'</tr>'+
+'</table>'+
+'</td>'+
+'</tr>'+
+'</table>'+
+'</body>'+
+'</html>';
+}
+// entries: array of {cabin, fareType, price, gratuities, protection} (fareType/gratuities/protection optional)
+function virginVoyagesQuoteHtml(entries, meta){
+  var headerHtml =
+    '<td style="padding:10px 14px; color:#ffffff; font-size:13px; font-weight:bold;">Cabin Category</td>'+
+    '<td style="padding:10px 14px; color:#ffffff; font-size:13px; font-weight:bold;">Fare Type</td>'+
+    '<td style="padding:10px 14px; color:#ffffff; font-size:13px; font-weight:bold;" align="right">Total Price</td>'+
+    '<td style="padding:10px 14px; color:#ffffff; font-size:13px; font-weight:bold;" align="right">Gratuities</td>'+
+    '<td style="padding:10px 14px; color:#ffffff; font-size:13px; font-weight:bold;" align="right">Voyage Protection</td>';
+  var rowsHtml = entries.map(function(r,i){
+    var bg = i%2===0?'#f8f9ff':'#ffffff';
+    var bd = i===entries.length-1?'':'border-bottom:1px solid #eeeeee;';
+    return '<tr style="background-color:'+bg+';">'+
+      '<td style="padding:10px 14px; font-size:14px; color:#333333; '+bd+'">'+escHtml(r.cabin)+'</td>'+
+      '<td style="padding:10px 14px; font-size:14px; color:#333333; '+bd+'">'+escHtml(r.fareType||'')+'</td>'+
+      '<td style="padding:10px 14px; font-size:14px; color:#333333; '+bd+'" align="right">$'+escHtml(r.price)+'</td>'+
+      '<td style="padding:10px 14px; font-size:14px; color:#333333; '+bd+'" align="right">$'+escHtml(r.gratuities||'0')+'</td>'+
+      '<td style="padding:10px 14px; font-size:14px; color:#333333; '+bd+'" align="right">$'+escHtml(r.protection||'0')+'</td>'+
+    '</tr>';
+  }).join('');
+  return quoteEmailShellHtml(Object.assign({
+    docTitle:'Virgin Voyages Quote - Miles Man',
+    introText:'Thanks for reaching out! I\'ve put together a Virgin Voyages quote based on what you\'re looking for. Here are the details:',
+    pricingHeaderHtml:headerHtml,
+    pricingRowsHtml:rowsHtml,
+    pricingCaption:'All prices per stateroom, based on double occupancy, all-inclusive per Virgin\'s pricing. Add or remove rows as needed.',
+    includedItemsHtml:
+      '<li>Group fitness classes &amp; entertainment</li>'+
+      '<li>Gratuities</li>'+
+      '<li>WiFi</li>'+
+      '<li>Basic dining across restaurants (no main dining room/buffet — all restaurant-style)</li>'+
+      '<li>Soft drinks, coffee, and tea</li>',
+    notIncludedText:'Not included: alcoholic beverages (unless a bar package is added), shore excursions, and travel insurance.'
+  }, meta));
+}
+// entries: array of {cabin, farePackage, price}
+function princessQuoteHtml(entries, meta){
+  var headerHtml =
+    '<td style="padding:10px 14px; color:#ffffff; font-size:13px; font-weight:bold;">Cabin Type</td>'+
+    '<td style="padding:10px 14px; color:#ffffff; font-size:13px; font-weight:bold;">Fare Package</td>'+
+    '<td style="padding:10px 14px; color:#ffffff; font-size:13px; font-weight:bold;" align="right">Total Price</td>';
+  var rowsHtml = entries.map(function(r,i){
+    var bg = i%2===0?'#f8f9ff':'#ffffff';
+    var bd = i===entries.length-1?'':'border-bottom:1px solid #eeeeee;';
+    return '<tr style="background-color:'+bg+';">'+
+      '<td style="padding:10px 14px; font-size:14px; color:#333333; '+bd+'">'+escHtml(r.cabin)+'</td>'+
+      '<td style="padding:10px 14px; font-size:14px; color:#333333; '+bd+'">'+escHtml(r.farePackage||'Standard')+'</td>'+
+      '<td style="padding:10px 14px; font-size:14px; color:#333333; '+bd+'" align="right">$'+escHtml(r.price)+'</td>'+
+    '</tr>';
+  }).join('');
+  var usesPremiumPackage = entries.some(function(r){return r.farePackage==='Princess Premier'||r.farePackage==='Princess Premier Plus';});
+  var includedItemsHtml =
+    '<li>Main dining room &amp; buffet dining</li>'+
+    '<li>Onboard entertainment &amp; activities</li>'+
+    '<li>Stateroom accommodations</li>'+
+    (usesPremiumPackage?'<li>Selected cabins include Princess Plus/Premier (WiFi, drinks package, gratuities, and crew appreciation)</li>':'');
+  return quoteEmailShellHtml(Object.assign({
+    docTitle:'Princess Cruises Quote - Miles Man',
+    introText:'Thanks for reaching out! I\'ve put together a Princess Cruises quote based on what you\'re looking for. Here are the details:',
+    pricingHeaderHtml:headerHtml,
+    pricingRowsHtml:rowsHtml,
+    pricingCaption:'All prices per stateroom, based on double occupancy. Add or remove rows as needed.',
+    includedItemsHtml:includedItemsHtml,
+    notIncludedText:'Not included: gratuities (unless Princess Plus/Premier selected), specialty dining, shore excursions, alcoholic beverages (unless a drinks package is included), and travel insurance.'
+  }, meta));
+}
+// Cruise lines with a matching HTML email template (virgin_voyages_quote_template.html,
+// princess_cruises_quote_template.html) get a styled HTML quote (copied to the
+// clipboard for pasting into Outlook, since mailto: bodies are plain-text only)
+// plus the extra trip fields those templates need. Every other line keeps the
+// simpler plain-text mailto body.
+var QUOTE_TEMPLATE_LINES = ['Virgin Voyages','Princess'];
 function openEmailQuoteModal(){
   var sortedClients = [...db.clients].sort(function(a,b){return (a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase());});
   var clientOpts = sortedClients.map(function(c){return '<option value="'+c.id+'">'+c.name+'</option>';}).join('');
@@ -1815,15 +2010,27 @@ function openEmailQuoteModal(){
       fld('Client (optional)','<select id="eq-client"><option value="">-- No client selected --</option>'+clientOpts+'</select>',true)+
       fld('Cruise Line',sel('eq-cruise-line',CRUISE_LINES,''))+
       fld('Ship','<select id="eq-ship"><option value="">-- Select cruise line first --</option></select>')+
-      fld('Sailing Date',inp('eq-sailing-date','date',''))+
+      fld('Depart / Sailing Date',inp('eq-sailing-date','date',''))+
+      '<div id="eq-template-fields" style="display:none">'+
+        fld('Itinerary / Destinations',inp('eq-itinerary','text','','e.g. Eastern Caribbean: Miami, San Juan, St. Thomas'),true)+
+        fld('Return Date',inp('eq-return-date','date',''))+
+        fld('Number of Guests',inp('eq-guests','number','2'))+
+        fld('Deposit Amount',inp('eq-deposit','text','','e.g. 500'))+
+        fld('Payment Deadline Date',inp('eq-payment-deadline','date',''))+
+        fld('Final Payment Date',inp('eq-final-payment','date',''))+
+      '</div>'+
       '<div class="field full"><label>Pricing</label>'+
         '<div id="quote-table-wrap" style="border:1px solid #e5e7eb;border-radius:8px;padding:10px;overflow-x:auto;background:#fafafa">'+
           '<div style="color:#aaa;font-size:12px">Select a cruise line to build the pricing table</div>'+
         '</div>'+
       '</div>'+
       '<div class="field full"><label>Additional Notes</label><textarea id="eq-notes" rows="3" placeholder="Optional extra details to include in the email"></textarea></div>'+
+      '<div class="field full" id="eq-preview-wrap" style="display:none">'+
+        '<label>Preview</label>'+
+        '<iframe id="eq-preview-frame" style="width:100%;height:420px;border:1px solid #e5e7eb;border-radius:8px;background:#fff"></iframe>'+
+      '</div>'+
     '</div>'+
-    '<div class="form-actions"><button class="cancel-btn" id="modal-cancel">Cancel</button><button class="save-btn" id="eq-send">Email Quote</button></div>';
+    '<div class="form-actions"><button class="cancel-btn" id="modal-cancel">Cancel</button><button class="cancel-btn" id="eq-preview">Preview</button><button class="save-btn" id="eq-send">Email Quote</button></div>';
 
   $('overlay').classList.add('open');
   $('modal-close').addEventListener('click', closeModal);
@@ -1835,11 +2042,17 @@ function openEmailQuoteModal(){
     var ships = SHIPS_BY_CRUISE_LINE[cl]||[];
     shipSel.innerHTML = '<option value="">-- Select ship --</option>'+ships.map(function(s){return '<option value="'+s+'">'+s+'</option>';}).join('');
     document.getElementById('quote-table-wrap').innerHTML = cl ? quoteTableHtml(cl) : '<div style="color:#aaa;font-size:12px">Select a cruise line to build the pricing table</div>';
+    document.getElementById('eq-template-fields').style.display = QUOTE_TEMPLATE_LINES.indexOf(cl)!==-1 ? 'block' : 'none';
+    document.getElementById('eq-preview-wrap').style.display = 'none';
   });
 
-  document.getElementById('eq-send').addEventListener('click', function(){
+  // Reads the pricing grid + form fields and builds everything the send/preview
+  // actions need: the plain-text summary lines (always) and, for template
+  // lines, the {cabin,fareType/farePackage,price,...} entries the HTML
+  // builders expect.
+  function collectQuoteData(){
     var cruiseLine = gv('eq-cruise-line');
-    if(!cruiseLine){toast('Select a cruise line','err');return;}
+    if(!cruiseLine){toast('Select a cruise line','err');return null;}
     var ship = gv('eq-ship');
     var sailingDate = gv('eq-sailing-date');
     var clientId = gv('eq-client');
@@ -1854,38 +2067,98 @@ function openEmailQuoteModal(){
       cellsByKey[el.dataset.cabin+'|'+el.dataset.col] = el.value.trim();
     });
     var lines = [];
+    var templateEntries = [];
     rows.forEach(function(rowLabel){
       var cellVals = cols.map(function(c){return cellsByKey[rowLabel+'|'+c]||'';});
-      if(cellVals.some(function(v){return v;})){
-        lines.push(rowLabel+': '+cols.map(function(c,i){return c+' '+(cellVals[i]||'-');}).join(', '));
+      if(!cellVals.some(function(v){return v;})) return;
+      lines.push(rowLabel+': '+cols.map(function(c,i){return c+' '+(cellVals[i]||'-');}).join(', '));
+      var price = cellsByKey[rowLabel+'|Price'];
+      if(!price) return;
+      if(cruiseLine==='Virgin Voyages'){
+        var parts = rowLabel.split(' — ');
+        templateEntries.push({cabin:parts[0], fareType:parts[1]||'', price:price, gratuities:cellsByKey[rowLabel+'|Gratuities'], protection:cellsByKey[rowLabel+'|Insurance']});
+      }else if(cruiseLine==='Princess'){
+        var farePackage = cellsByKey[rowLabel+'|Princess Premier Plus'] ? 'Princess Premier Plus' : (cellsByKey[rowLabel+'|Princess Premier'] ? 'Princess Premier' : 'Standard');
+        templateEntries.push({cabin:rowLabel, farePackage:farePackage, price:price});
       }
     });
-    if(!lines.length){toast('Enter at least one price','err');return;}
+    if(!lines.length){toast('Enter at least one price','err');return null;}
 
-    var subject = cruiseLine+' Cruise Quote'+(ship?' - '+ship:'');
-    var bodyParts = ['Cruise Line: '+cruiseLine];
-    if(ship) bodyParts.push('Ship: '+ship);
-    if(sailingDate) bodyParts.push('Sailing Date: '+sailingDate);
-    bodyParts.push('');
-    bodyParts=bodyParts.concat(lines);
-    if(notes){bodyParts.push('');bodyParts.push(notes);}
-    var body = bodyParts.join('\n');
+    var meta = {
+      clientFirstName: client?getFirstName(client.name):'',
+      ship: ship,
+      itinerary: gv('eq-itinerary'),
+      departDate: sailingDate,
+      returnDate: gv('eq-return-date'),
+      nights: computeNights(sailingDate, gv('eq-return-date')),
+      guests: gv('eq-guests'),
+      depositAmount: gv('eq-deposit'),
+      paymentDeadline: gv('eq-payment-deadline'),
+      finalPaymentDate: gv('eq-final-payment')
+    };
 
-    var mailto = 'mailto:'+(client&&client.email?encodeURIComponent(client.email):'')+'?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(body);
-    window.location.href = mailto;
+    return {cruiseLine:cruiseLine, ship:ship, sailingDate:sailingDate, client:client, notes:notes, lines:lines, templateEntries:templateEntries, meta:meta};
+  }
 
-    if(client){
+  function buildTemplateHtml(d){
+    return d.cruiseLine==='Virgin Voyages' ? virginVoyagesQuoteHtml(d.templateEntries, d.meta) : princessQuoteHtml(d.templateEntries, d.meta);
+  }
+
+  document.getElementById('eq-preview').addEventListener('click', function(){
+    var d = collectQuoteData();
+    if(!d) return;
+    if(QUOTE_TEMPLATE_LINES.indexOf(d.cruiseLine)===-1){toast('Preview is only available for Virgin Voyages and Princess quotes','err');return;}
+    if(!d.templateEntries.length){toast('Enter a price in at least one row','err');return;}
+    var html = buildTemplateHtml(d);
+    var wrap = document.getElementById('eq-preview-wrap');
+    wrap.style.display = 'block';
+    document.getElementById('eq-preview-frame').srcdoc = html;
+    wrap.scrollIntoView({behavior:'smooth', block:'nearest'});
+  });
+
+  document.getElementById('eq-send').addEventListener('click', function(){
+    var d = collectQuoteData();
+    if(!d) return;
+    var subject = d.cruiseLine+' Cruise Quote'+(d.ship?' - '+d.ship:'');
+    var isTemplateLine = QUOTE_TEMPLATE_LINES.indexOf(d.cruiseLine)!==-1;
+
+    if(isTemplateLine && !d.templateEntries.length){toast('Enter a price in at least one row','err');return;}
+
+    if(isTemplateLine){
+      var html = buildTemplateHtml(d);
+      copyHtmlToClipboard(html);
+      var mailto = 'mailto:'+(d.client&&d.client.email?encodeURIComponent(d.client.email):'')+'?subject='+encodeURIComponent(subject);
+      window.location.href = mailto;
+      toast('Quote HTML copied — paste into the email body in Outlook (Ctrl+V)'+(d.client?' for '+d.client.name:''),'ok');
+    }else{
+      var bodyParts = ['Cruise Line: '+d.cruiseLine];
+      if(d.ship) bodyParts.push('Ship: '+d.ship);
+      if(d.sailingDate) bodyParts.push('Sailing Date: '+d.sailingDate);
+      bodyParts.push('');
+      bodyParts=bodyParts.concat(d.lines);
+      if(d.notes){bodyParts.push('');bodyParts.push(d.notes);}
+      var body = bodyParts.join('\n');
+      var mailto2 = 'mailto:'+(d.client&&d.client.email?encodeURIComponent(d.client.email):'')+'?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(body);
+      window.location.href = mailto2;
+      toast('Opening Outlook with quote'+(d.client?' for '+d.client.name:''),'ok');
+    }
+
+    if(d.client){
       var ts = tsNow();
-      var note = {ts:ts, text:'Quote: '+subject+'\n'+body, noteType:'Email Sent'};
+      var noteBody = ['Cruise Line: '+d.cruiseLine];
+      if(d.ship) noteBody.push('Ship: '+d.ship);
+      if(d.sailingDate) noteBody.push('Sailing Date: '+d.sailingDate);
+      noteBody.push('');
+      noteBody = noteBody.concat(d.lines);
+      var note = {ts:ts, text:'Quote: '+subject+'\n'+noteBody.join('\n'), noteType:'Email Sent'};
       db.clients = db.clients.map(function(c){
-        if(c.id!==client.id) return c;
+        if(c.id!==d.client.id) return c;
         var notesLog = Array.isArray(c.notesLog)?c.notesLog.concat([note]):[note];
         return Object.assign({},c,{notesLog:notesLog});
       });
       saveDB(); render();
     }
     closeModal();
-    toast('Opening Outlook with quote'+(client?' for '+client.name:''),'ok');
   });
 }
 function openLogMailchimpModal(){
