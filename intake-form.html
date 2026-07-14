@@ -32,6 +32,7 @@
   .balance-row span{flex:1;font-size:12px;color:#374151;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .balance-row input[type="number"]{width:88px;padding:6px 8px;font-size:12px;flex:none}
   .balance-row select{width:96px;padding:6px 8px;font-size:12px;flex:none}
+  .balance-row input.balance-status-other{width:110px;padding:6px 8px;font-size:12px;flex:none}
   .submit-row{margin-top:24px}
   button[type="submit"]{width:100%;padding:13px;border-radius:9px;border:none;background:#2563eb;color:#fff;font-size:15px;font-weight:600;font-family:inherit;cursor:pointer}
   button[type="submit"]:hover{background:#1d4ed8}
@@ -110,7 +111,7 @@
       </div>
       <div class="field">
         <label>Preferred Airline</label>
-        <select name="Preferred Airline">
+        <select class="pref-other-sel" name="Preferred Airline">
           <option value="">No preference</option>
           <option>American</option><option>United</option><option>Delta</option>
           <option>Southwest</option><option>JetBlue</option><option>Qatar Airways</option>
@@ -119,9 +120,13 @@
           <option>Other</option>
         </select>
       </div>
+      <div class="field pref-other-wrap" style="display:none">
+        <label>Please specify airline</label>
+        <input type="text" class="pref-other-input" name="Preferred Airline Other">
+      </div>
       <div class="field">
         <label>Preferred Hotel Brand</label>
-        <select name="Preferred Hotel">
+        <select class="pref-other-sel" name="Preferred Hotel">
           <option value="">No preference</option>
           <option>Marriott</option><option>Hilton</option><option>Hyatt</option><option>IHG</option>
           <option>Wyndham</option><option>Four Seasons</option><option>Ritz-Carlton</option>
@@ -129,15 +134,23 @@
           <option>Other</option>
         </select>
       </div>
+      <div class="field pref-other-wrap" style="display:none">
+        <label>Please specify hotel brand</label>
+        <input type="text" class="pref-other-input" name="Preferred Hotel Other">
+      </div>
       <div class="field">
         <label>Preferred Cruise Line</label>
-        <select name="Preferred Cruise Line">
+        <select class="pref-other-sel" name="Preferred Cruise Line">
           <option value="">No preference</option>
           <option>Virgin Voyages</option><option>Royal Caribbean</option><option>Carnival</option>
           <option>Norwegian</option><option>Princess</option><option>Celebrity</option>
           <option>Disney Cruise Line</option><option>Holland America</option>
           <option>MSC Cruises</option><option>Viking</option><option>Other</option>
         </select>
+      </div>
+      <div class="field pref-other-wrap" style="display:none">
+        <label>Please specify cruise line</label>
+        <input type="text" class="pref-other-input" name="Preferred Cruise Line Other">
       </div>
       <div class="field full">
         <label>Cruise Loyalty Level <span class="hint">(optional — e.g. "Princess Captain's Circle Platinum")</span></label>
@@ -165,6 +178,16 @@
 
     <div class="section-title">Trip Details</div>
     <div class="fg">
+      <div class="field full">
+        <label>Type of Travel Needed</label>
+        <div class="radio-row">
+          <label><input type="checkbox" name="Need - Airline" value="Yes"> Airline</label>
+          <label><input type="checkbox" name="Need - Hotel" value="Yes"> Hotel</label>
+          <label><input type="checkbox" name="Need - Tours" value="Yes"> Tours</label>
+          <label><input type="checkbox" name="Need - Cruise" value="Yes"> Cruise</label>
+          <label><input type="checkbox" name="Need - Car Rental" value="Yes"> Car Rental</label>
+        </div>
+      </div>
       <div class="field">
         <label>Departure City / Airport</label>
         <input type="text" name="Origin" placeholder="e.g. JFK">
@@ -172,6 +195,18 @@
       <div class="field">
         <label>Destination *</label>
         <input type="text" name="Destination" required placeholder="e.g. Tokyo, Japan">
+      </div>
+      <div class="field">
+        <label>Trip Direction</label>
+        <select id="trip-direction-select" name="Trip Direction">
+          <option value="">-- Select --</option>
+          <option>One-way</option><option>Round-trip</option><option>Multi-city</option>
+        </select>
+      </div>
+      <div class="field full" id="multi-city-wrap" style="display:none">
+        <label>Multi-City Stops</label>
+        <div id="multi-city-list"></div>
+        <button type="button" id="add-city-btn" style="align-self:flex-start;padding:7px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit">+ Add Another City</button>
       </div>
       <div class="field">
         <label>Depart Date</label>
@@ -244,16 +279,13 @@
         <input type="number" name="Hotel Nights" min="0" placeholder="0">
       </div>
       <div class="field">
-        <label>Points You'd Like to Use</label>
-        <input type="text" name="Points To Use" placeholder="e.g. 60,000 United miles">
-      </div>
-      <div class="field full">
-        <label>Approximate Budget <span class="hint">(optional, cash portion)</span></label>
-        <input type="text" name="Budget" placeholder="e.g. $2,000">
-      </div>
-      <div class="field full">
-        <label>Existing Booking Reference <span class="hint">(if you already booked something)</span></label>
-        <input type="text" name="Booking Reference" placeholder="e.g. UA-44129LHR">
+        <label>Would you like to use</label>
+        <select name="Payment Preference">
+          <option value="">-- Select --</option>
+          <option>Miles/Points</option>
+          <option>Payment</option>
+          <option>Combination Miles/Points and Payment</option>
+        </select>
       </div>
       <div class="field full">
         <label>Notes / Special Requests</label>
@@ -322,7 +354,8 @@
     return list.map(function(name){
       var opts = statusMap ? (statusMap[name]||[]) : [];
       var statusHtml = statusMap
-        ? '<select name="'+prefix+' Status - '+name+'"><option value="">Status</option>'+opts.map(function(s){return '<option>'+s+'</option>';}).join('')+'</select>'
+        ? '<select class="balance-status-sel" name="'+prefix+' Status - '+name+'"><option value="">Status</option>'+opts.map(function(s){return '<option>'+s+'</option>';}).join('')+'<option value="Other">Other</option></select>'+
+          '<input type="text" class="balance-status-other" name="'+prefix+' Status Other - '+name+'" placeholder="Specify" style="display:none">'
         : '';
       return '<div class="balance-row"><span>'+name+'</span><input type="number" min="0" name="'+prefix+' - '+name+'" placeholder="0">'+statusHtml+'</div>';
     }).join('');
@@ -350,9 +383,12 @@
         '<div class="field"><label>Birthdate</label><input type="date" name="'+p+' - Birthdate"></div>'+
         '<div class="field"><label>Country of Citizenship</label><input type="text" name="'+p+' - Country of Citizenship"></div>'+
         '<div class="field"><label>Country of Birth</label><input type="text" name="'+p+' - Country of Birth"></div>'+
-        '<div class="field"><label>Preferred Airline</label><select name="'+p+' - Preferred Airline">'+selectOptionsHtml(AIRLINES)+'</select></div>'+
-        '<div class="field"><label>Preferred Hotel Brand</label><select name="'+p+' - Preferred Hotel">'+selectOptionsHtml(HOTELS)+'</select></div>'+
-        '<div class="field"><label>Preferred Cruise Line</label><select name="'+p+' - Preferred Cruise Line">'+selectOptionsHtml(CRUISE_LINES)+'</select></div>'+
+        '<div class="field"><label>Preferred Airline</label><select class="pref-other-sel" name="'+p+' - Preferred Airline">'+selectOptionsHtml(AIRLINES)+'</select></div>'+
+        '<div class="field pref-other-wrap" style="display:none"><label>Please specify airline</label><input type="text" class="pref-other-input" name="'+p+' - Preferred Airline Other"></div>'+
+        '<div class="field"><label>Preferred Hotel Brand</label><select class="pref-other-sel" name="'+p+' - Preferred Hotel">'+selectOptionsHtml(HOTELS)+'</select></div>'+
+        '<div class="field pref-other-wrap" style="display:none"><label>Please specify hotel brand</label><input type="text" class="pref-other-input" name="'+p+' - Preferred Hotel Other"></div>'+
+        '<div class="field"><label>Preferred Cruise Line</label><select class="pref-other-sel" name="'+p+' - Preferred Cruise Line">'+selectOptionsHtml(CRUISE_LINES)+'</select></div>'+
+        '<div class="field pref-other-wrap" style="display:none"><label>Please specify cruise line</label><input type="text" class="pref-other-input" name="'+p+' - Preferred Cruise Line Other"></div>'+
         '<div class="field full"><label>Cruise Loyalty Level <span class="hint">(optional)</span></label><input type="text" name="'+p+' - Cruise Loyalty Level" placeholder="Program and tier"></div>'+
         '<div class="field full"><label>Airline Mileage Balances <span class="hint">(optional)</span></label><div class="balance-grid">'+balanceGridHtml(AIRLINES,p+' Airline',AIRLINE_STATUS)+'</div></div>'+
         '<div class="field full"><label>Hotel Points Balances <span class="hint">(optional)</span></label><div class="balance-grid">'+balanceGridHtml(HOTELS,p+' Hotel',HOTEL_STATUS)+'</div></div>'+
@@ -399,6 +435,49 @@
   var cruiseWrap = document.getElementById('cruise-details-wrap');
   tripTypeSelect.addEventListener('change', function(){
     cruiseWrap.style.display = this.value==='Cruise' ? 'block' : 'none';
+  });
+
+  // Delegated so it works for every "Other" select regardless of whether it
+  // existed at page load or was added later (traveler blocks, balance grids).
+  document.addEventListener('change', function(e){
+    if(e.target.classList.contains('balance-status-sel')){
+      var otherInput = e.target.nextElementSibling;
+      if(otherInput && otherInput.classList.contains('balance-status-other')){
+        otherInput.style.display = e.target.value==='Other' ? 'inline-block' : 'none';
+        if(e.target.value!=='Other') otherInput.value='';
+      }
+    }
+    if(e.target.classList.contains('pref-other-sel')){
+      var fieldDiv = e.target.closest('.field');
+      var wrap = fieldDiv ? fieldDiv.nextElementSibling : null;
+      if(wrap && wrap.classList.contains('pref-other-wrap')){
+        wrap.style.display = e.target.value==='Other' ? 'flex' : 'none';
+        if(e.target.value!=='Other'){
+          var input = wrap.querySelector('.pref-other-input');
+          if(input) input.value='';
+        }
+      }
+    }
+  });
+
+  var multiCityCount = 0;
+  var multiCityList = document.getElementById('multi-city-list');
+  function addCityRow(){
+    multiCityCount++;
+    var row = document.createElement('div');
+    row.style.cssText = 'margin-bottom:8px';
+    row.innerHTML = '<input type="text" name="City '+multiCityCount+'" placeholder="City '+multiCityCount+'">';
+    multiCityList.appendChild(row);
+  }
+  document.getElementById('add-city-btn').addEventListener('click', addCityRow);
+  document.getElementById('trip-direction-select').addEventListener('change', function(){
+    var wrap = document.getElementById('multi-city-wrap');
+    if(this.value==='Multi-city'){
+      wrap.style.display = 'block';
+      if(!multiCityList.children.length){ addCityRow(); addCityRow(); }
+    } else {
+      wrap.style.display = 'none';
+    }
   });
 
   var form = document.getElementById('intake-form');

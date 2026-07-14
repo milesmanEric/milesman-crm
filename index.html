@@ -2826,14 +2826,26 @@ function importFormspreeSubmissions(){
       // Reads the per-brand "Airline - American" / "Airline Status - American"
       // style columns the intake form's balance grids submit, matching the
       // exact field names buildBalanceGrid() in intake-form.html generates.
+      // A status of "Other" means the traveler typed a custom status into
+      // the paired "... Status Other - American" field instead of picking
+      // from the real tier list — use that free text instead.
       function extractBalances(row, list, prefix, includeStatus){
         var out = {};
         list.forEach(function(brand){
           var bal = parseFloat(col(row, prefix+' - '+brand).replace(/[,$]/g,''))||0;
           var status = includeStatus ? col(row, prefix+' Status - '+brand) : '';
+          if(status==='Other'){
+            var customStatus = col(row, prefix+' Status Other - '+brand);
+            if(customStatus) status = customStatus;
+          }
           if(bal || status) out[brand] = includeStatus ? {balance:bal, status:status} : bal;
         });
         return Object.keys(out).length ? out : null;
+      }
+      // "Other" for a Preferred Airline/Hotel/Cruise Line select means the
+      // real value is in the paired "... Other" free-text field.
+      function resolveOther(value, otherValue){
+        return value==='Other' && otherValue ? otherValue : value;
       }
 
       var added=0, enriched=0, tasksCreated=0, skipped=0;
@@ -2849,9 +2861,9 @@ function importFormspreeSubmissions(){
         var countryOfBirth = col(row,'Country of Birth');
         var referredBy = col(row,'Referred By');
         var referredByDetail = col(row,'Referred By Detail');
-        var preferredAirline = col(row,'Preferred Airline');
-        var preferredHotel = col(row,'Preferred Hotel');
-        var preferredCruiseLine = col(row,'Preferred Cruise Line');
+        var preferredAirline = resolveOther(col(row,'Preferred Airline'), col(row,'Preferred Airline Other'));
+        var preferredHotel = resolveOther(col(row,'Preferred Hotel'), col(row,'Preferred Hotel Other'));
+        var preferredCruiseLine = resolveOther(col(row,'Preferred Cruise Line'), col(row,'Preferred Cruise Line Other'));
         var cruiseLoyaltyLevel = col(row,'Cruise Loyalty Level');
         var mileageBalances = extractBalances(row, AIRLINES, 'Airline', true);
         var hotelBalances = extractBalances(row, HOTELS, 'Hotel', true);
@@ -2909,8 +2921,19 @@ function importFormspreeSubmissions(){
         var destination = col(row,'Destination');
         var tripLines=[];
         function addLine(label,val){ if(val) tripLines.push(label+': '+val); }
+        var travelNeeded = ['Airline','Hotel','Tours','Cruise','Car Rental'].filter(function(t){return col(row,'Need - '+t);}).join(', ');
+        addLine('Type of Travel Needed', travelNeeded);
         addLine('Origin', col(row,'Origin'));
         addLine('Destination', destination);
+        addLine('Trip Direction', col(row,'Trip Direction'));
+        if(col(row,'Trip Direction')==='Multi-city'){
+          var cityStops=[];
+          for(var ci=1; ci<=20; ci++){
+            var cityVal = col(row,'City '+ci);
+            if(cityVal) cityStops.push(cityVal);
+          }
+          addLine('Multi-City Stops', cityStops.join(' → '));
+        }
         addLine('Depart Date', col(row,'Depart Date'));
         addLine('Return Date', col(row,'Return Date'));
         addLine('Trip Type', col(row,'Trip Type'));
@@ -2923,9 +2946,7 @@ function importFormspreeSubmissions(){
         addLine('Cruise Loyalty Number', col(row,'Cruise Loyalty Number'));
         addLine('Class of Service', col(row,'Class of Service'));
         addLine('Hotel Nights', col(row,'Hotel Nights'));
-        addLine('Points To Use', col(row,'Points To Use'));
-        addLine('Budget', col(row,'Budget'));
-        addLine('Booking Reference', col(row,'Booking Reference'));
+        addLine('Payment Preference', col(row,'Payment Preference'));
         addLine('Number of Travelers', col(row,'Number of Travelers'));
         addLine('Notes', col(row,'Notes'));
 
@@ -2941,9 +2962,9 @@ function importFormspreeSubmissions(){
           var tBirthdate=col(row,tp+' - Birthdate');
           var tCountryOfCitizenship=col(row,tp+' - Country of Citizenship');
           var tCountryOfBirth=col(row,tp+' - Country of Birth');
-          var tAirline=col(row,tp+' - Preferred Airline');
-          var tHotel=col(row,tp+' - Preferred Hotel');
-          var tCruise=col(row,tp+' - Preferred Cruise Line');
+          var tAirline=resolveOther(col(row,tp+' - Preferred Airline'), col(row,tp+' - Preferred Airline Other'));
+          var tHotel=resolveOther(col(row,tp+' - Preferred Hotel'), col(row,tp+' - Preferred Hotel Other'));
+          var tCruise=resolveOther(col(row,tp+' - Preferred Cruise Line'), col(row,tp+' - Preferred Cruise Line Other'));
           var tCruiseLoyaltyLevel=col(row,tp+' - Cruise Loyalty Level');
           var tAirlineBal=extractBalances(row,AIRLINES,tp+' Airline',true);
           var tHotelBal=extractBalances(row,HOTELS,tp+' Hotel',true);
