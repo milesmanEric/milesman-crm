@@ -183,10 +183,14 @@
         <div class="radio-row">
           <label><input type="checkbox" name="Need - Airline" value="Yes"> Airline</label>
           <label><input type="checkbox" name="Need - Hotel" value="Yes"> Hotel</label>
-          <label><input type="checkbox" name="Need - Tours" value="Yes"> Tours</label>
+          <label><input type="checkbox" id="need-tours-cb" name="Need - Tours" value="Yes"> Tours</label>
           <label><input type="checkbox" name="Need - Cruise" value="Yes"> Cruise</label>
           <label><input type="checkbox" name="Need - Car Rental" value="Yes"> Car Rental</label>
         </div>
+      </div>
+      <div class="field full" id="tours-description-wrap" style="display:none">
+        <label>Tell us about the tour(s) you're looking for</label>
+        <textarea name="Tours Description" rows="3" placeholder="Destinations, activities, group size, dates, etc."></textarea>
       </div>
       <div class="field">
         <label>Departure City / Airport</label>
@@ -486,6 +490,9 @@
     multiCityList.appendChild(row);
   }
   document.getElementById('add-city-btn').addEventListener('click', addCityRow);
+  document.getElementById('need-tours-cb').addEventListener('change', function(){
+    document.getElementById('tours-description-wrap').style.display = this.checked ? 'flex' : 'none';
+  });
   document.getElementById('trip-direction-select').addEventListener('change', function(){
     var wrap = document.getElementById('multi-city-wrap');
     if(this.value==='Multi-city'){

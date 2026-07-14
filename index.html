@@ -2861,7 +2861,7 @@ function importFormspreeSubmissions(){
         return value==='Other' && otherValue ? otherValue : value;
       }
 
-      var added=0, enriched=0, tasksCreated=0, skipped=0;
+      var added=0, enriched=0, tasksCreated=0, tripsCreated=0, skipped=0;
       for(var ri=1; ri<rows.length; ri++){
         var row = rows[ri];
         var name = col(row,'Full Name');
@@ -2939,6 +2939,7 @@ function importFormspreeSubmissions(){
         function addLine(label,val){ if(val) tripLines.push(label+': '+val); }
         var travelNeeded = ['Airline','Hotel','Tours','Cruise','Car Rental'].filter(function(t){return col(row,'Need - '+t);}).join(', ');
         addLine('Type of Travel Needed', travelNeeded);
+        addLine('Tours Description', col(row,'Tours Description'));
         addLine('Origin', col(row,'Origin'));
         addLine('Destination', destination);
         addLine('Trip Direction', col(row,'Trip Direction'));
@@ -2972,6 +2973,9 @@ function importFormspreeSubmissions(){
         // matched/enriched by name the same way the primary contact is, just
         // without email/phone/location/referred-by since the form doesn't
         // collect those per-traveler (only the primary contact has them).
+        // Every companion's client id also gets linked onto the trip record
+        // created below (clientId stays the primary/billing contact).
+        var linkedClientIds = [];
         var travelerCount = parseInt(col(row,'Number of Travelers'),10)||1;
         for(var tn=2; tn<=travelerCount; tn++){
           var tp='Traveler '+tn;
@@ -3018,14 +3022,32 @@ function importFormspreeSubmissions(){
             db.clients.push(tClient);
             added++;
           }
+          linkedClientIds.push(tClient.id);
           tripLines.push('Traveling with: '+tClient.name+' (client '+tClient.id+')');
+        }
+
+        var newTripId = null;
+        if(destination || tripLines.length){
+          newTripId = newId('T', db.trips);
+          db.trips.push({
+            id:newTripId, clientId:client.id, clientName:client.name, clientIds:linkedClientIds,
+            origin:col(row,'Origin'), destination:destination,
+            departDate:col(row,'Depart Date'), returnDate:col(row,'Return Date'),
+            status:'Planning', type:col(row,'Trip Type')||'Leisure',
+            airline:'', flightClass:col(row,'Class of Service'), hotel:'',
+            hotelNights:parseInt(col(row,'Hotel Nights'),10)||0,
+            pointsUsed:0, cashPaid:0, totalValue:0, bookingRef:'', product:'',
+            supplierId:'', supplierName:'',
+            notes: tripLines.join('\n')
+          });
+          tripsCreated++;
         }
 
         if(tripLines.length){
           db.planner.push({
             id:newId('PL',db.planner),
             title:'New trip request'+(destination?': '+destination:''),
-            dueDate:today(), done:false, clientId:client.id,
+            dueDate:today(), done:false, clientId:client.id, tripId:newTripId,
             completionNoteType:'General',
             desc: tripLines.join('\n'),
             createdAt: today()
@@ -3036,7 +3058,7 @@ function importFormspreeSubmissions(){
 
       snapshot('Import Formspree submissions');
       saveDB(); render();
-      toast('Imported '+added+' new client'+(added!==1?'s':'')+(enriched?', enriched '+enriched+' existing':'')+', created '+tasksCreated+' follow-up task'+(tasksCreated!==1?'s':'')+(skipped?' ('+skipped+' skipped)':''),'ok');
+      toast('Imported '+added+' new client'+(added!==1?'s':'')+(enriched?', enriched '+enriched+' existing':'')+', created '+tripsCreated+' trip'+(tripsCreated!==1?'s':'')+' and '+tasksCreated+' follow-up task'+(tasksCreated!==1?'s':'')+(skipped?' ('+skipped+' skipped)':''),'ok');
     }catch(err){
       console.error(err);
       toast('Could not read file: '+err.message,'err');
