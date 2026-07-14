@@ -188,10 +188,6 @@
           <label><input type="checkbox" name="Need - Car Rental" value="Yes"> Car Rental</label>
         </div>
       </div>
-      <div class="field full" id="tours-description-wrap" style="display:none">
-        <label>Tell us about the tour(s) you're looking for</label>
-        <textarea name="Tours Description" rows="3" placeholder="Destinations, activities, group size, dates, etc."></textarea>
-      </div>
       <div class="field">
         <label>Departure City / Airport</label>
         <input type="text" name="Origin" placeholder="e.g. JFK">
@@ -290,6 +286,10 @@
           <option>Payment</option>
           <option>Combination Miles/Points and Payment</option>
         </select>
+      </div>
+      <div class="field full" id="tours-description-wrap" style="display:none">
+        <label>Tell us about the tour(s) you're looking for</label>
+        <textarea name="Tours Description" rows="3" placeholder="Destinations, activities, group size, dates, etc."></textarea>
       </div>
       <div class="field full">
         <label>Notes / Special Requests</label>
@@ -509,15 +509,13 @@
   });
   form.addEventListener('submit', function(e){
     e.preventDefault();
-   var data = new URLSearchParams(new FormData(form));
-
-fetch(form.action, {
-  method: 'POST',
-  body: data,
-  headers: {
-    'Accept': 'application/json'
-  }
-})    if(resp.ok){
+    var data = new URLSearchParams(new FormData(form));
+    fetch(form.action, {
+      method: 'POST',
+      body: data,
+      headers: { 'Accept': 'application/json' }
+    }).then(function(resp){
+      if(resp.ok){
         form.style.display = 'none';
         document.getElementById('ok-msg').style.display = 'block';
       } else {
