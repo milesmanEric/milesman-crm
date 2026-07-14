@@ -85,6 +85,14 @@
         <input type="date" name="Birthdate">
       </div>
       <div class="field">
+        <label>Country of Citizenship</label>
+        <input type="text" name="Country of Citizenship">
+      </div>
+      <div class="field">
+        <label>Country of Birth</label>
+        <input type="text" name="Country of Birth">
+      </div>
+      <div class="field">
         <label>How did you hear about us?</label>
         <select id="ref-select" name="Referred By">
           <option value="">-- Select --</option>
@@ -142,6 +150,10 @@
       <div class="field full">
         <label>Hotel Points Balances <span class="hint">(optional)</span></label>
         <div class="balance-grid" id="hotel-balances-grid"></div>
+      </div>
+      <div class="field full">
+        <label>Cruise Line Loyalty <span class="hint">(optional)</span></label>
+        <div class="balance-grid" id="cruise-balances-grid"></div>
       </div>
       <div class="field full">
         <label>Credit Card Points Balances <span class="hint">(optional — card name only, no account numbers)</span></label>
@@ -264,22 +276,64 @@
   var HOTELS = ['Marriott','Hilton','Hyatt','IHG','Wyndham','Four Seasons','Ritz-Carlton','W Hotels','Kimpton','Conrad'];
   var CREDIT_CARDS = ['Chase Sapphire Preferred','Chase Sapphire Reserve','Chase Ink Business Preferred','Amex Platinum','Amex Gold','Amex Business Platinum','Capital One Venture X','Citi Premier','Citi Prestige','Bilt Mastercard'];
   var CRUISE_LINES = ['Virgin Voyages','Royal Caribbean','Carnival','Norwegian','Princess','Celebrity','Disney Cruise Line','Holland America','MSC Cruises','Viking'];
-  var ELITE_STATUS = ['None','Silver','Gold','Platinum','Diamond'];
+  // Real elite/status tier names per program, mirroring AIRLINE_STATUS/
+  // HOTEL_STATUS/CRUISE_STATUS in the CRM's index.html so a traveler's
+  // actual status (e.g. "Executive Platinum") is always an option here.
+  var AIRLINE_STATUS = {
+    'American': ['Gold','Platinum','Platinum Pro','Executive Platinum'],
+    'United': ['Premier Silver','Premier Gold','Premier Platinum','Premier 1K'],
+    'Delta': ['Silver Medallion','Gold Medallion','Platinum Medallion','Diamond Medallion'],
+    'Southwest': ['A-List','A-List Preferred'],
+    'JetBlue': ['Mosaic 1','Mosaic 2','Mosaic 3','Mosaic 4'],
+    'Qatar Airways': ['Burgundy','Silver','Gold','Platinum'],
+    'ANA': ['Bronze Service','Platinum Service','Diamond Service'],
+    'Emirates': ['Blue','Silver','Gold','Platinum'],
+    'Lufthansa': ['Frequent Traveller','Senator','HON Circle Member'],
+    'British Airways': ['Bronze','Silver','Gold','Gold Guest List'],
+    'Air France': ['Explorer','Silver','Gold','Platinum'],
+    'Virgin Atlantic': ['Red','Silver','Gold']
+  };
+  var HOTEL_STATUS = {
+    'Marriott': ['Silver Elite','Gold Elite','Platinum Elite','Titanium Elite','Ambassador Elite'],
+    'Hilton': ['Silver','Gold','Diamond'],
+    'Hyatt': ['Discoverist','Explorist','Globalist'],
+    'IHG': ['Silver Elite','Gold Elite','Platinum Elite','Diamond Elite','Spire Elite'],
+    'Wyndham': ['Blue','Gold','Platinum','Diamond'],
+    'Four Seasons': ['Preferred Partner'],
+    'Ritz-Carlton': ['Silver Elite','Gold Elite','Platinum Elite','Titanium Elite','Ambassador Elite'],
+    'W Hotels': ['Silver Elite','Gold Elite','Platinum Elite','Titanium Elite','Ambassador Elite'],
+    'Kimpton': ['Silver Elite','Gold Elite','Platinum Elite','Diamond Elite','Spire Elite'],
+    'Conrad': ['Silver','Gold','Diamond']
+  };
+  var CRUISE_STATUS = {
+    'Virgin Voyages': ['Sailor'],
+    'Royal Caribbean': ['Gold','Platinum','Emerald','Diamond','Diamond Plus','Pinnacle Club'],
+    'Carnival': ['Blue','Red','Gold','Platinum','Diamond'],
+    'Norwegian': ['Bronze','Silver','Gold','Platinum','Ambassador'],
+    'Princess': ['Gold','Ruby','Platinum','Elite'],
+    'Celebrity': ['Preview','Classic','Select','Elite','Elite Plus','Zenith'],
+    'Disney Cruise Line': ['Silver','Gold','Platinum','Platinum Plus'],
+    'Holland America': ['Mariner','2-Star Mariner','3-Star Mariner','4-Star Mariner','5-Star Mariner'],
+    'MSC Cruises': ['Classic','Silver','Gold','Platinum','Diamond'],
+    'Viking': ['Explorer Society Member']
+  };
 
-  function balanceGridHtml(list, prefix, includeStatus){
+  function balanceGridHtml(list, prefix, statusMap){
     return list.map(function(name){
-      var statusHtml = includeStatus
-        ? '<select name="'+prefix+' Status - '+name+'"><option value="">Status</option>'+ELITE_STATUS.map(function(s){return '<option>'+s+'</option>';}).join('')+'</select>'
+      var opts = statusMap ? (statusMap[name]||[]) : [];
+      var statusHtml = statusMap
+        ? '<select name="'+prefix+' Status - '+name+'"><option value="">Status</option>'+opts.map(function(s){return '<option>'+s+'</option>';}).join('')+'</select>'
         : '';
       return '<div class="balance-row"><span>'+name+'</span><input type="number" min="0" name="'+prefix+' - '+name+'" placeholder="0">'+statusHtml+'</div>';
     }).join('');
   }
-  function buildBalanceGrid(containerId, list, prefix, includeStatus){
-    document.getElementById(containerId).innerHTML = balanceGridHtml(list, prefix, includeStatus);
+  function buildBalanceGrid(containerId, list, prefix, statusMap){
+    document.getElementById(containerId).innerHTML = balanceGridHtml(list, prefix, statusMap);
   }
-  buildBalanceGrid('airline-balances-grid', AIRLINES, 'Airline', true);
-  buildBalanceGrid('hotel-balances-grid', HOTELS, 'Hotel', true);
-  buildBalanceGrid('cc-balances-grid', CREDIT_CARDS, 'Credit Card', false);
+  buildBalanceGrid('airline-balances-grid', AIRLINES, 'Airline', AIRLINE_STATUS);
+  buildBalanceGrid('hotel-balances-grid', HOTELS, 'Hotel', HOTEL_STATUS);
+  buildBalanceGrid('cruise-balances-grid', CRUISE_LINES, 'Cruise', CRUISE_STATUS);
+  buildBalanceGrid('cc-balances-grid', CREDIT_CARDS, 'Credit Card', null);
 
   // Additional travelers get the same personal-info + balance fields as
   // Traveler 1, minus the contact/lead-source fields (Email, Phone,
@@ -294,13 +348,16 @@
       '<div class="fg">'+
         '<div class="field full"><label>Full Name</label><input type="text" name="'+p+' - Full Name" placeholder="'+p+' full name"></div>'+
         '<div class="field"><label>Birthdate</label><input type="date" name="'+p+' - Birthdate"></div>'+
+        '<div class="field"><label>Country of Citizenship</label><input type="text" name="'+p+' - Country of Citizenship"></div>'+
+        '<div class="field"><label>Country of Birth</label><input type="text" name="'+p+' - Country of Birth"></div>'+
         '<div class="field"><label>Preferred Airline</label><select name="'+p+' - Preferred Airline">'+selectOptionsHtml(AIRLINES)+'</select></div>'+
         '<div class="field"><label>Preferred Hotel Brand</label><select name="'+p+' - Preferred Hotel">'+selectOptionsHtml(HOTELS)+'</select></div>'+
         '<div class="field"><label>Preferred Cruise Line</label><select name="'+p+' - Preferred Cruise Line">'+selectOptionsHtml(CRUISE_LINES)+'</select></div>'+
         '<div class="field full"><label>Cruise Loyalty Level <span class="hint">(optional)</span></label><input type="text" name="'+p+' - Cruise Loyalty Level" placeholder="Program and tier"></div>'+
-        '<div class="field full"><label>Airline Mileage Balances <span class="hint">(optional)</span></label><div class="balance-grid">'+balanceGridHtml(AIRLINES,p+' Airline',true)+'</div></div>'+
-        '<div class="field full"><label>Hotel Points Balances <span class="hint">(optional)</span></label><div class="balance-grid">'+balanceGridHtml(HOTELS,p+' Hotel',true)+'</div></div>'+
-        '<div class="field full"><label>Credit Card Points Balances <span class="hint">(optional)</span></label><div class="balance-grid">'+balanceGridHtml(CREDIT_CARDS,p+' Credit Card',false)+'</div></div>'+
+        '<div class="field full"><label>Airline Mileage Balances <span class="hint">(optional)</span></label><div class="balance-grid">'+balanceGridHtml(AIRLINES,p+' Airline',AIRLINE_STATUS)+'</div></div>'+
+        '<div class="field full"><label>Hotel Points Balances <span class="hint">(optional)</span></label><div class="balance-grid">'+balanceGridHtml(HOTELS,p+' Hotel',HOTEL_STATUS)+'</div></div>'+
+        '<div class="field full"><label>Cruise Line Loyalty <span class="hint">(optional)</span></label><div class="balance-grid">'+balanceGridHtml(CRUISE_LINES,p+' Cruise',CRUISE_STATUS)+'</div></div>'+
+        '<div class="field full"><label>Credit Card Points Balances <span class="hint">(optional)</span></label><div class="balance-grid">'+balanceGridHtml(CREDIT_CARDS,p+' Credit Card',null)+'</div></div>'+
       '</div>'
     );
   }

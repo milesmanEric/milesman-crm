@@ -2845,6 +2845,8 @@ function importFormspreeSubmissions(){
         var phone = col(row,'Phone');
         var location = col(row,'Location');
         var birthdate = col(row,'Birthdate');
+        var countryOfCitizenship = col(row,'Country of Citizenship');
+        var countryOfBirth = col(row,'Country of Birth');
         var referredBy = col(row,'Referred By');
         var referredByDetail = col(row,'Referred By Detail');
         var preferredAirline = col(row,'Preferred Airline');
@@ -2853,6 +2855,7 @@ function importFormspreeSubmissions(){
         var cruiseLoyaltyLevel = col(row,'Cruise Loyalty Level');
         var mileageBalances = extractBalances(row, AIRLINES, 'Airline', true);
         var hotelBalances = extractBalances(row, HOTELS, 'Hotel', true);
+        var cruiseBalances = extractBalances(row, CRUISE_LINES, 'Cruise', true);
         var creditCardBalances = extractBalances(row, CREDIT_CARDS, 'Credit Card', false);
 
         var nameFirst=getFirstName(name).toLowerCase(), nameLast=getLastName(name).toLowerCase();
@@ -2869,6 +2872,8 @@ function importFormspreeSubmissions(){
           if(phone && !client.phone){client.phone=phone;filled.push('phone');}
           if(location && !client.location){client.location=location;filled.push('location');}
           if(birthdate && !client.birthdate){client.birthdate=birthdate;filled.push('birthdate');}
+          if(countryOfCitizenship && !client.countryOfCitizenship){client.countryOfCitizenship=countryOfCitizenship;filled.push('countryOfCitizenship');}
+          if(countryOfBirth && !client.countryOfBirth){client.countryOfBirth=countryOfBirth;filled.push('countryOfBirth');}
           if(referredBy && !client.referredBy){client.referredBy=referredBy;client.referredByDetail=referredByDetail;filled.push('referredBy');}
           if(preferredAirline && !client.preferredAirline){client.preferredAirline=preferredAirline;filled.push('preferredAirline');}
           if(preferredHotel && !client.preferredHotel){client.preferredHotel=preferredHotel;filled.push('preferredHotel');}
@@ -2882,6 +2887,10 @@ function importFormspreeSubmissions(){
             var hm=mergeBalanceObjects(client.hotelBalances,hotelBalances);
             if(hm.added.length){client.hotelBalances=hm.merged;filled.push('hotelBalances ('+hm.added.join(', ')+')');}
           }
+          if(cruiseBalances){
+            var cbm=mergeBalanceObjects(client.cruiseBalances,cruiseBalances);
+            if(cbm.added.length){client.cruiseBalances=cbm.merged;filled.push('cruiseBalances ('+cbm.added.join(', ')+')');}
+          }
           if(creditCardBalances){
             var cm=mergeCreditCardBalances(client.creditCardBalances,creditCardBalances);
             if(cm.added.length){client.creditCardBalances=cm.merged;filled.push('creditCardBalances ('+cm.added.join(', ')+')');}
@@ -2889,9 +2898,9 @@ function importFormspreeSubmissions(){
           if(filled.length) enriched++;
         } else {
           client = {id:newId('C',db.clients), name:toLastFirst(name), email:email, phone:phone, location:location,
-            birthdate:birthdate, referredBy:referredBy, referredByDetail:referredByDetail,
+            birthdate:birthdate, countryOfCitizenship:countryOfCitizenship, countryOfBirth:countryOfBirth, referredBy:referredBy, referredByDetail:referredByDetail,
             preferredAirline:preferredAirline, preferredHotel:preferredHotel, preferredCruiseLine:preferredCruiseLine, cruiseLoyaltyLevel:cruiseLoyaltyLevel,
-            mileageBalances:mileageBalances||{}, hotelBalances:hotelBalances||{}, creditCardBalances:creditCardBalances||{},
+            mileageBalances:mileageBalances||{}, hotelBalances:hotelBalances||{}, cruiseBalances:cruiseBalances||{}, creditCardBalances:creditCardBalances||{},
             notes:'', joined:today(), totalTrips:0, notesLog:[]};
           db.clients.push(client);
           added++;
@@ -2930,12 +2939,15 @@ function importFormspreeSubmissions(){
           var tName=col(row,tp+' - Full Name');
           if(!tName) continue;
           var tBirthdate=col(row,tp+' - Birthdate');
+          var tCountryOfCitizenship=col(row,tp+' - Country of Citizenship');
+          var tCountryOfBirth=col(row,tp+' - Country of Birth');
           var tAirline=col(row,tp+' - Preferred Airline');
           var tHotel=col(row,tp+' - Preferred Hotel');
           var tCruise=col(row,tp+' - Preferred Cruise Line');
           var tCruiseLoyaltyLevel=col(row,tp+' - Cruise Loyalty Level');
           var tAirlineBal=extractBalances(row,AIRLINES,tp+' Airline',true);
           var tHotelBal=extractBalances(row,HOTELS,tp+' Hotel',true);
+          var tCruiseBal=extractBalances(row,CRUISE_LINES,tp+' Cruise',true);
           var tCcBal=extractBalances(row,CREDIT_CARDS,tp+' Credit Card',false);
 
           var tFirst=getFirstName(tName).toLowerCase(), tLast=getLastName(tName).toLowerCase();
@@ -2948,18 +2960,21 @@ function importFormspreeSubmissions(){
           if(tClient){
             var tFilled=[];
             if(tBirthdate && !tClient.birthdate){tClient.birthdate=tBirthdate;tFilled.push('birthdate');}
+            if(tCountryOfCitizenship && !tClient.countryOfCitizenship){tClient.countryOfCitizenship=tCountryOfCitizenship;tFilled.push('countryOfCitizenship');}
+            if(tCountryOfBirth && !tClient.countryOfBirth){tClient.countryOfBirth=tCountryOfBirth;tFilled.push('countryOfBirth');}
             if(tAirline && !tClient.preferredAirline){tClient.preferredAirline=tAirline;tFilled.push('preferredAirline');}
             if(tHotel && !tClient.preferredHotel){tClient.preferredHotel=tHotel;tFilled.push('preferredHotel');}
             if(tCruise && !tClient.preferredCruiseLine){tClient.preferredCruiseLine=tCruise;tFilled.push('preferredCruiseLine');}
             if(tCruiseLoyaltyLevel && !tClient.cruiseLoyaltyLevel){tClient.cruiseLoyaltyLevel=tCruiseLoyaltyLevel;tFilled.push('cruiseLoyaltyLevel');}
             if(tAirlineBal){var tmm=mergeBalanceObjects(tClient.mileageBalances,tAirlineBal); if(tmm.added.length){tClient.mileageBalances=tmm.merged;tFilled.push('mileageBalances');}}
             if(tHotelBal){var thm=mergeBalanceObjects(tClient.hotelBalances,tHotelBal); if(thm.added.length){tClient.hotelBalances=thm.merged;tFilled.push('hotelBalances');}}
+            if(tCruiseBal){var tcbm=mergeBalanceObjects(tClient.cruiseBalances,tCruiseBal); if(tcbm.added.length){tClient.cruiseBalances=tcbm.merged;tFilled.push('cruiseBalances');}}
             if(tCcBal){var tcm=mergeCreditCardBalances(tClient.creditCardBalances,tCcBal); if(tcm.added.length){tClient.creditCardBalances=tcm.merged;tFilled.push('creditCardBalances');}}
             if(tFilled.length) enriched++;
           } else {
             tClient = {id:newId('C',db.clients), name:toLastFirst(tName), email:'', phone:'', location:'',
-              birthdate:tBirthdate, preferredAirline:tAirline, preferredHotel:tHotel, preferredCruiseLine:tCruise, cruiseLoyaltyLevel:tCruiseLoyaltyLevel,
-              mileageBalances:tAirlineBal||{}, hotelBalances:tHotelBal||{}, creditCardBalances:tCcBal||{},
+              birthdate:tBirthdate, countryOfCitizenship:tCountryOfCitizenship, countryOfBirth:tCountryOfBirth, preferredAirline:tAirline, preferredHotel:tHotel, preferredCruiseLine:tCruise, cruiseLoyaltyLevel:tCruiseLoyaltyLevel,
+              mileageBalances:tAirlineBal||{}, hotelBalances:tHotelBal||{}, cruiseBalances:tCruiseBal||{}, creditCardBalances:tCcBal||{},
               notes:'', joined:today(), totalTrips:0, notesLog:[]};
             db.clients.push(tClient);
             added++;
