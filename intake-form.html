@@ -52,7 +52,7 @@
   <div id="ok-msg">Thanks! Your request has been sent — we'll be in touch shortly.</div>
 
   <form id="intake-form" action="https://submit-form.com/oFQ4LGF1w" method="POST">
-    <input type="hidden" name="_subject" value="New Travel Request — Miles Man website">
+   <input type="hidden" name="_subject" value="New Travel Request — Miles Man website">
     <input type="text" name="_gotcha" style="display:none">
 
     <div class="section-title">Your Information</div>
@@ -509,13 +509,15 @@
   });
   form.addEventListener('submit', function(e){
     e.preventDefault();
-    var data = new FormData(form);
-    fetch(form.action, {
-      method: 'POST',
-      body: data,
-      headers: { 'Accept': 'application/json' }
-    }).then(function(resp){
-      if(resp.ok){
+   var data = new URLSearchParams(new FormData(form));
+
+fetch(form.action, {
+  method: 'POST',
+  body: data,
+  headers: {
+    'Accept': 'application/json'
+  }
+})    if(resp.ok){
         form.style.display = 'none';
         document.getElementById('ok-msg').style.display = 'block';
       } else {
