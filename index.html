@@ -465,7 +465,7 @@ function quoteTableStructure(cfg){
 const STATUSES = ['Planning','Confirmed','Completed','Cancelled'];
 const TYPES    = ['Leisure','Business','Honeymoon','Family','Adventure','Cruise'];
 const CLASSES  = ['Economy','Premium Economy','Business','First'];
-const NOTE_TYPES = ['Email Sent','Email Received','Initial Call','Follow-up','General','Trip Import','Text Message','Lead','Mailchimp Email Sent','Facebook Message'];
+const NOTE_TYPES = ['Email Sent','Email Received','Initial Call','Follow-up','General','Trip Import','Text Message Sent','Text Message Received','Lead','Mailchimp Email Sent','Facebook Message'];
 
 let db = {clients:[],trips:[],vendors:[],planner:[]};
 const UNDO_STACK = [];
@@ -654,6 +654,23 @@ function loadDB(){
     if(migrated>0){
       saveDB();
       console.log('[CRM] Normalized '+migrated+' client names to Last, First format');
+    }
+    // "Text Message" was replaced by directional "Text Message Sent"/"Text
+    // Message Received" types; existing notes logged under the old generic
+    // type default to Received (safe to run repeatedly — nothing left to
+    // migrate once converted).
+    var noteTypeMigrated=0;
+    [].concat(db.clients,db.vendors).forEach(function(rec){
+      (rec.notesLog||[]).forEach(function(n){
+        if(n.noteType==='Text Message'){
+          n.noteType='Text Message Received';
+          noteTypeMigrated++;
+        }
+      });
+    });
+    if(noteTypeMigrated>0){
+      saveDB();
+      console.log('[CRM] Migrated '+noteTypeMigrated+' "Text Message" notes to "Text Message Received"');
     }
   }catch(e){db={clients:[],trips:[],vendors:[],planner:[]};}
 }
@@ -3253,7 +3270,7 @@ function render(){
 
 function renderReports(){
   var activeTab = window._rptActiveTab || 'activity';
-  var NOTE_TYPES_R = ['','Trips','Email Sent','Email Received','Initial Call','Follow-up','General','Text Message','Lead','Mailchimp Email Sent','Facebook Message'];
+  var NOTE_TYPES_R = ['','Trips','Email Sent','Email Received','Initial Call','Follow-up','General','Text Message Sent','Text Message Received','Lead','Mailchimp Email Sent','Facebook Message'];
   var typeOpts = NOTE_TYPES_R.map(function(t){return '<option value="'+t+'">'+(t||'All types')+'</option>';}).join('');
 
   $('main').innerHTML =
@@ -3478,7 +3495,7 @@ function runReport(){
     container.innerHTML = '<div class="empty" style="padding:40px">No notes match the selected filters</div>';
     return;
   }
-  var BCLS2 = {'Email Sent':'nt-email-sent','Email Received':'nt-email-received','Initial Call':'nt-initial-call','Follow-up':'nt-follow-up','General':'nt-general','Trips':'nt-blue','Text Message':'nt-text-message','Lead':'nt-lead','Mailchimp Email Sent':'nt-mailchimp','Facebook Message':'nt-facebook'};
+  var BCLS2 = {'Email Sent':'nt-email-sent','Email Received':'nt-email-received','Initial Call':'nt-initial-call','Follow-up':'nt-follow-up','General':'nt-general','Trips':'nt-blue','Text Message Sent':'nt-text-message','Text Message Received':'nt-text-message','Lead':'nt-lead','Mailchimp Email Sent':'nt-mailchimp','Facebook Message':'nt-facebook'};
   window._reportRows = rows; // store for click handler
   container.innerHTML =
     '<div style="font-size:13px;color:#888;margin-bottom:10px">'+rows.length+' note'+(rows.length!==1?'s':'')+' found</div>'+
@@ -4132,7 +4149,7 @@ function openVendorForm(id){
               '<span class="note-ts" style="font-size:10px;color:#888;font-weight:600;letter-spacing:.03em">'+n.ts+'</span>'+
               '<select class="vnote-type-sel" data-idx="'+i+'" style="font-size:11px;padding:2px 6px;border-radius:5px;border:1px solid #d1d5db;background:#fff;color:#374151;cursor:pointer;margin-left:8px">'+
                 '<option value="">-- Type --</option>'+
-                ['Email Sent','Email Received','Initial Call','Follow-up','General','Trip Import','Text Message','Lead','Facebook Message'].map(function(t){return '<option value="'+t+'"'+(n.noteType===t?' selected':'')+'>'+t+'</option>';}).join('')+
+                ['Email Sent','Email Received','Initial Call','Follow-up','General','Trip Import','Text Message Sent','Text Message Received','Lead','Facebook Message'].map(function(t){return '<option value="'+t+'"'+(n.noteType===t?' selected':'')+'>'+t+'</option>';}).join('')+
               '</select>'+
               '<button class="del-vnote-btn" data-idx="'+i+'" title="Delete note" style="margin-left:auto;background:none;border:none;color:#dc2626;cursor:pointer;font-size:14px">&#128465;</button>'+
             '</div>'+
@@ -4144,7 +4161,7 @@ function openVendorForm(id){
             '<span style="font-size:10px;color:#888;font-weight:600">New Note</span>'+
             '<select class="vnote-type-sel" data-idx="new" style="font-size:11px;padding:2px 6px;border-radius:5px;border:1px solid #d1d5db;background:#fff;color:#374151;cursor:pointer;margin-left:8px">'+
               '<option value="">-- Type --</option>'+
-              ['Email Sent','Email Received','Initial Call','Follow-up','General','Trip Import','Text Message','Lead','Facebook Message'].map(function(t){return '<option value="'+t+'">'+t+'</option>';}).join('')+
+              ['Email Sent','Email Received','Initial Call','Follow-up','General','Trip Import','Text Message Sent','Text Message Received','Lead','Facebook Message'].map(function(t){return '<option value="'+t+'">'+t+'</option>';}).join('')+
             '</select>'+
           '</div>'+
           '<textarea class="vnote-txt" rows="2" placeholder="Add a note..." style="width:100%;padding:6px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;font-family:inherit;resize:vertical;box-sizing:border-box"></textarea>'+
@@ -4991,7 +5008,8 @@ function openClientForm(id){
           '<option value="Follow-up"'+(n.noteType==='Follow-up'?' selected':'')+'>Follow-up</option>'+
           '<option value="General"'+(n.noteType==='General'?' selected':'')+'>General</option>'+
           '<option value="Trip Import"'+(n.noteType==='Trip Import'?' selected':'')+'>Trip Import</option>'+
-          '<option value="Text Message"'+(n.noteType==='Text Message'?' selected':'')+'>Text Message</option>'+
+          '<option value="Text Message Sent"'+(n.noteType==='Text Message Sent'?' selected':'')+'>Text Message Sent</option>'+
+          '<option value="Text Message Received"'+(n.noteType==='Text Message Received'?' selected':'')+'>Text Message Received</option>'+
           '<option value="Lead"'+(n.noteType==='Lead'?' selected':'')+'>Lead</option>'+
           '<option value="Mailchimp Email Sent"'+(n.noteType==='Mailchimp Email Sent'?' selected':'')+'>Mailchimp Email Sent</option>'+
           '<option value="Facebook Message"'+(n.noteType==='Facebook Message'?' selected':'')+'>Facebook Message</option>'+
@@ -5137,7 +5155,7 @@ function openClientForm(id){
             '<option value="Follow-up">Follow-up</option>'+
             '<option value="General">General</option>'+
             '<option value="Trip Import">Trip Import</option>'+
-            '<option value="Text Message">Text Message</option>'+'<option value="Lead">Lead</option>'+
+            '<option value="Text Message Sent">Text Message Sent</option>'+'<option value="Text Message Received">Text Message Received</option>'+'<option value="Lead">Lead</option>'+
             '<option value="Mailchimp Email Sent">Mailchimp Email Sent</option>'+
             '<option value="Facebook Message">Facebook Message</option>'+
           '</select>'+
@@ -5366,7 +5384,7 @@ function addNoteEntry(){
         '<option value="Follow-up">Follow-up</option>'+
         '<option value="General">General</option>'+
         '<option value="Trip Import">Trip Import</option>'+
-        '<option value="Text Message">Text Message</option>'+'<option value="Lead">Lead</option>'+
+        '<option value="Text Message Sent">Text Message Sent</option>'+'<option value="Text Message Received">Text Message Received</option>'+'<option value="Lead">Lead</option>'+
         '<option value="Facebook Message">Facebook Message</option>'+
       '</select>'+
       '<button class="del-note-btn" title="Delete note" style="margin-left:auto;background:none;border:none;cursor:pointer;color:#dc2626;font-size:15px;padding:2px 6px;border-radius:4px;line-height:1">&#128465;&#65039;</button>'+
@@ -5845,7 +5863,7 @@ function openTaskNotes(id){
     '<div class="modal-hdr"><div class="modal-title">'+task.title+'</div><button class="close-btn" id="modal-close">&#x2715;</button></div>'+
     '<div class="field full" style="margin-bottom:14px"><label>Linked to</label><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px">'+linksHTML+'</div></div>'+
     '<div class="fg">'+
-      fld('Note Type', sel('task-note-type', ['Email Sent','Email Received','Initial Call','Follow-up','General','Text Message','Lead','Facebook Message'], 'General'))+
+      fld('Note Type', sel('task-note-type', ['Email Sent','Email Received','Initial Call','Follow-up','General','Text Message Sent','Text Message Received','Lead','Facebook Message'], 'General'))+
       fld('Note', '<textarea id="task-note-txt" rows="5" placeholder="Add a note for the linked client, supplier, and/or trip..."></textarea>', true)+
     '</div>'+
     '<div class="form-actions"><button class="cancel-btn" id="modal-cancel">Cancel</button><button class="save-btn" id="modal-save-task-note" data-id="'+task.id+'">Save Note</button></div>';
@@ -6056,7 +6074,7 @@ function bindClick(id, handler){
 
 // ── Note expand ──────────────────────────────────────────────────────────────
 function noteTypeCls(t){
-  var map={'Email Sent':'nt-email-sent','Email Received':'nt-email-received','Initial Call':'nt-initial-call','Follow-up':'nt-follow-up','General':'nt-general','Trip Import':'nt-blue','Text Message':'nt-text-message','Lead':'nt-lead','Mailchimp Email Sent':'nt-mailchimp','Facebook Message':'nt-facebook'};
+  var map={'Email Sent':'nt-email-sent','Email Received':'nt-email-received','Initial Call':'nt-initial-call','Follow-up':'nt-follow-up','General':'nt-general','Trip Import':'nt-blue','Text Message Sent':'nt-text-message','Text Message Received':'nt-text-message','Lead':'nt-lead','Mailchimp Email Sent':'nt-mailchimp','Facebook Message':'nt-facebook'};
   return map[t]||'nt-general';
 }
 function openNoteExpand(ts, text, noteType){
