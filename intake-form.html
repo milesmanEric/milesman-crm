@@ -165,6 +165,10 @@
         <div class="balance-grid" id="cruise-balances-grid"></div>
       </div>
       <div class="field full">
+        <label>Car Rental Loyalty <span class="hint">(optional)</span></label>
+        <div class="balance-grid" id="car-rental-balances-grid"></div>
+      </div>
+      <div class="field full">
         <label>Credit Card Points Balances <span class="hint">(optional — card name only, no account numbers)</span></label>
         <div class="balance-grid" id="cc-balances-grid"></div>
       </div>
@@ -304,6 +308,7 @@
   var HOTELS = ['Marriott','Hilton','Hyatt','IHG','Wyndham','Four Seasons','Ritz-Carlton','W Hotels','Kimpton','Conrad'];
   var CREDIT_CARDS = ['Chase Sapphire Preferred','Chase Sapphire Reserve','Chase Ink Business Preferred','Amex Platinum','Amex Gold','Amex Business Platinum','Capital One Venture X','Citi Premier','Citi Prestige','Bilt Mastercard'];
   var CRUISE_LINES = ['Virgin Voyages','Royal Caribbean','Carnival','Norwegian','Princess','Celebrity','Disney Cruise Line','Holland America','MSC Cruises','Viking'];
+  var CAR_RENTALS = ['Hertz','Avis','Enterprise','National','Budget','Alamo','Sixt','Europcar','Thrifty','Dollar'];
   // Real elite/status tier names per program, mirroring AIRLINE_STATUS/
   // HOTEL_STATUS/CRUISE_STATUS in the CRM's index.html so a traveler's
   // actual status (e.g. "Executive Platinum") is always an option here.
@@ -345,6 +350,18 @@
     'MSC Cruises': ['Classic','Silver','Gold','Platinum','Diamond'],
     'Viking': ['Explorer Society Member']
   };
+  var CAR_RENTAL_STATUS = {
+    'Hertz': ['Gold Plus Rewards','Five Star','Six Star',"President's Circle"],
+    'Avis': ['Preferred','Preferred Plus',"President's Club"],
+    'Enterprise': ['Silver','Gold','Platinum'],
+    'National': ['Emerald Club','Executive','Executive Elite'],
+    'Budget': ['Fastbreak','Fastbreak Elite'],
+    'Alamo': ['Insiders'],
+    'Sixt': ['Silver','Gold','Platinum','Platinum Plus'],
+    'Europcar': ['Silver','Gold','Platinum'],
+    'Thrifty': ['Blue Chip Rewards'],
+    'Dollar': ['Express Rewards']
+  };
 
   function balanceGridHtml(list, prefix, statusMap){
     return list.map(function(name){
@@ -362,6 +379,7 @@
   buildBalanceGrid('airline-balances-grid', AIRLINES, 'Airline', AIRLINE_STATUS);
   buildBalanceGrid('hotel-balances-grid', HOTELS, 'Hotel', HOTEL_STATUS);
   buildBalanceGrid('cruise-balances-grid', CRUISE_LINES, 'Cruise', CRUISE_STATUS);
+  buildBalanceGrid('car-rental-balances-grid', CAR_RENTALS, 'Car Rental', CAR_RENTAL_STATUS);
   buildBalanceGrid('cc-balances-grid', CREDIT_CARDS, 'Credit Card', null);
 
   // Additional travelers get the same personal-info + balance fields as
@@ -388,6 +406,7 @@
         '<div class="field full"><label>Airline Mileage Balances <span class="hint">(optional)</span></label><div class="balance-grid">'+balanceGridHtml(AIRLINES,p+' Airline',AIRLINE_STATUS)+'</div></div>'+
         '<div class="field full"><label>Hotel Points Balances <span class="hint">(optional)</span></label><div class="balance-grid">'+balanceGridHtml(HOTELS,p+' Hotel',HOTEL_STATUS)+'</div></div>'+
         '<div class="field full"><label>Cruise Line Loyalty <span class="hint">(optional)</span></label><div class="balance-grid">'+balanceGridHtml(CRUISE_LINES,p+' Cruise',CRUISE_STATUS)+'</div></div>'+
+        '<div class="field full"><label>Car Rental Loyalty <span class="hint">(optional)</span></label><div class="balance-grid">'+balanceGridHtml(CAR_RENTALS,p+' Car Rental',CAR_RENTAL_STATUS)+'</div></div>'+
         '<div class="field full"><label>Credit Card Points Balances <span class="hint">(optional)</span></label><div class="balance-grid">'+balanceGridHtml(CREDIT_CARDS,p+' Credit Card',null)+'</div></div>'+
       '</div>'
     );
@@ -460,8 +479,10 @@
   function addCityRow(){
     multiCityCount++;
     var row = document.createElement('div');
-    row.style.cssText = 'margin-bottom:8px';
-    row.innerHTML = '<input type="text" name="City '+multiCityCount+'" placeholder="City '+multiCityCount+'">';
+    row.style.cssText = 'display:flex;gap:8px;margin-bottom:8px';
+    row.innerHTML =
+      '<input type="text" name="City '+multiCityCount+'" placeholder="City '+multiCityCount+'" style="flex:2">'+
+      '<input type="date" name="City '+multiCityCount+' Departure Date" style="flex:1">';
     multiCityList.appendChild(row);
   }
   document.getElementById('add-city-btn').addEventListener('click', addCityRow);
