@@ -153,10 +153,6 @@
         <input type="text" class="pref-other-input" name="Preferred Cruise Line Other">
       </div>
       <div class="field full">
-        <label>Cruise Loyalty Level <span class="hint">(optional — e.g. "Princess Captain's Circle Platinum")</span></label>
-        <input type="text" name="Cruise Loyalty Level" placeholder="Program and tier">
-      </div>
-      <div class="field full">
         <label>Airline Mileage Balances <span class="hint">(optional — fill in whichever apply)</span></label>
         <div class="balance-grid" id="airline-balances-grid"></div>
       </div>
@@ -389,7 +385,6 @@
         '<div class="field pref-other-wrap" style="display:none"><label>Please specify hotel brand</label><input type="text" class="pref-other-input" name="'+p+' - Preferred Hotel Other"></div>'+
         '<div class="field"><label>Preferred Cruise Line</label><select class="pref-other-sel" name="'+p+' - Preferred Cruise Line">'+selectOptionsHtml(CRUISE_LINES)+'</select></div>'+
         '<div class="field pref-other-wrap" style="display:none"><label>Please specify cruise line</label><input type="text" class="pref-other-input" name="'+p+' - Preferred Cruise Line Other"></div>'+
-        '<div class="field full"><label>Cruise Loyalty Level <span class="hint">(optional)</span></label><input type="text" name="'+p+' - Cruise Loyalty Level" placeholder="Program and tier"></div>'+
         '<div class="field full"><label>Airline Mileage Balances <span class="hint">(optional)</span></label><div class="balance-grid">'+balanceGridHtml(AIRLINES,p+' Airline',AIRLINE_STATUS)+'</div></div>'+
         '<div class="field full"><label>Hotel Points Balances <span class="hint">(optional)</span></label><div class="balance-grid">'+balanceGridHtml(HOTELS,p+' Hotel',HOTEL_STATUS)+'</div></div>'+
         '<div class="field full"><label>Cruise Line Loyalty <span class="hint">(optional)</span></label><div class="balance-grid">'+balanceGridHtml(CRUISE_LINES,p+' Cruise',CRUISE_STATUS)+'</div></div>'+

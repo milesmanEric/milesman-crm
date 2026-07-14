@@ -2864,7 +2864,6 @@ function importFormspreeSubmissions(){
         var preferredAirline = resolveOther(col(row,'Preferred Airline'), col(row,'Preferred Airline Other'));
         var preferredHotel = resolveOther(col(row,'Preferred Hotel'), col(row,'Preferred Hotel Other'));
         var preferredCruiseLine = resolveOther(col(row,'Preferred Cruise Line'), col(row,'Preferred Cruise Line Other'));
-        var cruiseLoyaltyLevel = col(row,'Cruise Loyalty Level');
         var mileageBalances = extractBalances(row, AIRLINES, 'Airline', true);
         var hotelBalances = extractBalances(row, HOTELS, 'Hotel', true);
         var cruiseBalances = extractBalances(row, CRUISE_LINES, 'Cruise', true);
@@ -2890,7 +2889,6 @@ function importFormspreeSubmissions(){
           if(preferredAirline && !client.preferredAirline){client.preferredAirline=preferredAirline;filled.push('preferredAirline');}
           if(preferredHotel && !client.preferredHotel){client.preferredHotel=preferredHotel;filled.push('preferredHotel');}
           if(preferredCruiseLine && !client.preferredCruiseLine){client.preferredCruiseLine=preferredCruiseLine;filled.push('preferredCruiseLine');}
-          if(cruiseLoyaltyLevel && !client.cruiseLoyaltyLevel){client.cruiseLoyaltyLevel=cruiseLoyaltyLevel;filled.push('cruiseLoyaltyLevel');}
           if(mileageBalances){
             var mm=mergeBalanceObjects(client.mileageBalances,mileageBalances);
             if(mm.added.length){client.mileageBalances=mm.merged;filled.push('mileageBalances ('+mm.added.join(', ')+')');}
@@ -2911,7 +2909,7 @@ function importFormspreeSubmissions(){
         } else {
           client = {id:newId('C',db.clients), name:toLastFirst(name), email:email, phone:phone, location:location,
             birthdate:birthdate, countryOfCitizenship:countryOfCitizenship, countryOfBirth:countryOfBirth, referredBy:referredBy, referredByDetail:referredByDetail,
-            preferredAirline:preferredAirline, preferredHotel:preferredHotel, preferredCruiseLine:preferredCruiseLine, cruiseLoyaltyLevel:cruiseLoyaltyLevel,
+            preferredAirline:preferredAirline, preferredHotel:preferredHotel, preferredCruiseLine:preferredCruiseLine,
             mileageBalances:mileageBalances||{}, hotelBalances:hotelBalances||{}, cruiseBalances:cruiseBalances||{}, creditCardBalances:creditCardBalances||{},
             notes:'', joined:today(), totalTrips:0, notesLog:[]};
           db.clients.push(client);
@@ -2965,7 +2963,6 @@ function importFormspreeSubmissions(){
           var tAirline=resolveOther(col(row,tp+' - Preferred Airline'), col(row,tp+' - Preferred Airline Other'));
           var tHotel=resolveOther(col(row,tp+' - Preferred Hotel'), col(row,tp+' - Preferred Hotel Other'));
           var tCruise=resolveOther(col(row,tp+' - Preferred Cruise Line'), col(row,tp+' - Preferred Cruise Line Other'));
-          var tCruiseLoyaltyLevel=col(row,tp+' - Cruise Loyalty Level');
           var tAirlineBal=extractBalances(row,AIRLINES,tp+' Airline',true);
           var tHotelBal=extractBalances(row,HOTELS,tp+' Hotel',true);
           var tCruiseBal=extractBalances(row,CRUISE_LINES,tp+' Cruise',true);
@@ -2986,7 +2983,6 @@ function importFormspreeSubmissions(){
             if(tAirline && !tClient.preferredAirline){tClient.preferredAirline=tAirline;tFilled.push('preferredAirline');}
             if(tHotel && !tClient.preferredHotel){tClient.preferredHotel=tHotel;tFilled.push('preferredHotel');}
             if(tCruise && !tClient.preferredCruiseLine){tClient.preferredCruiseLine=tCruise;tFilled.push('preferredCruiseLine');}
-            if(tCruiseLoyaltyLevel && !tClient.cruiseLoyaltyLevel){tClient.cruiseLoyaltyLevel=tCruiseLoyaltyLevel;tFilled.push('cruiseLoyaltyLevel');}
             if(tAirlineBal){var tmm=mergeBalanceObjects(tClient.mileageBalances,tAirlineBal); if(tmm.added.length){tClient.mileageBalances=tmm.merged;tFilled.push('mileageBalances');}}
             if(tHotelBal){var thm=mergeBalanceObjects(tClient.hotelBalances,tHotelBal); if(thm.added.length){tClient.hotelBalances=thm.merged;tFilled.push('hotelBalances');}}
             if(tCruiseBal){var tcbm=mergeBalanceObjects(tClient.cruiseBalances,tCruiseBal); if(tcbm.added.length){tClient.cruiseBalances=tcbm.merged;tFilled.push('cruiseBalances');}}
@@ -2994,7 +2990,7 @@ function importFormspreeSubmissions(){
             if(tFilled.length) enriched++;
           } else {
             tClient = {id:newId('C',db.clients), name:toLastFirst(tName), email:'', phone:'', location:'',
-              birthdate:tBirthdate, countryOfCitizenship:tCountryOfCitizenship, countryOfBirth:tCountryOfBirth, preferredAirline:tAirline, preferredHotel:tHotel, preferredCruiseLine:tCruise, cruiseLoyaltyLevel:tCruiseLoyaltyLevel,
+              birthdate:tBirthdate, countryOfCitizenship:tCountryOfCitizenship, countryOfBirth:tCountryOfBirth, preferredAirline:tAirline, preferredHotel:tHotel, preferredCruiseLine:tCruise,
               mileageBalances:tAirlineBal||{}, hotelBalances:tHotelBal||{}, cruiseBalances:tCruiseBal||{}, creditCardBalances:tCcBal||{},
               notes:'', joined:today(), totalTrips:0, notesLog:[]};
             db.clients.push(tClient);
@@ -5076,7 +5072,6 @@ function openClientForm(id){
         '<input id="frefdetail" type="text" value="'+(d.referredByDetail||'').toString().replace(/"/g,'&quot;')+'" placeholder="Enter name">'+
       '</div>'+
       fld('Preferred Airline',sel('fpa',AIRLINES,d.preferredAirline))+fld('Preferred Hotel',sel('fph',HOTELS,d.preferredHotel))+fld('Preferred Cruise Line',sel('fpc',CRUISE_LINES,d.preferredCruiseLine))+
-      fld('Cruise Loyalty Level',inp('fclvl','text',d.cruiseLoyaltyLevel,'Program and tier'))+
       balanceGrid('Mileage Balances','mb',AIRLINES,d.mileageBalances,AIRLINE_STATUS)+
       balanceGrid('Hotel Point Balances','hb',HOTELS,d.hotelBalances,HOTEL_STATUS)+
       balanceGrid('Cruise Line Loyalty','cl',CRUISE_LINES,d.cruiseBalances,CRUISE_STATUS)+
@@ -5532,7 +5527,7 @@ function saveClient(id){
   const cruiseBalances=readBalanceGrid('cl',CRUISE_LINES,CRUISE_STATUS);
   const referredBy=gv('fref');
   const referredByDetail=REF_DETAIL_TYPES.indexOf(referredBy)!==-1?gv('frefdetail'):'';
-  const data={name:name,email:email,phone:gv('fp'),location:gv('fl'),birthdate:gv('fbd'),countryOfCitizenship:gv('fcoc'),countryOfBirth:gv('fcob'),referredBy:referredBy,referredByDetail:referredByDetail,preferredAirline:gv('fpa'),preferredHotel:gv('fph'),preferredCruiseLine:gv('fpc'),cruiseLoyaltyLevel:gv('fclvl'),mileageBalances:mileageBalances,hotelBalances:hotelBalances,cruiseBalances:cruiseBalances,creditCardBalances:creditCardBalances,notesLog:notesLog,isPayingClient:document.getElementById('f-paying')?document.getElementById('f-paying').checked:false,isSubscriber:document.getElementById('f-subscriber')?document.getElementById('f-subscriber').checked:false,attachments:window._currentClientAttachments||[]};
+  const data={name:name,email:email,phone:gv('fp'),location:gv('fl'),birthdate:gv('fbd'),countryOfCitizenship:gv('fcoc'),countryOfBirth:gv('fcob'),referredBy:referredBy,referredByDetail:referredByDetail,preferredAirline:gv('fpa'),preferredHotel:gv('fph'),preferredCruiseLine:gv('fpc'),mileageBalances:mileageBalances,hotelBalances:hotelBalances,cruiseBalances:cruiseBalances,creditCardBalances:creditCardBalances,notesLog:notesLog,isPayingClient:document.getElementById('f-paying')?document.getElementById('f-paying').checked:false,isSubscriber:document.getElementById('f-subscriber')?document.getElementById('f-subscriber').checked:false,attachments:window._currentClientAttachments||[]};
   var resultId = id;
   if(id){
     db.clients=db.clients.map(function(c){return c.id===id?Object.assign({},c,data):c;});
