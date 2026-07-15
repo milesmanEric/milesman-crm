@@ -425,6 +425,11 @@ const SHIPS_BY_CRUISE_LINE = {
   'MSC Cruises': ['MSC World America','MSC World Europa','MSC Euribia','MSC Seascape','MSC Seashore','MSC Grandiosa','MSC Virtuosa','MSC Bellissima','MSC Meraviglia','MSC Divina','MSC Preziosa','MSC Splendida','MSC Fantasia','MSC Magnifica','MSC Poesia'],
   'Viking': ['Viking Star','Viking Sea','Viking Sky','Viking Sun','Viking Orion','Viking Jupiter','Viking Venus','Viking Mars','Viking Neptune','Viking Saturn','Viking Octantis','Viking Polaris']
 };
+function shipOptionsHtml(cruiseLine, selected){
+  if(!cruiseLine) return '<option value="">-- Select cruise line first --</option>';
+  var ships = SHIPS_BY_CRUISE_LINE[cruiseLine]||[];
+  return '<option value="">-- Select ship --</option>'+ships.map(function(s){return '<option value="'+s+'"'+(s===selected?' selected':'')+'>'+s+'</option>';}).join('');
+}
 const VIRGIN_VOYAGES_CABIN_GROUPS = [
   {label:'Mega Rockstar', types:['Massive Suite','Fab Suite','Posh Suite','Gorgeous Suite']},
   {label:'Rockstar', types:['Seriously Suite','Brilliant Suite','Sweet Aft Suite Biggest Terrace','Sweet Aft Suite Even Bigger Terrace','Sweet Aft Suite Pretty Big Terrace','Cheeky Corner Suite Biggest Terrace','Cheeky Corner Suite Even Bigger Terrace','Cheeky Corner Suite Pretty Big Terrace']},
@@ -1841,8 +1846,8 @@ function exportCSV(type){
     rows=db.clients.map(c=>{var rev=db.trips.filter(function(t){return t.clientId===c.id;}).reduce(function(a,t){return a+(t.totalValue||0);},0);return [c.id,c.name,c.email,c.phone,c.location,rev,c.preferredAirline,c.preferredHotel,c.notes,c.joined,countDistinctTrips(c.id)];});
     filename='milesman-clients.csv';
   }else{
-    headers=['ID','Client','Destination','Origin','Depart','Return','Status','Type','Airline','Class','Hotel','Nights','Points Used','Cash Paid','Total Value','Booking Ref','Notes'];
-    rows=db.trips.map(t=>[t.id,t.clientName,t.destination,t.origin,t.departDate,t.returnDate,t.status,t.type,t.airline,t.flightClass,t.hotel,t.hotelNights,t.pointsUsed,t.cashPaid,t.totalValue,t.bookingRef,t.notes]);
+    headers=['ID','Client','Destination','Origin','Depart','Return','Status','Type','Airline','Class','Hotel','Nights','Cruise Line','Ship Name','Points Used','Cash Paid','Total Value','Booking Ref','Notes'];
+    rows=db.trips.map(t=>[t.id,t.clientName,t.destination,t.origin,t.departDate,t.returnDate,t.status,t.type,t.airline,t.flightClass,t.hotel,t.hotelNights,t.cruiseLine,t.shipName,t.pointsUsed,t.cashPaid,t.totalValue,t.bookingRef,t.notes]);
     filename='milesman-'+type+'.csv';
   }
   if(!rows.length){toast('No data to export','err');return;}
@@ -4719,7 +4724,13 @@ function renderClients(){
       renderClients();
     });
   });
-  $('client-search').addEventListener('input',function(){fSearch=this.value;renderClients();});
+  $('client-search').addEventListener('input',function(){
+    var pos=this.selectionStart;
+    fSearch=this.value;
+    renderClients();
+    var el=$('client-search');
+    if(el){el.focus();try{el.setSelectionRange(pos,pos);}catch(e){}}
+  });
   document.querySelectorAll('.trips-btn[data-cid]').forEach(function(btn){
     btn.addEventListener('click',function(){go('trips',btn.dataset.cid);});
   });
@@ -5129,6 +5140,8 @@ function openClientForm(id){
     '<div class="fg">'+
       fld('Full Name',inp('fn','text',toFirstLast(d.name)))+fld('Email',inp('fe','email',d.email))+
       fld('Phone',inp('fp','text',d.phone,'(xxx) xxx-xxxx'))+fld('Location',inp('fl','text',d.location,'City, State'))+
+      fld('Street Address',inp('fst','text',d.streetAddress))+fld('City',inp('fcty','text',d.city))+
+      fld('State',inp('fstate','text',d.state))+fld('Zip Code',inp('fzip','text',d.zip))+
       fld('Birthdate',inp('fbd','date',d.birthdate))+
       fld('Country of Citizenship',inp('fcoc','text',d.countryOfCitizenship))+fld('Country of Birth',inp('fcob','text',d.countryOfBirth))+
       fld('Referred By','<select id="fref"><option value="">-- Select --</option>'+
@@ -5557,6 +5570,7 @@ function openTripForm(id){
       fld('Status',sel('tst',STATUSES,d.status||'Planning'))+fld('Trip Type',sel('tty',TYPES,d.type||'Leisure'))+
       fld('Airline',sel('tai',AIRLINES,d.airline))+fld('Class of Service',sel('tcl',CLASSES,d.flightClass||'Economy'))+
       fld('Hotel Brand',sel('tho',HOTELS,d.hotel))+fld('Hotel Nights',inp('thn','number',d.hotelNights||0))+
+      fld('Cruise Line',sel('tcr',CRUISE_LINES,d.cruiseLine))+fld('Ship Name','<select id="tship">'+shipOptionsHtml(d.cruiseLine,d.shipName)+'</select>')+
       fld('Points Used',inp('tpu','number',d.pointsUsed||0))+fld('Cash Paid ($)',inp('tcp','number',d.cashPaid||0))+
       fld('Total Value ($)',inp('tva','number',d.totalValue||0))+fld('Booking Reference',inp('tbr','text',d.bookingRef,'e.g. UA-44129LHR'))+
       fld('Product',inp('tpr','text',d.product,'e.g. Airline Booking:Roundtrip Intl Business'))+
@@ -5572,6 +5586,9 @@ function openTripForm(id){
   $('tc').addEventListener('change',function(){
     document.getElementById('trip-balance-sections').innerHTML = tripBalanceSectionsHtml(this.value);
     bindTripBalanceListeners();
+  });
+  $('tcr').addEventListener('change',function(){
+    document.getElementById('tship').innerHTML = shipOptionsHtml(this.value,'');
   });
   bindTripBalanceListeners();
 }
@@ -5601,7 +5618,7 @@ function saveClient(id){
   const carRentalBalances=readBalanceGrid('cr',CAR_RENTALS,CAR_RENTAL_STATUS);
   const referredBy=gv('fref');
   const referredByDetail=REF_DETAIL_TYPES.indexOf(referredBy)!==-1?gv('frefdetail'):'';
-  const data={name:name,email:email,phone:gv('fp'),location:gv('fl'),birthdate:gv('fbd'),countryOfCitizenship:gv('fcoc'),countryOfBirth:gv('fcob'),referredBy:referredBy,referredByDetail:referredByDetail,preferredAirline:gv('fpa'),preferredHotel:gv('fph'),preferredCruiseLine:gv('fpc'),mileageBalances:mileageBalances,hotelBalances:hotelBalances,cruiseBalances:cruiseBalances,carRentalBalances:carRentalBalances,creditCardBalances:creditCardBalances,notesLog:notesLog,isPayingClient:document.getElementById('f-paying')?document.getElementById('f-paying').checked:false,isSubscriber:document.getElementById('f-subscriber')?document.getElementById('f-subscriber').checked:false,attachments:window._currentClientAttachments||[]};
+  const data={name:name,email:email,phone:gv('fp'),location:gv('fl'),streetAddress:gv('fst'),city:gv('fcty'),state:gv('fstate'),zip:gv('fzip'),birthdate:gv('fbd'),countryOfCitizenship:gv('fcoc'),countryOfBirth:gv('fcob'),referredBy:referredBy,referredByDetail:referredByDetail,preferredAirline:gv('fpa'),preferredHotel:gv('fph'),preferredCruiseLine:gv('fpc'),mileageBalances:mileageBalances,hotelBalances:hotelBalances,cruiseBalances:cruiseBalances,carRentalBalances:carRentalBalances,creditCardBalances:creditCardBalances,notesLog:notesLog,isPayingClient:document.getElementById('f-paying')?document.getElementById('f-paying').checked:false,isSubscriber:document.getElementById('f-subscriber')?document.getElementById('f-subscriber').checked:false,attachments:window._currentClientAttachments||[]};
   var resultId = id;
   if(id){
     db.clients=db.clients.map(function(c){return c.id===id?Object.assign({},c,data):c;});
@@ -5626,7 +5643,7 @@ function saveTrip(id){
   // and invoice-dedup logic all key off this) — clientIds is purely additional
   // travelers linked to the same trip so it also shows on their own records.
   const additionalClientIds=Array.from(document.querySelectorAll('.trip-client-cb:checked')).map(function(cb){return cb.value;}).filter(function(cid){return cid!==clientId;});
-  const data={clientId:clientId,clientName:client?client.name:'',clientIds:additionalClientIds,supplierId:supplierId,supplierName:supplier?supplier.name:'',origin:gv('tor'),destination:dest,departDate:gv('tdd'),returnDate:gv('trd'),status:gv('tst')||'Planning',type:gv('tty')||'Leisure',airline:gv('tai'),flightClass:gv('tcl')||'Economy',hotel:gv('tho'),hotelNights:gn('thn'),pointsUsed:gn('tpu'),cashPaid:gn('tcp'),totalValue:gn('tva'),bookingRef:gv('tbr'),product:gv('tpr'),notes:gv('tno')};
+  const data={clientId:clientId,clientName:client?client.name:'',clientIds:additionalClientIds,supplierId:supplierId,supplierName:supplier?supplier.name:'',origin:gv('tor'),destination:dest,departDate:gv('tdd'),returnDate:gv('trd'),status:gv('tst')||'Planning',type:gv('tty')||'Leisure',airline:gv('tai'),flightClass:gv('tcl')||'Economy',hotel:gv('tho'),hotelNights:gn('thn'),cruiseLine:gv('tcr'),shipName:gv('tship'),pointsUsed:gn('tpu'),cashPaid:gn('tcp'),totalValue:gn('tva'),bookingRef:gv('tbr'),product:gv('tpr'),notes:gv('tno')};
   if(client){
     client.mileageBalances=readBalanceGrid('mb',AIRLINES,AIRLINE_STATUS);
     client.hotelBalances=readBalanceGrid('hb',HOTELS,HOTEL_STATUS);
