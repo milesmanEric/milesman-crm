@@ -38,7 +38,7 @@
   button[type="submit"]:hover{background:#1d4ed8}
   .footnote{text-align:center;font-size:12px;color:#999;margin-top:16px}
   #ok-msg{display:none;background:#d1fae5;color:#065f46;border:1px solid #6ee7b7;border-radius:10px;padding:16px;text-align:center;font-size:14px;font-weight:600;margin-bottom:20px}
-  @media(max-width:520px){.fg{grid-template-columns:1fr}.field.full{grid-column:auto}}
+  @media(max-width:520px){.fg{grid-template-columns:1fr}.field.full{grid-column:auto}.field input,.field select,.field textarea{font-size:16px}}
 </style>
 </head>
 <body>
@@ -94,7 +94,7 @@
         <input type="text" name="Country of Birth">
       </div>
       <div class="field">
-        <label>How did you hear about us?</label>
+        <label for="ref-select">How did you hear about us?</label>
         <select id="ref-select" name="Referred By">
           <option value="">-- Select --</option>
           <option value="Subscriber">Newsletter Subscriber</option>
@@ -110,8 +110,8 @@
         <input type="text" id="ref-detail" name="Referred By Detail" placeholder="Event or person's name">
       </div>
       <div class="field">
-        <label>Preferred Airline</label>
-        <select class="pref-other-sel" name="Preferred Airline">
+        <label for="pref-airline-select">Preferred Airline</label>
+        <select class="pref-other-sel" id="pref-airline-select" name="Preferred Airline">
           <option value="">No preference</option>
           <option>American</option><option>United</option><option>Delta</option>
           <option>Southwest</option><option>JetBlue</option><option>Qatar Airways</option>
@@ -125,8 +125,8 @@
         <input type="text" class="pref-other-input" name="Preferred Airline Other">
       </div>
       <div class="field">
-        <label>Preferred Hotel Brand</label>
-        <select class="pref-other-sel" name="Preferred Hotel">
+        <label for="pref-hotel-select">Preferred Hotel Brand</label>
+        <select class="pref-other-sel" id="pref-hotel-select" name="Preferred Hotel">
           <option value="">No preference</option>
           <option>Marriott</option><option>Hilton</option><option>Hyatt</option><option>IHG</option>
           <option>Wyndham</option><option>Four Seasons</option><option>Ritz-Carlton</option>
@@ -139,8 +139,8 @@
         <input type="text" class="pref-other-input" name="Preferred Hotel Other">
       </div>
       <div class="field">
-        <label>Preferred Cruise Line</label>
-        <select class="pref-other-sel" name="Preferred Cruise Line">
+        <label for="pref-cruise-select">Preferred Cruise Line</label>
+        <select class="pref-other-sel" id="pref-cruise-select" name="Preferred Cruise Line">
           <option value="">No preference</option>
           <option>Virgin Voyages</option><option>Royal Caribbean</option><option>Carnival</option>
           <option>Norwegian</option><option>Princess</option><option>Celebrity</option>
@@ -197,7 +197,7 @@
         <input type="text" name="Destination" required placeholder="e.g. Tokyo, Japan">
       </div>
       <div class="field">
-        <label>Trip Direction</label>
+        <label for="trip-direction-select">Trip Direction</label>
         <select id="trip-direction-select" name="Trip Direction">
           <option value="">-- Select --</option>
           <option>One-way</option><option>Round-trip</option><option>Multi-city</option>
@@ -217,7 +217,7 @@
         <input type="date" name="Return Date">
       </div>
       <div class="field">
-        <label>Trip Type</label>
+        <label for="trip-type-select">Trip Type</label>
         <select id="trip-type-select" name="Trip Type">
           <option value="">-- Select --</option>
           <option>Leisure</option><option>Business</option><option>Honeymoon</option>
@@ -228,8 +228,8 @@
         <div class="section-title" style="margin-top:8px">Cruise Details</div>
         <div class="fg">
           <div class="field">
-            <label>Cruise Line</label>
-            <select name="Cruise Line">
+            <label for="cd-cruise-line-select">Cruise Line</label>
+            <select id="cd-cruise-line-select" name="Cruise Line">
               <option value="">-- Select --</option>
               <option>Virgin Voyages</option><option>Royal Caribbean</option><option>Carnival</option>
               <option>Norwegian</option><option>Princess</option><option>Celebrity</option>
@@ -250,8 +250,8 @@
             <input type="text" name="Departure Port" placeholder="e.g. Fort Lauderdale, FL">
           </div>
           <div class="field">
-            <label>Cabin Type</label>
-            <select name="Cabin Type">
+            <label for="cd-cabin-type-select">Cabin Type</label>
+            <select id="cd-cabin-type-select" name="Cabin Type">
               <option value="">-- Select --</option>
               <option>Interior</option><option>Window</option><option>Balcony</option><option>Suite</option>
             </select>
@@ -267,8 +267,8 @@
         </div>
       </div>
       <div class="field">
-        <label>Class of Service</label>
-        <select name="Class of Service">
+        <label for="class-of-service-select">Class of Service</label>
+        <select id="class-of-service-select" name="Class of Service">
           <option value="">-- Select --</option>
           <option>Economy</option><option>Premium Economy</option>
           <option>Business</option><option>First</option>
@@ -279,8 +279,8 @@
         <input type="number" name="Hotel Nights" min="0" placeholder="0">
       </div>
       <div class="field">
-        <label>Would you like to use</label>
-        <select name="Payment Preference">
+        <label for="payment-pref-select">Would you like to use</label>
+        <select id="payment-pref-select" name="Payment Preference">
           <option value="">-- Select --</option>
           <option>Miles/Points</option>
           <option>Payment</option>
@@ -401,11 +401,11 @@
         '<div class="field"><label>Birthdate</label><input type="date" name="'+p+' - Birthdate"></div>'+
         '<div class="field"><label>Country of Citizenship</label><input type="text" name="'+p+' - Country of Citizenship"></div>'+
         '<div class="field"><label>Country of Birth</label><input type="text" name="'+p+' - Country of Birth"></div>'+
-        '<div class="field"><label>Preferred Airline</label><select class="pref-other-sel" name="'+p+' - Preferred Airline">'+selectOptionsHtml(AIRLINES)+'</select></div>'+
+        '<div class="field"><label for="t'+n+'-pref-airline">Preferred Airline</label><select class="pref-other-sel" id="t'+n+'-pref-airline" name="'+p+' - Preferred Airline">'+selectOptionsHtml(AIRLINES)+'</select></div>'+
         '<div class="field pref-other-wrap" style="display:none"><label>Please specify airline</label><input type="text" class="pref-other-input" name="'+p+' - Preferred Airline Other"></div>'+
-        '<div class="field"><label>Preferred Hotel Brand</label><select class="pref-other-sel" name="'+p+' - Preferred Hotel">'+selectOptionsHtml(HOTELS)+'</select></div>'+
+        '<div class="field"><label for="t'+n+'-pref-hotel">Preferred Hotel Brand</label><select class="pref-other-sel" id="t'+n+'-pref-hotel" name="'+p+' - Preferred Hotel">'+selectOptionsHtml(HOTELS)+'</select></div>'+
         '<div class="field pref-other-wrap" style="display:none"><label>Please specify hotel brand</label><input type="text" class="pref-other-input" name="'+p+' - Preferred Hotel Other"></div>'+
-        '<div class="field"><label>Preferred Cruise Line</label><select class="pref-other-sel" name="'+p+' - Preferred Cruise Line">'+selectOptionsHtml(CRUISE_LINES)+'</select></div>'+
+        '<div class="field"><label for="t'+n+'-pref-cruise">Preferred Cruise Line</label><select class="pref-other-sel" id="t'+n+'-pref-cruise" name="'+p+' - Preferred Cruise Line">'+selectOptionsHtml(CRUISE_LINES)+'</select></div>'+
         '<div class="field pref-other-wrap" style="display:none"><label>Please specify cruise line</label><input type="text" class="pref-other-input" name="'+p+' - Preferred Cruise Line Other"></div>'+
         '<div class="field full"><label>Airline Mileage Balances <span class="hint">(optional)</span></label><div class="balance-grid">'+balanceGridHtml(AIRLINES,p+' Airline',AIRLINE_STATUS)+'</div></div>'+
         '<div class="field full"><label>Hotel Points Balances <span class="hint">(optional)</span></label><div class="balance-grid">'+balanceGridHtml(HOTELS,p+' Hotel',HOTEL_STATUS)+'</div></div>'+
