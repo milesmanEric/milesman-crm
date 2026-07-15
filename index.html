@@ -1216,6 +1216,19 @@ async function findBackupFile(token){
   }
   return files[0]||null;
 }
+// Tracks the modifiedTime of the Drive backup file as of the last time THIS
+// device successfully backed up to or restored from it — i.e. "the remote
+// version this device has actually seen". Auto-backup previously PATCHed
+// the file unconditionally on a timer with no check at all, so if another
+// device (e.g. a phone) uploaded a newer backup that this device hadn't
+// pulled down yet, the next auto-backup here would silently clobber it with
+// this device's own older data. Comparing against this marker before
+// overwriting catches that instead of destroying the other device's backup.
+function driveConflictDetected(existing){
+  if(!existing) return false; // no remote file yet — nothing to conflict with
+  var known = localStorage.getItem('mm_last_known_remote_modified');
+  return !!known && known !== existing.modifiedTime;
+}
 async function driveBackup(silent){
   const btn=$('drive-btn');
   if(!silent){btn.textContent='Saving...';btn.disabled=true;debugLog('Manual backup clicked...');}
@@ -1232,21 +1245,35 @@ async function driveBackup(silent){
     if(!silent) debugLog('Token OK, uploading backup...');
     const content=JSON.stringify(db,null,2);
     const existing=await findBackupFile(driveToken);
+    if(driveConflictDetected(existing)){
+      debugLog('Backup BLOCKED — Drive has a newer backup ('+existing.modifiedTime+') than this device last saw ('+localStorage.getItem('mm_last_known_remote_modified')+'). Likely uploaded from another device. Restore first to avoid overwriting it.');
+      if(!silent){
+        toast('Google Drive has a newer backup from another device — click "Restore from Google Drive" first, or you\'ll overwrite it','err');
+        btn.textContent='Backup to Google Drive';btn.disabled=false;
+      }else{
+        updateSyncStatusDisplay();
+      }
+      return;
+    }
     if(existing){
-      const r=await fetch('https://www.googleapis.com/upload/drive/v3/files/'+existing.id+'?uploadType=media',{
+      const r=await fetch('https://www.googleapis.com/upload/drive/v3/files/'+existing.id+'?uploadType=media&fields=modifiedTime',{
         method:'PATCH',headers:{Authorization:'Bearer '+driveToken,'Content-Type':'application/json'},body:content
       });
       if(!silent) debugLog('Manual backup PATCH status: '+r.status);
       if(!r.ok){ throw new Error('Drive returned '+r.status+' on backup upload'); }
+      const updated=await r.json();
+      if(updated.modifiedTime) localStorage.setItem('mm_last_known_remote_modified', updated.modifiedTime);
     }else{
       const meta=new Blob([JSON.stringify({name:BACKUP_FILENAME,mimeType:'application/json'})],{type:'application/json'});
       const data=new Blob([content],{type:'application/json'});
       const form=new FormData();form.append('metadata',meta);form.append('file',data);
-      const r=await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',{
+      const r=await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=modifiedTime',{
         method:'POST',headers:{Authorization:'Bearer '+driveToken},body:form
       });
       if(!silent) debugLog('Manual backup POST status: '+r.status);
       if(!r.ok){ throw new Error('Drive returned '+r.status+' on backup upload'); }
+      const created=await r.json();
+      if(created.modifiedTime) localStorage.setItem('mm_last_known_remote_modified', created.modifiedTime);
     }
     if(!silent){btn.textContent='Backed up to Drive';btn.style.color='#059669';btn.style.borderColor='#6ee7b7';}
     var nowStr=new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
@@ -1316,6 +1343,7 @@ async function driveRestore(){
       };
       db.clients.forEach(function(c){ if(c.name && !c.name.includes(',')) c.name=toLastFirst(c.name); });
       saveDB();render();
+      localStorage.setItem('mm_last_known_remote_modified', existing.modifiedTime);
       const date=new Date(existing.modifiedTime).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
       debugLog('Restore: success — '+db.clients.length+' clients, '+db.trips.length+' trips');
       toast('Restored from Drive ('+date+') — '+db.clients.length+' clients, '+db.trips.length+' trips','ok');
