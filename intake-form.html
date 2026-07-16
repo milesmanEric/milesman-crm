@@ -258,8 +258,7 @@
           <div class="field">
             <label for="cd-cabin-type-select">Cabin Type</label>
             <select id="cd-cabin-type-select" name="Cabin Type">
-              <option value="">-- Select --</option>
-              <option>Interior</option><option>Window</option><option>Balcony</option><option>Suite</option>
+              <option value="">-- Select cruise line first --</option>
             </select>
           </div>
           <div class="field">
@@ -336,6 +335,28 @@
     if(!cruiseLine) return '<option value="">-- Select cruise line first --</option>';
     var ships = SHIPS_BY_CRUISE_LINE[cruiseLine]||[];
     return '<option value="">-- Select ship --</option>'+ships.map(function(s){return '<option'+(s===selected?' selected':'')+'>'+s+'</option>';}).join('');
+  }
+  // Mirrors the CRM's per-cruise-line cabin type lists (index.html's
+  // VIRGIN_VOYAGES_CABIN_GROUPS / PRINCESS_CABIN_TYPES / CABIN_TYPES) so the
+  // form only offers cabin types that line actually sells.
+  var GENERIC_CABIN_TYPES = ['Interior','Window','Balcony','Suite'];
+  var PRINCESS_CABIN_TYPES = ['Interior','Oceanview','Balcony','Mini-Suite','Suite'];
+  var VIRGIN_VOYAGES_CABIN_GROUPS = [
+    {label:'Mega Rockstar', types:['Massive Suite','Fab Suite','Posh Suite','Gorgeous Suite']},
+    {label:'Rockstar', types:['Seriously Suite','Brilliant Suite','Sweet Aft Suite Biggest Terrace','Sweet Aft Suite Even Bigger Terrace','Sweet Aft Suite Pretty Big Terrace','Cheeky Corner Suite Biggest Terrace','Cheeky Corner Suite Even Bigger Terrace','Cheeky Corner Suite Pretty Big Terrace']},
+    {label:'Sea Terrace', types:['XL Sea Terrace','Central Sea Terrace','Sea Terrace','Sea Terrace Slightly Smaller Balcony','Limited View Sea Terrace']},
+    {label:'Sea View', types:['Oceanview']},
+    {label:'Insider', types:['Insider']}
+  ];
+  function cabinTypeOptionsHtml(cruiseLine, selected){
+    if(!cruiseLine) return '<option value="">-- Select cruise line first --</option>';
+    if(cruiseLine === 'Virgin Voyages'){
+      return '<option value="">-- Select --</option>'+VIRGIN_VOYAGES_CABIN_GROUPS.map(function(g){
+        return '<optgroup label="'+g.label+'">'+g.types.map(function(t){return '<option'+(t===selected?' selected':'')+'>'+t+'</option>';}).join('')+'</optgroup>';
+      }).join('');
+    }
+    var types = cruiseLine === 'Princess' ? PRINCESS_CABIN_TYPES : GENERIC_CABIN_TYPES;
+    return '<option value="">-- Select --</option>'+types.map(function(t){return '<option'+(t===selected?' selected':'')+'>'+t+'</option>';}).join('');
   }
   var CAR_RENTALS = ['Hertz','Avis','Enterprise','National','Budget','Alamo','Sixt','Europcar','Thrifty','Dollar'];
   // Real elite/status tier names per program, mirroring AIRLINE_STATUS/
@@ -481,6 +502,7 @@
 
   document.getElementById('cd-cruise-line-select').addEventListener('change', function(){
     document.getElementById('cd-ship-select').innerHTML = shipOptionsHtml(this.value, '');
+    document.getElementById('cd-cabin-type-select').innerHTML = cabinTypeOptionsHtml(this.value, '');
   });
 
   // Delegated so it works for every "Other" select regardless of whether it
