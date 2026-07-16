@@ -554,6 +554,32 @@
       alert('Something went wrong submitting the form. Please try again or call us directly.');
     });
   });
+
+  // When embedded via <iframe> (e.g. the WordPress page), a fixed iframe
+  // height goes stale the moment a field is added or the content reflows
+  // for a different viewport width — the bottom of the form (including
+  // the submit button) silently becomes unreachable. Reporting our real
+  // height to the parent lets it keep the iframe sized correctly; see the
+  // matching listener snippet needed on the embedding page.
+  if(window.parent !== window){
+    var lastReportedHeight = 0;
+    function reportHeight(){
+      var h = document.documentElement.scrollHeight;
+      if(h !== lastReportedHeight){
+        lastReportedHeight = h;
+        window.parent.postMessage({type:'milesman-intake-height', height:h}, '*');
+      }
+    }
+    // Belt-and-suspenders: a parent-driven width change (e.g. the embedding
+    // page's own responsive layout) reflows our content without firing a
+    // DOM mutation or a 'resize' event inside this frame, so ResizeObserver
+    // and a cheap poll both back up the mutation/resize listeners.
+    if(window.ResizeObserver) new ResizeObserver(reportHeight).observe(document.documentElement);
+    new MutationObserver(reportHeight).observe(document.body, {childList:true, subtree:true, attributes:true});
+    window.addEventListener('resize', reportHeight);
+    setInterval(reportHeight, 1000);
+    reportHeight();
+  }
 </script>
 </body>
 </html>
