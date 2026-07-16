@@ -184,7 +184,7 @@
           <label><input type="checkbox" name="Need - Airline" value="Yes"> Airline</label>
           <label><input type="checkbox" name="Need - Hotel" value="Yes"> Hotel</label>
           <label><input type="checkbox" id="need-tours-cb" name="Need - Tours" value="Yes"> Tours</label>
-          <label><input type="checkbox" name="Need - Cruise" value="Yes"> Cruise</label>
+          <label><input type="checkbox" id="need-cruise-cb" name="Need - Cruise" value="Yes"> Cruise</label>
           <label><input type="checkbox" name="Need - Car Rental" value="Yes"> Car Rental</label>
         </div>
       </div>
@@ -221,7 +221,7 @@
         <select id="trip-type-select" name="Trip Type">
           <option value="">-- Select --</option>
           <option>Leisure</option><option>Business</option><option>Honeymoon</option>
-          <option>Family</option><option>Adventure</option><option>Cruise</option>
+          <option>Family</option><option>Adventure</option>
         </select>
       </div>
       <div class="field full" id="cruise-details-wrap" style="display:none">
@@ -474,10 +474,9 @@
     }
   });
 
-  var tripTypeSelect = document.getElementById('trip-type-select');
   var cruiseWrap = document.getElementById('cruise-details-wrap');
-  tripTypeSelect.addEventListener('change', function(){
-    cruiseWrap.style.display = this.value==='Cruise' ? 'block' : 'none';
+  document.getElementById('need-cruise-cb').addEventListener('change', function(){
+    cruiseWrap.style.display = this.checked ? 'block' : 'none';
   });
 
   document.getElementById('cd-cruise-line-select').addEventListener('change', function(){
