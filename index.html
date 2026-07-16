@@ -2990,6 +2990,7 @@ function importFormspreeSubmissions(){
         addLine('Return Date', col(row,'Return Date'));
         addLine('Trip Type', col(row,'Trip Type'));
         addLine('Cruise Line', col(row,'Cruise Line'));
+        addLine('Ship Name', col(row,'Ship Name'));
         addLine('Cruise Nights', col(row,'Cruise Nights'));
         addLine('Sailing Date', col(row,'Sailing Date'));
         addLine('Departure Port', col(row,'Departure Port'));
@@ -3069,6 +3070,7 @@ function importFormspreeSubmissions(){
             status:'Planning', type:col(row,'Trip Type')||'Leisure',
             airline:'', flightClass:col(row,'Class of Service'), hotel:'',
             hotelNights:parseInt(col(row,'Hotel Nights'),10)||0,
+            cruiseLine:col(row,'Cruise Line'), shipName:col(row,'Ship Name'),
             pointsUsed:0, cashPaid:0, totalValue:0, bookingRef:'', product:'',
             supplierId:'', supplierName:'',
             notes: tripLines.join('\n')

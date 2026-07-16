@@ -238,6 +238,12 @@
             </select>
           </div>
           <div class="field">
+            <label for="cd-ship-select">Ship Name</label>
+            <select id="cd-ship-select" name="Ship Name">
+              <option value="">-- Select cruise line first --</option>
+            </select>
+          </div>
+          <div class="field">
             <label>Number of Nights</label>
             <input type="number" name="Cruise Nights" min="0" placeholder="7">
           </div>
@@ -312,6 +318,25 @@
   var HOTELS = ['Marriott','Hilton','Hyatt','IHG','Wyndham','Four Seasons','Ritz-Carlton','W Hotels','Kimpton','Conrad'];
   var CREDIT_CARDS = ['Chase Sapphire Preferred','Chase Sapphire Reserve','Chase Ink Business Preferred','Amex Platinum','Amex Gold','Amex Business Platinum','Capital One Venture X','Citi Premier','Citi Prestige','Bilt Mastercard'];
   var CRUISE_LINES = ['Virgin Voyages','Royal Caribbean','Carnival','Norwegian','Princess','Celebrity','Disney Cruise Line','Holland America','MSC Cruises','Viking'];
+  // Mirrors SHIPS_BY_CRUISE_LINE in the CRM's index.html so the ship list
+  // for each cruise line stays in sync between the public form and the CRM.
+  var SHIPS_BY_CRUISE_LINE = {
+    'Virgin Voyages': ['Scarlet Lady','Valiant Lady','Resilient Lady','Brilliant Lady'],
+    'Royal Caribbean': ['Icon of the Seas','Star of the Seas','Utopia of the Seas','Wonder of the Seas','Symphony of the Seas','Harmony of the Seas','Oasis of the Seas','Allure of the Seas','Odyssey of the Seas','Spectrum of the Seas','Anthem of the Seas','Ovation of the Seas','Quantum of the Seas','Freedom of the Seas','Liberty of the Seas','Independence of the Seas','Navigator of the Seas','Mariner of the Seas','Explorer of the Seas','Adventure of the Seas','Voyager of the Seas','Radiance of the Seas','Brilliance of the Seas','Serenade of the Seas','Jewel of the Seas'],
+    'Carnival': ['Carnival Celebration','Carnival Jubilee','Mardi Gras','Carnival Venezia','Carnival Firenze','Carnival Panorama','Carnival Horizon','Carnival Vista','Carnival Breeze','Carnival Dream','Carnival Magic','Carnival Sunrise','Carnival Sunshine','Carnival Radiance','Carnival Miracle','Carnival Legend','Carnival Pride','Carnival Freedom','Carnival Valor','Carnival Conquest'],
+    'Norwegian': ['Norwegian Aqua','Norwegian Viva','Norwegian Prima','Norwegian Encore','Norwegian Bliss','Norwegian Joy','Norwegian Escape','Norwegian Getaway','Norwegian Breakaway','Norwegian Epic','Norwegian Gem','Norwegian Pearl','Norwegian Jade','Norwegian Jewel','Norwegian Dawn','Norwegian Star','Norwegian Sky','Norwegian Sun','Pride of America'],
+    'Princess': ['Sun Princess','Star Princess','Discovery Princess','Enchanted Princess','Sky Princess','Majestic Princess','Regal Princess','Royal Princess','Crown Princess','Emerald Princess','Ruby Princess','Caribbean Princess','Coral Princess','Island Princess','Grand Princess','Diamond Princess'],
+    'Celebrity': ['Celebrity Xcel','Celebrity Ascent','Celebrity Beyond','Celebrity Apex','Celebrity Edge','Celebrity Reflection','Celebrity Silhouette','Celebrity Solstice','Celebrity Eclipse','Celebrity Equinox','Celebrity Summit','Celebrity Constellation','Celebrity Infinity','Celebrity Millennium','Celebrity Flora'],
+    'Disney Cruise Line': ['Disney Treasure','Disney Wish','Disney Fantasy','Disney Dream','Disney Magic','Disney Wonder','Disney Destiny'],
+    'Holland America': ['Rotterdam','Nieuw Statendam','Koningsdam','Eurodam','Nieuw Amsterdam','Oosterdam','Westerdam','Noordam','Zuiderdam','Volendam','Zaandam','Veendam'],
+    'MSC Cruises': ['MSC World America','MSC World Europa','MSC Euribia','MSC Seascape','MSC Seashore','MSC Grandiosa','MSC Virtuosa','MSC Bellissima','MSC Meraviglia','MSC Divina','MSC Preziosa','MSC Splendida','MSC Fantasia','MSC Magnifica','MSC Poesia'],
+    'Viking': ['Viking Star','Viking Sea','Viking Sky','Viking Sun','Viking Orion','Viking Jupiter','Viking Venus','Viking Mars','Viking Neptune','Viking Saturn','Viking Octantis','Viking Polaris']
+  };
+  function shipOptionsHtml(cruiseLine, selected){
+    if(!cruiseLine) return '<option value="">-- Select cruise line first --</option>';
+    var ships = SHIPS_BY_CRUISE_LINE[cruiseLine]||[];
+    return '<option value="">-- Select ship --</option>'+ships.map(function(s){return '<option'+(s===selected?' selected':'')+'>'+s+'</option>';}).join('');
+  }
   var CAR_RENTALS = ['Hertz','Avis','Enterprise','National','Budget','Alamo','Sixt','Europcar','Thrifty','Dollar'];
   // Real elite/status tier names per program, mirroring AIRLINE_STATUS/
   // HOTEL_STATUS/CRUISE_STATUS in the CRM's index.html so a traveler's
@@ -453,6 +478,10 @@
   var cruiseWrap = document.getElementById('cruise-details-wrap');
   tripTypeSelect.addEventListener('change', function(){
     cruiseWrap.style.display = this.value==='Cruise' ? 'block' : 'none';
+  });
+
+  document.getElementById('cd-cruise-line-select').addEventListener('change', function(){
+    document.getElementById('cd-ship-select').innerHTML = shipOptionsHtml(this.value, '');
   });
 
   // Delegated so it works for every "Other" select regardless of whether it
