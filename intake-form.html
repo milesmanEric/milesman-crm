@@ -200,33 +200,46 @@
           <label><input type="checkbox" id="need-car-rental-cb" name="Need - Car Rental" value="Yes"> Car Rental</label>
         </div>
       </div>
-      <div class="field">
-        <label>Departure City / Airport</label>
-        <input type="text" name="Origin" placeholder="e.g. JFK">
-      </div>
-      <div class="field">
-        <label>Destination *</label>
-        <input type="text" name="Destination" required placeholder="e.g. Tokyo, Japan">
-      </div>
-      <div class="field">
-        <label for="trip-direction-select">Trip Direction</label>
-        <select id="trip-direction-select" name="Trip Direction">
-          <option value="">-- Select --</option>
-          <option>One-way</option><option>Round-trip</option><option>Multi-city</option>
-        </select>
-      </div>
-      <div class="field full" id="multi-city-wrap" style="display:none">
-        <label>Multi-City Stops</label>
-        <div id="multi-city-list"></div>
-        <button type="button" id="add-city-btn" style="align-self:flex-start;padding:7px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit">+ Add Another City</button>
-      </div>
-      <div class="field">
-        <label>Depart Date</label>
-        <input type="date" name="Depart Date">
-      </div>
-      <div class="field">
-        <label>Return Date</label>
-        <input type="date" name="Return Date">
+      <div class="field full" id="airline-details-wrap" style="display:none">
+        <div class="section-title" style="margin-top:8px">Airline Details</div>
+        <div class="fg">
+          <div class="field">
+            <label>Departure City / Airport</label>
+            <input type="text" name="Origin" placeholder="e.g. JFK">
+          </div>
+          <div class="field">
+            <label>Arrival City / Destination *</label>
+            <input type="text" name="Destination" required placeholder="e.g. Tokyo, Japan">
+          </div>
+          <div class="field">
+            <label for="trip-direction-select">Trip Direction</label>
+            <select id="trip-direction-select" name="Trip Direction">
+              <option value="">-- Select --</option>
+              <option>One-way</option><option>Round-trip</option><option>Multi-city</option>
+            </select>
+          </div>
+          <div class="field full" id="multi-city-wrap" style="display:none">
+            <label>Multi-City Stops</label>
+            <div id="multi-city-list"></div>
+            <button type="button" id="add-city-btn" style="align-self:flex-start;padding:7px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit">+ Add Another City</button>
+          </div>
+          <div class="field">
+            <label>Depart Date</label>
+            <input type="date" name="Depart Date">
+          </div>
+          <div class="field">
+            <label>Return Date</label>
+            <input type="date" name="Return Date">
+          </div>
+          <div class="field">
+            <label for="class-of-service-select">Class of Service</label>
+            <select id="class-of-service-select" name="Class of Service">
+              <option value="">-- Select --</option>
+              <option>Economy</option><option>Premium Economy</option>
+              <option>Business</option><option>First</option>
+            </select>
+          </div>
+        </div>
       </div>
       <div class="field">
         <label for="trip-type-select">Trip Type</label>
@@ -283,17 +296,13 @@
           </div>
         </div>
       </div>
-      <div class="field" id="class-of-service-wrap" style="display:none">
-        <label for="class-of-service-select">Class of Service</label>
-        <select id="class-of-service-select" name="Class of Service">
-          <option value="">-- Select --</option>
-          <option>Economy</option><option>Premium Economy</option>
-          <option>Business</option><option>First</option>
-        </select>
-      </div>
       <div class="field full" id="hotel-details-wrap" style="display:none">
         <div class="section-title" style="margin-top:8px">Hotel Details</div>
         <div class="fg">
+          <div class="field full">
+            <label>Location</label>
+            <input type="text" name="Hotel Location" placeholder="e.g. Miami, FL">
+          </div>
           <div class="field">
             <label>Hotel Nights Needed</label>
             <input type="number" name="Hotel Nights" min="0" placeholder="0">
@@ -303,6 +312,20 @@
             <select id="room-type-select" name="Room Type">
               <option value="">-- Select --</option>
               <option>Room</option><option>Suite</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="people-per-room-select">People per Room</label>
+            <select id="people-per-room-select" name="People Per Room">
+              <option value="">-- Select --</option>
+              <option>1</option><option>2</option><option>3</option><option>4</option><option>5+</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="num-rooms-select">Number of Rooms</label>
+            <select id="num-rooms-select" name="Number of Rooms">
+              <option value="">-- Select --</option>
+              <option>1</option><option>2</option><option>3</option><option>4</option><option>5+</option>
             </select>
           </div>
         </div>
@@ -341,6 +364,7 @@
         </select>
       </div>
       <div class="field full" id="tours-description-wrap" style="display:none">
+        <div class="section-title" style="margin-top:8px">Tours Details</div>
         <label>Tell us about the tour(s) you're looking for</label>
         <textarea name="Tours Description" rows="3" placeholder="Destinations, activities, group size, dates, etc."></textarea>
       </div>
@@ -548,7 +572,7 @@
     cruiseWrap.style.display = this.checked ? 'block' : 'none';
   });
   document.getElementById('need-airline-cb').addEventListener('change', function(){
-    document.getElementById('class-of-service-wrap').style.display = this.checked ? 'flex' : 'none';
+    document.getElementById('airline-details-wrap').style.display = this.checked ? 'block' : 'none';
   });
   document.getElementById('need-hotel-cb').addEventListener('change', function(){
     document.getElementById('hotel-details-wrap').style.display = this.checked ? 'block' : 'none';
