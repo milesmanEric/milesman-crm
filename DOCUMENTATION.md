@@ -38,7 +38,7 @@ Other: `notesLog` (array of `{ts, text, noteType, source?, msgId?, mcKey?}` — 
 ### `db.trips` (`T001`, `T002`, ...)
 `clientId`/`clientName` = primary/billing contact. `clientIds` = array of additional linked client IDs (companions on a shared trip — a trip shows up on every linked client's record, not just the primary contact's).
 
-`origin`, `destination`, `departDate`, `returnDate`, `status` (Planning / In Process / Confirmed / Completed / Cancelled), `type` (Leisure/Business/Honeymoon/Family/Adventure), `airline`, `flightClass`, `hotel`, `hotelNights`, `cruiseLine`, `shipName`, `pointsUsed`, `cashPaid`, `totalValue`, `bookingRef`, `product`, `supplierId`/`supplierName`, `notes` (freeform — most intake-form fields that don't have a dedicated column end up compiled here as `Label: value` lines).
+`origin`, `destination`, `departDate`, `returnDate`, `status` (Planning / Confirmed / Completed / Cancelled), `type` (Leisure/Business/Honeymoon/Family/Adventure), `airline`, `flightClass`, `hotel`, `hotelNights`, `cruiseLine`, `shipName`, `pointsUsed`, `cashPaid`, `totalValue`, `bookingRef`, `product`, `supplierId`/`supplierName`, `notes` (freeform — most intake-form fields that don't have a dedicated column end up compiled here as `Label: value` lines).
 
 ### `db.vendors` (`V001`, ...) — "Suppliers" in the nav
 `name`, `type` (Supplier / Referral Partner / DMC), `category` (Airline/Hotel/Cruise Line/Car Rental/Tour Operator/Other), `clientIds` (clients who've booked through this vendor), `website`, `notes`.
@@ -145,7 +145,7 @@ window.addEventListener('message', function(e){
 1. **Manual**: submit-form.com's dashboard exports submissions as CSV. "Import" in the CRM (`importFormspreeSubmissions()`) reads the CSV and, for each row, calls the shared `processTripFormRow(getVal, counters)`.
 2. **Automatic**: §4.4 above — same `processTripFormRow()`, fed from a parsed notification email instead of a CSV row.
 
-Either path: matches/creates the primary client (by email, then exact name, then first+last name), matches/creates a client for every additional traveler (linked via the trip's `clientIds`), creates the trip record (`status: 'In Process'`), and creates a Planner follow-up task linked back to the trip.
+Either path: matches/creates the primary client (by email, then exact name, then first+last name), matches/creates a client for every additional traveler (linked via the trip's `clientIds`), creates the trip record (`status: 'Planning'`), and creates a Planner follow-up task linked back to the trip.
 
 ---
 
