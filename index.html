@@ -480,7 +480,7 @@ function quoteTableStructure(cfg){
   });
   return structure;
 }
-const STATUSES = ['Planning','Confirmed','Completed','Cancelled'];
+const STATUSES = ['Planning','In Process','Confirmed','Completed','Cancelled'];
 const TYPES    = ['Leisure','Business','Honeymoon','Family','Adventure','Cruise'];
 const CLASSES  = ['Economy','Premium Economy','Business','First'];
 const NOTE_TYPES = ['Email Sent','Email Received','Initial Call','Follow-up','General','Trip Import','Text Message Sent','Text Message Received','Lead','Mailchimp Email Sent','Facebook Message'];
@@ -3076,7 +3076,7 @@ function importFormspreeSubmissions(){
             id:newTripId, clientId:client.id, clientName:client.name, clientIds:linkedClientIds,
             origin:col(row,'Origin'), destination:destination,
             departDate:col(row,'Depart Date'), returnDate:col(row,'Return Date'),
-            status:'Planning', type:col(row,'Trip Type')||'Leisure',
+            status:'In Process', type:col(row,'Trip Type')||'Leisure',
             airline:'', flightClass:col(row,'Class of Service'), hotel:'',
             hotelNights:parseInt(col(row,'Hotel Nights'),10)||0,
             cruiseLine:col(row,'Cruise Line'), shipName:col(row,'Ship Name'),
@@ -3997,7 +3997,7 @@ function openVendorDetail(id){
   var txRows = stats.tripList.map(function(t){
     var st = t.status||'Planning';
     if(st==='Completed' && t.departDate && t.departDate>=today()) st='Upcoming';
-    var scls={'Confirmed':'b-green','Planning':'b-amber','Completed':'b-blue','Cancelled':'b-red','Upcoming':'b-amber'}[st]||'b-gray';
+    var scls={'Confirmed':'b-green','Planning':'b-amber','In Process':'b-amber','Completed':'b-blue','Cancelled':'b-red','Upcoming':'b-amber'}[st]||'b-gray';
     return '<tr>'+
       '<td style="padding:8px 12px;font-size:13px;color:#111;font-weight:500">'+t.clientName+'</td>'+
       '<td style="padding:8px 12px;font-size:13px;color:#374151">'+t.destination+'</td>'+
@@ -4123,7 +4123,7 @@ function renderVendors(){
             var rowsHtml = visibleTrips.map(function(t){
               var st = t.status||'Planning';
               if(st==='Completed' && t.departDate && t.departDate>=today()) st='Upcoming';
-              var scls={'Confirmed':'b-green','Planning':'b-amber','Completed':'b-blue','Cancelled':'b-red','Upcoming':'b-amber'}[st]||'b-gray';
+              var scls={'Confirmed':'b-green','Planning':'b-amber','In Process':'b-amber','Completed':'b-blue','Cancelled':'b-red','Upcoming':'b-amber'}[st]||'b-gray';
               return '<tr class="vendor-trip-row" data-trip-id="'+t.id+'" style="cursor:pointer">'+
                 '<td style="font-size:12px;padding:5px 8px;color:#111;font-weight:500">'+t.clientName+'</td>'+
                 '<td style="font-size:12px;padding:5px 8px;color:#374151">'+t.destination+'</td>'+
@@ -4547,7 +4547,7 @@ function openDayTripsModal(dateStr, entries){
   });
 
   var rows = trips.map(function(t){
-    var scls = {'Confirmed':'b-green','Planning':'b-amber','Completed':'b-blue','Cancelled':'b-red'}[t.status||'']||'b-gray';
+    var scls = {'Confirmed':'b-green','Planning':'b-amber','In Process':'b-amber','Completed':'b-blue','Cancelled':'b-red'}[t.status||'']||'b-gray';
     return '<tr class="day-trip-row" data-trip-id="'+t.id+'" style="cursor:pointer">'+
       '<td style="font-weight:600;color:#2563eb;text-decoration:underline">'+(t.clientName||'')+'</td>'+
       '<td>'+(t.destination||'')+'</td>'+
@@ -4839,7 +4839,7 @@ function openInvoiceDetail(invoiceNum){
   var rows = matchingTrips.map(function(t){
     var st = t.status||'Planning';
     if(st==='Completed' && t.departDate && t.departDate>=today()) st='Upcoming';
-    var scls={'Confirmed':'b-green','Planning':'b-amber','Completed':'b-blue','Cancelled':'b-red','Upcoming':'b-amber'}[st]||'b-gray';
+    var scls={'Confirmed':'b-green','Planning':'b-amber','In Process':'b-amber','Completed':'b-blue','Cancelled':'b-red','Upcoming':'b-amber'}[st]||'b-gray';
     return '<tr class="invoice-detail-row" data-trip-id="'+t.id+'" style="cursor:pointer">'+
       '<td style="padding:8px 12px;font-size:13px;color:#111;font-weight:500">'+(t.clientName||'')+'</td>'+
       '<td style="padding:8px 12px;font-size:13px;color:#374151">'+(t.destination||'')+'</td>'+
@@ -5202,7 +5202,7 @@ function openClientForm(id){
         var tripRows = clientTrips.map(function(t){
           var status = t.status||'Planning';
           if(status==='Completed' && t.departDate && t.departDate>=today()) status='Upcoming';
-          var scls = {'Confirmed':'b-green','Planning':'b-amber','Completed':'b-blue','Cancelled':'b-red','Upcoming':'b-amber'}[status]||'b-gray';
+          var scls = {'Confirmed':'b-green','Planning':'b-amber','In Process':'b-amber','Completed':'b-blue','Cancelled':'b-red','Upcoming':'b-amber'}[status]||'b-gray';
           return '<tr style="cursor:pointer;background:#fff" class="client-trip-row" data-trip-id="'+t.id+'">'+
             '<td style="font-size:12px;font-weight:600;color:#2563eb;padding:8px 10px;text-decoration:underline">'+t.destination+'</td>'+
             '<td style="font-size:11px;color:#555;padding:8px 10px;white-space:nowrap">'+( t.departDate||'—')+'</td>'+
