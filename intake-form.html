@@ -129,6 +129,7 @@
           <option>Southwest</option><option>JetBlue</option><option>Qatar Airways</option>
           <option>ANA</option><option>Emirates</option><option>Lufthansa</option>
           <option>British Airways</option><option>Air France</option><option>Virgin Atlantic</option>
+          <option>Qantas</option><option>Etihad</option><option>JAL</option><option>Air Canada</option><option>Frontier</option>
           <option>Other</option>
         </select>
       </div>
@@ -211,6 +212,7 @@
               <option>Southwest</option><option>JetBlue</option><option>Qatar Airways</option>
               <option>ANA</option><option>Emirates</option><option>Lufthansa</option>
               <option>British Airways</option><option>Air France</option><option>Virgin Atlantic</option>
+              <option>Qantas</option><option>Etihad</option><option>JAL</option><option>Air Canada</option><option>Frontier</option>
               <option>Other</option>
             </select>
           </div>
@@ -446,7 +448,7 @@
   // Mirrors the exact brand/status lists used by the CRM's own client
   // balance grids, so field names line up 1:1 with what the CRM's
   // "Import Formspree Submissions" importer expects.
-  var AIRLINES = ['American','United','Delta','Southwest','JetBlue','Qatar Airways','ANA','Emirates','Lufthansa','British Airways','Air France','Virgin Atlantic'];
+  var AIRLINES = ['American','United','Delta','Southwest','JetBlue','Qatar Airways','ANA','Emirates','Lufthansa','British Airways','Air France','Virgin Atlantic','Qantas','Etihad','JAL','Air Canada','Frontier'];
   var HOTELS = ['Marriott','Hilton','Hyatt','IHG','Wyndham','Four Seasons','Ritz-Carlton','W Hotels','Kimpton','Conrad'];
   var CREDIT_CARDS = ['Chase Sapphire Preferred','Chase Sapphire Reserve','Chase Ink Business Preferred','Amex Platinum','Amex Gold','Amex Business Platinum','Capital One Venture X','Citi Premier','Citi Prestige','Bilt Mastercard'];
   var CRUISE_LINES = ['Virgin Voyages','Royal Caribbean','Carnival','Norwegian','Princess','Celebrity','Disney Cruise Line','Holland America','MSC Cruises','Viking'];
@@ -507,7 +509,12 @@
     'Lufthansa': ['Frequent Traveller','Senator','HON Circle Member'],
     'British Airways': ['Bronze','Silver','Gold','Gold Guest List'],
     'Air France': ['Explorer','Silver','Gold','Platinum'],
-    'Virgin Atlantic': ['Red','Silver','Gold']
+    'Virgin Atlantic': ['Red','Silver','Gold'],
+    'Qantas': ['Bronze','Silver','Gold','Platinum','Platinum One'],
+    'Etihad': ['Silver','Gold','Platinum'],
+    'JAL': ['Crystal','Sapphire','Diamond'],
+    'Air Canada': ['25K','35K','50K','75K','Super Elite 100K'],
+    'Frontier': ['Elite Silver','Elite Gold','Elite Platinum']
   };
   var HOTEL_STATUS = {
     'Marriott': ['Silver Elite','Gold Elite','Platinum Elite','Titanium Elite','Ambassador Elite'],
