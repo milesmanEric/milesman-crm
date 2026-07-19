@@ -3001,6 +3001,12 @@ function processTripFormRow(getVal, counters){
   addLine('Number of Rooms', getVal('Number of Rooms'));
   addLine('Car Rental Company', getVal('Car Rental Company'));
   addLine('Car Size', getVal('Car Size'));
+  addLine('Pickup Location', getVal('Pickup Location'));
+  addLine('Dropoff Location', getVal('Dropoff Location'));
+  addLine('Pickup Date', getVal('Pickup Date'));
+  addLine('Dropoff Date', getVal('Dropoff Date'));
+  addLine('Pickup Time', getVal('Pickup Time'));
+  addLine('Dropoff Time', getVal('Dropoff Time'));
   addLine('Payment Preference', getVal('Payment Preference'));
   addLine('Number of Travelers', getVal('Number of Travelers'));
   addLine('Notes', getVal('Notes'));
@@ -3155,7 +3161,8 @@ function buildTripFormFieldLabels(){
     'Origin','Destination','Trip Direction','Depart Date','Return Date','Class of Service','Trip Type',
     'Cruise Line','Ship Name','Cruise Nights','Sailing Date','Departure Port','Cabin Type','People In Cabin','Cruise Loyalty Number',
     'Hotel Location','Hotel Nights','Room Type','People Per Room','Number of Rooms',
-    'Car Rental Company','Car Size','Payment Preference','Tours Description','Notes');
+    'Car Rental Company','Car Size','Pickup Location','Dropoff Location','Pickup Date','Dropoff Date','Pickup Time','Dropoff Time',
+    'Payment Preference','Tours Description','Notes');
   for(var ci=1; ci<=20; ci++){ labels.push('City '+ci, 'City '+ci+' Departure Date'); }
   for(var tn=2; tn<=12; tn++){
     var p = 'Traveler '+tn;
