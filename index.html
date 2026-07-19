@@ -2964,11 +2964,13 @@ function processTripFormRow(getVal, counters){
   }
 
   var destination = getVal('Destination');
+  var airline = resolveOther(getVal('Airline'), getVal('Airline Other'));
   var tripLines=[];
   function addLine(label,val){ if(val) tripLines.push(label+': '+val); }
   var travelNeeded = ['Airline','Hotel','Tours','Cruise','Car Rental'].filter(function(t){return getVal('Need - '+t);}).join(', ');
   addLine('Type of Travel Needed', travelNeeded);
   addLine('Tours Description', getVal('Tours Description'));
+  addLine('Airline', airline);
   addLine('Origin', getVal('Origin'));
   addLine('Destination', destination);
   addLine('Trip Direction', getVal('Trip Direction'));
@@ -3077,7 +3079,7 @@ function processTripFormRow(getVal, counters){
       origin:getVal('Origin'), destination:destination,
       departDate:getVal('Depart Date'), returnDate:getVal('Return Date'),
       status:'In Process', type:getVal('Trip Type')||'Leisure',
-      airline:'', flightClass:getVal('Class of Service'), hotel:'',
+      airline:airline, flightClass:getVal('Class of Service'), hotel:'',
       hotelNights:parseInt(getVal('Hotel Nights'),10)||0,
       cruiseLine:getVal('Cruise Line'), shipName:getVal('Ship Name'),
       pointsUsed:0, cashPaid:0, totalValue:0, bookingRef:'', product:'',
@@ -3159,7 +3161,7 @@ function buildTripFormFieldLabels(){
   addBalanceLabels('Car Rental', CAR_RENTALS, true);
   addBalanceLabels('Credit Card', CREDIT_CARDS, false);
   labels.push('Need - Airline','Need - Hotel','Need - Tours','Need - Cruise','Need - Car Rental',
-    'Origin','Destination','Trip Direction','Depart Date','Return Date','Class of Service','Trip Type',
+    'Airline','Airline Other','Origin','Destination','Trip Direction','Depart Date','Return Date','Class of Service','Trip Type',
     'Cruise Line','Ship Name','Cruise Nights','Sailing Date','Departure Port','Cabin Type','People In Cabin','Cruise Loyalty Number',
     'Hotel Location','Hotel Brand','Hotel Brand Other','Hotel Nights','Room Type','People Per Room','Number of Rooms',
     'Car Rental Company','Car Size','Pickup Location','Dropoff Location','Pickup Date','Dropoff Date','Pickup Time','Dropoff Time',
@@ -3183,7 +3185,10 @@ function tripFormLabelRegex(){
   if(_tripFormLabelRegex) return _tripFormLabelRegex;
   var labels = buildTripFormFieldLabels().slice().sort(function(a,b){return b.length-a.length;});
   var pattern = labels.map(function(l){return l.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');}).join('|');
-  _tripFormLabelRegex = new RegExp(pattern, 'g');
+  // A short label like "Airline" would otherwise match mid-word inside a
+  // typed value like "Alaska Airlines" — require the match not be
+  // immediately followed by another letter.
+  _tripFormLabelRegex = new RegExp('(?:'+pattern+')(?![A-Za-z])', 'g');
   return _tripFormLabelRegex;
 }
 // Every "X" / "X Other" pair (Preferred Airline, Hotel Brand, etc. — including
