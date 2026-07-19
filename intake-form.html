@@ -304,6 +304,20 @@
             <input type="text" name="Hotel Location" placeholder="e.g. Miami, FL">
           </div>
           <div class="field">
+            <label>Hotel Brand</label>
+            <select class="pref-other-sel" name="Hotel Brand">
+              <option value="">No preference</option>
+              <option>Marriott</option><option>Hilton</option><option>Hyatt</option><option>IHG</option>
+              <option>Wyndham</option><option>Four Seasons</option><option>Ritz-Carlton</option>
+              <option>W Hotels</option><option>Kimpton</option><option>Conrad</option>
+              <option>Other</option>
+            </select>
+          </div>
+          <div class="field pref-other-wrap" style="display:none">
+            <label>Please specify hotel brand</label>
+            <input type="text" class="pref-other-input" name="Hotel Brand Other">
+          </div>
+          <div class="field">
             <label>Hotel Nights Needed</label>
             <input type="number" name="Hotel Nights" min="0" placeholder="0">
           </div>

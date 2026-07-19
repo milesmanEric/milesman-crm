@@ -2995,6 +2995,7 @@ function processTripFormRow(getVal, counters){
   addLine('Cruise Loyalty Number', getVal('Cruise Loyalty Number'));
   addLine('Class of Service', getVal('Class of Service'));
   addLine('Hotel Location', getVal('Hotel Location'));
+  addLine('Hotel Brand', resolveOther(getVal('Hotel Brand'), getVal('Hotel Brand Other')));
   addLine('Hotel Nights', getVal('Hotel Nights'));
   addLine('Room Type', getVal('Room Type'));
   addLine('People Per Room', getVal('People Per Room'));
@@ -3160,7 +3161,7 @@ function buildTripFormFieldLabels(){
   labels.push('Need - Airline','Need - Hotel','Need - Tours','Need - Cruise','Need - Car Rental',
     'Origin','Destination','Trip Direction','Depart Date','Return Date','Class of Service','Trip Type',
     'Cruise Line','Ship Name','Cruise Nights','Sailing Date','Departure Port','Cabin Type','People In Cabin','Cruise Loyalty Number',
-    'Hotel Location','Hotel Nights','Room Type','People Per Room','Number of Rooms',
+    'Hotel Location','Hotel Brand','Hotel Brand Other','Hotel Nights','Room Type','People Per Room','Number of Rooms',
     'Car Rental Company','Car Size','Pickup Location','Dropoff Location','Pickup Date','Dropoff Date','Pickup Time','Dropoff Time',
     'Payment Preference','Tours Description','Notes');
   for(var ci=1; ci<=20; ci++){ labels.push('City '+ci, 'City '+ci+' Departure Date'); }
@@ -3185,12 +3186,35 @@ function tripFormLabelRegex(){
   _tripFormLabelRegex = new RegExp(pattern, 'g');
   return _tripFormLabelRegex;
 }
+// Every "X" / "X Other" pair (Preferred Airline, Hotel Brand, etc. — including
+// per-traveler variants), computed once and cached alongside the regex.
+var _tripFormOtherPairBases = null;
+function tripFormOtherPairBases(){
+  if(_tripFormOtherPairBases) return _tripFormOtherPairBases;
+  var labels = buildTripFormFieldLabels();
+  var labelSet = {};
+  labels.forEach(function(l){ labelSet[l] = true; });
+  _tripFormOtherPairBases = labels.filter(function(l){ return labelSet[l+' Other']; });
+  return _tripFormOtherPairBases;
+}
+var TRIPFORM_OTHER_SENTINEL = 'OTHERVALUE';
 function parseTripFormEmailText(flatText){
   // "Notes" is always the last real field, so without this the email
   // service's own footer/CTA text after the table would get appended to
   // whatever the traveler typed in Notes.
   var footerIdx = flatText.search(/Go to dashboard/i);
   if(footerIdx !== -1) flatText = flatText.slice(0, footerIdx);
+  // When a select-with-"Other" field's value is literally "Other" (e.g. the
+  // traveler picked "Other" for Hotel Brand), the flattened text reads
+  // "Hotel Brand Other Hotel Brand Other <specify text>" — indistinguishable
+  // from "Hotel Brand" having no value followed by the separate "Hotel
+  // Brand Other" label. Swap that specific "Other" token for a sentinel so
+  // it can't be mistaken for the start of the paired label; mapped back to
+  // "Other" once matching is done.
+  tripFormOtherPairBases().forEach(function(base){
+    var other = base+' Other';
+    flatText = flatText.split(base+' Other '+other).join(base+' '+TRIPFORM_OTHER_SENTINEL+' '+other);
+  });
   var regex = tripFormLabelRegex();
   regex.lastIndex = 0;
   var matches = [];
@@ -3202,7 +3226,10 @@ function parseTripFormEmailText(flatText){
   for(var i=0; i<matches.length; i++){
     var start = matches[i].end;
     var end = (i+1<matches.length) ? matches[i+1].start : flatText.length;
-    if(!(matches[i].label in row)) row[matches[i].label] = flatText.slice(start, end).trim();
+    if(!(matches[i].label in row)){
+      var val = flatText.slice(start, end).trim();
+      row[matches[i].label] = val===TRIPFORM_OTHER_SENTINEL ? 'Other' : val;
+    }
   }
   return row;
 }
