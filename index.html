@@ -1842,8 +1842,8 @@ function importJSON(){
 function exportCSV(type){
   let rows,filename,headers;
   if(type==='clients'){
-    headers=['ID','Name','Email','Phone','Location','Total Revenue','Preferred Airline','Preferred Hotel','Notes','Joined','Total Trips'];
-    rows=db.clients.map(c=>{var rev=db.trips.filter(function(t){return t.clientId===c.id;}).reduce(function(a,t){return a+(t.totalValue||0);},0);return [c.id,c.name,c.email,c.phone,c.location,rev,c.preferredAirline,c.preferredHotel,c.notes,c.joined,countDistinctTrips(c.id)];});
+    headers=['ID','Name','Email','Phone','Street Address','City','State','Zip','Total Revenue','Preferred Airline','Preferred Hotel','Notes','Joined','Total Trips'];
+    rows=db.clients.map(c=>{var rev=db.trips.filter(function(t){return t.clientId===c.id;}).reduce(function(a,t){return a+(t.totalValue||0);},0);return [c.id,c.name,c.email,c.phone,c.streetAddress,c.city,c.state,c.zip,rev,c.preferredAirline,c.preferredHotel,c.notes,c.joined,countDistinctTrips(c.id)];});
     filename='milesman-clients.csv';
   }else{
     headers=['ID','Client','Destination','Origin','Depart','Return','Status','Type','Airline','Class','Hotel','Nights','Cruise Line','Ship Name','Points Used','Cash Paid','Total Value','Booking Ref','Notes'];
@@ -2901,7 +2901,6 @@ function importFormspreeSubmissions(){
         if(!name){ skipped++; continue; }
         var email = col(row,'Email');
         var phone = col(row,'Phone');
-        var location = col(row,'Location');
         var streetAddress = col(row,'Street Address');
         var city = col(row,'City');
         var state = col(row,'State');
@@ -2932,7 +2931,6 @@ function importFormspreeSubmissions(){
           var filled=[];
           if(email && !client.email){client.email=email;filled.push('email');}
           if(phone && !client.phone){client.phone=phone;filled.push('phone');}
-          if(location && !client.location){client.location=location;filled.push('location');}
           if(streetAddress && !client.streetAddress){client.streetAddress=streetAddress;filled.push('streetAddress');}
           if(city && !client.city){client.city=city;filled.push('city');}
           if(state && !client.state){client.state=state;filled.push('state');}
@@ -2966,7 +2964,7 @@ function importFormspreeSubmissions(){
           }
           if(filled.length) enriched++;
         } else {
-          client = {id:newId('C',db.clients), name:toLastFirst(name), email:email, phone:phone, location:location,
+          client = {id:newId('C',db.clients), name:toLastFirst(name), email:email, phone:phone,
             streetAddress:streetAddress, city:city, state:state, zip:zip,
             birthdate:birthdate, countryOfCitizenship:countryOfCitizenship, countryOfBirth:countryOfBirth, referredBy:referredBy, referredByDetail:referredByDetail,
             preferredAirline:preferredAirline, preferredHotel:preferredHotel, preferredCruiseLine:preferredCruiseLine,
@@ -3058,7 +3056,7 @@ function importFormspreeSubmissions(){
             if(tCcBal){var tcm=mergeCreditCardBalances(tClient.creditCardBalances,tCcBal); if(tcm.added.length){tClient.creditCardBalances=tcm.merged;tFilled.push('creditCardBalances');}}
             if(tFilled.length) enriched++;
           } else {
-            tClient = {id:newId('C',db.clients), name:toLastFirst(tName), email:'', phone:'', location:'',
+            tClient = {id:newId('C',db.clients), name:toLastFirst(tName), email:'', phone:'',
               birthdate:tBirthdate, countryOfCitizenship:tCountryOfCitizenship, countryOfBirth:tCountryOfBirth, preferredAirline:tAirline, preferredHotel:tHotel, preferredCruiseLine:tCruise,
               mileageBalances:tAirlineBal||{}, hotelBalances:tHotelBal||{}, cruiseBalances:tCruiseBal||{}, carRentalBalances:tCarRentalBal||{}, creditCardBalances:tCcBal||{},
               notes:'', joined:today(), totalTrips:0, notesLog:[]};
@@ -4654,7 +4652,7 @@ function renderClients(){
   const q=fSearch.toLowerCase();
   var clientSortCol = window._clientSortCol || 'name';
   var clientSortDir = window._clientSortDir || 'asc';
-  var list=db.clients.filter(function(c){return !q||(c.name||'').toLowerCase().includes(q)||(c.email||'').toLowerCase().includes(q)||(c.location||'').toLowerCase().includes(q);});
+  var list=db.clients.filter(function(c){return !q||(c.name||'').toLowerCase().includes(q)||(c.email||'').toLowerCase().includes(q)||(c.city||'').toLowerCase().includes(q);});
 
   list = list.slice().sort(function(a,b){
     var av, bv;
@@ -4692,7 +4690,7 @@ function renderClients(){
       '</div>';
     })()+
     '<div class="search-row">'+
-      '<input id="client-search" placeholder="Search by name, email, location..." value="'+fSearch+'"/>'+
+      '<input id="client-search" placeholder="Search by name, email, city..." value="'+fSearch+'"/>'+
       '<button id="btn-select-all-clients" style="padding:7px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#555;cursor:pointer;font-size:12px;font-family:inherit">Select All</button>'+
       '<button id="btn-delete-checked-clients" style="display:none;padding:7px 14px;border-radius:7px;border:none;background:#dc2626;color:#fff;cursor:pointer;font-size:12px;font-family:inherit">&#128465; Delete Selected</button>'+
     '</div>'+
@@ -5150,7 +5148,7 @@ function openClientForm(id){
     '<div class="modal-hdr"><div class="modal-title">'+(id?'Edit Client':'Add Client')+'</div><button class="close-btn" id="modal-close">&#x2715;</button></div>'+
     '<div class="fg">'+
       fld('Full Name',inp('fn','text',toFirstLast(d.name)))+fld('Email',inp('fe','email',d.email))+
-      fld('Phone',inp('fp','text',d.phone,'(xxx) xxx-xxxx'))+fld('Location',inp('fl','text',d.location,'City, State'))+
+      fld('Phone',inp('fp','text',d.phone,'(xxx) xxx-xxxx'))+
       fld('Street Address',inp('fst','text',d.streetAddress))+fld('City',inp('fcty','text',d.city))+
       fld('State',inp('fstate','text',d.state))+fld('Zip Code',inp('fzip','text',d.zip))+
       fld('Birthdate',inp('fbd','date',d.birthdate))+
@@ -5629,7 +5627,7 @@ function saveClient(id){
   const carRentalBalances=readBalanceGrid('cr',CAR_RENTALS,CAR_RENTAL_STATUS);
   const referredBy=gv('fref');
   const referredByDetail=REF_DETAIL_TYPES.indexOf(referredBy)!==-1?gv('frefdetail'):'';
-  const data={name:name,email:email,phone:gv('fp'),location:gv('fl'),streetAddress:gv('fst'),city:gv('fcty'),state:gv('fstate'),zip:gv('fzip'),birthdate:gv('fbd'),countryOfCitizenship:gv('fcoc'),countryOfBirth:gv('fcob'),referredBy:referredBy,referredByDetail:referredByDetail,preferredAirline:gv('fpa'),preferredHotel:gv('fph'),preferredCruiseLine:gv('fpc'),mileageBalances:mileageBalances,hotelBalances:hotelBalances,cruiseBalances:cruiseBalances,carRentalBalances:carRentalBalances,creditCardBalances:creditCardBalances,notesLog:notesLog,isPayingClient:document.getElementById('f-paying')?document.getElementById('f-paying').checked:false,isSubscriber:document.getElementById('f-subscriber')?document.getElementById('f-subscriber').checked:false,attachments:window._currentClientAttachments||[]};
+  const data={name:name,email:email,phone:gv('fp'),streetAddress:gv('fst'),city:gv('fcty'),state:gv('fstate'),zip:gv('fzip'),birthdate:gv('fbd'),countryOfCitizenship:gv('fcoc'),countryOfBirth:gv('fcob'),referredBy:referredBy,referredByDetail:referredByDetail,preferredAirline:gv('fpa'),preferredHotel:gv('fph'),preferredCruiseLine:gv('fpc'),mileageBalances:mileageBalances,hotelBalances:hotelBalances,cruiseBalances:cruiseBalances,carRentalBalances:carRentalBalances,creditCardBalances:creditCardBalances,notesLog:notesLog,isPayingClient:document.getElementById('f-paying')?document.getElementById('f-paying').checked:false,isSubscriber:document.getElementById('f-subscriber')?document.getElementById('f-subscriber').checked:false,attachments:window._currentClientAttachments||[]};
   var resultId = id;
   if(id){
     db.clients=db.clients.map(function(c){return c.id===id?Object.assign({},c,data):c;});
