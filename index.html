@@ -5910,13 +5910,16 @@ function plannerSortArrow(col){
 
 function renderPlanner(){
   var statusFilter = window._plannerStatus||'';
+  var dateFilter = window._plannerDateFilter||'';
   var plannerSortCol = window._plannerSortCol || 'dueDate';
   var plannerSortDir = window._plannerSortDir || 'asc';
   var tasks = db.planner.filter(function(t){
     // Marking a task done removes it from the planner view entirely — the
     // only way to see completed tasks is explicitly picking the Done filter.
-    if(statusFilter==='done') return !!t.done;
-    return !t.done;
+    if(statusFilter==='done'){ if(!t.done) return false; }
+    else if(t.done) return false;
+    if(dateFilter==='today-overdue' && !(t.dueDate && t.dueDate<=today())) return false;
+    return true;
   }).sort(function(a,b){
     if(!!a.done !== !!b.done) return a.done ? 1 : -1;
     var av, bv;
@@ -5969,6 +5972,10 @@ function renderPlanner(){
         '<option value=""'+(statusFilter===''?' selected':'')+'>Open</option>'+
         '<option value="done"'+(statusFilter==='done'?' selected':'')+'>Done</option>'+
       '</select>'+
+      '<select id="planner-date-filter">'+
+        '<option value=""'+(dateFilter===''?' selected':'')+'>All Dates</option>'+
+        '<option value="today-overdue"'+(dateFilter==='today-overdue'?' selected':'')+'>Today &amp; Overdue</option>'+
+      '</select>'+
     '</div>'+
     (tasks.length ? '<div class="tbl-wrap"><table class="tbl-planner"><thead><tr>'+
       '<th style="width:32px"></th>'+
@@ -6007,6 +6014,7 @@ function renderPlanner(){
     });
   });
   $('planner-status-filter').addEventListener('change', function(){ window._plannerStatus=this.value; renderPlanner(); });
+  $('planner-date-filter').addEventListener('change', function(){ window._plannerDateFilter=this.value; renderPlanner(); });
   document.querySelectorAll('.sort-th-pl').forEach(function(th){
     th.addEventListener('click', function(){
       var col = th.dataset.sort;
