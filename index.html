@@ -3013,6 +3013,7 @@ function processTripFormRow(getVal, counters){
   addLine('Payment Preference', getVal('Payment Preference'));
   addLine('Number of Travelers', getVal('Number of Travelers'));
   addLine('Notes', getVal('Notes'));
+  addLine('Trip Insurance', getVal('Trip Insurance'));
 
   // Companion travelers (Traveler 2+) get their own client record too —
   // matched/enriched by name the same way the primary contact is, just
@@ -3165,7 +3166,7 @@ function buildTripFormFieldLabels(){
     'Cruise Line','Ship Name','Cruise Nights','Sailing Date','Departure Port','Cabin Type','People In Cabin','Cruise Loyalty Number',
     'Hotel Location','Hotel Brand','Hotel Brand Other','Hotel Nights','Room Type','People Per Room','Number of Rooms',
     'Car Rental Company','Car Size','Pickup Location','Dropoff Location','Pickup Date','Dropoff Date','Pickup Time','Dropoff Time',
-    'Payment Preference','Tours Description','Notes');
+    'Payment Preference','Tours Description','Notes','Trip Insurance');
   for(var ci=1; ci<=20; ci++){ labels.push('City '+ci, 'City '+ci+' Departure Date'); }
   for(var tn=2; tn<=12; tn++){
     var p = 'Traveler '+tn;
