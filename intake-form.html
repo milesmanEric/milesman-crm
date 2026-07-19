@@ -199,6 +199,7 @@
           <label><input type="checkbox" id="need-tours-cb" name="Need - Tours" value="Yes"> Tours</label>
           <label><input type="checkbox" id="need-cruise-cb" name="Need - Cruise" value="Yes"> Cruise</label>
           <label><input type="checkbox" id="need-car-rental-cb" name="Need - Car Rental" value="Yes"> Car Rental</label>
+          <label><input type="checkbox" id="need-theme-park-cb" name="Need - Theme Park Tickets" value="Yes"> Theme Park Tickets</label>
         </div>
       </div>
       <div class="field full" id="airline-details-wrap" style="display:none">
@@ -409,6 +410,25 @@
           </div>
         </div>
       </div>
+      <div class="field full" id="theme-park-details-wrap" style="display:none">
+        <div class="section-title" style="margin-top:8px">Theme Park Details</div>
+        <div class="fg">
+          <div class="field">
+            <label for="theme-park-select">Park</label>
+            <select id="theme-park-select" name="Theme Park">
+              <option value="">-- Select --</option>
+              <option>Disney World</option><option>Disneyland California</option>
+              <option>Universal Studios Hollywood</option><option>Universal Studios Orlando</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="theme-park-ticket-type-select">Ticket Type</label>
+            <select id="theme-park-ticket-type-select" name="Theme Park Ticket Type">
+              <option value="">-- Select park first --</option>
+            </select>
+          </div>
+        </div>
+      </div>
       <div class="field">
         <label for="payment-pref-select">Would you like to use</label>
         <select id="payment-pref-select" name="Payment Preference">
@@ -491,6 +511,17 @@
       }).join('');
     }
     var types = cruiseLine === 'Princess' ? PRINCESS_CABIN_TYPES : GENERIC_CABIN_TYPES;
+    return '<option value="">-- Select --</option>'+types.map(function(t){return '<option'+(t===selected?' selected':'')+'>'+t+'</option>';}).join('');
+  }
+  var THEME_PARK_TICKET_TYPES = {
+    'Disney World': ['1-Day Single Park Ticket','Park Hopper','Park Hopper Plus','Multi-Day Ticket','Annual Pass'],
+    'Disneyland California': ['1-Day 1-Park Ticket','1-Day Park Hopper','Multi-Day Ticket','Annual Pass (Magic Key)'],
+    'Universal Studios Hollywood': ['General Admission','Front of Line Access','Annual Pass'],
+    'Universal Studios Orlando': ['1-Park 1-Day Ticket','2-Park Park-to-Park Ticket','3-Park Park-to-Park Ticket','Multi-Day Ticket','Annual Pass']
+  };
+  function themeParkTicketOptionsHtml(park, selected){
+    if(!park) return '<option value="">-- Select park first --</option>';
+    var types = THEME_PARK_TICKET_TYPES[park]||[];
     return '<option value="">-- Select --</option>'+types.map(function(t){return '<option'+(t===selected?' selected':'')+'>'+t+'</option>';}).join('');
   }
   var CAR_RENTALS = ['Hertz','Avis','Enterprise','National','Budget','Alamo','Sixt','Europcar','Thrifty','Dollar'];
@@ -647,6 +678,12 @@
   });
   document.getElementById('need-car-rental-cb').addEventListener('change', function(){
     document.getElementById('car-rental-details-wrap').style.display = this.checked ? 'block' : 'none';
+  });
+  document.getElementById('need-theme-park-cb').addEventListener('change', function(){
+    document.getElementById('theme-park-details-wrap').style.display = this.checked ? 'block' : 'none';
+  });
+  document.getElementById('theme-park-select').addEventListener('change', function(){
+    document.getElementById('theme-park-ticket-type-select').innerHTML = themeParkTicketOptionsHtml(this.value, '');
   });
 
   document.getElementById('cd-cruise-line-select').addEventListener('change', function(){

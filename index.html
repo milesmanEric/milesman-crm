@@ -2972,7 +2972,7 @@ function processTripFormRow(getVal, counters){
   var airline = resolveOther(getVal('Airline'), getVal('Airline Other'));
   var tripLines=[];
   function addLine(label,val){ if(val) tripLines.push(label+': '+val); }
-  var travelNeeded = ['Airline','Hotel','Tours','Cruise','Car Rental'].filter(function(t){return getVal('Need - '+t);}).join(', ');
+  var travelNeeded = ['Airline','Hotel','Tours','Cruise','Car Rental','Theme Park Tickets'].filter(function(t){return getVal('Need - '+t);}).join(', ');
   addLine('Type of Travel Needed', travelNeeded);
   addLine('Tours Description', getVal('Tours Description'));
   addLine('Airline', airline);
@@ -3019,6 +3019,8 @@ function processTripFormRow(getVal, counters){
   addLine('Number of Travelers', getVal('Number of Travelers'));
   addLine('Notes', getVal('Notes'));
   addLine('Trip Insurance', getVal('Trip Insurance'));
+  addLine('Theme Park', getVal('Theme Park'));
+  addLine('Theme Park Ticket Type', getVal('Theme Park Ticket Type'));
 
   // Companion travelers (Traveler 2+) get their own client record too —
   // matched/enriched by name the same way the primary contact is, just
@@ -3166,11 +3168,12 @@ function buildTripFormFieldLabels(){
   addBalanceLabels('Cruise', CRUISE_LINES, true);
   addBalanceLabels('Car Rental', CAR_RENTALS, true);
   addBalanceLabels('Credit Card', CREDIT_CARDS, false);
-  labels.push('Need - Airline','Need - Hotel','Need - Tours','Need - Cruise','Need - Car Rental',
+  labels.push('Need - Airline','Need - Hotel','Need - Tours','Need - Cruise','Need - Car Rental','Need - Theme Park Tickets',
     'Airline','Airline Other','Origin','Destination','Trip Direction','Depart Date','Return Date','Class of Service','Trip Type',
     'Cruise Line','Ship Name','Cruise Nights','Sailing Date','Departure Port','Cabin Type','People In Cabin','Cruise Loyalty Number',
     'Hotel Location','Hotel Brand','Hotel Brand Other','Hotel Nights','Room Type','People Per Room','Number of Rooms',
     'Car Rental Company','Car Size','Pickup Location','Dropoff Location','Pickup Date','Dropoff Date','Pickup Time','Dropoff Time',
+    'Theme Park','Theme Park Ticket Type',
     'Payment Preference','Tours Description','Notes','Trip Insurance');
   for(var ci=1; ci<=20; ci++){ labels.push('City '+ci, 'City '+ci+' Departure Date'); }
   for(var tn=2; tn<=12; tn++){
