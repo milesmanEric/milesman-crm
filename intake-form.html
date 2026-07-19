@@ -312,6 +312,14 @@
             <label>Loyalty Number <span class="hint">(for the cruise line above, if you have one)</span></label>
             <input type="text" name="Cruise Loyalty Number" placeholder="e.g. Captain's Circle #12345678">
           </div>
+          <div class="field" id="cruisetour-wrap" style="display:none">
+            <label>Interested in a Cruisetour? <span class="hint">(land and cruise combination)</span></label>
+            <select name="Cruisetour">
+              <option value="">-- Select --</option>
+              <option>Yes</option>
+              <option>No</option>
+            </select>
+          </div>
         </div>
       </div>
       <div class="field full" id="hotel-details-wrap" style="display:none">
@@ -422,9 +430,9 @@
             </select>
           </div>
           <div class="field">
-            <label for="theme-park-ticket-type-select">Ticket Type</label>
-            <select id="theme-park-ticket-type-select" name="Theme Park Ticket Type">
-              <option value="">-- Select park first --</option>
+            <label for="theme-park-ticket-type-select">Ticket Type <span class="hint">(hold Ctrl/Cmd to select more than one)</span></label>
+            <select id="theme-park-ticket-type-select" name="Theme Park Ticket Type" multiple size="4">
+              <option value="" disabled>-- Select park first --</option>
             </select>
           </div>
         </div>
@@ -515,14 +523,16 @@
   }
   var THEME_PARK_TICKET_TYPES = {
     'Disney World': ['1-Day Single Park Ticket','Park Hopper','Park Hopper Plus','Multi-Day Ticket','Annual Pass'],
-    'Disneyland California': ['1-Day 1-Park Ticket','1-Day Park Hopper','Multi-Day Ticket','Annual Pass (Magic Key)'],
+    'Disneyland California': ['1-Day 1-Park Ticket','1-Day Park Hopper','Park Hopper Plus','Multi-Day Ticket','Annual Pass (Magic Key)'],
     'Universal Studios Hollywood': ['General Admission','Front of Line Access','Annual Pass'],
-    'Universal Studios Orlando': ['1-Park 1-Day Ticket','2-Park Park-to-Park Ticket','3-Park Park-to-Park Ticket','Multi-Day Ticket','Annual Pass']
+    'Universal Studios Orlando': ['1-Park 1-Day Ticket','2-Park Park-to-Park Ticket','3-Park Park-to-Park Ticket','4-Park Park-to-Park Ticket','Epic Universe 1-Day Ticket','Multi-Day Ticket','Annual Pass']
   };
-  function themeParkTicketOptionsHtml(park, selected){
-    if(!park) return '<option value="">-- Select park first --</option>';
+  // Multi-select, so no placeholder option is needed — an empty selection
+  // just means nothing was picked.
+  function themeParkTicketOptionsHtml(park){
+    if(!park) return '<option value="" disabled>-- Select park first --</option>';
     var types = THEME_PARK_TICKET_TYPES[park]||[];
-    return '<option value="">-- Select --</option>'+types.map(function(t){return '<option'+(t===selected?' selected':'')+'>'+t+'</option>';}).join('');
+    return types.map(function(t){return '<option>'+t+'</option>';}).join('');
   }
   var CAR_RENTALS = ['Hertz','Avis','Enterprise','National','Budget','Alamo','Sixt','Europcar','Thrifty','Dollar'];
   // Real elite/status tier names per program, mirroring AIRLINE_STATUS/
@@ -683,12 +693,13 @@
     document.getElementById('theme-park-details-wrap').style.display = this.checked ? 'block' : 'none';
   });
   document.getElementById('theme-park-select').addEventListener('change', function(){
-    document.getElementById('theme-park-ticket-type-select').innerHTML = themeParkTicketOptionsHtml(this.value, '');
+    document.getElementById('theme-park-ticket-type-select').innerHTML = themeParkTicketOptionsHtml(this.value);
   });
 
   document.getElementById('cd-cruise-line-select').addEventListener('change', function(){
     document.getElementById('cd-ship-select').innerHTML = shipOptionsHtml(this.value, '');
     document.getElementById('cd-cabin-type-select').innerHTML = cabinTypeOptionsHtml(this.value, '');
+    document.getElementById('cruisetour-wrap').style.display = this.value==='Princess' ? 'flex' : 'none';
   });
 
   // Delegated so it works for every "Other" select regardless of whether it
@@ -746,6 +757,16 @@
   form.addEventListener('submit', function(e){
     e.preventDefault();
     var data = new URLSearchParams(new FormData(form));
+    // The Ticket Type field is a multi-select, so FormData would otherwise
+    // submit one "Theme Park Ticket Type" entry per chosen option — flatten
+    // to a single comma-joined value so the CRM importer's one-value-per-
+    // field lookup keeps working unchanged.
+    var ticketSel = document.getElementById('theme-park-ticket-type-select');
+    if(ticketSel){
+      var selectedTickets = Array.from(ticketSel.selectedOptions).map(function(o){return o.value;}).filter(Boolean);
+      data.delete('Theme Park Ticket Type');
+      if(selectedTickets.length) data.set('Theme Park Ticket Type', selectedTickets.join(', '));
+    }
     fetch(form.action, {
       method: 'POST',
       body: data,

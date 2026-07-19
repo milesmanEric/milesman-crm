@@ -3000,6 +3000,7 @@ function processTripFormRow(getVal, counters){
   addLine('Cabin Type', getVal('Cabin Type'));
   addLine('People In Cabin', getVal('People In Cabin'));
   addLine('Cruise Loyalty Number', getVal('Cruise Loyalty Number'));
+  addLine('Cruisetour', getVal('Cruisetour'));
   addLine('Class of Service', getVal('Class of Service'));
   addLine('Hotel Location', getVal('Hotel Location'));
   addLine('Hotel Brand', resolveOther(getVal('Hotel Brand'), getVal('Hotel Brand Other')));
@@ -3170,7 +3171,7 @@ function buildTripFormFieldLabels(){
   addBalanceLabels('Credit Card', CREDIT_CARDS, false);
   labels.push('Need - Airline','Need - Hotel','Need - Tours','Need - Cruise','Need - Car Rental','Need - Theme Park Tickets',
     'Airline','Airline Other','Origin','Destination','Trip Direction','Depart Date','Return Date','Class of Service','Trip Type',
-    'Cruise Line','Ship Name','Cruise Nights','Sailing Date','Departure Port','Cabin Type','People In Cabin','Cruise Loyalty Number',
+    'Cruise Line','Ship Name','Cruise Nights','Sailing Date','Departure Port','Cabin Type','People In Cabin','Cruise Loyalty Number','Cruisetour',
     'Hotel Location','Hotel Brand','Hotel Brand Other','Hotel Nights','Room Type','People Per Room','Number of Rooms',
     'Car Rental Company','Car Size','Pickup Location','Dropoff Location','Pickup Date','Dropoff Date','Pickup Time','Dropoff Time',
     'Theme Park','Theme Park Ticket Type',
