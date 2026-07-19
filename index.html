@@ -485,7 +485,7 @@ function quoteTableStructure(cfg){
   });
   return structure;
 }
-const STATUSES = ['Planning','In Process','Confirmed','Completed','Cancelled'];
+const STATUSES = ['Planning','Confirmed','Completed','Cancelled'];
 const TYPES    = ['Leisure','Business','Honeymoon','Family','Adventure','Cruise'];
 const CLASSES  = ['Economy','Premium Economy','Business','First'];
 const NOTE_TYPES = ['Email Sent','Email Received','Initial Call','Follow-up','General','Trip Import','Text Message Sent','Text Message Received','Lead','Mailchimp Email Sent','Facebook Message'];
@@ -694,6 +694,19 @@ function loadDB(){
     if(noteTypeMigrated>0){
       saveDB();
       console.log('[CRM] Migrated '+noteTypeMigrated+' "Text Message" notes to "Text Message Received"');
+    }
+    // "In Process" status was folded back into "Planning" (safe to run
+    // repeatedly — nothing left to migrate once converted).
+    var statusMigrated=0;
+    db.trips.forEach(function(t){
+      if(t.status==='In Process'){
+        t.status='Planning';
+        statusMigrated++;
+      }
+    });
+    if(statusMigrated>0){
+      saveDB();
+      console.log('[CRM] Migrated '+statusMigrated+' trips from "In Process" to "Planning"');
     }
   }catch(e){db={clients:[],trips:[],vendors:[],planner:[]};}
 }
@@ -3087,7 +3100,7 @@ function processTripFormRow(getVal, counters){
       id:newTripId, clientId:client.id, clientName:client.name, clientIds:linkedClientIds,
       origin:getVal('Origin'), destination:destination,
       departDate:getVal('Depart Date'), returnDate:getVal('Return Date'),
-      status:'In Process', type:getVal('Trip Type')||'Leisure',
+      status:'Planning', type:getVal('Trip Type')||'Leisure',
       airline:airline, flightClass:getVal('Class of Service'), hotel:'',
       hotelNights:parseInt(getVal('Hotel Nights'),10)||0,
       cruiseLine:getVal('Cruise Line'), shipName:getVal('Ship Name'),
@@ -4191,7 +4204,7 @@ function openVendorDetail(id){
   var txRows = stats.tripList.map(function(t){
     var st = t.status||'Planning';
     if(st==='Completed' && t.departDate && t.departDate>=today()) st='Upcoming';
-    var scls={'Confirmed':'b-green','Planning':'b-amber','In Process':'b-amber','Completed':'b-blue','Cancelled':'b-red','Upcoming':'b-amber'}[st]||'b-gray';
+    var scls={'Confirmed':'b-green','Planning':'b-amber','Completed':'b-blue','Cancelled':'b-red','Upcoming':'b-amber'}[st]||'b-gray';
     return '<tr>'+
       '<td style="padding:8px 12px;font-size:13px;color:#111;font-weight:500">'+t.clientName+'</td>'+
       '<td style="padding:8px 12px;font-size:13px;color:#374151">'+t.destination+'</td>'+
@@ -4317,7 +4330,7 @@ function renderVendors(){
             var rowsHtml = visibleTrips.map(function(t){
               var st = t.status||'Planning';
               if(st==='Completed' && t.departDate && t.departDate>=today()) st='Upcoming';
-              var scls={'Confirmed':'b-green','Planning':'b-amber','In Process':'b-amber','Completed':'b-blue','Cancelled':'b-red','Upcoming':'b-amber'}[st]||'b-gray';
+              var scls={'Confirmed':'b-green','Planning':'b-amber','Completed':'b-blue','Cancelled':'b-red','Upcoming':'b-amber'}[st]||'b-gray';
               return '<tr class="vendor-trip-row" data-trip-id="'+t.id+'" style="cursor:pointer">'+
                 '<td style="font-size:12px;padding:5px 8px;color:#111;font-weight:500">'+t.clientName+'</td>'+
                 '<td style="font-size:12px;padding:5px 8px;color:#374151">'+t.destination+'</td>'+
@@ -4741,7 +4754,7 @@ function openDayTripsModal(dateStr, entries){
   });
 
   var rows = trips.map(function(t){
-    var scls = {'Confirmed':'b-green','Planning':'b-amber','In Process':'b-amber','Completed':'b-blue','Cancelled':'b-red'}[t.status||'']||'b-gray';
+    var scls = {'Confirmed':'b-green','Planning':'b-amber','Completed':'b-blue','Cancelled':'b-red'}[t.status||'']||'b-gray';
     return '<tr class="day-trip-row" data-trip-id="'+t.id+'" style="cursor:pointer">'+
       '<td style="font-weight:600;color:#2563eb;text-decoration:underline">'+(t.clientName||'')+'</td>'+
       '<td>'+(t.destination||'')+'</td>'+
@@ -5033,7 +5046,7 @@ function openInvoiceDetail(invoiceNum){
   var rows = matchingTrips.map(function(t){
     var st = t.status||'Planning';
     if(st==='Completed' && t.departDate && t.departDate>=today()) st='Upcoming';
-    var scls={'Confirmed':'b-green','Planning':'b-amber','In Process':'b-amber','Completed':'b-blue','Cancelled':'b-red','Upcoming':'b-amber'}[st]||'b-gray';
+    var scls={'Confirmed':'b-green','Planning':'b-amber','Completed':'b-blue','Cancelled':'b-red','Upcoming':'b-amber'}[st]||'b-gray';
     return '<tr class="invoice-detail-row" data-trip-id="'+t.id+'" style="cursor:pointer">'+
       '<td style="padding:8px 12px;font-size:13px;color:#111;font-weight:500">'+(t.clientName||'')+'</td>'+
       '<td style="padding:8px 12px;font-size:13px;color:#374151">'+(t.destination||'')+'</td>'+
@@ -5396,7 +5409,7 @@ function openClientForm(id){
         var tripRows = clientTrips.map(function(t){
           var status = t.status||'Planning';
           if(status==='Completed' && t.departDate && t.departDate>=today()) status='Upcoming';
-          var scls = {'Confirmed':'b-green','Planning':'b-amber','In Process':'b-amber','Completed':'b-blue','Cancelled':'b-red','Upcoming':'b-amber'}[status]||'b-gray';
+          var scls = {'Confirmed':'b-green','Planning':'b-amber','Completed':'b-blue','Cancelled':'b-red','Upcoming':'b-amber'}[status]||'b-gray';
           return '<tr style="cursor:pointer;background:#fff" class="client-trip-row" data-trip-id="'+t.id+'">'+
             '<td style="font-size:12px;font-weight:600;color:#2563eb;padding:8px 10px;text-decoration:underline">'+t.destination+'</td>'+
             '<td style="font-size:11px;color:#555;padding:8px 10px;white-space:nowrap">'+( t.departDate||'—')+'</td>'+
