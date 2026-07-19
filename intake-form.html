@@ -193,11 +193,11 @@
       <div class="field full">
         <label>Type of Travel Needed</label>
         <div class="radio-row">
-          <label><input type="checkbox" name="Need - Airline" value="Yes"> Airline</label>
-          <label><input type="checkbox" name="Need - Hotel" value="Yes"> Hotel</label>
+          <label><input type="checkbox" id="need-airline-cb" name="Need - Airline" value="Yes"> Airline</label>
+          <label><input type="checkbox" id="need-hotel-cb" name="Need - Hotel" value="Yes"> Hotel</label>
           <label><input type="checkbox" id="need-tours-cb" name="Need - Tours" value="Yes"> Tours</label>
           <label><input type="checkbox" id="need-cruise-cb" name="Need - Cruise" value="Yes"> Cruise</label>
-          <label><input type="checkbox" name="Need - Car Rental" value="Yes"> Car Rental</label>
+          <label><input type="checkbox" id="need-car-rental-cb" name="Need - Car Rental" value="Yes"> Car Rental</label>
         </div>
       </div>
       <div class="field">
@@ -283,7 +283,7 @@
           </div>
         </div>
       </div>
-      <div class="field">
+      <div class="field" id="class-of-service-wrap" style="display:none">
         <label for="class-of-service-select">Class of Service</label>
         <select id="class-of-service-select" name="Class of Service">
           <option value="">-- Select --</option>
@@ -291,9 +291,45 @@
           <option>Business</option><option>First</option>
         </select>
       </div>
-      <div class="field">
-        <label>Hotel Nights Needed</label>
-        <input type="number" name="Hotel Nights" min="0" placeholder="0">
+      <div class="field full" id="hotel-details-wrap" style="display:none">
+        <div class="section-title" style="margin-top:8px">Hotel Details</div>
+        <div class="fg">
+          <div class="field">
+            <label>Hotel Nights Needed</label>
+            <input type="number" name="Hotel Nights" min="0" placeholder="0">
+          </div>
+          <div class="field">
+            <label for="room-type-select">Room Type</label>
+            <select id="room-type-select" name="Room Type">
+              <option value="">-- Select --</option>
+              <option>Room</option><option>Suite</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="field full" id="car-rental-details-wrap" style="display:none">
+        <div class="section-title" style="margin-top:8px">Car Rental Details</div>
+        <div class="fg">
+          <div class="field">
+            <label for="car-rental-company-select">Car Rental Company</label>
+            <select id="car-rental-company-select" name="Car Rental Company">
+              <option value="">-- Select --</option>
+              <option>Hertz</option><option>Avis</option><option>Enterprise</option>
+              <option>National</option><option>Budget</option><option>Alamo</option>
+              <option>Sixt</option><option>Europcar</option><option>Thrifty</option>
+              <option>Dollar</option><option>Other</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="car-size-select">Car Size</label>
+            <select id="car-size-select" name="Car Size">
+              <option value="">-- Select --</option>
+              <option>Economy</option><option>Compact</option><option>Midsize</option>
+              <option>Full-size</option><option>SUV</option><option>Minivan</option>
+              <option>Luxury</option><option>Convertible</option>
+            </select>
+          </div>
+        </div>
       </div>
       <div class="field">
         <label for="payment-pref-select">Would you like to use</label>
@@ -510,6 +546,15 @@
   var cruiseWrap = document.getElementById('cruise-details-wrap');
   document.getElementById('need-cruise-cb').addEventListener('change', function(){
     cruiseWrap.style.display = this.checked ? 'block' : 'none';
+  });
+  document.getElementById('need-airline-cb').addEventListener('change', function(){
+    document.getElementById('class-of-service-wrap').style.display = this.checked ? 'flex' : 'none';
+  });
+  document.getElementById('need-hotel-cb').addEventListener('change', function(){
+    document.getElementById('hotel-details-wrap').style.display = this.checked ? 'block' : 'none';
+  });
+  document.getElementById('need-car-rental-cb').addEventListener('change', function(){
+    document.getElementById('car-rental-details-wrap').style.display = this.checked ? 'block' : 'none';
   });
 
   document.getElementById('cd-cruise-line-select').addEventListener('change', function(){
