@@ -2902,6 +2902,10 @@ function importFormspreeSubmissions(){
         var email = col(row,'Email');
         var phone = col(row,'Phone');
         var location = col(row,'Location');
+        var streetAddress = col(row,'Street Address');
+        var city = col(row,'City');
+        var state = col(row,'State');
+        var zip = col(row,'Zip Code');
         var birthdate = col(row,'Birthdate');
         var countryOfCitizenship = col(row,'Country of Citizenship');
         var countryOfBirth = col(row,'Country of Birth');
@@ -2929,6 +2933,10 @@ function importFormspreeSubmissions(){
           if(email && !client.email){client.email=email;filled.push('email');}
           if(phone && !client.phone){client.phone=phone;filled.push('phone');}
           if(location && !client.location){client.location=location;filled.push('location');}
+          if(streetAddress && !client.streetAddress){client.streetAddress=streetAddress;filled.push('streetAddress');}
+          if(city && !client.city){client.city=city;filled.push('city');}
+          if(state && !client.state){client.state=state;filled.push('state');}
+          if(zip && !client.zip){client.zip=zip;filled.push('zip');}
           if(birthdate && !client.birthdate){client.birthdate=birthdate;filled.push('birthdate');}
           if(countryOfCitizenship && !client.countryOfCitizenship){client.countryOfCitizenship=countryOfCitizenship;filled.push('countryOfCitizenship');}
           if(countryOfBirth && !client.countryOfBirth){client.countryOfBirth=countryOfBirth;filled.push('countryOfBirth');}
@@ -2959,6 +2967,7 @@ function importFormspreeSubmissions(){
           if(filled.length) enriched++;
         } else {
           client = {id:newId('C',db.clients), name:toLastFirst(name), email:email, phone:phone, location:location,
+            streetAddress:streetAddress, city:city, state:state, zip:zip,
             birthdate:birthdate, countryOfCitizenship:countryOfCitizenship, countryOfBirth:countryOfBirth, referredBy:referredBy, referredByDetail:referredByDetail,
             preferredAirline:preferredAirline, preferredHotel:preferredHotel, preferredCruiseLine:preferredCruiseLine,
             mileageBalances:mileageBalances||{}, hotelBalances:hotelBalances||{}, cruiseBalances:cruiseBalances||{}, carRentalBalances:carRentalBalances||{}, creditCardBalances:creditCardBalances||{},
