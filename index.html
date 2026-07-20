@@ -2962,20 +2962,25 @@ function finalizeImport(){
     // as already exist in db.trips (this allows legitimate repeated line items within a batch)
     var dupExists = occurrenceIndex < existingMatchCount;
     if(dupExists){
-      // Backfill: the matching trip may have been imported before its supplier
-      // existed in the Suppliers list (so it has no supplierId), and this row
-      // can now resolve one. Without this, a supplier added later can never
-      // get credit for trips imported earlier — every re-import just sees an
-      // existing duplicate and skips it, forever.
-      if(row.supplierId){
-        var dupTrip = db.trips.find(function(t){
-          if(row.invoiceNum && t.invoiceNum){
-            return t.clientId===cid && t.invoiceNum===row.invoiceNum && t.cashPaid===row.amt && !t.supplierId;
-          }
-          return t.clientId===cid && !t.supplierId && t.cashPaid===row.amt &&
-                 (t.departDate||'').slice(0,10)===(row.date?row.date.slice(0,10):today());
-        });
-        if(dupTrip){
+      // Backfill: the matching trip may be missing data that this later
+      // import pass can now fill in — a supplier (if it was added to the
+      // Suppliers list after this trip was first imported) and/or an
+      // invoiceDate (a field added after older trips were already
+      // imported, so they were never given one). Without this, a re-import
+      // of the exact same file just sees an existing duplicate and skips
+      // it every time, and a trip imported before invoiceDate existed can
+      // never pick one up — the original row.date is only ever available
+      // during import, never stored on its own once departDate is set.
+      var dupTrip = db.trips.find(function(t){
+        if(row.invoiceNum && t.invoiceNum){
+          return t.clientId===cid && t.invoiceNum===row.invoiceNum && t.cashPaid===row.amt;
+        }
+        return t.clientId===cid && t.cashPaid===row.amt &&
+               (t.departDate||'').slice(0,10)===(row.date?row.date.slice(0,10):today());
+      });
+      var backfilled=[];
+      if(dupTrip){
+        if(row.supplierId && !dupTrip.supplierId){
           dupTrip.supplierId=row.supplierId;
           dupTrip.supplierName=row.supplierName;
           var supx=db.vendors.find(function(v){return v.id===row.supplierId;});
@@ -2983,12 +2988,22 @@ function finalizeImport(){
             if(!supx.clientIds)supx.clientIds=[];
             supx.clientIds.push(cid);
           }
-          relinked++;
-          debugLog('Revenue: backfilled supplier link for existing trip '+dupTrip.id+' -> '+row.supplierName);
-          return;
+          backfilled.push('supplier -> '+row.supplierName);
+        }
+        if(row.date && !dupTrip.invoiceDate){
+          var rowInvoiceDate='';
+          try{const d=new Date(row.date);if(!isNaN(d))rowInvoiceDate=d.toISOString().slice(0,10);}catch(e){}
+          if(rowInvoiceDate){ dupTrip.invoiceDate=rowInvoiceDate; backfilled.push('invoiceDate -> '+rowInvoiceDate); }
         }
       }
-      debugLog('Revenue: duplicate skipped for '+client.name);skipped++;return;
+      if(backfilled.length){
+        relinked++;
+        debugLog('Revenue: backfilled '+backfilled.join(', ')+' for existing trip '+dupTrip.id);
+      } else {
+        debugLog('Revenue: duplicate skipped for '+client.name);
+      }
+      skipped++;
+      return;
     }
 
     // Build destination: use memo, or supplier+date, or 'Imported Trip'
@@ -3046,7 +3061,7 @@ function finalizeImport(){
   saveDB();render();
   window._importState=null;
   toast('Imported '+imported+' trips — $'+totalRev.toLocaleString()+
-    (relinked?', relinked '+relinked+' existing trip'+(relinked!==1?'s':'')+' to a supplier':'')+
+    (relinked?', backfilled '+relinked+' existing trip'+(relinked!==1?'s':''):'')+
     (skipped?' ('+skipped+' skipped)':''),'ok');
 }
 
