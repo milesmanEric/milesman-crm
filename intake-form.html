@@ -200,6 +200,7 @@
           <label><input type="checkbox" id="need-cruise-cb" name="Need - Cruise" value="Yes"> Cruise</label>
           <label><input type="checkbox" id="need-car-rental-cb" name="Need - Car Rental" value="Yes"> Car Rental</label>
           <label><input type="checkbox" id="need-theme-park-cb" name="Need - Theme Park Tickets" value="Yes"> Theme Park Tickets</label>
+          <label><input type="checkbox" id="need-train-cb" name="Need - Train" value="Yes"> Train</label>
         </div>
       </div>
       <div class="field">
@@ -253,7 +254,7 @@
             <label for="class-of-service-select">Class of Service</label>
             <select id="class-of-service-select" name="Class of Service">
               <option value="">-- Select --</option>
-              <option>Economy</option><option>Premium Economy</option>
+              <option>Basic Economy</option><option>Economy</option><option>Premium Economy</option>
               <option>Business</option><option>First</option>
             </select>
           </div>
@@ -453,6 +454,37 @@
             <label for="theme-park-ticket-type-select">Ticket Type <span class="hint">(hold Ctrl/Cmd to select more than one)</span></label>
             <select id="theme-park-ticket-type-select" name="Theme Park Ticket Type" multiple size="4">
               <option value="" disabled>-- Select park first --</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="field full" id="train-details-wrap" style="display:none">
+        <div class="section-title" style="margin-top:8px">Train Details</div>
+        <div class="fg">
+          <div class="field">
+            <label>Departure Date</label>
+            <input type="date" name="Train Departure Date">
+          </div>
+          <div class="field">
+            <label>Return Date</label>
+            <input type="date" name="Train Return Date">
+          </div>
+          <div class="field">
+            <label>Departure City</label>
+            <input type="text" name="Train Departure City" placeholder="e.g. New York, NY">
+          </div>
+          <div class="field">
+            <label>Arrival City</label>
+            <input type="text" name="Train Arrival City" placeholder="e.g. Washington, DC">
+          </div>
+          <div class="field">
+            <label for="train-class-select">Class of Service</label>
+            <select id="train-class-select" name="Train Class of Service">
+              <option value="">-- Select --</option>
+              <option>Coach</option>
+              <option>Business Class</option>
+              <option>First Class</option>
+              <option>Sleeper Car</option>
             </select>
           </div>
         </div>
@@ -726,6 +758,9 @@
   });
   document.getElementById('need-theme-park-cb').addEventListener('change', function(){
     document.getElementById('theme-park-details-wrap').style.display = this.checked ? 'block' : 'none';
+  });
+  document.getElementById('need-train-cb').addEventListener('change', function(){
+    document.getElementById('train-details-wrap').style.display = this.checked ? 'block' : 'none';
   });
   document.getElementById('theme-park-select').addEventListener('change', function(){
     document.getElementById('theme-park-ticket-type-select').innerHTML = themeParkTicketOptionsHtml(this.value);
