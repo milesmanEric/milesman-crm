@@ -3364,8 +3364,141 @@ async function checkForNewTripFormEmails(silent){
     debugLog('Trip form email check failed: '+e.message);
   }
 }
-setInterval(function(){ checkForNewTripFormEmails(true); }, 5*60*1000);
-setTimeout(function(){ checkForNewTripFormEmails(true); }, 5000);
+
+// ── Auto-import contact form emails ─────────────────────────────────────
+// The website's general "Miles Man Contact Form" (themilesman.com) emails a
+// notification per submission, in the same flattened "Label Value Label
+// Value..." layout as the trip form emails but with a much smaller, fixed
+// field set: first_name, last_name, email, phone, message, followed by a
+// "Submitted <time> - <date>" footer. Every submission becomes a lead: a
+// client record (created or matched/enriched the same way processTripFormRow
+// does), a "Lead" note with the inquiry text, and a follow-up Planner task.
+const CONTACT_FORM_EMAIL_SUBJECT = 'New submission from Miles Man Contact Form';
+function parseContactFormEmailText(flatText){
+  var footerIdx = flatText.search(/\bSubmitted \d/i);
+  if(footerIdx !== -1) flatText = flatText.slice(0, footerIdx);
+  var labels = ['first_name','last_name','email','phone','message'];
+  var regex = new RegExp('\\b(?:'+labels.join('|')+')\\b', 'gi');
+  var matches = [];
+  var m;
+  while((m = regex.exec(flatText))){
+    matches.push({label:m[0].toLowerCase(), start:m.index, end:m.index+m[0].length});
+  }
+  var row = {};
+  for(var i=0; i<matches.length; i++){
+    if(matches[i].label in row) continue; // first occurrence wins
+    var start = matches[i].end;
+    // "message" is always the last real field, so it runs to the end of the
+    // text unconditionally — the inquiry text itself may well contain words
+    // like "email" or "phone", which would otherwise be mistaken by this
+    // same scan for the start of a later field and truncate the message.
+    if(matches[i].label==='message'){
+      row.message = flatText.slice(start).trim();
+      break;
+    }
+    var end = matches[i+1] ? matches[i+1].start : flatText.length;
+    row[matches[i].label] = flatText.slice(start, end).trim();
+  }
+  return row;
+}
+function processContactFormRow(row, counters){
+  var firstName = (row.first_name||'').trim();
+  var lastName = (row.last_name||'').trim();
+  var name = (firstName+' '+lastName).trim();
+  if(!name){ counters.skipped++; return; }
+  var email = (row.email||'').trim();
+  var phone = (row.phone||'').trim();
+  var message = (row.message||'').trim();
+
+  var nameFirst = firstName.toLowerCase(), nameLast = lastName.toLowerCase();
+  var client = db.clients.find(function(c){
+    if(email && c.email && c.email.toLowerCase()===email.toLowerCase()) return true;
+    if((c.name||'').toLowerCase().trim()===name.toLowerCase().trim()) return true;
+    var cFirst=getFirstName(c.name).toLowerCase(), cLast=getLastName(c.name).toLowerCase();
+    return nameFirst && nameLast && nameFirst!==nameLast && cFirst===nameFirst && cLast===nameLast;
+  });
+
+  var leadNoteText = 'Contact form inquiry'+(message?': '+message:'');
+  var ts = new Date().toLocaleString();
+
+  if(client){
+    if(email && !client.email) client.email = email;
+    if(phone && !client.phone) client.phone = phone;
+    if(!client.notesLog) client.notesLog = [];
+    client.notesLog.push({ts:ts, text:leadNoteText, noteType:'Lead', source:'contact-form'});
+    counters.enriched++;
+  } else {
+    client = {id:newId('C',db.clients), name:toLastFirst(name), email:email, phone:phone,
+      streetAddress:'', city:'', state:'', zip:'', birthdate:'', countryOfCitizenship:'', countryOfBirth:'',
+      referredBy:'', referredByDetail:'', preferredAirline:'', preferredHotel:'', preferredCruiseLine:'',
+      mileageBalances:{}, hotelBalances:{}, cruiseBalances:{}, carRentalBalances:{}, creditCardBalances:{},
+      notes:'', joined:today(), totalTrips:0,
+      notesLog:[{ts:ts, text:leadNoteText, noteType:'Lead', source:'contact-form'}]};
+    db.clients.push(client);
+    counters.added++;
+  }
+
+  db.planner.push({
+    id:newId('PL',db.planner),
+    title:'New contact form lead: '+client.name,
+    dueDate:today(), done:false, clientId:client.id, vendorId:'', tripId:'',
+    completionNoteType:'Lead',
+    desc: message || 'New contact form submission — no message provided.',
+    createdAt: today()
+  });
+  counters.tasksCreated++;
+}
+async function checkForNewContactFormEmails(silent){
+  try{
+    var token = await getValidMsToken(false);
+    if(!token){
+      if(!silent) toast('Connect Outlook first (Debug Panel > Sync Outlook Emails)','err');
+      return;
+    }
+    var lastCheck = localStorage.getItem('mm_last_contactform_check') || (function(){
+      var d = new Date(); d.setDate(d.getDate()-1); return d.toISOString();
+    })();
+    var processedIds = JSON.parse(localStorage.getItem('mm_contactform_processed_ids')||'[]');
+    var checkedAt = new Date().toISOString();
+
+    var url = 'https://graph.microsoft.com/v1.0/me/messages'+
+      '?$select=id,subject,receivedDateTime,body'+
+      '&$orderby=receivedDateTime desc&$top=50'+
+      '&$filter=receivedDateTime+ge+'+encodeURIComponent(lastCheck);
+    var r = await fetch(url, {headers:{Authorization:'Bearer '+token}});
+    var d = await r.json();
+    if(!r.ok){
+      debugLog('Contact form email check error: '+(d.error&&d.error.message||r.status));
+      return;
+    }
+    var messages = (d.value||[]).filter(function(m){
+      return m.subject===CONTACT_FORM_EMAIL_SUBJECT && processedIds.indexOf(m.id)===-1;
+    });
+    debugLog('Contact form email check: '+messages.length+' new submission email(s)');
+    localStorage.setItem('mm_last_contactform_check', checkedAt);
+    if(!messages.length) return;
+
+    var counters = {added:0, enriched:0, tasksCreated:0, skipped:0};
+    messages.forEach(function(msg){
+      var flatText = stripHtml(msg.body && msg.body.content || '');
+      var row = parseContactFormEmailText(flatText);
+      processContactFormRow(row, counters);
+      processedIds.push(msg.id);
+    });
+    if(processedIds.length > 500) processedIds = processedIds.slice(processedIds.length-500);
+    localStorage.setItem('mm_contactform_processed_ids', JSON.stringify(processedIds));
+
+    if(counters.added || counters.enriched){
+      snapshot('Auto-import contact form emails');
+      saveDB(); render();
+      toast('Auto-imported '+counters.added+' new lead'+(counters.added!==1?'s':'')+(counters.enriched?', enriched '+counters.enriched+' existing':'')+' from contact form email','ok');
+    }
+  }catch(e){
+    debugLog('Contact form email check failed: '+e.message);
+  }
+}
+setInterval(function(){ checkForNewTripFormEmails(true); checkForNewContactFormEmails(true); }, 5*60*1000);
+setTimeout(function(){ checkForNewTripFormEmails(true); checkForNewContactFormEmails(true); }, 5000);
 
 // ── Book a Trip Form PDF import ──────────────────────────────────────────
 // Imports "Book a Trip" Google Form submissions exported as PDFs (the Google
