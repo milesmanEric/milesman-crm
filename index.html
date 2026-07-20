@@ -1662,9 +1662,12 @@ function cleanImportTable(rows){
   if(classIdx===-1) throw new Error('Required "class" column not found in the file');
   if(nameIdx===-1) throw new Error('Required "name" column not found in the file');
 
+  // A blank Class isn't fatal on its own — extractRevenueRow falls back to
+  // Name as the client when Class is empty. Only drop the row here if BOTH
+  // are blank, since then there's no client to fall back to at all.
   var removedEmptyClass = 0;
   body = body.filter(function(row){
-    var keep = !isEmptyCell(row[classIdx]);
+    var keep = !isEmptyCell(row[classIdx]) || !isEmptyCell(row[nameIdx]);
     if(!keep) removedEmptyClass++;
     return keep;
   });
@@ -1796,7 +1799,7 @@ function cleanAndImportRevenue(){
       const s = result.stats;
       const summary = 'Removed '+s.removedNoColE+' row'+(s.removedNoColE!==1?'s':'')+' with no value in column E, '+
         s.removedCols+' empty column'+(s.removedCols!==1?'s':'')+', '+
-        s.removedEmptyClass+' row'+(s.removedEmptyClass!==1?'s':'')+' with no Class, and '+
+        s.removedEmptyClass+' row'+(s.removedEmptyClass!==1?'s':'')+' with no Class and no Name, and '+
         s.removedNameEqClass+' row'+(s.removedNameEqClass!==1?'s':'')+' where Name matched Class. '+
         result.rows.length+' row'+(result.rows.length!==1?'s':'')+' remain.';
       debugLog('Clean & Import Revenue: '+summary);
