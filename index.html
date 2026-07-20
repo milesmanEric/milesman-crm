@@ -6307,6 +6307,7 @@ function openClientForm(id){
       openTaskForm();
       var sel=document.getElementById('tk-client');
       if(sel) sel.value=savedId;
+      fillTaskEmailFromClient(savedId);
     });
   });
 
@@ -7080,7 +7081,7 @@ function openTaskForm(id){
     '<div class="fg">'+
       fld('Task Title', inp('tk-title','text',d.title,'e.g. Follow up on quote'), true)+
       fld('Email','<div style="display:flex;align-items:center;gap:8px">'+inp('tk-email','email',d.email)+
-        (d.email?('<a href="mailto:'+mailtoAddr(d.email)+'" title="Email in Outlook" style="color:#2563eb;text-decoration:none;font-size:16px;flex-shrink:0">&#9993;&#65039;</a>'):'')+
+        '<span id="tk-email-link">'+(d.email?('<a href="mailto:'+mailtoAddr(d.email)+'" title="Email in Outlook" style="color:#2563eb;text-decoration:none;font-size:16px;flex-shrink:0">&#9993;&#65039;</a>'):'')+'</span>'+
       '</div>')+
       fld('Due Date', inp('tk-due','date',d.dueDate))+
       fld('Time', inp('tk-time','time',d.dueTime))+
@@ -7103,6 +7104,28 @@ function openTaskForm(id){
   $('modal-cancel').addEventListener('click', closeModal);
   $('modal-save-task').addEventListener('click', function(){ saveTask(this.dataset.id); });
   $('modal-save-new-task').addEventListener('click', function(){ saveTaskAndNew(this.dataset.id); });
+  $('tk-email').addEventListener('input', updateTaskEmailLinkDisplay);
+  $('tk-client').addEventListener('change', function(){ fillTaskEmailFromClient(this.value); });
+}
+// Linking a client on the task form also carries over that client's email —
+// selecting a different client updates the Email field (and its mailto
+// link) to match, so the task's "Email in Outlook" link stays in sync with
+// whoever it's actually linked to instead of needing to be typed by hand.
+function fillTaskEmailFromClient(clientId){
+  var emailInput = document.getElementById('tk-email');
+  if(!emailInput) return;
+  var client = clientId ? db.clients.find(function(c){return c.id===clientId;}) : null;
+  if(client && client.email){
+    emailInput.value = client.email;
+    updateTaskEmailLinkDisplay();
+  }
+}
+function updateTaskEmailLinkDisplay(){
+  var emailInput = document.getElementById('tk-email');
+  var linkSpan = document.getElementById('tk-email-link');
+  if(!emailInput || !linkSpan) return;
+  var val = emailInput.value.trim();
+  linkSpan.innerHTML = val ? '<a href="mailto:'+mailtoAddr(val)+'" title="Email in Outlook" style="color:#2563eb;text-decoration:none;font-size:16px;flex-shrink:0">&#9993;&#65039;</a>' : '';
 }
 // Saves the current task as-is, then opens a fresh blank task form for the
 // user to schedule next — carrying forward the same client/supplier/trip
