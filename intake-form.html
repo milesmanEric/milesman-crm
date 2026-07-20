@@ -272,13 +272,17 @@
         <div class="fg">
           <div class="field">
             <label for="cd-cruise-line-select">Cruise Line</label>
-            <select id="cd-cruise-line-select" name="Cruise Line">
+            <select class="pref-other-sel" id="cd-cruise-line-select" name="Cruise Line">
               <option value="">-- Select --</option>
               <option>Virgin Voyages</option><option>Royal Caribbean</option><option>Carnival</option>
               <option>Norwegian</option><option>Princess</option><option>Celebrity</option>
               <option>Disney Cruise Line</option><option>Holland America</option>
               <option>MSC Cruises</option><option>Viking</option><option>Other</option>
             </select>
+          </div>
+          <div class="field pref-other-wrap" style="display:none">
+            <label>Please specify cruise line</label>
+            <input type="text" class="pref-other-input" name="Cruise Line Other">
           </div>
           <div class="field">
             <label for="cd-ship-select">Ship Name</label>
@@ -375,13 +379,17 @@
         <div class="fg">
           <div class="field">
             <label for="car-rental-company-select">Car Rental Company</label>
-            <select id="car-rental-company-select" name="Car Rental Company">
+            <select class="pref-other-sel" id="car-rental-company-select" name="Car Rental Company">
               <option value="">-- Select --</option>
               <option>Hertz</option><option>Avis</option><option>Enterprise</option>
               <option>National</option><option>Budget</option><option>Alamo</option>
               <option>Sixt</option><option>Europcar</option><option>Thrifty</option>
               <option>Dollar</option><option>Other</option>
             </select>
+          </div>
+          <div class="field pref-other-wrap" style="display:none">
+            <label>Please specify car rental company</label>
+            <input type="text" class="pref-other-input" name="Car Rental Company Other">
           </div>
           <div class="field">
             <label for="car-size-select">Car Size</label>
