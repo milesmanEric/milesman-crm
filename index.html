@@ -2990,10 +2990,12 @@ function processTripFormRow(getVal, counters){
   var hotelBrand = resolveOther(getVal('Hotel Brand'), getVal('Hotel Brand Other'));
   var carRentalCompany = resolveOther(getVal('Car Rental Company'), getVal('Car Rental Company Other'));
   var themePark = getVal('Theme Park');
+  var tourVendor = resolveOther(getVal('Tour Vendor'), getVal('Tour Vendor Other'));
   var tripLines=[];
   function addLine(label,val){ if(val) tripLines.push(label+': '+val); }
   var travelNeeded = ['Airline','Hotel','Tours','Cruise','Car Rental','Theme Park Tickets'].filter(function(t){return getVal('Need - '+t);}).join(', ');
   addLine('Type of Travel Needed', travelNeeded);
+  addLine('Tour Vendor', tourVendor);
   addLine('Tours Description', getVal('Tours Description'));
   addLine('Airline', airline);
   addLine('Origin', getVal('Origin'));
@@ -3101,13 +3103,14 @@ function processTripFormRow(getVal, counters){
   }
 
   // Match the requested Airline/Cruise Line/Hotel Brand/Car Rental Company/
-  // Theme Park against existing Supplier records by exact name, same as the
-  // revenue importer's supplier matching (extractRevenueRow) — never creates
-  // a new vendor, only links the client onto one that's already there. A
-  // trip only has one supplier slot, so the first match wins in that
-  // priority order; every match still gets the client linked onto it
-  // regardless. Tours Description is deliberately excluded — it's freeform
-  // text, not a name from a fixed list, so there's no safe exact match.
+  // Theme Park/Tour Vendor against existing Supplier records by exact name,
+  // same as the revenue importer's supplier matching (extractRevenueRow) —
+  // never creates a new vendor, only links the client onto one that's
+  // already there. A trip only has one supplier slot, so the first match
+  // wins in that priority order; every match still gets the client linked
+  // onto it regardless. Tours Description is deliberately excluded — it's
+  // freeform text, not a name from a fixed list, so there's no safe exact
+  // match.
   function matchVendorByName(n){
     if(!n) return null;
     return db.vendors.find(function(v){return (v.name||'').toLowerCase().trim()===n.toLowerCase().trim();}) || null;
@@ -3125,8 +3128,9 @@ function processTripFormRow(getVal, counters){
   var hotelVendor = matchVendorByName(hotelBrand);
   var carRentalVendor = matchVendorByName(carRentalCompany);
   var themeParkVendor = matchVendorByName(themePark);
-  [airlineVendor, cruiseVendor, hotelVendor, carRentalVendor, themeParkVendor].forEach(linkClientToVendor);
-  var primarySupplier = airlineVendor || cruiseVendor || hotelVendor || carRentalVendor || themeParkVendor || null;
+  var tourVendorMatch = matchVendorByName(tourVendor);
+  [airlineVendor, cruiseVendor, hotelVendor, carRentalVendor, themeParkVendor, tourVendorMatch].forEach(linkClientToVendor);
+  var primarySupplier = airlineVendor || cruiseVendor || hotelVendor || carRentalVendor || themeParkVendor || tourVendorMatch || null;
 
   var newTripId = null;
   if(destination || tripLines.length){
@@ -3222,7 +3226,7 @@ function buildTripFormFieldLabels(){
     'Cruise Line','Cruise Line Other','Ship Name','Cruise Nights','Sailing Date','Departure Port','Cabin Type','People In Cabin','Cruise Loyalty Number','Cruisetour',
     'Hotel Location','Hotel Brand','Hotel Brand Other','Hotel Nights','Room Type','People Per Room','Number of Rooms',
     'Car Rental Company','Car Rental Company Other','Car Size','Pickup Location','Dropoff Location','Pickup Date','Dropoff Date','Pickup Time','Dropoff Time',
-    'Theme Park','Theme Park Ticket Type',
+    'Theme Park','Theme Park Ticket Type','Tour Vendor','Tour Vendor Other',
     'Payment Preference','Tours Description','Notes','Trip Insurance');
   for(var ci=1; ci<=20; ci++){ labels.push('City '+ci, 'City '+ci+' Departure Date'); }
   for(var tn=2; tn<=12; tn++){
