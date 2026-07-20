@@ -79,6 +79,8 @@ Two tabs:
 - **Activity Report** — every note logged across every client, filterable by date range, note type, and client. Export to CSV.
 - **By Invoice #** — trips grouped by booking/invoice reference, filterable by date range, supplier, and client. Export to CSV. (This avoids double-counting revenue when a booking has multiple line items sharing the same reference.)
 
+  The date range has a **Filter By** choice: **Travel Date** or **Invoice Date**. These can be genuinely different dates — a trip might get booked in June for August travel — so if a trip you're expecting isn't showing up for a date range, try switching which date you're filtering by before assuming something's wrong. Invoice Date only gets filled in automatically for revenue-imported trips; you can also set it by hand on any trip's Invoice Date field.
+
 ---
 
 ## Emailing clients
