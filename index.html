@@ -259,6 +259,7 @@ tr:last-child td{border-bottom:none}
         <button class="sync-btn" id="outlook-btn">&#128424; Sync Outlook Emails</button>
         <button class="sync-btn" id="btn-mass-email" style="color:#7c3aed;border-color:#c4b5fd">&#128231; Email Clients</button>
         <button class="sync-btn" id="btn-email-quote" style="color:#7c3aed;border-color:#c4b5fd">&#128176; Email Quote</button>
+        <button class="sync-btn" id="btn-email-itinerary" style="color:#7c3aed;border-color:#c4b5fd">&#128196; Email Itinerary</button>
         <button class="sync-btn" id="btn-log-mailchimp" style="color:#7c3aed;border-color:#c4b5fd">&#128226; Log Mailchimp Campaign</button>
         <button class="sync-btn" id="btn-sync-mailchimp" style="color:#7c3aed;border-color:#c4b5fd">&#128260; Sync Mailchimp Activity</button>
         <button class="sync-btn" id="btn-ms-signout" style="color:#888;border-color:#ddd;font-size:11px">&#128274; Reset Outlook Login</button>
@@ -2379,6 +2380,225 @@ function openEmailQuoteModal(){
     }
 
     logQuoteNote(d, subject);
+  });
+}
+// ── Email Itinerary ──────────────────────────────────────────────────────
+// Builds a styled HTML recap email straight from an actual db.trips record
+// (not a quote/pricing sheet) — reuses the same header/branding shell as
+// the cruise quote emails for a consistent look, but every section below
+// the greeting is conditional on what that trip actually has filled in, so
+// an airline-only trip doesn't show an empty Cruise Details box, etc.
+function itineraryDetailRow(label, value){
+  if(!value) return '';
+  return '<p style="font-family:\'Times New Roman\',Times,serif; margin:0 0 8px 0; font-size:14px; color:#0d0d66;"><strong>'+escHtml(label)+':</strong> '+escHtml(value)+'</p>';
+}
+function itineraryDetailBox(title, rowsHtml){
+  if(!rowsHtml) return '';
+  return ''+
+'<tr>'+
+'<td style="padding:16px 32px 0 32px;">'+
+'<p style="font-family:\'Times New Roman\',Times,serif; font-size:14px; color:#333333; margin:0 0 8px 0;"><strong>'+escHtml(title)+'</strong></p>'+
+'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f0f2ff; border-left:4px solid #1a1aff; border-radius:6px;">'+
+'<tr><td style="padding:16px 20px;">'+rowsHtml+'</td></tr>'+
+'</table>'+
+'</td>'+
+'</tr>';
+}
+function itineraryEmailBodyHtml(opts){
+  var datesLine = (opts.departDate?fmtDate(opts.departDate):'') + (opts.departDate&&opts.returnDate?' – ':'') + (opts.returnDate?fmtDate(opts.returnDate):'');
+  var overviewRows = itineraryDetailRow('Destination', opts.destination) +
+    itineraryDetailRow('Travel Dates', datesLine) +
+    itineraryDetailRow('Trip Type', opts.tripType) +
+    itineraryDetailRow('Status', opts.status);
+  var flightRows = itineraryDetailRow('Airline', opts.airline) +
+    itineraryDetailRow('Route', opts.origin&&opts.destination ? (opts.origin+' → '+opts.destination) : '') +
+    itineraryDetailRow('Class of Service', opts.flightClass);
+  var hotelRows = itineraryDetailRow('Hotel', opts.hotel) +
+    itineraryDetailRow('Nights', opts.hotelNights);
+  var cruiseRows = itineraryDetailRow('Cruise Line', opts.cruiseLine) +
+    itineraryDetailRow('Ship', opts.shipName);
+  var bookingRows = itineraryDetailRow('Confirmation / Booking Ref', opts.bookingRef) +
+    itineraryDetailRow('Supplier', opts.supplierName) +
+    itineraryDetailRow('Points Used', opts.pointsUsed) +
+    itineraryDetailRow('Amount Paid', opts.cashPaid) +
+    itineraryDetailRow('Total Trip Value', opts.totalValue);
+  return ''+
+'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f5f7; padding:30px 0;">'+
+'<tr>'+
+'<td align="center">'+
+'<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff; border-radius:8px; overflow:hidden;">'+
+'<tr>'+
+'<td style="background-color:#ffffff; padding:20px 32px; border-bottom:3px solid #1a1aff;">'+
+'<table role="presentation" width="100%" cellpadding="0" cellspacing="0">'+
+'<tr>'+
+'<td><img src="'+MILES_MAN_LOGO_DATA_URI+'" width="117" height="72" alt="Miles Man" style="display:block; width:117px; height:72px;"></td>'+
+'</tr>'+
+'</table>'+
+'</td>'+
+'</tr>'+
+'<tr>'+
+'<td style="padding:32px 32px 8px 32px;">'+
+'<p style="font-family:\'Times New Roman\',Times,serif; font-size:14px; color:#111111; margin:0 0 16px 0;">Hi '+escHtml(opts.clientFirstName||'there')+',</p>'+
+'<p style="font-family:\'Times New Roman\',Times,serif; font-size:14px; color:#333333; line-height:1.5; margin:0 0 16px 0;">Here\'s your itinerary'+(opts.destination?' for '+escHtml(opts.destination):'')+'! Let me know if anything needs to change.</p>'+
+'</td>'+
+'</tr>'+
+'<tr>'+
+'<td style="padding:0 32px;">'+
+'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f0f2ff; border-left:4px solid #1a1aff; border-radius:6px;">'+
+'<tr><td style="padding:20px 24px;">'+overviewRows+'</td></tr>'+
+'</table>'+
+'</td>'+
+'</tr>'+
+itineraryDetailBox('Flight Details', flightRows)+
+itineraryDetailBox('Hotel Details', hotelRows)+
+itineraryDetailBox('Cruise Details', cruiseRows)+
+itineraryDetailBox('Booking Details', bookingRows)+
+(opts.notes?(
+'<tr>'+
+'<td style="padding:16px 32px 0 32px;">'+
+'<p style="font-family:\'Times New Roman\',Times,serif; font-size:14px; color:#333333; line-height:1.5; margin:0 0 16px 0;"><strong>Trip Notes:</strong><br>'+escHtml(opts.notes).replace(/\n/g,'<br>')+'</p>'+
+'</td>'+
+'</tr>'
+):'')+
+(opts.extraNotes?(
+'<tr>'+
+'<td style="padding:0 32px;">'+
+'<p style="font-family:\'Times New Roman\',Times,serif; font-size:14px; color:#333333; line-height:1.5; margin:0 0 16px 0;">'+escHtml(opts.extraNotes).replace(/\n/g,'<br>')+'</p>'+
+'</td>'+
+'</tr>'
+):'')+
+'<tr>'+
+'<td style="padding:24px 32px 32px 32px; border-top:1px solid #eeeeee;">'+
+'<p style="font-family:\'Times New Roman\',Times,serif; font-size:14px; color:#333333; line-height:1.5; margin:20px 0 0 0;">'+
+'Best,<br>Eric'+
+'</p>'+
+'</td>'+
+'</tr>'+
+'</table>'+
+'</td>'+
+'</tr>'+
+'</table>';
+}
+function itineraryEmailShellHtml(opts){
+  return '<!DOCTYPE html>'+
+'<html lang="en">'+
+'<head>'+
+'<meta charset="UTF-8">'+
+'<title>Itinerary'+(opts.destination?' - '+escHtml(opts.destination):'')+'</title>'+
+'</head>'+
+'<body style="margin:0; padding:0; background-color:#f4f5f7; font-family:\'Times New Roman\',Times,serif; font-size:14px;">'+
+itineraryEmailBodyHtml(opts)+
+'</body>'+
+'</html>';
+}
+function tripToItineraryOpts(trip, client, extraNotes){
+  var sup = trip.supplierId ? db.vendors.find(function(v){return v.id===trip.supplierId;}) : null;
+  return {
+    clientFirstName: client?getFirstName(client.name):'',
+    destination: trip.destination||'',
+    origin: trip.origin||'',
+    departDate: trip.departDate||'',
+    returnDate: trip.returnDate||'',
+    tripType: trip.type||'',
+    status: trip.status||'',
+    airline: trip.airline||'',
+    flightClass: trip.flightClass||'',
+    hotel: trip.hotel||'',
+    hotelNights: trip.hotelNights?(trip.hotelNights+(trip.hotelNights===1?' night':' nights')):'',
+    cruiseLine: trip.cruiseLine||'',
+    shipName: trip.shipName||'',
+    bookingRef: trip.bookingRef||'',
+    supplierName: (sup?sup.name:trip.supplierName)||'',
+    pointsUsed: trip.pointsUsed?fmt(trip.pointsUsed):'',
+    cashPaid: trip.cashPaid?('$'+fmt(trip.cashPaid)):'',
+    totalValue: trip.totalValue?('$'+fmt(trip.totalValue)):'',
+    notes: trip.notes||'',
+    extraNotes: extraNotes||''
+  };
+}
+function openEmailItineraryModal(){
+  var sortedClients = [...db.clients].sort(function(a,b){return (a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase());});
+  var clientOpts = sortedClients.map(function(c){return '<option value="'+c.id+'">'+c.name+'</option>';}).join('');
+
+  $('modal').innerHTML =
+    '<div class="modal-hdr"><div class="modal-title">Email Itinerary</div><button class="close-btn" id="modal-close">&#x2715;</button></div>'+
+    '<div class="fg">'+
+      fld('Client','<select id="ei-client"><option value="">-- Select client --</option>'+clientOpts+'</select>',true)+
+      fld('Trip','<select id="ei-trip"><option value="">-- Select client first --</option></select>',true)+
+      '<div class="field full"><label>Additional Note <span class="hint" style="text-transform:none;font-weight:400">(optional — appended after the trip details)</span></label><textarea id="ei-notes" rows="3" placeholder="Optional personal note to include"></textarea></div>'+
+      '<div class="field full" id="ei-preview-wrap" style="display:none">'+
+        '<label>Preview</label>'+
+        '<iframe id="ei-preview-frame" style="width:100%;height:420px;border:1px solid #e5e7eb;border-radius:8px;background:#fff"></iframe>'+
+      '</div>'+
+    '</div>'+
+    '<div class="form-actions"><button class="cancel-btn" id="modal-cancel">Cancel</button><button class="cancel-btn" id="ei-preview">Preview</button><button class="save-btn" id="ei-send">Email Itinerary</button></div>';
+
+  $('overlay').classList.add('open');
+  $('modal-close').addEventListener('click', closeModal);
+  $('modal-cancel').addEventListener('click', closeModal);
+
+  document.getElementById('ei-client').addEventListener('change', function(){
+    var clientId = this.value;
+    var tripSel = document.getElementById('ei-trip');
+    document.getElementById('ei-preview-wrap').style.display = 'none';
+    if(!clientId){
+      tripSel.innerHTML = '<option value="">-- Select client first --</option>';
+      return;
+    }
+    var clientTrips = db.trips.filter(function(t){return t.clientId===clientId || (t.clientIds||[]).includes(clientId);})
+      .sort(function(a,b){return (b.departDate||'').localeCompare(a.departDate||'');});
+    tripSel.innerHTML = clientTrips.length
+      ? '<option value="">-- Select trip --</option>'+clientTrips.map(function(t){
+          var label = (t.destination||'Trip')+(t.departDate?' — '+fmtDate(t.departDate):'');
+          return '<option value="'+t.id+'">'+escHtml(label)+'</option>';
+        }).join('')
+      : '<option value="">-- No trips for this client --</option>';
+  });
+
+  function collectItineraryData(){
+    var clientId = gv('ei-client');
+    if(!clientId){toast('Select a client','err');return null;}
+    var client = db.clients.find(function(c){return c.id===clientId;});
+    var tripId = gv('ei-trip');
+    if(!tripId){toast('Select a trip','err');return null;}
+    var trip = db.trips.find(function(t){return t.id===tripId;});
+    if(!trip){toast('Trip not found','err');return null;}
+    var extraNotes = gv('ei-notes');
+    return {client:client, trip:trip, opts:tripToItineraryOpts(trip, client, extraNotes)};
+  }
+
+  document.getElementById('ei-preview').addEventListener('click', function(){
+    var d = collectItineraryData();
+    if(!d) return;
+    var html = itineraryEmailShellHtml(d.opts);
+    var wrap = document.getElementById('ei-preview-wrap');
+    wrap.style.display = 'block';
+    document.getElementById('ei-preview-frame').srcdoc = html;
+    wrap.scrollIntoView({behavior:'smooth', block:'nearest'});
+  });
+
+  document.getElementById('ei-send').addEventListener('click', function(){
+    var d = collectItineraryData();
+    if(!d) return;
+    var subject = 'Your Itinerary'+(d.trip.destination?' — '+d.trip.destination:'');
+    var bodyHtml = itineraryEmailBodyHtml(d.opts);
+    var copied = copyHtmlToClipboard(bodyHtml);
+    var mailto = 'mailto:'+(d.client.email?mailtoAddr(d.client.email):'')+'?subject='+encodeURIComponent(subject);
+    window.location.href = mailto;
+    if(copied){
+      toast('Itinerary copied — paste into the email body in Outlook (Ctrl+V) for '+d.client.name,'ok');
+    }else{
+      toast('Could not copy the itinerary automatically — click Preview, then select all (Ctrl+A) and copy (Ctrl+C) from there to paste into Outlook','err');
+    }
+
+    var ts = tsNow();
+    var note = {ts:ts, text:'Itinerary: '+subject, noteType:'Email Sent'};
+    db.clients = db.clients.map(function(c){
+      if(c.id!==d.client.id) return c;
+      var notesLog = Array.isArray(c.notesLog)?c.notesLog.concat([note]):[note];
+      return Object.assign({},c,{notesLog:notesLog});
+    });
+    saveDB(); render();
   });
 }
 function openLogMailchimpModal(){
@@ -6546,6 +6766,7 @@ function bindClick(id, handler){
   bindClick('btn-restore', importJSON);
   bindClick('btn-mass-email', openMassEmailModal);
   bindClick('btn-email-quote', openEmailQuoteModal);
+  bindClick('btn-email-itinerary', openEmailItineraryModal);
   bindClick('btn-log-mailchimp', openLogMailchimpModal);
   bindClick('btn-sync-mailchimp', syncMailchimpEmails);
   bindClick('btn-import-csv', importCSV);
