@@ -2998,7 +2998,7 @@ function processTripFormRow(getVal, counters){
   // departDate drives the Calendar view (trips with no departDate are
   // skipped entirely), sorting, and "Upcoming" status, so this isn't
   // cosmetic — a blank departDate makes the trip invisible on the Calendar.
-  var tripDepartDate = getVal('Depart Date') || getVal('Sailing Date') || getVal('Pickup Date');
+  var tripDepartDate = getVal('Depart Date') || getVal('Sailing Date') || getVal('Pickup Date') || getVal('Hotel Check-in Date');
   var tripReturnDate = getVal('Return Date') || getVal('Dropoff Date');
   var tripLines=[];
   function addLine(label,val){ if(val) tripLines.push(label+': '+val); }
@@ -3035,6 +3035,7 @@ function processTripFormRow(getVal, counters){
   addLine('Class of Service', getVal('Class of Service'));
   addLine('Hotel Location', getVal('Hotel Location'));
   addLine('Hotel Brand', hotelBrand);
+  addLine('Hotel Check-in Date', getVal('Hotel Check-in Date'));
   addLine('Hotel Nights', getVal('Hotel Nights'));
   addLine('Room Type', getVal('Room Type'));
   addLine('People Per Room', getVal('People Per Room'));
@@ -3233,7 +3234,7 @@ function buildTripFormFieldLabels(){
   labels.push('Need - Airline','Need - Hotel','Need - Tours','Need - Cruise','Need - Car Rental','Need - Theme Park Tickets',
     'Airline','Airline Other','Origin','Destination','Trip Direction','Depart Date','Return Date','Class of Service','Trip Type',
     'Cruise Line','Cruise Line Other','Ship Name','Cruise Nights','Sailing Date','Departure Port','Cabin Type','People In Cabin','Cruise Loyalty Number','Cruisetour',
-    'Hotel Location','Hotel Brand','Hotel Brand Other','Hotel Nights','Room Type','People Per Room','Number of Rooms',
+    'Hotel Location','Hotel Brand','Hotel Brand Other','Hotel Check-in Date','Hotel Nights','Room Type','People Per Room','Number of Rooms',
     'Car Rental Company','Car Rental Company Other','Car Size','Pickup Location','Dropoff Location','Pickup Date','Dropoff Date','Pickup Time','Dropoff Time',
     'Theme Park','Theme Park Ticket Type','Tour Vendor','Tour Vendor Other',
     'Payment Preference','Tours Description','Notes','Trip Insurance');
