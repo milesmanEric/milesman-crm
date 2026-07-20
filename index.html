@@ -2989,6 +2989,7 @@ function processTripFormRow(getVal, counters){
   var cruiseLine = resolveOther(getVal('Cruise Line'), getVal('Cruise Line Other'));
   var hotelBrand = resolveOther(getVal('Hotel Brand'), getVal('Hotel Brand Other'));
   var carRentalCompany = resolveOther(getVal('Car Rental Company'), getVal('Car Rental Company Other'));
+  var themePark = getVal('Theme Park');
   var tripLines=[];
   function addLine(label,val){ if(val) tripLines.push(label+': '+val); }
   var travelNeeded = ['Airline','Hotel','Tours','Cruise','Car Rental','Theme Park Tickets'].filter(function(t){return getVal('Need - '+t);}).join(', ');
@@ -3039,7 +3040,7 @@ function processTripFormRow(getVal, counters){
   addLine('Number of Travelers', getVal('Number of Travelers'));
   addLine('Notes', getVal('Notes'));
   addLine('Trip Insurance', getVal('Trip Insurance'));
-  addLine('Theme Park', getVal('Theme Park'));
+  addLine('Theme Park', themePark);
   addLine('Theme Park Ticket Type', getVal('Theme Park Ticket Type'));
 
   // Companion travelers (Traveler 2+) get their own client record too —
@@ -3099,12 +3100,14 @@ function processTripFormRow(getVal, counters){
     tripLines.push('Traveling with: '+tClient.name+' (client '+tClient.id+')');
   }
 
-  // Match the requested Airline/Cruise Line/Hotel Brand/Car Rental Company
-  // against existing Supplier records by exact name, same as the revenue
-  // importer's supplier matching (extractRevenueRow) — never creates a new
-  // vendor, only links the client onto one that's already there. A trip
-  // only has one supplier slot, so the first match wins in that priority
-  // order; every match still gets the client linked onto it regardless.
+  // Match the requested Airline/Cruise Line/Hotel Brand/Car Rental Company/
+  // Theme Park against existing Supplier records by exact name, same as the
+  // revenue importer's supplier matching (extractRevenueRow) — never creates
+  // a new vendor, only links the client onto one that's already there. A
+  // trip only has one supplier slot, so the first match wins in that
+  // priority order; every match still gets the client linked onto it
+  // regardless. Tours Description is deliberately excluded — it's freeform
+  // text, not a name from a fixed list, so there's no safe exact match.
   function matchVendorByName(n){
     if(!n) return null;
     return db.vendors.find(function(v){return (v.name||'').toLowerCase().trim()===n.toLowerCase().trim();}) || null;
@@ -3121,8 +3124,9 @@ function processTripFormRow(getVal, counters){
   var cruiseVendor = matchVendorByName(cruiseLine);
   var hotelVendor = matchVendorByName(hotelBrand);
   var carRentalVendor = matchVendorByName(carRentalCompany);
-  [airlineVendor, cruiseVendor, hotelVendor, carRentalVendor].forEach(linkClientToVendor);
-  var primarySupplier = airlineVendor || cruiseVendor || hotelVendor || carRentalVendor || null;
+  var themeParkVendor = matchVendorByName(themePark);
+  [airlineVendor, cruiseVendor, hotelVendor, carRentalVendor, themeParkVendor].forEach(linkClientToVendor);
+  var primarySupplier = airlineVendor || cruiseVendor || hotelVendor || carRentalVendor || themeParkVendor || null;
 
   var newTripId = null;
   if(destination || tripLines.length){
