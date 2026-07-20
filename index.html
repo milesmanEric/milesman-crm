@@ -2991,6 +2991,15 @@ function processTripFormRow(getVal, counters){
   var carRentalCompany = resolveOther(getVal('Car Rental Company'), getVal('Car Rental Company Other'));
   var themePark = getVal('Theme Park');
   var tourVendor = resolveOther(getVal('Tour Vendor'), getVal('Tour Vendor Other'));
+  // Depart/Return Date only exist in the Airline Details section, which is
+  // hidden unless "Airline" is checked — a cruise-only or car-rental-only
+  // request still has real dates (Sailing Date, Pickup/Dropoff Date), so
+  // fall back to those rather than leaving the trip's departDate blank.
+  // departDate drives the Calendar view (trips with no departDate are
+  // skipped entirely), sorting, and "Upcoming" status, so this isn't
+  // cosmetic — a blank departDate makes the trip invisible on the Calendar.
+  var tripDepartDate = getVal('Depart Date') || getVal('Sailing Date') || getVal('Pickup Date');
+  var tripReturnDate = getVal('Return Date') || getVal('Dropoff Date');
   var tripLines=[];
   function addLine(label,val){ if(val) tripLines.push(label+': '+val); }
   var travelNeeded = ['Airline','Hotel','Tours','Cruise','Car Rental','Theme Park Tickets'].filter(function(t){return getVal('Need - '+t);}).join(', ');
@@ -3138,7 +3147,7 @@ function processTripFormRow(getVal, counters){
     db.trips.push({
       id:newTripId, clientId:client.id, clientName:client.name, clientIds:linkedClientIds,
       origin:getVal('Origin'), destination:destination,
-      departDate:getVal('Depart Date'), returnDate:getVal('Return Date'),
+      departDate:tripDepartDate, returnDate:tripReturnDate,
       status:'Planning', type:getVal('Trip Type')||'Leisure',
       airline:airline, flightClass:getVal('Class of Service'), hotel:hotelBrand,
       hotelNights:parseInt(getVal('Hotel Nights'),10)||0,
