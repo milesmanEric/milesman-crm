@@ -164,7 +164,8 @@ nav{padding:10px 8px}
 .page-title{font-size:22px;font-weight:700;color:#111}
 .add-btn{padding:9px 18px;border-radius:8px;border:none;background:#2563eb;color:#fff;cursor:pointer;font-size:13px;font-weight:600;font-family:inherit}
 .stats-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:18px}
-.stat{background:#f7f7f8;border:1px solid #e5e7eb;border-radius:10px;padding:14px 16px}
+.stat{background:#f7f7f8;border:1px solid #e5e7eb;border-radius:10px;padding:14px 16px;cursor:pointer;transition:background .12s,border-color .12s}
+.stat:hover{background:#eef2ff;border-color:#c7d2fe}
 .stat-lbl{font-size:11px;color:#888;margin-bottom:4px}
 .stat-val{font-size:24px;font-weight:700;color:#111}
 .two-col{display:grid;grid-template-columns:1.5fr 1fr;gap:14px}
@@ -604,6 +605,11 @@ const gv = id => $(id) ? $(id).value.trim() : '';
 const gn = id => Number(($(id) ? $(id).value : '0').toString().replace(/,/g,''));
 const fmt = n => Number(n||0).toLocaleString();
 const today = () => new Date().toISOString().slice(0,10);
+function displayStatus(t){
+  var st = t.status||'Planning';
+  if(st==='Completed' && t.departDate && t.departDate>=today()) st='Upcoming';
+  return st;
+}
 function tsNow(){
   const n=new Date();
   return n.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})+' '+n.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
@@ -4648,12 +4654,12 @@ function openVendorDetail(id){
     '</div>'+
     (v.primaryClientName?'<div style="font-size:13px;color:#2563eb;font-weight:600;margin-bottom:12px">&#128100; '+v.primaryClientName+'</div>':'')+
     '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:18px">'+
-      '<div class="stat"><div class="stat-lbl">Transactions</div><div class="stat-val">'+stats.tripList.length+'</div></div>'+
-      '<div class="stat"><div class="stat-lbl">Cash Paid</div><div class="stat-val">$'+Number(totalCash).toLocaleString()+'</div></div>'+
-      '<div class="stat"><div class="stat-lbl">Total Value</div><div class="stat-val">$'+Number(totalRevenue).toLocaleString()+'</div></div>'+
+      '<div class="stat" id="stat-vendor-tx"><div class="stat-lbl">Transactions</div><div class="stat-val">'+stats.tripList.length+'</div></div>'+
+      '<div class="stat" id="stat-vendor-cash"><div class="stat-lbl">Cash Paid</div><div class="stat-val">$'+Number(totalCash).toLocaleString()+'</div></div>'+
+      '<div class="stat" id="stat-vendor-value"><div class="stat-lbl">Total Value</div><div class="stat-val">$'+Number(totalRevenue).toLocaleString()+'</div></div>'+
     '</div>'+
     (txRows ?
-      '<div class="tbl-wrap" style="max-height:400px;overflow-y:auto"><table>'+
+      '<div class="tbl-wrap" id="vendor-tx-table" style="max-height:400px;overflow-y:auto">'+'<table>'+
         '<thead><tr>'+
           '<th>Client</th><th>Destination</th><th>Dates</th><th>Status</th><th>Cash Paid</th><th>Total Value</th><th>Product</th><th>Trip ID</th>'+
         '</tr></thead>'+
@@ -4669,27 +4675,32 @@ function openVendorDetail(id){
   $('modal-close').addEventListener('click', closeModal);
   $('modal-close2').addEventListener('click', closeModal);
   $('modal-edit-vendor').addEventListener('click', function(){closeModal(); openVendorForm(this.dataset.id);});
+  ['stat-vendor-tx','stat-vendor-cash','stat-vendor-value'].forEach(function(id){
+    var el = $(id);
+    if(el) el.addEventListener('click', function(){ flashDrilldownTarget($('vendor-tx-table')); });
+  });
 }
 
 function renderVendors(){
   var sorted = [...db.vendors].sort(function(a,b){return (a.name||'').localeCompare(b.name||'');});
 
   // Compute global stats
-  var totalTrips=0, totalRevenue=0, totalClients=new Set();
+  var totalTrips=0, totalRevenue=0, totalClients=new Set(), allVendorTrips=[];
   db.vendors.forEach(function(v){
     var s=getVendorStats(v);
     totalTrips+=s.tripList.length;
     totalRevenue+=s.tripList.reduce(function(a,t){return a+(t.totalValue||0);},0);
     s.clients.forEach(function(c){totalClients.add(c);});
+    allVendorTrips = allVendorTrips.concat(s.tripList);
   });
 
   $('main').innerHTML =
     '<div class="page-hdr"><div class="page-title">Suppliers</div><button class="add-btn" id="btn-add-supplier">+ Add Supplier</button></div>'+
     '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px">'+
-      '<div class="stat"><div class="stat-lbl">Total Suppliers</div><div class="stat-val">'+db.vendors.length+'</div></div>'+
-      '<div class="stat"><div class="stat-lbl">Total Trips</div><div class="stat-val">'+totalTrips+'</div></div>'+
-      '<div class="stat"><div class="stat-lbl">Total Clients</div><div class="stat-val">'+totalClients.size+'</div></div>'+
-      '<div class="stat"><div class="stat-lbl">Total Value</div><div class="stat-val">$'+Number(totalRevenue).toLocaleString()+'</div></div>'+
+      '<div class="stat" id="stat-vendors-count"><div class="stat-lbl">Total Suppliers</div><div class="stat-val">'+db.vendors.length+'</div></div>'+
+      '<div class="stat" id="stat-vendors-trips"><div class="stat-lbl">Total Trips</div><div class="stat-val">'+totalTrips+'</div></div>'+
+      '<div class="stat" id="stat-vendors-clients"><div class="stat-lbl">Total Clients</div><div class="stat-val">'+totalClients.size+'</div></div>'+
+      '<div class="stat" id="stat-vendors-value"><div class="stat-lbl">Total Value</div><div class="stat-val">$'+Number(totalRevenue).toLocaleString()+'</div></div>'+
     '</div>'+
     '<div class="search-row">'+
       '<input id="supplier-search" placeholder="Search suppliers..."/>'+
@@ -4766,6 +4777,29 @@ function renderVendors(){
 
   $('btn-add-supplier').addEventListener('click', function(){openVendorForm();});
   var btnImportVendors = $('btn-import-suppliers'); if(btnImportVendors) btnImportVendors.addEventListener('click', importVendorsCSV);
+  var statVendorsCount = $('stat-vendors-count');
+  if(statVendorsCount) statVendorsCount.addEventListener('click', function(){
+    openStatDrilldownModal('Suppliers', ['Supplier','Type','Trips','Total Value'], sorted.map(function(v){
+      var s = getVendorStats(v);
+      return {cells:[v.name||'',v.type||'',s.tripList.length,'$'+fmt(s.tripList.reduce(function(a,t){return a+(t.totalValue||0);},0))],onClick:function(){openVendorForm(v.id);}};
+    }));
+  });
+  var vendorTripHeaders = ['Client','Destination','Depart','Supplier','Total Value'];
+  function vendorTripRow(t){
+    var sup = t.supplierId ? db.vendors.find(function(v){return v.id===t.supplierId;}) : null;
+    return {cells:[t.clientName||'',t.destination||'',t.departDate||'—',(sup?sup.name:t.supplierName)||'—','$'+fmt(t.totalValue)],onClick:function(){openTripForm(t.id);}};
+  }
+  var statVendorsTrips = $('stat-vendors-trips');
+  if(statVendorsTrips) statVendorsTrips.addEventListener('click', function(){ openStatDrilldownModal('Supplier Trips', vendorTripHeaders, allVendorTrips.map(vendorTripRow)); });
+  var statVendorsValue = $('stat-vendors-value');
+  if(statVendorsValue) statVendorsValue.addEventListener('click', function(){ openStatDrilldownModal('Supplier Trip Value', vendorTripHeaders, allVendorTrips.map(vendorTripRow)); });
+  var statVendorsClients = $('stat-vendors-clients');
+  if(statVendorsClients) statVendorsClients.addEventListener('click', function(){
+    openStatDrilldownModal('Supplier Clients', ['Client','Contact'], Array.from(totalClients).map(function(name){
+      var c = db.clients.find(function(x){return x.name===name;});
+      return {cells:[name,(c&&c.email)||''],onClick:function(){ if(c) openClientForm(c.id); }};
+    }));
+  });
   $('supplier-search').addEventListener('input', function(){
     var q = this.value.toLowerCase();
     document.querySelectorAll('.vendor-card').forEach(function(el){
@@ -5225,12 +5259,12 @@ function renderDash(){
   $('main').innerHTML=
     '<div class="page-hdr"><div class="page-title">Dashboard</div><div style="font-size:12px;color:#888">'+new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'})+'</div></div>'+
     '<div class="stats-grid">'+
-      '<div class="stat"><div class="stat-lbl">Clients</div><div class="stat-val">'+s.clients+'</div></div>'+
-      '<div class="stat"><div class="stat-lbl">Total trips</div><div class="stat-val">'+s.trips+'</div></div>'+
-      '<div class="stat"><div class="stat-lbl">Confirmed</div><div class="stat-val">'+s.confirmed+'</div></div>'+
-      '<div class="stat"><div class="stat-lbl">Upcoming</div><div class="stat-val">'+s.upcoming+'</div></div>'+
-      '<div class="stat"><div class="stat-lbl">Total value</div><div class="stat-val">$'+fmt(s.value)+'</div></div>'+
-      '<div class="stat"><div class="stat-lbl">Points deployed</div><div class="stat-val">'+fmt(s.pts)+'</div></div>'+
+      '<div class="stat" id="stat-dash-clients"><div class="stat-lbl">Clients</div><div class="stat-val">'+s.clients+'</div></div>'+
+      '<div class="stat" id="stat-dash-trips"><div class="stat-lbl">Total trips</div><div class="stat-val">'+s.trips+'</div></div>'+
+      '<div class="stat" id="stat-dash-confirmed"><div class="stat-lbl">Confirmed</div><div class="stat-val">'+s.confirmed+'</div></div>'+
+      '<div class="stat" id="stat-dash-upcoming"><div class="stat-lbl">Upcoming</div><div class="stat-val">'+s.upcoming+'</div></div>'+
+      '<div class="stat" id="stat-dash-value"><div class="stat-lbl">Total value</div><div class="stat-val">$'+fmt(s.value)+'</div></div>'+
+      '<div class="stat" id="stat-dash-pts"><div class="stat-lbl">Points deployed</div><div class="stat-val">'+fmt(s.pts)+'</div></div>'+
     '</div>'+
     '<div class="two-col">'+
       '<div class="card">'+
@@ -5262,6 +5296,35 @@ function renderDash(){
       e.stopPropagation();
       openClientForm(el.dataset.id);
     });
+  });
+  function tripRow(t){
+    return {cells:[t.clientName||'',t.destination||'',t.departDate||'—',displayStatus(t),'$'+fmt(t.totalValue)],onClick:function(){openTripForm(t.id);}};
+  }
+  var tripHeaders = ['Client','Destination','Depart','Status','Total Value'];
+  var statDashClients = $('stat-dash-clients');
+  if(statDashClients) statDashClients.addEventListener('click', function(){
+    openStatDrilldownModal('Clients', ['Client','Contact','Revenue'], db.clients.map(function(c){
+      return {cells:[c.name||'',c.email||'','$'+fmt(clientLiveRevenue(c.id))],onClick:function(){openClientForm(c.id);}};
+    }));
+  });
+  var statDashTrips = $('stat-dash-trips');
+  if(statDashTrips) statDashTrips.addEventListener('click', function(){ openStatDrilldownModal('All Trips', tripHeaders, db.trips.map(tripRow)); });
+  var statDashConfirmed = $('stat-dash-confirmed');
+  if(statDashConfirmed) statDashConfirmed.addEventListener('click', function(){
+    openStatDrilldownModal('Confirmed Trips', tripHeaders, db.trips.filter(function(t){return t.status==='Confirmed';}).map(tripRow));
+  });
+  var statDashUpcoming = $('stat-dash-upcoming');
+  if(statDashUpcoming) statDashUpcoming.addEventListener('click', function(){
+    openStatDrilldownModal('Upcoming Trips', tripHeaders, db.trips.filter(function(t){return (t.departDate||'')>=today();}).map(tripRow));
+  });
+  var statDashValue = $('stat-dash-value');
+  if(statDashValue) statDashValue.addEventListener('click', function(){ openStatDrilldownModal('Total Value', tripHeaders, db.trips.map(tripRow)); });
+  var statDashPts = $('stat-dash-pts');
+  if(statDashPts) statDashPts.addEventListener('click', function(){
+    openStatDrilldownModal('Points Deployed', ['Client','Destination','Depart','Status','Points Used'],
+      db.trips.filter(function(t){return t.pointsUsed;}).map(function(t){
+        return {cells:[t.clientName||'',t.destination||'',t.departDate||'—',displayStatus(t),fmt(t.pointsUsed)],onClick:function(){openTripForm(t.id);}};
+      }));
   });
 }
 
@@ -5308,9 +5371,9 @@ function renderClients(){
       },0);
       var totalTrips = list.reduce(function(a,c){return a+countDistinctTrips(c.id);},0);
       return '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px">'+
-        '<div class="stat"><div class="stat-lbl">Clients</div><div class="stat-val">'+list.length+'</div></div>'+
-        '<div class="stat"><div class="stat-lbl">Total Revenue</div><div class="stat-val">$'+Number(totalRevenue).toLocaleString()+'</div></div>'+
-        '<div class="stat"><div class="stat-lbl">Total Trips</div><div class="stat-val">'+totalTrips+'</div></div>'+
+        '<div class="stat" id="stat-clients-count"><div class="stat-lbl">Clients</div><div class="stat-val">'+list.length+'</div></div>'+
+        '<div class="stat" id="stat-clients-revenue"><div class="stat-lbl">Total Revenue</div><div class="stat-val">$'+Number(totalRevenue).toLocaleString()+'</div></div>'+
+        '<div class="stat" id="stat-clients-trips"><div class="stat-lbl">Total Trips</div><div class="stat-val">'+totalTrips+'</div></div>'+
       '</div>';
     })()+
     '<div class="search-row">'+
@@ -5345,6 +5408,26 @@ function renderClients(){
     '</tbody></table></div>';
 
   $('btn-add-client').addEventListener('click',function(){openClientForm();});
+  var statClientsCount = $('stat-clients-count');
+  if(statClientsCount) statClientsCount.addEventListener('click', function(){
+    openStatDrilldownModal('Clients', ['Client','Contact','Revenue','Trips'], list.map(function(c){
+      return {cells:[c.name||'',c.email||'','$'+fmt(db.trips.filter(function(t){return t.clientId===c.id;}).reduce(function(x,t){return x+(t.totalValue||0);},0)),countDistinctTrips(c.id)],onClick:function(){openClientForm(c.id);}};
+    }));
+  });
+  function clientTripDrilldownRows(){
+    var rows = [];
+    list.forEach(function(c){
+      db.trips.filter(function(t){return t.clientId===c.id;}).forEach(function(t){
+        rows.push({cells:[c.name||'',t.destination||'',t.departDate||'—',displayStatus(t),'$'+fmt(t.totalValue)],onClick:function(){openTripForm(t.id);}});
+      });
+    });
+    return rows;
+  }
+  var clientTripHeaders = ['Client','Destination','Depart','Status','Total Value'];
+  var statClientsRevenue = $('stat-clients-revenue');
+  if(statClientsRevenue) statClientsRevenue.addEventListener('click', function(){ openStatDrilldownModal('Client Revenue', clientTripHeaders, clientTripDrilldownRows()); });
+  var statClientsTrips = $('stat-clients-trips');
+  if(statClientsTrips) statClientsTrips.addEventListener('click', function(){ openStatDrilldownModal('Client Trips', clientTripHeaders, clientTripDrilldownRows()); });
   document.querySelectorAll('.sort-th-c').forEach(function(th){
     th.addEventListener('click', function(){
       var col = th.dataset.sort;
@@ -5448,6 +5531,48 @@ function sortArrow(col){
   return tripSortDir==='asc' ? ' &#9650;' : ' &#9660;';
 }
 
+// Generic drill-down modal for a page-level stat tile: shows the list of
+// records that add up to that number, each row clickable to open the real
+// record. Used by every top-level page's stats (Dashboard, Clients, Trips,
+// Suppliers, Planner) — NOT by stats that already live inside another open
+// modal (vendor detail, invoice detail), since this app has a single shared
+// modal container and can't nest one on top of another; those instead just
+// scroll to/highlight the breakdown table already shown alongside them.
+function openStatDrilldownModal(title, headers, rows){
+  var bodyRows = rows.map(function(r,i){
+    return '<tr class="stat-drilldown-row" data-idx="'+i+'" style="cursor:pointer">'+
+      r.cells.map(function(c){return '<td style="padding:8px 12px;font-size:13px;color:#374151">'+c+'</td>';}).join('')+
+    '</tr>';
+  }).join('');
+  $('modal').innerHTML =
+    '<div class="modal-hdr"><div class="modal-title">'+title+'</div><button class="close-btn" id="modal-close">&#x2715;</button></div>'+
+    (rows.length
+      ? '<div class="tbl-wrap" style="max-height:440px;overflow-y:auto"><table><thead><tr>'+headers.map(function(h){return '<th>'+h+'</th>';}).join('')+'</tr></thead><tbody>'+bodyRows+'</tbody></table></div>'
+      : '<div class="empty">No records</div>')+
+    '<div class="form-actions"><button class="cancel-btn" id="modal-close2">Close</button></div>';
+  $('overlay').classList.add('open');
+  $('modal-close').addEventListener('click', closeModal);
+  $('modal-close2').addEventListener('click', closeModal);
+  document.querySelectorAll('.stat-drilldown-row').forEach(function(tr){
+    tr.addEventListener('click', function(){
+      var r = rows[Number(this.dataset.idx)];
+      closeModal();
+      if(r.onClick) r.onClick();
+    });
+  });
+}
+// Scrolls to and briefly highlights an already-visible breakdown table —
+// used for stats that live inside a modal that's already showing that same
+// table (vendor detail, invoice detail), where opening a second modal isn't
+// possible.
+function flashDrilldownTarget(el){
+  if(!el) return;
+  el.scrollIntoView({behavior:'smooth', block:'nearest'});
+  var prevOutline = el.style.outline, prevOffset = el.style.outlineOffset;
+  el.style.outline = '2px solid #2563eb';
+  el.style.outlineOffset = '2px';
+  setTimeout(function(){ el.style.outline = prevOutline; el.style.outlineOffset = prevOffset; }, 900);
+}
 function openInvoiceDetail(invoiceNum){
   if(!invoiceNum) return;
   var matchingTrips = db.trips.filter(function(t){
@@ -5476,11 +5601,11 @@ function openInvoiceDetail(invoiceNum){
   $('modal').innerHTML =
     '<div class="modal-hdr"><div class="modal-title">Invoice #'+invoiceNum+'</div><button class="close-btn" id="modal-close">&#x2715;</button></div>'+
     '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px">'+
-      '<div class="stat"><div class="stat-lbl">Line Items</div><div class="stat-val">'+matchingTrips.length+'</div></div>'+
-      '<div class="stat"><div class="stat-lbl">Total Cash Paid</div><div class="stat-val">$'+Number(totalCash).toLocaleString()+'</div></div>'+
-      '<div class="stat"><div class="stat-lbl">Total Value</div><div class="stat-val">$'+Number(totalValue).toLocaleString()+'</div></div>'+
+      '<div class="stat" id="stat-invoice-items"><div class="stat-lbl">Line Items</div><div class="stat-val">'+matchingTrips.length+'</div></div>'+
+      '<div class="stat" id="stat-invoice-cash"><div class="stat-lbl">Total Cash Paid</div><div class="stat-val">$'+Number(totalCash).toLocaleString()+'</div></div>'+
+      '<div class="stat" id="stat-invoice-value"><div class="stat-lbl">Total Value</div><div class="stat-val">$'+Number(totalValue).toLocaleString()+'</div></div>'+
     '</div>'+
-    '<div class="tbl-wrap" style="max-height:400px;overflow-y:auto"><table>'+
+    '<div class="tbl-wrap" id="invoice-detail-table" style="max-height:400px;overflow-y:auto"><table>'+
       '<thead><tr>'+
         '<th>Client</th><th>Destination</th><th>Product</th><th>Supplier</th><th>Status</th><th style="text-align:right">Cash Paid</th><th style="text-align:right">Total Value</th>'+
       '</tr></thead>'+
@@ -5497,6 +5622,10 @@ function openInvoiceDetail(invoiceNum){
       openTripForm(row.dataset.tripId);
     });
   });
+  ['stat-invoice-items','stat-invoice-cash','stat-invoice-value'].forEach(function(id){
+    var el = $(id);
+    if(el) el.addEventListener('click', function(){ flashDrilldownTarget($('invoice-detail-table')); });
+  });
 }
 
 function renderTrips(){
@@ -5509,11 +5638,6 @@ function renderTrips(){
     return ms&&(!fStatus||t.status===fStatus)&&(!selCid||t.clientId===selCid);
   });
   // Sort
-  function displayStatus(t){
-    var st = t.status||'Planning';
-    if(st==='Completed' && t.departDate && t.departDate>=today()) st='Upcoming';
-    return st;
-  }
   list = list.slice().sort(function(a,b){
     var av, bv;
     if(tripSortCol==='status'){
@@ -5544,9 +5668,9 @@ function renderTrips(){
       var totalCash  = list.reduce(function(a,t){return a+(t.cashPaid||0);},0);
       var invoiceCount = selC ? countDistinctTrips(selC.id) : countDistinctInvoicesIn(list);
       return '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px">'+
-        '<div class="stat"><div class="stat-lbl">Trips (Distinct Invoices)</div><div class="stat-val">'+invoiceCount+'</div></div>'+
-        '<div class="stat"><div class="stat-lbl">Total Cash Paid</div><div class="stat-val">$'+Number(totalCash).toLocaleString()+'</div></div>'+
-        '<div class="stat"><div class="stat-lbl">Total Value</div><div class="stat-val">$'+Number(totalValue).toLocaleString()+'</div></div>'+
+        '<div class="stat" id="stat-trips-count"><div class="stat-lbl">Trips (Distinct Invoices)</div><div class="stat-val">'+invoiceCount+'</div></div>'+
+        '<div class="stat" id="stat-trips-cash"><div class="stat-lbl">Total Cash Paid</div><div class="stat-val">$'+Number(totalCash).toLocaleString()+'</div></div>'+
+        '<div class="stat" id="stat-trips-value"><div class="stat-lbl">Total Value</div><div class="stat-val">$'+Number(totalValue).toLocaleString()+'</div></div>'+
       '</div>';
     })()+
     '<div class="search-row">'+
@@ -5594,6 +5718,16 @@ function renderTrips(){
     '</tbody></table></div>';
 
   $('btn-add-trip').addEventListener('click',function(){openTripForm();});
+  function tripStatDrilldownRows(){
+    return list.map(function(t){
+      return {cells:[t.clientName||'',t.destination||'',t.departDate||'—',displayStatus(t),'$'+fmt(t.cashPaid),'$'+fmt(t.totalValue)],onClick:function(){openTripForm(t.id);}};
+    });
+  }
+  var tripStatHeaders = ['Client','Destination','Depart','Status','Cash Paid','Total Value'];
+  ['stat-trips-count','stat-trips-cash','stat-trips-value'].forEach(function(id){
+    var el = $(id);
+    if(el) el.addEventListener('click', function(){ openStatDrilldownModal('Trips', tripStatHeaders, tripStatDrilldownRows()); });
+  });
   document.querySelectorAll('.sort-th').forEach(function(th){
     th.addEventListener('click', function(){
       var col = th.dataset.sort;
@@ -6224,11 +6358,58 @@ function readPointsRedemptions(idPrefix){
   }
   return out;
 }
+// Hotel entries are a dynamic add/remove list (a multi-city trip can have
+// any number of hotel stays), unlike the fixed-3 points-redemption blocks
+// above. Rows are read back by class selector in DOM order at save time —
+// no ids to keep in sync — and added/removed as real DOM nodes (not a
+// full-list re-render) so typing in one row is never disturbed by editing
+// another, the same technique the client-notes editor already uses.
+function hotelEntryRowInnerHtml(entry){
+  entry = entry || {};
+  return '<div style="display:flex;justify-content:flex-end;margin-bottom:4px">'+
+      '<button type="button" class="del-hotel-entry-btn" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:12px">&#128465;&#65039; Remove</button>'+
+    '</div>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
+      '<div class="field"><label>Hotel</label><select class="hotel-entry-brand"><option value="">-- Select --</option>'+selOpts(HOTELS,entry.hotelBrand)+'</select></div>'+
+      '<div class="field"><label>Confirmation Number</label><input class="hotel-entry-conf" type="text" value="'+(entry.confirmationNumber||'').toString().replace(/"/g,'&quot;')+'"></div>'+
+      '<div class="field"><label>Check-in Date</label><input class="hotel-entry-checkin" type="date" value="'+(entry.checkInDate||'')+'"></div>'+
+      '<div class="field"><label>Nights</label><input class="hotel-entry-nights" type="number" value="'+(entry.nights||'')+'"></div>'+
+      '<div class="field"><label>Price ($)</label><input class="hotel-entry-price" type="number" value="'+(entry.price||'')+'"></div>'+
+      '<div class="field"><label>Miles/Points Program</label><select class="hotel-entry-program">'+pointsProgramOptionsHtml(entry.program)+'</select></div>'+
+      '<div class="field"><label>Miles/Points Used</label><input class="hotel-entry-amount" type="number" value="'+(entry.amount||'')+'"></div>'+
+    '</div>';
+}
+function hotelEntryRowHtml(entry){
+  return '<div class="hotel-entry-row" style="border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin-bottom:10px;background:#fafafa">'+hotelEntryRowInnerHtml(entry)+'</div>';
+}
+function hotelEntriesListHtml(entries){
+  return entries.length ? entries.map(hotelEntryRowHtml).join('') : '<div id="tb-hotel-entries-empty" style="color:#aaa;font-size:12px;padding:6px 0">No hotels added yet</div>';
+}
+function readHotelEntries(){
+  return Array.from(document.querySelectorAll('#tb-hotel-entries .hotel-entry-row')).map(function(row){
+    return {
+      hotelBrand: (row.querySelector('.hotel-entry-brand')||{}).value||'',
+      confirmationNumber: (row.querySelector('.hotel-entry-conf')||{}).value||'',
+      checkInDate: (row.querySelector('.hotel-entry-checkin')||{}).value||'',
+      nights: Number((row.querySelector('.hotel-entry-nights')||{}).value)||0,
+      price: Number((row.querySelector('.hotel-entry-price')||{}).value)||0,
+      program: (row.querySelector('.hotel-entry-program')||{}).value||'',
+      amount: Number((row.querySelector('.hotel-entry-amount')||{}).value)||0
+    };
+  }).filter(function(e){
+    return e.hotelBrand||e.confirmationNumber||e.checkInDate||e.nights||e.price||e.program||e.amount;
+  });
+}
 function bookedTripDetailsHtml(bd){
   bd = bd || {};
-  var air = bd.airline||{}, hot = bd.hotel||{}, cru = bd.cruise||{}, car = bd.carRental||{},
+  var air = bd.airline||{}, cru = bd.cruise||{}, car = bd.carRental||{},
       tou = bd.tours||{}, tp = bd.themePark||{}, tra = bd.train||{};
   var cruiseCabinTypes = getQuoteConfig(cru.cruiseLine).cabinTypes;
+  // bd.hotel used to be a single object (one hotel per trip); now it's a
+  // list, so an old single-object shape gets wrapped into a one-entry list
+  // rather than losing that data.
+  var hotelEntries = Array.isArray(bd.hotel) ? bd.hotel : (bd.hotel && Object.keys(bd.hotel).length ? [bd.hotel] : []);
+  if(!hotelEntries.length) hotelEntries = [{}];
   return ''+
     '<div class="modal-section-title">Booked Trip Details</div>'+
     '<div class="modal-section-title">Airline</div>'+
@@ -6242,15 +6423,10 @@ function bookedTripDetailsHtml(bd){
     fld('Return Date',inp('tb-air-return','date',air.returnDate))+
     pointsRedemptionBlocksHtml('tb-air',air.pts)+
     '<div class="modal-section-title">Hotel</div>'+
-    fld('Confirmation Number',inp('tb-hotel-conf','text',hot.confirmationNumber,'e.g. H-98765'))+
-    fld('Hotel Brand',sel('tb-hotel-brand',HOTELS,hot.hotelBrand))+
-    fld('Location',inp('tb-hotel-location','text',hot.location,'e.g. Miami, FL'))+
-    fld('Check-in Date',inp('tb-hotel-checkin','date',hot.checkInDate))+
-    fld('Nights',inp('tb-hotel-nights','number',hot.nights||0))+
-    fld('Room Type',sel('tb-hotel-roomtype',ROOM_TYPES,hot.roomType))+
-    fld('People Per Room',inp('tb-hotel-pperroom','number',hot.peoplePerRoom||''))+
-    fld('Number of Rooms',inp('tb-hotel-numrooms','number',hot.numberOfRooms||''))+
-    pointsRedemptionBlocksHtml('tb-hotel',hot.pts)+
+    '<div class="field full"><label>Hotels <span class="hint" style="text-transform:none;font-weight:400">(add one entry per hotel stay on this trip)</span></label>'+
+      '<div id="tb-hotel-entries">'+hotelEntriesListHtml(hotelEntries)+'</div>'+
+      '<button type="button" id="tb-hotel-add-btn" style="padding:5px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit">+ Add Hotel</button>'+
+    '</div>'+
     '<div class="modal-section-title">Cruise</div>'+
     fld('Confirmation Number',inp('tb-cruise-conf','text',cru.confirmationNumber,'e.g. C-445566'))+
     fld('Cruise Line',sel('tb-cruise-line',CRUISE_LINES,cru.cruiseLine))+
@@ -6258,7 +6434,7 @@ function bookedTripDetailsHtml(bd){
     fld('Sailing Date',inp('tb-cruise-sailing','date',cru.sailingDate))+
     fld('Nights',inp('tb-cruise-nights','number',cru.nights||''))+
     fld('Departure Port',inp('tb-cruise-port','text',cru.departurePort,'e.g. Fort Lauderdale, FL'))+
-    fld('Cabin Type','<select id="tb-cruise-cabin">'+selOpts(cruiseCabinTypes,cru.cabinType)+'</select>')+
+    fld('Cabin Type','<select id="tb-cruise-cabin"><option value="">-- Select --</option>'+selOpts(cruiseCabinTypes,cru.cabinType)+'</select>')+
     fld('People In Cabin',inp('tb-cruise-people','number',cru.peopleInCabin||''))+
     fld('Loyalty Number',inp('tb-cruise-loyalty','text',cru.loyaltyNumber))+
     '<div class="modal-section-title">Car Rental</div>'+
@@ -6292,7 +6468,31 @@ function bindBookedTripDetailsListeners(){
   if(cruiseLineSel){
     cruiseLineSel.addEventListener('change', function(){
       document.getElementById('tb-cruise-ship').innerHTML = shipOptionsHtml(this.value,'');
-      document.getElementById('tb-cruise-cabin').innerHTML = selOpts(getQuoteConfig(this.value).cabinTypes,'');
+      document.getElementById('tb-cruise-cabin').innerHTML = '<option value="">-- Select --</option>'+selOpts(getQuoteConfig(this.value).cabinTypes,'');
+    });
+  }
+  var hotelEntriesEl = document.getElementById('tb-hotel-entries');
+  var hotelAddBtn = document.getElementById('tb-hotel-add-btn');
+  if(hotelAddBtn && hotelEntriesEl){
+    hotelAddBtn.addEventListener('click', function(){
+      var empty = document.getElementById('tb-hotel-entries-empty');
+      if(empty) empty.remove();
+      var div = document.createElement('div');
+      div.className = 'hotel-entry-row';
+      div.style.cssText = 'border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin-bottom:10px;background:#fafafa';
+      div.innerHTML = hotelEntryRowInnerHtml({});
+      hotelEntriesEl.appendChild(div);
+    });
+  }
+  if(hotelEntriesEl){
+    hotelEntriesEl.addEventListener('click', function(e){
+      var btn = e.target.closest ? e.target.closest('.del-hotel-entry-btn') : null;
+      if(!btn) return;
+      var row = btn.closest('.hotel-entry-row');
+      if(row) row.remove();
+      if(!hotelEntriesEl.querySelector('.hotel-entry-row')){
+        hotelEntriesEl.innerHTML = '<div id="tb-hotel-entries-empty" style="color:#aaa;font-size:12px;padding:6px 0">No hotels added yet</div>';
+      }
     });
   }
 }
@@ -6303,11 +6503,7 @@ function readBookedTripDetails(){
       nonStop: gv('tb-air-nonstop'), origin: gv('tb-air-origin'), destination: gv('tb-air-dest'),
       departDate: gv('tb-air-depart'), returnDate: gv('tb-air-return'), pts: readPointsRedemptions('tb-air')
     },
-    hotel: {
-      confirmationNumber: gv('tb-hotel-conf'), hotelBrand: gv('tb-hotel-brand'), location: gv('tb-hotel-location'),
-      checkInDate: gv('tb-hotel-checkin'), nights: gn('tb-hotel-nights'), roomType: gv('tb-hotel-roomtype'),
-      peoplePerRoom: gn('tb-hotel-pperroom'), numberOfRooms: gn('tb-hotel-numrooms'), pts: readPointsRedemptions('tb-hotel')
-    },
+    hotel: readHotelEntries(),
     cruise: {
       confirmationNumber: gv('tb-cruise-conf'), cruiseLine: gv('tb-cruise-line'), shipName: gv('tb-cruise-ship'),
       sailingDate: gv('tb-cruise-sailing'), nights: gn('tb-cruise-nights'), departurePort: gv('tb-cruise-port'),
@@ -6531,8 +6727,8 @@ function renderPlanner(){
       '<div></div>'+
     '</div>'+
     '<div class="stats-grid" style="grid-template-columns:repeat(2,1fr)">'+
-      '<div class="stat"><div class="stat-lbl">Open Tasks</div><div class="stat-val">'+openCount+'</div></div>'+
-      '<div class="stat"><div class="stat-lbl">Total Tasks</div><div class="stat-val">'+db.planner.length+'</div></div>'+
+      '<div class="stat" id="stat-planner-open"><div class="stat-lbl">Open Tasks</div><div class="stat-val">'+openCount+'</div></div>'+
+      '<div class="stat" id="stat-planner-total"><div class="stat-lbl">Total Tasks</div><div class="stat-val">'+db.planner.length+'</div></div>'+
     '</div>'+
     '<div class="search-row">'+
       '<input id="planner-search" placeholder="Search tasks..."/>'+
@@ -6574,6 +6770,18 @@ function renderPlanner(){
     }).join('')+'</tbody></table></div>' : '<div class="empty">No tasks yet — add one to start planning follow-ups tied to clients, suppliers, or trips</div>');
 
   $('btn-add-task').addEventListener('click', function(){openTaskForm();});
+  function taskRow(t){
+    return {cells:[t.title||'',t.dueDate||'—',clientName(t)||'—',t.done?'Done':'Open'],onClick:function(){openTaskForm(t.id);}};
+  }
+  var taskHeaders = ['Task','Due Date','Client','Status'];
+  var statPlannerOpen = $('stat-planner-open');
+  if(statPlannerOpen) statPlannerOpen.addEventListener('click', function(){
+    openStatDrilldownModal('Open Tasks', taskHeaders, db.planner.filter(function(t){return !t.done;}).map(taskRow));
+  });
+  var statPlannerTotal = $('stat-planner-total');
+  if(statPlannerTotal) statPlannerTotal.addEventListener('click', function(){
+    openStatDrilldownModal('All Tasks', taskHeaders, db.planner.map(taskRow));
+  });
   $('planner-search').addEventListener('input', function(){
     var qv = this.value.toLowerCase();
     document.querySelectorAll('[data-task-id]').forEach(function(row){
