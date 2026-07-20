@@ -42,6 +42,8 @@ Other: `notesLog` (array of `{ts, text, noteType, source?, msgId?, mcKey?}` — 
 
 `invoiceDate` is a separate concept from `departDate` — `departDate` prioritizes the *travel* date (Ship Date on a revenue import) when one exists, while `invoiceDate` is the actual transaction/booking date from the source file's own "Date" column. The two can legitimately differ (booked one month, travel happens the next), which is why the "By Invoice #" report (§3) lets you choose which one to filter by. Only the revenue importer populates it automatically; it's also editable by hand on the Add/Edit Trip form for any trip.
 
+`invoiceDate` didn't exist before this field was added, so trips imported before then have no value for it at all — re-running the exact same revenue import backfills it onto the matching existing trip (`finalizeImport()`'s duplicate-detection branch), the same way it already backfilled a supplier that was added to the Suppliers list after a trip's first import. Re-importing never creates a duplicate trip; it only fills in whatever the existing trip is still missing (supplier link and/or `invoiceDate`).
+
 These top-level fields are the at-a-glance summary used by the Trips list, Calendar, Dashboard, and CSV exports — they stay populated exactly as before and nothing else had to change when `booked` (below) was added.
 
 `booked` — the **Booked Trip Details** section (Add/Edit Trip modal), a confirmed-booking recap organized into the same categories as the intake form's "Type of Travel Needed" checkboxes, each with its own confirmation number:
