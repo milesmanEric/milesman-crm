@@ -207,6 +207,8 @@ tr:last-child td{border-bottom:none}
 .field label{font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em}
 .field input,.field select,.field textarea{padding:8px 11px;border-radius:7px;border:1px solid #d1d5db;font-size:13px;font-family:inherit;color:#111;background:#fafafa}
 .field textarea{resize:vertical;min-height:58px}
+.modal-section-title{grid-column:1/-1;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#2563eb;margin:14px 0 2px;padding-top:14px;border-top:1px solid #f0f0f0}
+.modal-section-title:first-of-type{margin-top:0;padding-top:0;border-top:none}
 .form-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:18px}
 .cancel-btn{padding:9px 20px;border-radius:8px;border:1px solid #d1d5db;background:#fff;color:#555;cursor:pointer;font-family:inherit;font-size:13px}
 .save-btn{padding:9px 20px;border-radius:8px;border:none;background:#2563eb;color:#fff;cursor:pointer;font-family:inherit;font-size:13px;font-weight:600}
@@ -490,6 +492,10 @@ const STATUSES = ['Planning','Confirmed','Completed','Cancelled'];
 const TYPES    = ['Leisure','Business','Honeymoon','Family','Adventure','Cruise'];
 const CLASSES  = ['Basic Economy','Economy','Premium Economy','Business','First'];
 const NOTE_TYPES = ['Email Sent','Email Received','Initial Call','Follow-up','General','Trip Import','Text Message Sent','Text Message Received','Lead','Mailchimp Email Sent','Facebook Message'];
+const THEME_PARKS = ['Disney World','Disneyland California','Universal Studios Hollywood','Universal Studios Orlando'];
+const TRAIN_CLASSES = ['Coach','Business Class','First Class','Sleeper Car'];
+const CAR_SIZES = ['Economy','Compact','Midsize','Full-size','SUV','Minivan','Luxury','Convertible'];
+const ROOM_TYPES = ['Room','Suite'];
 
 let db = {clients:[],trips:[],vendors:[],planner:[]};
 const UNDO_STACK = [];
@@ -6176,6 +6182,151 @@ function bindTripBalanceListeners(){
     });
   });
 }
+// ── Booked Trip Details ──────────────────────────────────────────────────
+// A confirmed-booking recap, organized into the same categories as the
+// Book a Trip form's "Type of Travel Needed" checkboxes (Airline, Hotel,
+// Cruise, Car Rental, Tours, Theme Park, Train), each with its own
+// confirmation number. Stored as trip.booked = {airline,hotel,cruise,
+// carRental,tours,themePark,train}, kept separate from the trip's existing
+// top-level fields (airline/destination/departDate/etc., which stay the
+// at-a-glance summary used everywhere else in the app — Trips list,
+// Calendar, exports) so nothing else has to change to support this.
+function pointsProgramOptionsHtml(selected){
+  function opts(list){ return list.map(function(o){return '<option value="'+o+'"'+(o===selected?' selected':'')+'>'+o+'</option>';}).join(''); }
+  return '<option value="">Select...</option>'+
+    '<optgroup label="Airlines">'+opts(AIRLINES)+'</optgroup>'+
+    '<optgroup label="Hotels">'+opts(HOTELS)+'</optgroup>'+
+    '<optgroup label="Credit Cards">'+opts(CREDIT_CARDS)+'</optgroup>';
+}
+function pointsRedemptionRowHtml(idPrefix, n, block){
+  block = block || {};
+  return '<div class="field full"><label>Miles/Points Redemption #'+n+'</label>'+
+    '<div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:8px">'+
+      '<select id="'+idPrefix+'-program'+n+'">'+pointsProgramOptionsHtml(block.program)+'</select>'+
+      inp(idPrefix+'-amount'+n,'number',block.amount||'','Points/miles used')+
+      inp(idPrefix+'-cost'+n,'number',block.cost||'','Cost $')+
+    '</div>'+
+  '</div>';
+}
+function pointsRedemptionBlocksHtml(idPrefix, blocks){
+  blocks = blocks || [];
+  var html = '';
+  for(var i=1;i<=3;i++){ html += pointsRedemptionRowHtml(idPrefix, i, blocks[i-1]); }
+  return html;
+}
+function readPointsRedemptions(idPrefix){
+  var out = [];
+  for(var i=1;i<=3;i++){
+    var program = gv(idPrefix+'-program'+i);
+    var amount = gn(idPrefix+'-amount'+i);
+    var cost = gn(idPrefix+'-cost'+i);
+    if(program || amount || cost) out.push({program:program, amount:amount, cost:cost});
+  }
+  return out;
+}
+function bookedTripDetailsHtml(bd){
+  bd = bd || {};
+  var air = bd.airline||{}, hot = bd.hotel||{}, cru = bd.cruise||{}, car = bd.carRental||{},
+      tou = bd.tours||{}, tp = bd.themePark||{}, tra = bd.train||{};
+  var cruiseCabinTypes = getQuoteConfig(cru.cruiseLine).cabinTypes;
+  return ''+
+    '<div class="modal-section-title">Booked Trip Details</div>'+
+    '<div class="modal-section-title">Airline</div>'+
+    fld('Confirmation Number',inp('tb-air-conf','text',air.confirmationNumber,'e.g. ABC123'))+
+    fld('Airline',sel('tb-air-airline',AIRLINES,air.airline))+
+    fld('Class of Service',sel('tb-air-class',CLASSES,air.classOfService))+
+    fld('Non-Stop Flights Only',sel('tb-air-nonstop',['Yes','No'],air.nonStop))+
+    fld('Origin',inp('tb-air-origin','text',air.origin,'e.g. JFK'))+
+    fld('Destination',inp('tb-air-dest','text',air.destination,'e.g. Tokyo, Japan'))+
+    fld('Depart Date',inp('tb-air-depart','date',air.departDate))+
+    fld('Return Date',inp('tb-air-return','date',air.returnDate))+
+    pointsRedemptionBlocksHtml('tb-air',air.pts)+
+    '<div class="modal-section-title">Hotel</div>'+
+    fld('Confirmation Number',inp('tb-hotel-conf','text',hot.confirmationNumber,'e.g. H-98765'))+
+    fld('Hotel Brand',sel('tb-hotel-brand',HOTELS,hot.hotelBrand))+
+    fld('Location',inp('tb-hotel-location','text',hot.location,'e.g. Miami, FL'))+
+    fld('Check-in Date',inp('tb-hotel-checkin','date',hot.checkInDate))+
+    fld('Nights',inp('tb-hotel-nights','number',hot.nights||0))+
+    fld('Room Type',sel('tb-hotel-roomtype',ROOM_TYPES,hot.roomType))+
+    fld('People Per Room',inp('tb-hotel-pperroom','number',hot.peoplePerRoom||''))+
+    fld('Number of Rooms',inp('tb-hotel-numrooms','number',hot.numberOfRooms||''))+
+    pointsRedemptionBlocksHtml('tb-hotel',hot.pts)+
+    '<div class="modal-section-title">Cruise</div>'+
+    fld('Confirmation Number',inp('tb-cruise-conf','text',cru.confirmationNumber,'e.g. C-445566'))+
+    fld('Cruise Line',sel('tb-cruise-line',CRUISE_LINES,cru.cruiseLine))+
+    fld('Ship Name','<select id="tb-cruise-ship">'+shipOptionsHtml(cru.cruiseLine,cru.shipName)+'</select>')+
+    fld('Sailing Date',inp('tb-cruise-sailing','date',cru.sailingDate))+
+    fld('Nights',inp('tb-cruise-nights','number',cru.nights||''))+
+    fld('Departure Port',inp('tb-cruise-port','text',cru.departurePort,'e.g. Fort Lauderdale, FL'))+
+    fld('Cabin Type','<select id="tb-cruise-cabin">'+selOpts(cruiseCabinTypes,cru.cabinType)+'</select>')+
+    fld('People In Cabin',inp('tb-cruise-people','number',cru.peopleInCabin||''))+
+    fld('Loyalty Number',inp('tb-cruise-loyalty','text',cru.loyaltyNumber))+
+    '<div class="modal-section-title">Car Rental</div>'+
+    fld('Confirmation Number',inp('tb-car-conf','text',car.confirmationNumber,'e.g. CR-778899'))+
+    fld('Company',sel('tb-car-company',CAR_RENTALS,car.company))+
+    fld('Car Size',sel('tb-car-size',CAR_SIZES,car.carSize))+
+    fld('Pickup Location',inp('tb-car-pickuploc','text',car.pickupLocation,'e.g. Miami Airport (MIA)'))+
+    fld('Dropoff Location',inp('tb-car-dropoffloc','text',car.dropoffLocation,'e.g. Miami Airport (MIA)'))+
+    fld('Pickup Date',inp('tb-car-pickupdate','date',car.pickupDate))+
+    fld('Dropoff Date',inp('tb-car-dropoffdate','date',car.dropoffDate))+
+    fld('Pickup Time',inp('tb-car-pickuptime','time',car.pickupTime))+
+    fld('Dropoff Time',inp('tb-car-dropofftime','time',car.dropoffTime))+
+    '<div class="modal-section-title">Tours</div>'+
+    fld('Confirmation Number',inp('tb-tours-conf','text',tou.confirmationNumber,'e.g. T-112233'))+
+    fld('Tour Vendor',inp('tb-tours-vendor','text',tou.vendor,'e.g. Tauck'))+
+    fld('Description','<textarea id="tb-tours-desc">'+(tou.description||'')+'</textarea>',true)+
+    '<div class="modal-section-title">Theme Park</div>'+
+    fld('Confirmation Number',inp('tb-tp-conf','text',tp.confirmationNumber,'e.g. TP-334455'))+
+    fld('Park',sel('tb-tp-park',THEME_PARKS,tp.park))+
+    fld('Ticket Type',inp('tb-tp-ticket','text',tp.ticketType,'e.g. Park Hopper'))+
+    '<div class="modal-section-title">Train</div>'+
+    fld('Confirmation Number',inp('tb-train-conf','text',tra.confirmationNumber,'e.g. AMTK-556677'))+
+    fld('Departure City',inp('tb-train-depcity','text',tra.departureCity,'e.g. New York, NY'))+
+    fld('Arrival City',inp('tb-train-arrcity','text',tra.arrivalCity,'e.g. Washington, DC'))+
+    fld('Departure Date',inp('tb-train-depdate','date',tra.departureDate))+
+    fld('Return Date',inp('tb-train-retdate','date',tra.returnDate))+
+    fld('Class of Service',sel('tb-train-class',TRAIN_CLASSES,tra.classOfService));
+}
+function bindBookedTripDetailsListeners(){
+  var cruiseLineSel = document.getElementById('tb-cruise-line');
+  if(cruiseLineSel){
+    cruiseLineSel.addEventListener('change', function(){
+      document.getElementById('tb-cruise-ship').innerHTML = shipOptionsHtml(this.value,'');
+      document.getElementById('tb-cruise-cabin').innerHTML = selOpts(getQuoteConfig(this.value).cabinTypes,'');
+    });
+  }
+}
+function readBookedTripDetails(){
+  return {
+    airline: {
+      confirmationNumber: gv('tb-air-conf'), airline: gv('tb-air-airline'), classOfService: gv('tb-air-class'),
+      nonStop: gv('tb-air-nonstop'), origin: gv('tb-air-origin'), destination: gv('tb-air-dest'),
+      departDate: gv('tb-air-depart'), returnDate: gv('tb-air-return'), pts: readPointsRedemptions('tb-air')
+    },
+    hotel: {
+      confirmationNumber: gv('tb-hotel-conf'), hotelBrand: gv('tb-hotel-brand'), location: gv('tb-hotel-location'),
+      checkInDate: gv('tb-hotel-checkin'), nights: gn('tb-hotel-nights'), roomType: gv('tb-hotel-roomtype'),
+      peoplePerRoom: gn('tb-hotel-pperroom'), numberOfRooms: gn('tb-hotel-numrooms'), pts: readPointsRedemptions('tb-hotel')
+    },
+    cruise: {
+      confirmationNumber: gv('tb-cruise-conf'), cruiseLine: gv('tb-cruise-line'), shipName: gv('tb-cruise-ship'),
+      sailingDate: gv('tb-cruise-sailing'), nights: gn('tb-cruise-nights'), departurePort: gv('tb-cruise-port'),
+      cabinType: gv('tb-cruise-cabin'), peopleInCabin: gn('tb-cruise-people'), loyaltyNumber: gv('tb-cruise-loyalty')
+    },
+    carRental: {
+      confirmationNumber: gv('tb-car-conf'), company: gv('tb-car-company'), carSize: gv('tb-car-size'),
+      pickupLocation: gv('tb-car-pickuploc'), dropoffLocation: gv('tb-car-dropoffloc'),
+      pickupDate: gv('tb-car-pickupdate'), dropoffDate: gv('tb-car-dropoffdate'),
+      pickupTime: gv('tb-car-pickuptime'), dropoffTime: gv('tb-car-dropofftime')
+    },
+    tours: { confirmationNumber: gv('tb-tours-conf'), vendor: gv('tb-tours-vendor'), description: gv('tb-tours-desc') },
+    themePark: { confirmationNumber: gv('tb-tp-conf'), park: gv('tb-tp-park'), ticketType: gv('tb-tp-ticket') },
+    train: {
+      confirmationNumber: gv('tb-train-conf'), departureCity: gv('tb-train-depcity'), arrivalCity: gv('tb-train-arrcity'),
+      departureDate: gv('tb-train-depdate'), returnDate: gv('tb-train-retdate'), classOfService: gv('tb-train-class')
+    }
+  };
+}
 function openTripForm(id){
   const d=id?(db.trips.find(function(t){return t.id===id;})||{}):{};
   const initCid=d.clientId||selCid||'';
@@ -6209,6 +6360,7 @@ function openTripForm(id){
       fld('Product',inp('tpr','text',d.product,'e.g. Airline Booking:Roundtrip Intl Business'))+
       '<div id="trip-balance-sections">'+tripBalanceSectionsHtml(initCid)+'</div>'+
       fld('Notes','<textarea id="tno">'+(d.notes||'')+'</textarea>',true)+
+      bookedTripDetailsHtml(d.booked)+
     '</div>'+
     '<div class="form-actions"><button class="cancel-btn" id="modal-cancel">Cancel</button><button class="save-btn" id="modal-save-trip" data-id="'+(id||'')+'">Save Trip</button></div>';
   $('modal').classList.add('modal-wide');
@@ -6224,6 +6376,7 @@ function openTripForm(id){
     document.getElementById('tship').innerHTML = shipOptionsHtml(this.value,'');
   });
   bindTripBalanceListeners();
+  bindBookedTripDetailsListeners();
 }
 
 function closeModal(){$('overlay').classList.remove('open');$('modal').classList.remove('modal-wide');}
@@ -6276,7 +6429,7 @@ function saveTrip(id){
   // and invoice-dedup logic all key off this) — clientIds is purely additional
   // travelers linked to the same trip so it also shows on their own records.
   const additionalClientIds=Array.from(document.querySelectorAll('.trip-client-cb:checked')).map(function(cb){return cb.value;}).filter(function(cid){return cid!==clientId;});
-  const data={clientId:clientId,clientName:client?client.name:'',clientIds:additionalClientIds,supplierId:supplierId,supplierName:supplier?supplier.name:'',origin:gv('tor'),destination:dest,departDate:gv('tdd'),returnDate:gv('trd'),status:gv('tst')||'Planning',type:gv('tty')||'Leisure',airline:gv('tai'),flightClass:gv('tcl')||'Economy',hotel:gv('tho'),hotelNights:gn('thn'),cruiseLine:gv('tcr'),shipName:gv('tship'),pointsUsed:gn('tpu'),cashPaid:gn('tcp'),totalValue:gn('tva'),bookingRef:gv('tbr'),product:gv('tpr'),notes:gv('tno')};
+  const data={clientId:clientId,clientName:client?client.name:'',clientIds:additionalClientIds,supplierId:supplierId,supplierName:supplier?supplier.name:'',origin:gv('tor'),destination:dest,departDate:gv('tdd'),returnDate:gv('trd'),status:gv('tst')||'Planning',type:gv('tty')||'Leisure',airline:gv('tai'),flightClass:gv('tcl')||'Economy',hotel:gv('tho'),hotelNights:gn('thn'),cruiseLine:gv('tcr'),shipName:gv('tship'),pointsUsed:gn('tpu'),cashPaid:gn('tcp'),totalValue:gn('tva'),bookingRef:gv('tbr'),product:gv('tpr'),notes:gv('tno'),booked:readBookedTripDetails()};
   if(client){
     client.mileageBalances=readBalanceGrid('mb',AIRLINES,AIRLINE_STATUS);
     client.hotelBalances=readBalanceGrid('hb',HOTELS,HOTEL_STATUS);
