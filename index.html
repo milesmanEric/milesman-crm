@@ -2986,6 +2986,9 @@ function processTripFormRow(getVal, counters){
 
   var destination = getVal('Destination');
   var airline = resolveOther(getVal('Airline'), getVal('Airline Other'));
+  var cruiseLine = resolveOther(getVal('Cruise Line'), getVal('Cruise Line Other'));
+  var hotelBrand = resolveOther(getVal('Hotel Brand'), getVal('Hotel Brand Other'));
+  var carRentalCompany = resolveOther(getVal('Car Rental Company'), getVal('Car Rental Company Other'));
   var tripLines=[];
   function addLine(label,val){ if(val) tripLines.push(label+': '+val); }
   var travelNeeded = ['Airline','Hotel','Tours','Cruise','Car Rental','Theme Park Tickets'].filter(function(t){return getVal('Need - '+t);}).join(', ');
@@ -3008,7 +3011,7 @@ function processTripFormRow(getVal, counters){
   addLine('Depart Date', getVal('Depart Date'));
   addLine('Return Date', getVal('Return Date'));
   addLine('Trip Type', getVal('Trip Type'));
-  addLine('Cruise Line', resolveOther(getVal('Cruise Line'), getVal('Cruise Line Other')));
+  addLine('Cruise Line', cruiseLine);
   addLine('Ship Name', getVal('Ship Name'));
   addLine('Cruise Nights', getVal('Cruise Nights'));
   addLine('Sailing Date', getVal('Sailing Date'));
@@ -3019,12 +3022,12 @@ function processTripFormRow(getVal, counters){
   addLine('Cruisetour', getVal('Cruisetour'));
   addLine('Class of Service', getVal('Class of Service'));
   addLine('Hotel Location', getVal('Hotel Location'));
-  addLine('Hotel Brand', resolveOther(getVal('Hotel Brand'), getVal('Hotel Brand Other')));
+  addLine('Hotel Brand', hotelBrand);
   addLine('Hotel Nights', getVal('Hotel Nights'));
   addLine('Room Type', getVal('Room Type'));
   addLine('People Per Room', getVal('People Per Room'));
   addLine('Number of Rooms', getVal('Number of Rooms'));
-  addLine('Car Rental Company', resolveOther(getVal('Car Rental Company'), getVal('Car Rental Company Other')));
+  addLine('Car Rental Company', carRentalCompany);
   addLine('Car Size', getVal('Car Size'));
   addLine('Pickup Location', getVal('Pickup Location'));
   addLine('Dropoff Location', getVal('Dropoff Location'));
@@ -3096,6 +3099,31 @@ function processTripFormRow(getVal, counters){
     tripLines.push('Traveling with: '+tClient.name+' (client '+tClient.id+')');
   }
 
+  // Match the requested Airline/Cruise Line/Hotel Brand/Car Rental Company
+  // against existing Supplier records by exact name, same as the revenue
+  // importer's supplier matching (extractRevenueRow) — never creates a new
+  // vendor, only links the client onto one that's already there. A trip
+  // only has one supplier slot, so the first match wins in that priority
+  // order; every match still gets the client linked onto it regardless.
+  function matchVendorByName(n){
+    if(!n) return null;
+    return db.vendors.find(function(v){return (v.name||'').toLowerCase().trim()===n.toLowerCase().trim();}) || null;
+  }
+  function linkClientToVendor(vendor){
+    if(!vendor) return;
+    if(!vendor.clientIds) vendor.clientIds=[];
+    if(!vendor.clientIds.includes(client.id)){
+      vendor.clientIds.push(client.id);
+      debugLog('Trip form: linked '+client.name+' to existing supplier '+vendor.name);
+    }
+  }
+  var airlineVendor = matchVendorByName(airline);
+  var cruiseVendor = matchVendorByName(cruiseLine);
+  var hotelVendor = matchVendorByName(hotelBrand);
+  var carRentalVendor = matchVendorByName(carRentalCompany);
+  [airlineVendor, cruiseVendor, hotelVendor, carRentalVendor].forEach(linkClientToVendor);
+  var primarySupplier = airlineVendor || cruiseVendor || hotelVendor || carRentalVendor || null;
+
   var newTripId = null;
   if(destination || tripLines.length){
     newTripId = newId('T', db.trips);
@@ -3104,11 +3132,11 @@ function processTripFormRow(getVal, counters){
       origin:getVal('Origin'), destination:destination,
       departDate:getVal('Depart Date'), returnDate:getVal('Return Date'),
       status:'Planning', type:getVal('Trip Type')||'Leisure',
-      airline:airline, flightClass:getVal('Class of Service'), hotel:'',
+      airline:airline, flightClass:getVal('Class of Service'), hotel:hotelBrand,
       hotelNights:parseInt(getVal('Hotel Nights'),10)||0,
-      cruiseLine:resolveOther(getVal('Cruise Line'), getVal('Cruise Line Other')), shipName:getVal('Ship Name'),
+      cruiseLine:cruiseLine, shipName:getVal('Ship Name'),
       pointsUsed:0, cashPaid:0, totalValue:0, bookingRef:'', product:'',
-      supplierId:'', supplierName:'',
+      supplierId:primarySupplier?primarySupplier.id:'', supplierName:primarySupplier?primarySupplier.name:'',
       notes: tripLines.join('\n')
     });
     counters.tripsCreated++;
