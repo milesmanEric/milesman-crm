@@ -3008,7 +3008,7 @@ function processTripFormRow(getVal, counters){
   addLine('Depart Date', getVal('Depart Date'));
   addLine('Return Date', getVal('Return Date'));
   addLine('Trip Type', getVal('Trip Type'));
-  addLine('Cruise Line', getVal('Cruise Line'));
+  addLine('Cruise Line', resolveOther(getVal('Cruise Line'), getVal('Cruise Line Other')));
   addLine('Ship Name', getVal('Ship Name'));
   addLine('Cruise Nights', getVal('Cruise Nights'));
   addLine('Sailing Date', getVal('Sailing Date'));
@@ -3024,7 +3024,7 @@ function processTripFormRow(getVal, counters){
   addLine('Room Type', getVal('Room Type'));
   addLine('People Per Room', getVal('People Per Room'));
   addLine('Number of Rooms', getVal('Number of Rooms'));
-  addLine('Car Rental Company', getVal('Car Rental Company'));
+  addLine('Car Rental Company', resolveOther(getVal('Car Rental Company'), getVal('Car Rental Company Other')));
   addLine('Car Size', getVal('Car Size'));
   addLine('Pickup Location', getVal('Pickup Location'));
   addLine('Dropoff Location', getVal('Dropoff Location'));
@@ -3106,7 +3106,7 @@ function processTripFormRow(getVal, counters){
       status:'Planning', type:getVal('Trip Type')||'Leisure',
       airline:airline, flightClass:getVal('Class of Service'), hotel:'',
       hotelNights:parseInt(getVal('Hotel Nights'),10)||0,
-      cruiseLine:getVal('Cruise Line'), shipName:getVal('Ship Name'),
+      cruiseLine:resolveOther(getVal('Cruise Line'), getVal('Cruise Line Other')), shipName:getVal('Ship Name'),
       pointsUsed:0, cashPaid:0, totalValue:0, bookingRef:'', product:'',
       supplierId:'', supplierName:'',
       notes: tripLines.join('\n')
@@ -3187,9 +3187,9 @@ function buildTripFormFieldLabels(){
   addBalanceLabels('Credit Card', CREDIT_CARDS, false);
   labels.push('Need - Airline','Need - Hotel','Need - Tours','Need - Cruise','Need - Car Rental','Need - Theme Park Tickets',
     'Airline','Airline Other','Origin','Destination','Trip Direction','Depart Date','Return Date','Class of Service','Trip Type',
-    'Cruise Line','Ship Name','Cruise Nights','Sailing Date','Departure Port','Cabin Type','People In Cabin','Cruise Loyalty Number','Cruisetour',
+    'Cruise Line','Cruise Line Other','Ship Name','Cruise Nights','Sailing Date','Departure Port','Cabin Type','People In Cabin','Cruise Loyalty Number','Cruisetour',
     'Hotel Location','Hotel Brand','Hotel Brand Other','Hotel Nights','Room Type','People Per Room','Number of Rooms',
-    'Car Rental Company','Car Size','Pickup Location','Dropoff Location','Pickup Date','Dropoff Date','Pickup Time','Dropoff Time',
+    'Car Rental Company','Car Rental Company Other','Car Size','Pickup Location','Dropoff Location','Pickup Date','Dropoff Date','Pickup Time','Dropoff Time',
     'Theme Park','Theme Park Ticket Type',
     'Payment Preference','Tours Description','Notes','Trip Insurance');
   for(var ci=1; ci<=20; ci++){ labels.push('City '+ci, 'City '+ci+' Departure Date'); }
