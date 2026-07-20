@@ -3761,8 +3761,193 @@ async function checkForNewContactFormEmails(silent){
     debugLog('Contact form email check failed: '+e.message);
   }
 }
-setInterval(function(){ checkForNewTripFormEmails(true); checkForNewContactFormEmails(true); }, 5*60*1000);
-setTimeout(function(){ checkForNewTripFormEmails(true); checkForNewContactFormEmails(true); }, 5000);
+// ── Auto-import revenue report emails ───────────────────────────────────
+// A QuickBooks "Sales by Customer Detail" report gets emailed on a schedule
+// as a password-protected PDF, with the same columns (Date, Num, Memo, Name,
+// Ship Date, Item, Class, Qty, Sales Price, Amount) as the file "Clean &
+// Import Revenue File" already reads from CSV/XLSX. A PDF has no real grid
+// though, so each row's cells are rebuilt from pdf.js text-item x/y
+// positions: the column header line (found by matching label text) gives
+// every column's horizontal center, then each other text item on a line is
+// bucketed into whichever column center it sits closest to — this handles
+// header labels being visually centered over columns whose data is left- or
+// right-aligned. A line only counts as a transaction row if its Date-column
+// cell parses as a date, which quietly excludes customer group headers,
+// "Total <name>" subtotals, and the grand "TOTAL" line (none of those have
+// a real date in that position). The reconstructed table is then fed
+// through the exact same cleanImportTable + extractRevenueRow +
+// startRevenueImport pipeline as a manual CSV import, so client/supplier
+// matching and duplicate detection behave identically either way.
+const REVENUE_REPORT_EMAIL_SUBJECT = 'Report(s) from Miles Man';
+const REVENUE_REPORT_PDF_PASSWORD = '1Rosted!';
+const REVENUE_PDF_COLUMNS = ['Date','Num','Memo','Name','Ship Date','Item','Class','Qty','Sales Price','Amount'];
+
+function groupPdfItemsIntoRows(items){
+  var rows = [];
+  items.forEach(function(it){
+    if(!it.str || !it.str.trim()) return;
+    var row = rows.find(function(r){ return Math.abs(r.y-it.y)<2; });
+    if(!row){ row = {y:it.y, items:[]}; rows.push(row); }
+    row.items.push(it);
+  });
+  rows.sort(function(a,b){ return b.y-a.y; }); // PDF y grows upward — top of page first
+  return rows;
+}
+function findRevenuePdfHeaderRow(row){
+  var centers = {};
+  row.items.forEach(function(it){
+    var label = REVENUE_PDF_COLUMNS.find(function(h){ return h.toLowerCase()===it.str.trim().toLowerCase(); });
+    if(label) centers[label] = it.x + it.w/2;
+  });
+  var required = ['Date','Num','Memo','Name','Amount'];
+  var hasAll = required.every(function(h){ return centers[h]!==undefined; });
+  return hasAll ? centers : null;
+}
+async function extractRevenueTableFromPdf(arrayBuffer, password){
+  var pdfjsLib = await loadPdfJs();
+  var pdf = await pdfjsLib.getDocument({data:arrayBuffer, password:password}).promise;
+  var colCenters = null;
+  var dataRows = [];
+  for(var p=1; p<=pdf.numPages; p++){
+    var page = await pdf.getPage(p);
+    var content = await page.getTextContent();
+    var items = content.items.map(function(it){
+      var tr = it.transform;
+      return {str:it.str, x:tr[4], y:tr[5], w:it.width};
+    });
+    groupPdfItemsIntoRows(items).forEach(function(row){
+      var hdr = findRevenuePdfHeaderRow(row);
+      if(hdr){ colCenters = hdr; return; }
+      if(!colCenters) return; // report title/date-range lines above the first header
+      var cells = {};
+      row.items.forEach(function(it){
+        var center = it.x + it.w/2;
+        var bestCol = null, bestDist = Infinity;
+        REVENUE_PDF_COLUMNS.forEach(function(h){
+          if(colCenters[h]===undefined) return;
+          var dist = Math.abs(colCenters[h]-center);
+          if(dist<bestDist){ bestDist=dist; bestCol=h; }
+        });
+        if(bestCol) cells[bestCol] = (cells[bestCol]?cells[bestCol]+' ':'') + it.str.trim();
+      });
+      if(/^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test((cells['Date']||'').trim())){
+        dataRows.push(REVENUE_PDF_COLUMNS.map(function(h){ return cells[h]||''; }));
+      }
+    });
+  }
+  if(!colCenters) throw new Error('Could not find the report\'s column headers (Num/Memo/Name/Amount) in the PDF — is this a "Sales by Customer Detail" report?');
+  return {header:REVENUE_PDF_COLUMNS, rows:dataRows};
+}
+// Same cleaning + revenue-row-extraction + import pipeline as
+// cleanAndImportRevenue (the manual file picker), minus the confirm()
+// dialog — this runs unattended off the 5-minute email poll, so nothing
+// here can wait on a click. Client-matching gaps still surface via the
+// normal import-match modal (inside startRevenueImport), which is a page
+// overlay rather than a blocking dialog, so it won't stall the poll timer.
+async function cleanAndImportRevenuePdfEmail(arrayBuffer, filename){
+  var table = await extractRevenueTableFromPdf(arrayBuffer, REVENUE_REPORT_PDF_PASSWORD);
+  var result;
+  try{
+    result = cleanImportTable([table.header].concat(table.rows));
+  }catch(err){
+    debugLog('Revenue report email: '+err.message);
+    toast('Revenue report email: '+err.message,'err');
+    return;
+  }
+  var s = result.stats;
+  debugLog('Revenue report email "'+filename+'": removed '+s.removedNoColE+' row(s) with no Ship Date, '+
+    s.removedCols+' empty column(s), '+s.removedEmptyClass+' row(s) with no Class and no Name, and '+
+    s.removedNameEqClass+' row(s) where Name matched Class. '+result.rows.length+' row(s) remain.');
+
+  try{
+    var csv = rowsToCSV(result.header, result.rows);
+    var outName = filename.replace(/\.pdf$/i,'')+'-'+today()+'-cleaned.csv';
+    var folderName = await saveCsvToChosenFolder(outName, csv);
+    debugLog('Revenue report email: also saved cleaned CSV to "'+folderName+'"');
+  }catch(saveErr){
+    debugLog('Revenue report email: skipped saving cleaned CSV — '+saveErr.message);
+  }
+
+  var hdrsLower = result.header.map(function(h){ return (h||'').toString().toLowerCase().trim(); });
+  function getCol(row, names, fallbackIdx){
+    for(var i=0;i<names.length;i++){
+      var idx=hdrsLower.indexOf(names[i]);
+      if(idx>=0) return (row[idx]||'').toString().trim();
+    }
+    return fallbackIdx!==undefined ? (row[fallbackIdx]||'').toString().trim() : '';
+  }
+  var revenueRows=[];
+  result.rows.forEach(function(cols){
+    var row=extractRevenueRow(getCol, cols);
+    if(row) revenueRows.push(row);
+  });
+  if(!revenueRows.length){
+    debugLog('Revenue report email: no valid revenue rows found in "'+filename+'"');
+    return;
+  }
+  startRevenueImport(revenueRows);
+}
+async function checkForNewRevenueReportEmails(silent){
+  try{
+    var token = await getValidMsToken(false);
+    if(!token){
+      if(!silent) toast('Connect Outlook first (Debug Panel > Sync Outlook Emails)','err');
+      return;
+    }
+    var lastCheck = localStorage.getItem('mm_last_revenuereport_check') || (function(){
+      var d = new Date(); d.setDate(d.getDate()-1); return d.toISOString();
+    })();
+    var processedIds = JSON.parse(localStorage.getItem('mm_revenuereport_processed_ids')||'[]');
+    var checkedAt = new Date().toISOString();
+
+    var url = 'https://graph.microsoft.com/v1.0/me/messages'+
+      '?$select=id,subject,receivedDateTime,hasAttachments'+
+      '&$orderby=receivedDateTime desc&$top=50'+
+      '&$filter=receivedDateTime+ge+'+encodeURIComponent(lastCheck);
+    var r = await fetch(url, {headers:{Authorization:'Bearer '+token}});
+    var d = await r.json();
+    if(!r.ok){
+      debugLog('Revenue report email check error: '+(d.error&&d.error.message||r.status));
+      return;
+    }
+    var messages = (d.value||[]).filter(function(m){
+      return m.subject===REVENUE_REPORT_EMAIL_SUBJECT && m.hasAttachments && processedIds.indexOf(m.id)===-1;
+    });
+    debugLog('Revenue report email check: '+messages.length+' new report email(s)');
+    localStorage.setItem('mm_last_revenuereport_check', checkedAt);
+    if(!messages.length) return;
+
+    for(var mi=0; mi<messages.length; mi++){
+      var msg = messages[mi];
+      processedIds.push(msg.id);
+      try{
+        var attUrl = 'https://graph.microsoft.com/v1.0/me/messages/'+msg.id+'/attachments';
+        var ar = await fetch(attUrl, {headers:{Authorization:'Bearer '+token}});
+        var ad = await ar.json();
+        if(!ar.ok){ debugLog('Revenue report email: attachment fetch error - '+(ad.error&&ad.error.message||ar.status)); continue; }
+        var pdfAtt = (ad.value||[]).find(function(a){
+          return a['@odata.type']==='#microsoft.graph.fileAttachment' &&
+            ((a.contentType||'').toLowerCase()==='application/pdf' || /\.pdf$/i.test(a.name||''));
+        });
+        if(!pdfAtt){ debugLog('Revenue report email: no PDF attachment found on "'+msg.subject+'"'); continue; }
+        var bin = atob(pdfAtt.contentBytes);
+        var bytes = new Uint8Array(bin.length);
+        for(var bi=0; bi<bin.length; bi++) bytes[bi]=bin.charCodeAt(bi);
+        await cleanAndImportRevenuePdfEmail(bytes.buffer, pdfAtt.name||'revenue-report.pdf');
+      }catch(attErr){
+        debugLog('Revenue report email: import failed for "'+msg.subject+'" — '+attErr.message);
+        console.error(attErr);
+      }
+    }
+    if(processedIds.length > 500) processedIds = processedIds.slice(processedIds.length-500);
+    localStorage.setItem('mm_revenuereport_processed_ids', JSON.stringify(processedIds));
+  }catch(e){
+    debugLog('Revenue report email check failed: '+e.message);
+  }
+}
+
+setInterval(function(){ checkForNewTripFormEmails(true); checkForNewContactFormEmails(true); checkForNewRevenueReportEmails(true); }, 5*60*1000);
+setTimeout(function(){ checkForNewTripFormEmails(true); checkForNewContactFormEmails(true); checkForNewRevenueReportEmails(true); }, 5000);
 
 // ── Book a Trip Form PDF import ──────────────────────────────────────────
 // Imports "Book a Trip" Google Form submissions exported as PDFs (the Google
