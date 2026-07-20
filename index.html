@@ -7064,6 +7064,16 @@ function renderPlanner(){
 
 function openTaskForm(id){
   var d = id ? (db.planner.find(function(t){return t.id===id;})||{}) : {};
+  // Existing tasks linked to a client before this task ever had its own
+  // Email field (or ones the client dropdown was never re-touched on)
+  // otherwise show up with a blank Email despite being linked — fall back
+  // to the linked client's email so the field reflects reality on open,
+  // not just after re-selecting the client.
+  var displayEmail = d.email;
+  if(!displayEmail && d.clientId){
+    var linkedClient = db.clients.find(function(c){return c.id===d.clientId;});
+    if(linkedClient && linkedClient.email) displayEmail = linkedClient.email;
+  }
   var sortedClients = [...db.clients].sort(function(a,b){return (a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase());});
   var sortedVendors = [...db.vendors].sort(function(a,b){return (a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase());});
   var sortedTrips = [...db.trips].sort(function(a,b){return (b.departDate||'').localeCompare(a.departDate||'');});
@@ -7080,8 +7090,8 @@ function openTaskForm(id){
     '<div class="modal-hdr"><div class="modal-title">'+(id?'Edit Task':'Add Task')+'</div><button class="close-btn" id="modal-close">&#x2715;</button></div>'+
     '<div class="fg">'+
       fld('Task Title', inp('tk-title','text',d.title,'e.g. Follow up on quote'), true)+
-      fld('Email','<div style="display:flex;align-items:center;gap:8px">'+inp('tk-email','email',d.email)+
-        '<span id="tk-email-link">'+(d.email?('<a href="mailto:'+mailtoAddr(d.email)+'" title="Email in Outlook" style="color:#2563eb;text-decoration:none;font-size:16px;flex-shrink:0">&#9993;&#65039;</a>'):'')+'</span>'+
+      fld('Email','<div style="display:flex;align-items:center;gap:8px">'+inp('tk-email','email',displayEmail)+
+        '<span id="tk-email-link">'+(displayEmail?('<a href="mailto:'+mailtoAddr(displayEmail)+'" title="Email in Outlook" style="color:#2563eb;text-decoration:none;font-size:16px;flex-shrink:0">&#9993;&#65039;</a>'):'')+'</span>'+
       '</div>')+
       fld('Due Date', inp('tk-due','date',d.dueDate))+
       fld('Time', inp('tk-time','time',d.dueTime))+
