@@ -38,7 +38,9 @@ Other: `notesLog` (array of `{ts, text, noteType, source?, msgId?, mcKey?}` — 
 ### `db.trips` (`T001`, `T002`, ...)
 `clientId`/`clientName` = primary/billing contact. `clientIds` = array of additional linked client IDs (companions on a shared trip — a trip shows up on every linked client's record, not just the primary contact's).
 
-`origin`, `destination`, `departDate`, `returnDate`, `status` (Planning / Confirmed / Completed / Cancelled), `type` (Leisure/Business/Honeymoon/Family/Adventure), `airline`, `flightClass`, `hotel`, `hotelNights`, `cruiseLine`, `shipName`, `pointsUsed`, `cashPaid`, `totalValue`, `bookingRef`, `product`, `supplierId`/`supplierName`, `notes` (freeform — most intake-form fields that don't have a dedicated column end up compiled here as `Label: value` lines).
+`origin`, `destination`, `departDate`, `returnDate`, `status` (Planning / Confirmed / Completed / Cancelled), `type` (Leisure/Business/Honeymoon/Family/Adventure), `airline`, `flightClass`, `hotel`, `hotelNights`, `cruiseLine`, `shipName`, `pointsUsed`, `cashPaid`, `totalValue`, `bookingRef`, `invoiceDate`, `product`, `supplierId`/`supplierName`, `notes` (freeform — most intake-form fields that don't have a dedicated column end up compiled here as `Label: value` lines).
+
+`invoiceDate` is a separate concept from `departDate` — `departDate` prioritizes the *travel* date (Ship Date on a revenue import) when one exists, while `invoiceDate` is the actual transaction/booking date from the source file's own "Date" column. The two can legitimately differ (booked one month, travel happens the next), which is why the "By Invoice #" report (§3) lets you choose which one to filter by. Only the revenue importer populates it automatically; it's also editable by hand on the Add/Edit Trip form for any trip.
 
 These top-level fields are the at-a-glance summary used by the Trips list, Calendar, Dashboard, and CSV exports — they stay populated exactly as before and nothing else had to change when `booked` (below) was added.
 
@@ -92,7 +94,7 @@ Every stat tile at the top of a page (Dashboard, Clients, Trips, Suppliers, Plan
 ### Reports
 Two tabs:
 - **Activity Report** — filter `notesLog` entries across all clients by date range, note type, and client; export to CSV.
-- **By Invoice #** — filter trips by date range, supplier, and client; export to CSV. ("Invoice" here means a distinct trip/booking reference, used to avoid double-counting revenue across records that share a booking.)
+- **By Invoice #** — filter trips by date range, supplier, and client; export to CSV. ("Invoice" here means a distinct trip/booking reference, used to avoid double-counting revenue across records that share a booking.) The date range can filter by either **Travel Date** (`departDate`) or **Invoice Date** (`invoiceDate`) — pick whichever matches what you're trying to answer, since a trip's travel date and its transaction/booking date can fall in different periods. Both dates are shown as separate columns in the results and CSV export regardless of which one is being filtered.
 
 ### Calendar
 Month-grid view. Trips are painted across every day from `departDate` to `returnDate` (capped at 60 days per trip to avoid runaway rendering on bad data).

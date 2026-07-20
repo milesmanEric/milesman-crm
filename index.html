@@ -3006,10 +3006,20 @@ function finalizeImport(){
         try{const d=new Date(row.date);if(!isNaN(d))tripDate=d.toISOString().slice(0,10);}catch(e){}
       }
     }
+    // Separate from tripDate/departDate on purpose — departDate prioritizes
+    // Ship Date (the travel date) when present, but the "By Invoice #"
+    // report also needs the actual transaction/booking date (the source
+    // file's own "Date" column) to filter by, since those two dates can
+    // legitimately fall in different reporting periods (e.g. booked in one
+    // month, travel happens the next).
+    let invoiceDate='';
+    if(row.date){
+      try{const d=new Date(row.date);if(!isNaN(d))invoiceDate=d.toISOString().slice(0,10);}catch(e){}
+    }
 
     db.trips.push({
       id:tripId,clientId:cid,clientName:client.name,
-      destination:dest,origin:'',departDate:tripDate,returnDate:tripDate,
+      destination:dest,origin:'',departDate:tripDate,returnDate:tripDate,invoiceDate:invoiceDate,
       status:'Completed',type:'Leisure',airline:'',flightClass:'',hotel:'',
       hotelNights:0,pointsUsed:0,cashPaid:row.amt,totalValue:row.amt,
       bookingRef:row.invoiceNum||'',notes:row.memo||'',product:row.product||'',
@@ -4043,6 +4053,10 @@ function renderReports(){
       '<div id="rpt-results"><div class="empty" style="padding:40px">Set filters above and click Run Report</div></div>')
     :
       ('<div class="report-filter">'+
+        '<div><label>Filter By</label><select id="rpt-inv-datetype">'+
+          '<option value="departDate">Travel Date</option>'+
+          '<option value="invoiceDate">Invoice Date</option>'+
+        '</select></div>'+
         '<div><label>From Date</label><input type="date" id="rpt-inv-from"/></div>'+
         '<div><label>To Date</label><input type="date" id="rpt-inv-to"/></div>'+
         '<div><label>Supplier</label><select id="rpt-inv-supplier"><option value="">All suppliers</option>'+
@@ -4100,13 +4114,22 @@ function getInvoiceReportData(){
   var toDate   = (document.getElementById('rpt-inv-to')||{}).value||'';
   var supplierId = (document.getElementById('rpt-inv-supplier')||{}).value||'';
   var clientId = (document.getElementById('rpt-inv-client')||{}).value||'';
+  // "Travel Date" (departDate) or "Invoice Date" (invoiceDate) — these can
+  // legitimately differ (booked in one period, travel happens in another),
+  // so the From/To range needs to be explicit about which one it's filtering.
+  // invoiceDate is only ever populated by the revenue importer (§4 of
+  // DOCUMENTATION.md); trips added by hand or from the Book a Trip form
+  // don't have one, so an empty invoiceDate sorts before any real fromDate
+  // and those trips are excluded when filtering by Invoice Date with a From
+  // Date set — not a bug, there's genuinely no invoice date recorded for them.
+  var dateField = (document.getElementById('rpt-inv-datetype')||{}).value||'departDate';
 
   // Group trips by invoice number
   var groups = {};
   db.trips.forEach(function(t){
     if(supplierId && t.supplierId !== supplierId) return;
     if(clientId && t.clientId !== clientId) return;
-    var tripDate = t.departDate||'';
+    var tripDate = t[dateField]||'';
     if(fromDate && tripDate < fromDate) return;
     if(toDate   && tripDate > toDate)   return;
     var key = t.invoiceNum || t.bookingRef || ('(no invoice) '+t.id);
@@ -4118,8 +4141,8 @@ function getInvoiceReportData(){
 
   var rows = Object.keys(groups).map(function(k){ return groups[k]; });
   rows.sort(function(a,b){
-    var ad = (a.trips[0]&&a.trips[0].departDate)||'';
-    var bd = (b.trips[0]&&b.trips[0].departDate)||'';
+    var ad = (a.trips[0]&&a.trips[0][dateField])||'';
+    var bd = (b.trips[0]&&b.trips[0][dateField])||'';
     return bd.localeCompare(ad);
   });
   return rows;
@@ -4146,17 +4169,18 @@ function runInvoiceReport(){
         '<td>'+(t.clientName||'')+'</td>'+
         '<td>'+(t.destination||'')+'</td>'+
         '<td style="white-space:nowrap">'+(t.departDate||'')+'</td>'+
+        '<td style="white-space:nowrap">'+(t.invoiceDate||'—')+'</td>'+
         '<td>'+(t.supplierName||'—')+'</td>'+
         '<td style="text-align:right">$'+Number(t.totalValue||0).toLocaleString()+'</td>'+
       '</tr>';
     });
-    rowsHtml += '<tr style="background:#f9fafb"><td colspan="5" style="text-align:right;font-weight:700;color:#374151;padding:6px 12px">Invoice '+g.invoiceNum+' Total:</td><td style="text-align:right;font-weight:700;color:#111">$'+Number(g.totalValue).toLocaleString()+'</td></tr>';
+    rowsHtml += '<tr style="background:#f9fafb"><td colspan="6" style="text-align:right;font-weight:700;color:#374151;padding:6px 12px">Invoice '+g.invoiceNum+' Total:</td><td style="text-align:right;font-weight:700;color:#111">$'+Number(g.totalValue).toLocaleString()+'</td></tr>';
   });
 
   container.innerHTML =
     '<div style="font-size:13px;color:#888;margin-bottom:10px">'+groups.length+' invoice'+(groups.length!==1?'s':'')+' · '+db.trips.length+' trip rows · Grand Total: <strong style="color:#111">$'+Number(grandTotal).toLocaleString()+'</strong></div>'+
     '<div class="tbl-wrap"><table class="report-table"><thead><tr>'+
-      '<th>Invoice #</th><th>Client</th><th>Destination</th><th>Date</th><th>Supplier</th><th style="text-align:right">Value</th>'+
+      '<th>Invoice #</th><th>Client</th><th>Destination</th><th>Travel Date</th><th>Invoice Date</th><th>Supplier</th><th style="text-align:right">Value</th>'+
     '</tr></thead><tbody>'+rowsHtml+'</tbody></table></div>';
 }
 
@@ -4164,13 +4188,13 @@ function exportInvoiceReport(){
   var groups = getInvoiceReportData();
   if(!groups.length){ toast('No data to export','err'); return; }
   var esc = function(v){ var s=String(v==null?'':v); return s.includes(',')||s.includes('"')||s.includes('\n')?'"'+s.replace(/"/g,'""')+'"':s; };
-  var headers = ['Invoice #','Client','Destination','Date','Supplier','Value'];
+  var headers = ['Invoice #','Client','Destination','Travel Date','Invoice Date','Supplier','Value'];
   var rows = [];
   groups.forEach(function(g){
     g.trips.forEach(function(t){
-      rows.push([g.invoiceNum, t.clientName, t.destination, t.departDate, t.supplierName||'', t.totalValue||0]);
+      rows.push([g.invoiceNum, t.clientName, t.destination, t.departDate, t.invoiceDate||'', t.supplierName||'', t.totalValue||0]);
     });
-    rows.push(['', '', '', '', 'Invoice Total', g.totalValue]);
+    rows.push(['', '', '', '', '', 'Invoice Total', g.totalValue]);
   });
   var csv = [headers].concat(rows).map(function(r){return r.map(esc).join(',');}).join('\n');
   var b = new Blob([csv],{type:'text/csv'});
@@ -6551,6 +6575,7 @@ function openTripForm(id){
       fld('Cruise Line',sel('tcr',CRUISE_LINES,d.cruiseLine))+fld('Ship Name','<select id="tship">'+shipOptionsHtml(d.cruiseLine,d.shipName)+'</select>')+
       fld('Points Used',inp('tpu','number',d.pointsUsed||0))+fld('Cash Paid ($)',inp('tcp','number',d.cashPaid||0))+
       fld('Total Value ($)',inp('tva','number',d.totalValue||0))+fld('Booking Reference',inp('tbr','text',d.bookingRef,'e.g. UA-44129LHR'))+
+      fld('Invoice Date',inp('tinv','date',d.invoiceDate))+
       fld('Product',inp('tpr','text',d.product,'e.g. Airline Booking:Roundtrip Intl Business'))+
       '<div id="trip-balance-sections">'+tripBalanceSectionsHtml(initCid)+'</div>'+
       fld('Notes','<textarea id="tno">'+(d.notes||'')+'</textarea>',true)+
@@ -6623,7 +6648,7 @@ function saveTrip(id){
   // and invoice-dedup logic all key off this) — clientIds is purely additional
   // travelers linked to the same trip so it also shows on their own records.
   const additionalClientIds=Array.from(document.querySelectorAll('.trip-client-cb:checked')).map(function(cb){return cb.value;}).filter(function(cid){return cid!==clientId;});
-  const data={clientId:clientId,clientName:client?client.name:'',clientIds:additionalClientIds,supplierId:supplierId,supplierName:supplier?supplier.name:'',origin:gv('tor'),destination:dest,departDate:gv('tdd'),returnDate:gv('trd'),status:gv('tst')||'Planning',type:gv('tty')||'Leisure',airline:gv('tai'),flightClass:gv('tcl')||'Economy',hotel:gv('tho'),hotelNights:gn('thn'),cruiseLine:gv('tcr'),shipName:gv('tship'),pointsUsed:gn('tpu'),cashPaid:gn('tcp'),totalValue:gn('tva'),bookingRef:gv('tbr'),product:gv('tpr'),notes:gv('tno'),booked:readBookedTripDetails()};
+  const data={clientId:clientId,clientName:client?client.name:'',clientIds:additionalClientIds,supplierId:supplierId,supplierName:supplier?supplier.name:'',origin:gv('tor'),destination:dest,departDate:gv('tdd'),returnDate:gv('trd'),status:gv('tst')||'Planning',type:gv('tty')||'Leisure',airline:gv('tai'),flightClass:gv('tcl')||'Economy',hotel:gv('tho'),hotelNights:gn('thn'),cruiseLine:gv('tcr'),shipName:gv('tship'),pointsUsed:gn('tpu'),cashPaid:gn('tcp'),totalValue:gn('tva'),bookingRef:gv('tbr'),invoiceDate:gv('tinv'),product:gv('tpr'),notes:gv('tno'),booked:readBookedTripDetails()};
   if(client){
     client.mileageBalances=readBalanceGrid('mb',AIRLINES,AIRLINE_STATUS);
     client.hotelBalances=readBalanceGrid('hb',HOTELS,HOTEL_STATUS);
