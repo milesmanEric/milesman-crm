@@ -487,7 +487,7 @@ function quoteTableStructure(cfg){
 }
 const STATUSES = ['Planning','Confirmed','Completed','Cancelled'];
 const TYPES    = ['Leisure','Business','Honeymoon','Family','Adventure','Cruise'];
-const CLASSES  = ['Economy','Premium Economy','Business','First'];
+const CLASSES  = ['Basic Economy','Economy','Premium Economy','Business','First'];
 const NOTE_TYPES = ['Email Sent','Email Received','Initial Call','Follow-up','General','Trip Import','Text Message Sent','Text Message Received','Lead','Mailchimp Email Sent','Facebook Message'];
 
 let db = {clients:[],trips:[],vendors:[],planner:[]};
@@ -2998,11 +2998,11 @@ function processTripFormRow(getVal, counters){
   // departDate drives the Calendar view (trips with no departDate are
   // skipped entirely), sorting, and "Upcoming" status, so this isn't
   // cosmetic — a blank departDate makes the trip invisible on the Calendar.
-  var tripDepartDate = getVal('Depart Date') || getVal('Sailing Date') || getVal('Pickup Date') || getVal('Hotel Check-in Date');
-  var tripReturnDate = getVal('Return Date') || getVal('Dropoff Date');
+  var tripDepartDate = getVal('Depart Date') || getVal('Sailing Date') || getVal('Pickup Date') || getVal('Hotel Check-in Date') || getVal('Train Departure Date');
+  var tripReturnDate = getVal('Return Date') || getVal('Dropoff Date') || getVal('Train Return Date');
   var tripLines=[];
   function addLine(label,val){ if(val) tripLines.push(label+': '+val); }
-  var travelNeeded = ['Airline','Hotel','Tours','Cruise','Car Rental','Theme Park Tickets'].filter(function(t){return getVal('Need - '+t);}).join(', ');
+  var travelNeeded = ['Airline','Hotel','Tours','Cruise','Car Rental','Theme Park Tickets','Train'].filter(function(t){return getVal('Need - '+t);}).join(', ');
   addLine('Type of Travel Needed', travelNeeded);
   addLine('Tour Vendor', tourVendor);
   addLine('Tours Description', getVal('Tours Description'));
@@ -3055,6 +3055,11 @@ function processTripFormRow(getVal, counters){
   addLine('Trip Insurance', getVal('Trip Insurance'));
   addLine('Theme Park', themePark);
   addLine('Theme Park Ticket Type', getVal('Theme Park Ticket Type'));
+  addLine('Train Departure Date', getVal('Train Departure Date'));
+  addLine('Train Return Date', getVal('Train Return Date'));
+  addLine('Train Departure City', getVal('Train Departure City'));
+  addLine('Train Arrival City', getVal('Train Arrival City'));
+  addLine('Train Class of Service', getVal('Train Class of Service'));
 
   // Companion travelers (Traveler 2+) get their own client record too —
   // matched/enriched by name the same way the primary contact is, just
@@ -3232,12 +3237,13 @@ function buildTripFormFieldLabels(){
   addBalanceLabels('Cruise', CRUISE_LINES, true);
   addBalanceLabels('Car Rental', CAR_RENTALS, true);
   addBalanceLabels('Credit Card', CREDIT_CARDS, false);
-  labels.push('Need - Airline','Need - Hotel','Need - Tours','Need - Cruise','Need - Car Rental','Need - Theme Park Tickets',
+  labels.push('Need - Airline','Need - Hotel','Need - Tours','Need - Cruise','Need - Car Rental','Need - Theme Park Tickets','Need - Train',
     'Airline','Airline Other','Origin','Destination','Trip Direction','Depart Date','Return Date','Class of Service','Non-Stop Flights Only','Trip Type',
     'Cruise Line','Cruise Line Other','Ship Name','Cruise Nights','Sailing Date','Departure Port','Cabin Type','People In Cabin','Cruise Loyalty Number','Cruisetour',
     'Hotel Location','Hotel Brand','Hotel Brand Other','Hotel Check-in Date','Hotel Nights','Room Type','People Per Room','Number of Rooms',
     'Car Rental Company','Car Rental Company Other','Car Size','Pickup Location','Dropoff Location','Pickup Date','Dropoff Date','Pickup Time','Dropoff Time',
     'Theme Park','Theme Park Ticket Type','Tour Vendor','Tour Vendor Other',
+    'Train Departure Date','Train Return Date','Train Departure City','Train Arrival City','Train Class of Service',
     'Payment Preference','Tours Description','Notes','Trip Insurance');
   for(var ci=1; ci<=20; ci++){ labels.push('City '+ci, 'City '+ci+' Departure Date'); }
   for(var tn=2; tn<=12; tn++){
