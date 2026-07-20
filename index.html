@@ -6715,7 +6715,7 @@ function plannerSortArrow(col){
 
 function renderPlanner(){
   var statusFilter = window._plannerStatus||'';
-  var dateFilter = window._plannerDateFilter||'';
+  var dateFilter = window._plannerDateFilter!==undefined?window._plannerDateFilter:'today-overdue';
   var plannerSortCol = window._plannerSortCol || 'dueDate';
   var plannerSortDir = window._plannerSortDir || 'asc';
   var tasks = db.planner.filter(function(t){
