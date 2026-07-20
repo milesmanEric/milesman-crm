@@ -4700,7 +4700,7 @@ function renderVendors(){
       '<div class="stat" id="stat-vendors-count"><div class="stat-lbl">Total Suppliers</div><div class="stat-val">'+db.vendors.length+'</div></div>'+
       '<div class="stat" id="stat-vendors-trips"><div class="stat-lbl">Total Trips</div><div class="stat-val">'+totalTrips+'</div></div>'+
       '<div class="stat" id="stat-vendors-clients"><div class="stat-lbl">Total Clients</div><div class="stat-val">'+totalClients.size+'</div></div>'+
-      '<div class="stat" id="stat-vendors-value"><div class="stat-lbl">Total Value</div><div class="stat-val">$'+Number(totalRevenue).toLocaleString()+'</div></div>'+
+      '<div class="stat" id="stat-vendors-value"><div class="stat-lbl">Total Revenue</div><div class="stat-val">$'+Number(totalRevenue).toLocaleString()+'</div></div>'+
     '</div>'+
     '<div class="search-row">'+
       '<input id="supplier-search" placeholder="Search suppliers..."/>'+
@@ -4792,7 +4792,7 @@ function renderVendors(){
   var statVendorsTrips = $('stat-vendors-trips');
   if(statVendorsTrips) statVendorsTrips.addEventListener('click', function(){ openStatDrilldownModal('Supplier Trips', vendorTripHeaders, allVendorTrips.map(vendorTripRow)); });
   var statVendorsValue = $('stat-vendors-value');
-  if(statVendorsValue) statVendorsValue.addEventListener('click', function(){ openStatDrilldownModal('Supplier Trip Value', vendorTripHeaders, allVendorTrips.map(vendorTripRow)); });
+  if(statVendorsValue) statVendorsValue.addEventListener('click', function(){ openStatDrilldownModal('Supplier Revenue', vendorTripHeaders, allVendorTrips.map(vendorTripRow)); });
   var statVendorsClients = $('stat-vendors-clients');
   if(statVendorsClients) statVendorsClients.addEventListener('click', function(){
     openStatDrilldownModal('Supplier Clients', ['Client','Contact'], Array.from(totalClients).map(function(name){
@@ -5263,7 +5263,7 @@ function renderDash(){
       '<div class="stat" id="stat-dash-trips"><div class="stat-lbl">Total trips</div><div class="stat-val">'+s.trips+'</div></div>'+
       '<div class="stat" id="stat-dash-confirmed"><div class="stat-lbl">Confirmed</div><div class="stat-val">'+s.confirmed+'</div></div>'+
       '<div class="stat" id="stat-dash-upcoming"><div class="stat-lbl">Upcoming</div><div class="stat-val">'+s.upcoming+'</div></div>'+
-      '<div class="stat" id="stat-dash-value"><div class="stat-lbl">Total value</div><div class="stat-val">$'+fmt(s.value)+'</div></div>'+
+      '<div class="stat" id="stat-dash-value"><div class="stat-lbl">Total Revenue</div><div class="stat-val">$'+fmt(s.value)+'</div></div>'+
       '<div class="stat" id="stat-dash-pts"><div class="stat-lbl">Points deployed</div><div class="stat-val">'+fmt(s.pts)+'</div></div>'+
     '</div>'+
     '<div class="two-col">'+
@@ -5318,7 +5318,7 @@ function renderDash(){
     openStatDrilldownModal('Upcoming Trips', tripHeaders, db.trips.filter(function(t){return (t.departDate||'')>=today();}).map(tripRow));
   });
   var statDashValue = $('stat-dash-value');
-  if(statDashValue) statDashValue.addEventListener('click', function(){ openStatDrilldownModal('Total Value', tripHeaders, db.trips.map(tripRow)); });
+  if(statDashValue) statDashValue.addEventListener('click', function(){ openStatDrilldownModal('Total Revenue', tripHeaders, db.trips.map(tripRow)); });
   var statDashPts = $('stat-dash-pts');
   if(statDashPts) statDashPts.addEventListener('click', function(){
     openStatDrilldownModal('Points Deployed', ['Client','Destination','Depart','Status','Points Used'],
@@ -5664,13 +5664,11 @@ function renderTrips(){
       '<button class="add-btn" id="btn-add-trip">+ Add Trip</button>'+
     '</div>'+
     (function(){
-      var totalValue = list.reduce(function(a,t){return a+(t.totalValue||0);},0);
       var totalCash  = list.reduce(function(a,t){return a+(t.cashPaid||0);},0);
       var invoiceCount = selC ? countDistinctTrips(selC.id) : countDistinctInvoicesIn(list);
-      return '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px">'+
+      return '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:16px">'+
         '<div class="stat" id="stat-trips-count"><div class="stat-lbl">Trips (Distinct Invoices)</div><div class="stat-val">'+invoiceCount+'</div></div>'+
-        '<div class="stat" id="stat-trips-cash"><div class="stat-lbl">Total Cash Paid</div><div class="stat-val">$'+Number(totalCash).toLocaleString()+'</div></div>'+
-        '<div class="stat" id="stat-trips-value"><div class="stat-lbl">Total Value</div><div class="stat-val">$'+Number(totalValue).toLocaleString()+'</div></div>'+
+        '<div class="stat" id="stat-trips-cash"><div class="stat-lbl">Total Revenue</div><div class="stat-val">$'+Number(totalCash).toLocaleString()+'</div></div>'+
       '</div>';
     })()+
     '<div class="search-row">'+
@@ -5724,7 +5722,7 @@ function renderTrips(){
     });
   }
   var tripStatHeaders = ['Client','Destination','Depart','Status','Cash Paid','Total Value'];
-  ['stat-trips-count','stat-trips-cash','stat-trips-value'].forEach(function(id){
+  ['stat-trips-count','stat-trips-cash'].forEach(function(id){
     var el = $(id);
     if(el) el.addEventListener('click', function(){ openStatDrilldownModal('Trips', tripStatHeaders, tripStatDrilldownRows()); });
   });
