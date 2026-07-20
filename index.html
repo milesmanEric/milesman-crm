@@ -164,7 +164,8 @@ nav{padding:10px 8px}
 .page-title{font-size:22px;font-weight:700;color:#111}
 .add-btn{padding:9px 18px;border-radius:8px;border:none;background:#2563eb;color:#fff;cursor:pointer;font-size:13px;font-weight:600;font-family:inherit}
 .stats-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:18px}
-.stat{background:#f7f7f8;border:1px solid #e5e7eb;border-radius:10px;padding:14px 16px}
+.stat{background:#f7f7f8;border:1px solid #e5e7eb;border-radius:10px;padding:14px 16px;cursor:pointer;transition:background .12s,border-color .12s}
+.stat:hover{background:#eef2ff;border-color:#c7d2fe}
 .stat-lbl{font-size:11px;color:#888;margin-bottom:4px}
 .stat-val{font-size:24px;font-weight:700;color:#111}
 .two-col{display:grid;grid-template-columns:1.5fr 1fr;gap:14px}
@@ -207,6 +208,8 @@ tr:last-child td{border-bottom:none}
 .field label{font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em}
 .field input,.field select,.field textarea{padding:8px 11px;border-radius:7px;border:1px solid #d1d5db;font-size:13px;font-family:inherit;color:#111;background:#fafafa}
 .field textarea{resize:vertical;min-height:58px}
+.modal-section-title{grid-column:1/-1;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#2563eb;margin:14px 0 2px;padding-top:14px;border-top:1px solid #f0f0f0}
+.modal-section-title:first-of-type{margin-top:0;padding-top:0;border-top:none}
 .form-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:18px}
 .cancel-btn{padding:9px 20px;border-radius:8px;border:1px solid #d1d5db;background:#fff;color:#555;cursor:pointer;font-family:inherit;font-size:13px}
 .save-btn{padding:9px 20px;border-radius:8px;border:none;background:#2563eb;color:#fff;cursor:pointer;font-family:inherit;font-size:13px;font-weight:600}
@@ -259,6 +262,7 @@ tr:last-child td{border-bottom:none}
         <button class="sync-btn" id="outlook-btn">&#128424; Sync Outlook Emails</button>
         <button class="sync-btn" id="btn-mass-email" style="color:#7c3aed;border-color:#c4b5fd">&#128231; Email Clients</button>
         <button class="sync-btn" id="btn-email-quote" style="color:#7c3aed;border-color:#c4b5fd">&#128176; Email Quote</button>
+        <button class="sync-btn" id="btn-email-itinerary" style="color:#7c3aed;border-color:#c4b5fd">&#128196; Email Itinerary</button>
         <button class="sync-btn" id="btn-log-mailchimp" style="color:#7c3aed;border-color:#c4b5fd">&#128226; Log Mailchimp Campaign</button>
         <button class="sync-btn" id="btn-sync-mailchimp" style="color:#7c3aed;border-color:#c4b5fd">&#128260; Sync Mailchimp Activity</button>
         <button class="sync-btn" id="btn-ms-signout" style="color:#888;border-color:#ddd;font-size:11px">&#128274; Reset Outlook Login</button>
@@ -487,8 +491,12 @@ function quoteTableStructure(cfg){
 }
 const STATUSES = ['Planning','Confirmed','Completed','Cancelled'];
 const TYPES    = ['Leisure','Business','Honeymoon','Family','Adventure','Cruise'];
-const CLASSES  = ['Economy','Premium Economy','Business','First'];
+const CLASSES  = ['Basic Economy','Economy','Premium Economy','Business','First'];
 const NOTE_TYPES = ['Email Sent','Email Received','Initial Call','Follow-up','General','Trip Import','Text Message Sent','Text Message Received','Lead','Mailchimp Email Sent','Facebook Message'];
+const THEME_PARKS = ['Disney World','Disneyland California','Universal Studios Hollywood','Universal Studios Orlando'];
+const TRAIN_CLASSES = ['Coach','Business Class','First Class','Sleeper Car'];
+const CAR_SIZES = ['Economy','Compact','Midsize','Full-size','SUV','Minivan','Luxury','Convertible'];
+const ROOM_TYPES = ['Room','Suite'];
 
 let db = {clients:[],trips:[],vendors:[],planner:[]};
 const UNDO_STACK = [];
@@ -597,6 +605,11 @@ const gv = id => $(id) ? $(id).value.trim() : '';
 const gn = id => Number(($(id) ? $(id).value : '0').toString().replace(/,/g,''));
 const fmt = n => Number(n||0).toLocaleString();
 const today = () => new Date().toISOString().slice(0,10);
+function displayStatus(t){
+  var st = t.status||'Planning';
+  if(st==='Completed' && t.departDate && t.departDate>=today()) st='Upcoming';
+  return st;
+}
 function tsNow(){
   const n=new Date();
   return n.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})+' '+n.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
@@ -1662,9 +1675,12 @@ function cleanImportTable(rows){
   if(classIdx===-1) throw new Error('Required "class" column not found in the file');
   if(nameIdx===-1) throw new Error('Required "name" column not found in the file');
 
+  // A blank Class isn't fatal on its own — extractRevenueRow falls back to
+  // Name as the client when Class is empty. Only drop the row here if BOTH
+  // are blank, since then there's no client to fall back to at all.
   var removedEmptyClass = 0;
   body = body.filter(function(row){
-    var keep = !isEmptyCell(row[classIdx]);
+    var keep = !isEmptyCell(row[classIdx]) || !isEmptyCell(row[nameIdx]);
     if(!keep) removedEmptyClass++;
     return keep;
   });
@@ -1796,7 +1812,7 @@ function cleanAndImportRevenue(){
       const s = result.stats;
       const summary = 'Removed '+s.removedNoColE+' row'+(s.removedNoColE!==1?'s':'')+' with no value in column E, '+
         s.removedCols+' empty column'+(s.removedCols!==1?'s':'')+', '+
-        s.removedEmptyClass+' row'+(s.removedEmptyClass!==1?'s':'')+' with no Class, and '+
+        s.removedEmptyClass+' row'+(s.removedEmptyClass!==1?'s':'')+' with no Class and no Name, and '+
         s.removedNameEqClass+' row'+(s.removedNameEqClass!==1?'s':'')+' where Name matched Class. '+
         result.rows.length+' row'+(result.rows.length!==1?'s':'')+' remain.';
       debugLog('Clean & Import Revenue: '+summary);
@@ -2378,6 +2394,225 @@ function openEmailQuoteModal(){
     logQuoteNote(d, subject);
   });
 }
+// ── Email Itinerary ──────────────────────────────────────────────────────
+// Builds a styled HTML recap email straight from an actual db.trips record
+// (not a quote/pricing sheet) — reuses the same header/branding shell as
+// the cruise quote emails for a consistent look, but every section below
+// the greeting is conditional on what that trip actually has filled in, so
+// an airline-only trip doesn't show an empty Cruise Details box, etc.
+function itineraryDetailRow(label, value){
+  if(!value) return '';
+  return '<p style="font-family:\'Times New Roman\',Times,serif; margin:0 0 8px 0; font-size:14px; color:#0d0d66;"><strong>'+escHtml(label)+':</strong> '+escHtml(value)+'</p>';
+}
+function itineraryDetailBox(title, rowsHtml){
+  if(!rowsHtml) return '';
+  return ''+
+'<tr>'+
+'<td style="padding:16px 32px 0 32px;">'+
+'<p style="font-family:\'Times New Roman\',Times,serif; font-size:14px; color:#333333; margin:0 0 8px 0;"><strong>'+escHtml(title)+'</strong></p>'+
+'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f0f2ff; border-left:4px solid #1a1aff; border-radius:6px;">'+
+'<tr><td style="padding:16px 20px;">'+rowsHtml+'</td></tr>'+
+'</table>'+
+'</td>'+
+'</tr>';
+}
+function itineraryEmailBodyHtml(opts){
+  var datesLine = (opts.departDate?fmtDate(opts.departDate):'') + (opts.departDate&&opts.returnDate?' – ':'') + (opts.returnDate?fmtDate(opts.returnDate):'');
+  var overviewRows = itineraryDetailRow('Destination', opts.destination) +
+    itineraryDetailRow('Travel Dates', datesLine) +
+    itineraryDetailRow('Trip Type', opts.tripType) +
+    itineraryDetailRow('Status', opts.status);
+  var flightRows = itineraryDetailRow('Airline', opts.airline) +
+    itineraryDetailRow('Route', opts.origin&&opts.destination ? (opts.origin+' → '+opts.destination) : '') +
+    itineraryDetailRow('Class of Service', opts.flightClass);
+  var hotelRows = itineraryDetailRow('Hotel', opts.hotel) +
+    itineraryDetailRow('Nights', opts.hotelNights);
+  var cruiseRows = itineraryDetailRow('Cruise Line', opts.cruiseLine) +
+    itineraryDetailRow('Ship', opts.shipName);
+  var bookingRows = itineraryDetailRow('Confirmation / Booking Ref', opts.bookingRef) +
+    itineraryDetailRow('Supplier', opts.supplierName) +
+    itineraryDetailRow('Points Used', opts.pointsUsed) +
+    itineraryDetailRow('Amount Paid', opts.cashPaid) +
+    itineraryDetailRow('Total Trip Value', opts.totalValue);
+  return ''+
+'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f5f7; padding:30px 0;">'+
+'<tr>'+
+'<td align="center">'+
+'<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff; border-radius:8px; overflow:hidden;">'+
+'<tr>'+
+'<td style="background-color:#ffffff; padding:20px 32px; border-bottom:3px solid #1a1aff;">'+
+'<table role="presentation" width="100%" cellpadding="0" cellspacing="0">'+
+'<tr>'+
+'<td><img src="'+MILES_MAN_LOGO_DATA_URI+'" width="117" height="72" alt="Miles Man" style="display:block; width:117px; height:72px;"></td>'+
+'</tr>'+
+'</table>'+
+'</td>'+
+'</tr>'+
+'<tr>'+
+'<td style="padding:32px 32px 8px 32px;">'+
+'<p style="font-family:\'Times New Roman\',Times,serif; font-size:14px; color:#111111; margin:0 0 16px 0;">Hi '+escHtml(opts.clientFirstName||'there')+',</p>'+
+'<p style="font-family:\'Times New Roman\',Times,serif; font-size:14px; color:#333333; line-height:1.5; margin:0 0 16px 0;">Here\'s your itinerary'+(opts.destination?' for '+escHtml(opts.destination):'')+'! Let me know if anything needs to change.</p>'+
+'</td>'+
+'</tr>'+
+'<tr>'+
+'<td style="padding:0 32px;">'+
+'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f0f2ff; border-left:4px solid #1a1aff; border-radius:6px;">'+
+'<tr><td style="padding:20px 24px;">'+overviewRows+'</td></tr>'+
+'</table>'+
+'</td>'+
+'</tr>'+
+itineraryDetailBox('Flight Details', flightRows)+
+itineraryDetailBox('Hotel Details', hotelRows)+
+itineraryDetailBox('Cruise Details', cruiseRows)+
+itineraryDetailBox('Booking Details', bookingRows)+
+(opts.notes?(
+'<tr>'+
+'<td style="padding:16px 32px 0 32px;">'+
+'<p style="font-family:\'Times New Roman\',Times,serif; font-size:14px; color:#333333; line-height:1.5; margin:0 0 16px 0;"><strong>Trip Notes:</strong><br>'+escHtml(opts.notes).replace(/\n/g,'<br>')+'</p>'+
+'</td>'+
+'</tr>'
+):'')+
+(opts.extraNotes?(
+'<tr>'+
+'<td style="padding:0 32px;">'+
+'<p style="font-family:\'Times New Roman\',Times,serif; font-size:14px; color:#333333; line-height:1.5; margin:0 0 16px 0;">'+escHtml(opts.extraNotes).replace(/\n/g,'<br>')+'</p>'+
+'</td>'+
+'</tr>'
+):'')+
+'<tr>'+
+'<td style="padding:24px 32px 32px 32px; border-top:1px solid #eeeeee;">'+
+'<p style="font-family:\'Times New Roman\',Times,serif; font-size:14px; color:#333333; line-height:1.5; margin:20px 0 0 0;">'+
+'Best,<br>Eric'+
+'</p>'+
+'</td>'+
+'</tr>'+
+'</table>'+
+'</td>'+
+'</tr>'+
+'</table>';
+}
+function itineraryEmailShellHtml(opts){
+  return '<!DOCTYPE html>'+
+'<html lang="en">'+
+'<head>'+
+'<meta charset="UTF-8">'+
+'<title>Itinerary'+(opts.destination?' - '+escHtml(opts.destination):'')+'</title>'+
+'</head>'+
+'<body style="margin:0; padding:0; background-color:#f4f5f7; font-family:\'Times New Roman\',Times,serif; font-size:14px;">'+
+itineraryEmailBodyHtml(opts)+
+'</body>'+
+'</html>';
+}
+function tripToItineraryOpts(trip, client, extraNotes){
+  var sup = trip.supplierId ? db.vendors.find(function(v){return v.id===trip.supplierId;}) : null;
+  return {
+    clientFirstName: client?getFirstName(client.name):'',
+    destination: trip.destination||'',
+    origin: trip.origin||'',
+    departDate: trip.departDate||'',
+    returnDate: trip.returnDate||'',
+    tripType: trip.type||'',
+    status: trip.status||'',
+    airline: trip.airline||'',
+    flightClass: trip.flightClass||'',
+    hotel: trip.hotel||'',
+    hotelNights: trip.hotelNights?(trip.hotelNights+(trip.hotelNights===1?' night':' nights')):'',
+    cruiseLine: trip.cruiseLine||'',
+    shipName: trip.shipName||'',
+    bookingRef: trip.bookingRef||'',
+    supplierName: (sup?sup.name:trip.supplierName)||'',
+    pointsUsed: trip.pointsUsed?fmt(trip.pointsUsed):'',
+    cashPaid: trip.cashPaid?('$'+fmt(trip.cashPaid)):'',
+    totalValue: trip.totalValue?('$'+fmt(trip.totalValue)):'',
+    notes: trip.notes||'',
+    extraNotes: extraNotes||''
+  };
+}
+function openEmailItineraryModal(){
+  var sortedClients = [...db.clients].sort(function(a,b){return (a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase());});
+  var clientOpts = sortedClients.map(function(c){return '<option value="'+c.id+'">'+c.name+'</option>';}).join('');
+
+  $('modal').innerHTML =
+    '<div class="modal-hdr"><div class="modal-title">Email Itinerary</div><button class="close-btn" id="modal-close">&#x2715;</button></div>'+
+    '<div class="fg">'+
+      fld('Client','<select id="ei-client"><option value="">-- Select client --</option>'+clientOpts+'</select>',true)+
+      fld('Trip','<select id="ei-trip"><option value="">-- Select client first --</option></select>',true)+
+      '<div class="field full"><label>Additional Note <span class="hint" style="text-transform:none;font-weight:400">(optional — appended after the trip details)</span></label><textarea id="ei-notes" rows="3" placeholder="Optional personal note to include"></textarea></div>'+
+      '<div class="field full" id="ei-preview-wrap" style="display:none">'+
+        '<label>Preview</label>'+
+        '<iframe id="ei-preview-frame" style="width:100%;height:420px;border:1px solid #e5e7eb;border-radius:8px;background:#fff"></iframe>'+
+      '</div>'+
+    '</div>'+
+    '<div class="form-actions"><button class="cancel-btn" id="modal-cancel">Cancel</button><button class="cancel-btn" id="ei-preview">Preview</button><button class="save-btn" id="ei-send">Email Itinerary</button></div>';
+
+  $('overlay').classList.add('open');
+  $('modal-close').addEventListener('click', closeModal);
+  $('modal-cancel').addEventListener('click', closeModal);
+
+  document.getElementById('ei-client').addEventListener('change', function(){
+    var clientId = this.value;
+    var tripSel = document.getElementById('ei-trip');
+    document.getElementById('ei-preview-wrap').style.display = 'none';
+    if(!clientId){
+      tripSel.innerHTML = '<option value="">-- Select client first --</option>';
+      return;
+    }
+    var clientTrips = db.trips.filter(function(t){return t.clientId===clientId || (t.clientIds||[]).includes(clientId);})
+      .sort(function(a,b){return (b.departDate||'').localeCompare(a.departDate||'');});
+    tripSel.innerHTML = clientTrips.length
+      ? '<option value="">-- Select trip --</option>'+clientTrips.map(function(t){
+          var label = (t.destination||'Trip')+(t.departDate?' — '+fmtDate(t.departDate):'');
+          return '<option value="'+t.id+'">'+escHtml(label)+'</option>';
+        }).join('')
+      : '<option value="">-- No trips for this client --</option>';
+  });
+
+  function collectItineraryData(){
+    var clientId = gv('ei-client');
+    if(!clientId){toast('Select a client','err');return null;}
+    var client = db.clients.find(function(c){return c.id===clientId;});
+    var tripId = gv('ei-trip');
+    if(!tripId){toast('Select a trip','err');return null;}
+    var trip = db.trips.find(function(t){return t.id===tripId;});
+    if(!trip){toast('Trip not found','err');return null;}
+    var extraNotes = gv('ei-notes');
+    return {client:client, trip:trip, opts:tripToItineraryOpts(trip, client, extraNotes)};
+  }
+
+  document.getElementById('ei-preview').addEventListener('click', function(){
+    var d = collectItineraryData();
+    if(!d) return;
+    var html = itineraryEmailShellHtml(d.opts);
+    var wrap = document.getElementById('ei-preview-wrap');
+    wrap.style.display = 'block';
+    document.getElementById('ei-preview-frame').srcdoc = html;
+    wrap.scrollIntoView({behavior:'smooth', block:'nearest'});
+  });
+
+  document.getElementById('ei-send').addEventListener('click', function(){
+    var d = collectItineraryData();
+    if(!d) return;
+    var subject = 'Your Itinerary'+(d.trip.destination?' — '+d.trip.destination:'');
+    var bodyHtml = itineraryEmailBodyHtml(d.opts);
+    var copied = copyHtmlToClipboard(bodyHtml);
+    var mailto = 'mailto:'+(d.client.email?mailtoAddr(d.client.email):'')+'?subject='+encodeURIComponent(subject);
+    window.location.href = mailto;
+    if(copied){
+      toast('Itinerary copied — paste into the email body in Outlook (Ctrl+V) for '+d.client.name,'ok');
+    }else{
+      toast('Could not copy the itinerary automatically — click Preview, then select all (Ctrl+A) and copy (Ctrl+C) from there to paste into Outlook','err');
+    }
+
+    var ts = tsNow();
+    var note = {ts:ts, text:'Itinerary: '+subject, noteType:'Email Sent'};
+    db.clients = db.clients.map(function(c){
+      if(c.id!==d.client.id) return c;
+      var notesLog = Array.isArray(c.notesLog)?c.notesLog.concat([note]):[note];
+      return Object.assign({},c,{notesLog:notesLog});
+    });
+    saveDB(); render();
+  });
+}
 function openLogMailchimpModal(){
   var sortedClients = [...db.clients].sort(function(a,b){return (a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase());});
   var clientChecks = sortedClients.map(function(c){
@@ -2727,20 +2962,25 @@ function finalizeImport(){
     // as already exist in db.trips (this allows legitimate repeated line items within a batch)
     var dupExists = occurrenceIndex < existingMatchCount;
     if(dupExists){
-      // Backfill: the matching trip may have been imported before its supplier
-      // existed in the Suppliers list (so it has no supplierId), and this row
-      // can now resolve one. Without this, a supplier added later can never
-      // get credit for trips imported earlier — every re-import just sees an
-      // existing duplicate and skips it, forever.
-      if(row.supplierId){
-        var dupTrip = db.trips.find(function(t){
-          if(row.invoiceNum && t.invoiceNum){
-            return t.clientId===cid && t.invoiceNum===row.invoiceNum && t.cashPaid===row.amt && !t.supplierId;
-          }
-          return t.clientId===cid && !t.supplierId && t.cashPaid===row.amt &&
-                 (t.departDate||'').slice(0,10)===(row.date?row.date.slice(0,10):today());
-        });
-        if(dupTrip){
+      // Backfill: the matching trip may be missing data that this later
+      // import pass can now fill in — a supplier (if it was added to the
+      // Suppliers list after this trip was first imported) and/or an
+      // invoiceDate (a field added after older trips were already
+      // imported, so they were never given one). Without this, a re-import
+      // of the exact same file just sees an existing duplicate and skips
+      // it every time, and a trip imported before invoiceDate existed can
+      // never pick one up — the original row.date is only ever available
+      // during import, never stored on its own once departDate is set.
+      var dupTrip = db.trips.find(function(t){
+        if(row.invoiceNum && t.invoiceNum){
+          return t.clientId===cid && t.invoiceNum===row.invoiceNum && t.cashPaid===row.amt;
+        }
+        return t.clientId===cid && t.cashPaid===row.amt &&
+               (t.departDate||'').slice(0,10)===(row.date?row.date.slice(0,10):today());
+      });
+      var backfilled=[];
+      if(dupTrip){
+        if(row.supplierId && !dupTrip.supplierId){
           dupTrip.supplierId=row.supplierId;
           dupTrip.supplierName=row.supplierName;
           var supx=db.vendors.find(function(v){return v.id===row.supplierId;});
@@ -2748,12 +2988,22 @@ function finalizeImport(){
             if(!supx.clientIds)supx.clientIds=[];
             supx.clientIds.push(cid);
           }
-          relinked++;
-          debugLog('Revenue: backfilled supplier link for existing trip '+dupTrip.id+' -> '+row.supplierName);
-          return;
+          backfilled.push('supplier -> '+row.supplierName);
+        }
+        if(row.date && !dupTrip.invoiceDate){
+          var rowInvoiceDate='';
+          try{const d=new Date(row.date);if(!isNaN(d))rowInvoiceDate=d.toISOString().slice(0,10);}catch(e){}
+          if(rowInvoiceDate){ dupTrip.invoiceDate=rowInvoiceDate; backfilled.push('invoiceDate -> '+rowInvoiceDate); }
         }
       }
-      debugLog('Revenue: duplicate skipped for '+client.name);skipped++;return;
+      if(backfilled.length){
+        relinked++;
+        debugLog('Revenue: backfilled '+backfilled.join(', ')+' for existing trip '+dupTrip.id);
+      } else {
+        debugLog('Revenue: duplicate skipped for '+client.name);
+      }
+      skipped++;
+      return;
     }
 
     // Build destination: use memo, or supplier+date, or 'Imported Trip'
@@ -2771,10 +3021,20 @@ function finalizeImport(){
         try{const d=new Date(row.date);if(!isNaN(d))tripDate=d.toISOString().slice(0,10);}catch(e){}
       }
     }
+    // Separate from tripDate/departDate on purpose — departDate prioritizes
+    // Ship Date (the travel date) when present, but the "By Invoice #"
+    // report also needs the actual transaction/booking date (the source
+    // file's own "Date" column) to filter by, since those two dates can
+    // legitimately fall in different reporting periods (e.g. booked in one
+    // month, travel happens the next).
+    let invoiceDate='';
+    if(row.date){
+      try{const d=new Date(row.date);if(!isNaN(d))invoiceDate=d.toISOString().slice(0,10);}catch(e){}
+    }
 
     db.trips.push({
       id:tripId,clientId:cid,clientName:client.name,
-      destination:dest,origin:'',departDate:tripDate,returnDate:tripDate,
+      destination:dest,origin:'',departDate:tripDate,returnDate:tripDate,invoiceDate:invoiceDate,
       status:'Completed',type:'Leisure',airline:'',flightClass:'',hotel:'',
       hotelNights:0,pointsUsed:0,cashPaid:row.amt,totalValue:row.amt,
       bookingRef:row.invoiceNum||'',notes:row.memo||'',product:row.product||'',
@@ -2801,7 +3061,7 @@ function finalizeImport(){
   saveDB();render();
   window._importState=null;
   toast('Imported '+imported+' trips — $'+totalRev.toLocaleString()+
-    (relinked?', relinked '+relinked+' existing trip'+(relinked!==1?'s':'')+' to a supplier':'')+
+    (relinked?', backfilled '+relinked+' existing trip'+(relinked!==1?'s':''):'')+
     (skipped?' ('+skipped+' skipped)':''),'ok');
 }
 
@@ -2983,10 +3243,25 @@ function processTripFormRow(getVal, counters){
 
   var destination = getVal('Destination');
   var airline = resolveOther(getVal('Airline'), getVal('Airline Other'));
+  var cruiseLine = resolveOther(getVal('Cruise Line'), getVal('Cruise Line Other'));
+  var hotelBrand = resolveOther(getVal('Hotel Brand'), getVal('Hotel Brand Other'));
+  var carRentalCompany = resolveOther(getVal('Car Rental Company'), getVal('Car Rental Company Other'));
+  var themePark = getVal('Theme Park');
+  var tourVendor = resolveOther(getVal('Tour Vendor'), getVal('Tour Vendor Other'));
+  // Depart/Return Date only exist in the Airline Details section, which is
+  // hidden unless "Airline" is checked — a cruise-only or car-rental-only
+  // request still has real dates (Sailing Date, Pickup/Dropoff Date), so
+  // fall back to those rather than leaving the trip's departDate blank.
+  // departDate drives the Calendar view (trips with no departDate are
+  // skipped entirely), sorting, and "Upcoming" status, so this isn't
+  // cosmetic — a blank departDate makes the trip invisible on the Calendar.
+  var tripDepartDate = getVal('Depart Date') || getVal('Sailing Date') || getVal('Pickup Date') || getVal('Hotel Check-in Date') || getVal('Train Departure Date');
+  var tripReturnDate = getVal('Return Date') || getVal('Dropoff Date') || getVal('Train Return Date');
   var tripLines=[];
   function addLine(label,val){ if(val) tripLines.push(label+': '+val); }
-  var travelNeeded = ['Airline','Hotel','Tours','Cruise','Car Rental','Theme Park Tickets'].filter(function(t){return getVal('Need - '+t);}).join(', ');
+  var travelNeeded = ['Airline','Hotel','Tours','Cruise','Car Rental','Theme Park Tickets','Train'].filter(function(t){return getVal('Need - '+t);}).join(', ');
   addLine('Type of Travel Needed', travelNeeded);
+  addLine('Tour Vendor', tourVendor);
   addLine('Tours Description', getVal('Tours Description'));
   addLine('Airline', airline);
   addLine('Origin', getVal('Origin'));
@@ -3005,7 +3280,7 @@ function processTripFormRow(getVal, counters){
   addLine('Depart Date', getVal('Depart Date'));
   addLine('Return Date', getVal('Return Date'));
   addLine('Trip Type', getVal('Trip Type'));
-  addLine('Cruise Line', getVal('Cruise Line'));
+  addLine('Cruise Line', cruiseLine);
   addLine('Ship Name', getVal('Ship Name'));
   addLine('Cruise Nights', getVal('Cruise Nights'));
   addLine('Sailing Date', getVal('Sailing Date'));
@@ -3015,13 +3290,15 @@ function processTripFormRow(getVal, counters){
   addLine('Cruise Loyalty Number', getVal('Cruise Loyalty Number'));
   addLine('Cruisetour', getVal('Cruisetour'));
   addLine('Class of Service', getVal('Class of Service'));
+  addLine('Non-Stop Flights Only', getVal('Non-Stop Flights Only'));
   addLine('Hotel Location', getVal('Hotel Location'));
-  addLine('Hotel Brand', resolveOther(getVal('Hotel Brand'), getVal('Hotel Brand Other')));
+  addLine('Hotel Brand', hotelBrand);
+  addLine('Hotel Check-in Date', getVal('Hotel Check-in Date'));
   addLine('Hotel Nights', getVal('Hotel Nights'));
   addLine('Room Type', getVal('Room Type'));
   addLine('People Per Room', getVal('People Per Room'));
   addLine('Number of Rooms', getVal('Number of Rooms'));
-  addLine('Car Rental Company', getVal('Car Rental Company'));
+  addLine('Car Rental Company', carRentalCompany);
   addLine('Car Size', getVal('Car Size'));
   addLine('Pickup Location', getVal('Pickup Location'));
   addLine('Dropoff Location', getVal('Dropoff Location'));
@@ -3033,8 +3310,13 @@ function processTripFormRow(getVal, counters){
   addLine('Number of Travelers', getVal('Number of Travelers'));
   addLine('Notes', getVal('Notes'));
   addLine('Trip Insurance', getVal('Trip Insurance'));
-  addLine('Theme Park', getVal('Theme Park'));
+  addLine('Theme Park', themePark);
   addLine('Theme Park Ticket Type', getVal('Theme Park Ticket Type'));
+  addLine('Train Departure Date', getVal('Train Departure Date'));
+  addLine('Train Return Date', getVal('Train Return Date'));
+  addLine('Train Departure City', getVal('Train Departure City'));
+  addLine('Train Arrival City', getVal('Train Arrival City'));
+  addLine('Train Class of Service', getVal('Train Class of Service'));
 
   // Companion travelers (Traveler 2+) get their own client record too —
   // matched/enriched by name the same way the primary contact is, just
@@ -3093,19 +3375,49 @@ function processTripFormRow(getVal, counters){
     tripLines.push('Traveling with: '+tClient.name+' (client '+tClient.id+')');
   }
 
+  // Match the requested Airline/Cruise Line/Hotel Brand/Car Rental Company/
+  // Theme Park/Tour Vendor against existing Supplier records by exact name,
+  // same as the revenue importer's supplier matching (extractRevenueRow) —
+  // never creates a new vendor, only links the client onto one that's
+  // already there. A trip only has one supplier slot, so the first match
+  // wins in that priority order; every match still gets the client linked
+  // onto it regardless. Tours Description is deliberately excluded — it's
+  // freeform text, not a name from a fixed list, so there's no safe exact
+  // match.
+  function matchVendorByName(n){
+    if(!n) return null;
+    return db.vendors.find(function(v){return (v.name||'').toLowerCase().trim()===n.toLowerCase().trim();}) || null;
+  }
+  function linkClientToVendor(vendor){
+    if(!vendor) return;
+    if(!vendor.clientIds) vendor.clientIds=[];
+    if(!vendor.clientIds.includes(client.id)){
+      vendor.clientIds.push(client.id);
+      debugLog('Trip form: linked '+client.name+' to existing supplier '+vendor.name);
+    }
+  }
+  var airlineVendor = matchVendorByName(airline);
+  var cruiseVendor = matchVendorByName(cruiseLine);
+  var hotelVendor = matchVendorByName(hotelBrand);
+  var carRentalVendor = matchVendorByName(carRentalCompany);
+  var themeParkVendor = matchVendorByName(themePark);
+  var tourVendorMatch = matchVendorByName(tourVendor);
+  [airlineVendor, cruiseVendor, hotelVendor, carRentalVendor, themeParkVendor, tourVendorMatch].forEach(linkClientToVendor);
+  var primarySupplier = airlineVendor || cruiseVendor || hotelVendor || carRentalVendor || themeParkVendor || tourVendorMatch || null;
+
   var newTripId = null;
   if(destination || tripLines.length){
     newTripId = newId('T', db.trips);
     db.trips.push({
       id:newTripId, clientId:client.id, clientName:client.name, clientIds:linkedClientIds,
       origin:getVal('Origin'), destination:destination,
-      departDate:getVal('Depart Date'), returnDate:getVal('Return Date'),
+      departDate:tripDepartDate, returnDate:tripReturnDate,
       status:'Planning', type:getVal('Trip Type')||'Leisure',
-      airline:airline, flightClass:getVal('Class of Service'), hotel:'',
+      airline:airline, flightClass:getVal('Class of Service'), hotel:hotelBrand,
       hotelNights:parseInt(getVal('Hotel Nights'),10)||0,
-      cruiseLine:getVal('Cruise Line'), shipName:getVal('Ship Name'),
+      cruiseLine:cruiseLine, shipName:getVal('Ship Name'),
       pointsUsed:0, cashPaid:0, totalValue:0, bookingRef:'', product:'',
-      supplierId:'', supplierName:'',
+      supplierId:primarySupplier?primarySupplier.id:'', supplierName:primarySupplier?primarySupplier.name:'',
       notes: tripLines.join('\n')
     });
     counters.tripsCreated++;
@@ -3182,12 +3494,13 @@ function buildTripFormFieldLabels(){
   addBalanceLabels('Cruise', CRUISE_LINES, true);
   addBalanceLabels('Car Rental', CAR_RENTALS, true);
   addBalanceLabels('Credit Card', CREDIT_CARDS, false);
-  labels.push('Need - Airline','Need - Hotel','Need - Tours','Need - Cruise','Need - Car Rental','Need - Theme Park Tickets',
-    'Airline','Airline Other','Origin','Destination','Trip Direction','Depart Date','Return Date','Class of Service','Trip Type',
-    'Cruise Line','Ship Name','Cruise Nights','Sailing Date','Departure Port','Cabin Type','People In Cabin','Cruise Loyalty Number','Cruisetour',
-    'Hotel Location','Hotel Brand','Hotel Brand Other','Hotel Nights','Room Type','People Per Room','Number of Rooms',
-    'Car Rental Company','Car Size','Pickup Location','Dropoff Location','Pickup Date','Dropoff Date','Pickup Time','Dropoff Time',
-    'Theme Park','Theme Park Ticket Type',
+  labels.push('Need - Airline','Need - Hotel','Need - Tours','Need - Cruise','Need - Car Rental','Need - Theme Park Tickets','Need - Train',
+    'Airline','Airline Other','Origin','Destination','Trip Direction','Depart Date','Return Date','Class of Service','Non-Stop Flights Only','Trip Type',
+    'Cruise Line','Cruise Line Other','Ship Name','Cruise Nights','Sailing Date','Departure Port','Cabin Type','People In Cabin','Cruise Loyalty Number','Cruisetour',
+    'Hotel Location','Hotel Brand','Hotel Brand Other','Hotel Check-in Date','Hotel Nights','Room Type','People Per Room','Number of Rooms',
+    'Car Rental Company','Car Rental Company Other','Car Size','Pickup Location','Dropoff Location','Pickup Date','Dropoff Date','Pickup Time','Dropoff Time',
+    'Theme Park','Theme Park Ticket Type','Tour Vendor','Tour Vendor Other',
+    'Train Departure Date','Train Return Date','Train Departure City','Train Arrival City','Train Class of Service',
     'Payment Preference','Tours Description','Notes','Trip Insurance');
   for(var ci=1; ci<=20; ci++){ labels.push('City '+ci, 'City '+ci+' Departure Date'); }
   for(var tn=2; tn<=12; tn++){
@@ -3315,8 +3628,141 @@ async function checkForNewTripFormEmails(silent){
     debugLog('Trip form email check failed: '+e.message);
   }
 }
-setInterval(function(){ checkForNewTripFormEmails(true); }, 5*60*1000);
-setTimeout(function(){ checkForNewTripFormEmails(true); }, 5000);
+
+// ── Auto-import contact form emails ─────────────────────────────────────
+// The website's general "Miles Man Contact Form" (themilesman.com) emails a
+// notification per submission, in the same flattened "Label Value Label
+// Value..." layout as the trip form emails but with a much smaller, fixed
+// field set: first_name, last_name, email, phone, message, followed by a
+// "Submitted <time> - <date>" footer. Every submission becomes a lead: a
+// client record (created or matched/enriched the same way processTripFormRow
+// does), a "Lead" note with the inquiry text, and a follow-up Planner task.
+const CONTACT_FORM_EMAIL_SUBJECT = 'New submission from Miles Man Contact Form';
+function parseContactFormEmailText(flatText){
+  var footerIdx = flatText.search(/\bSubmitted \d/i);
+  if(footerIdx !== -1) flatText = flatText.slice(0, footerIdx);
+  var labels = ['first_name','last_name','email','phone','message'];
+  var regex = new RegExp('\\b(?:'+labels.join('|')+')\\b', 'gi');
+  var matches = [];
+  var m;
+  while((m = regex.exec(flatText))){
+    matches.push({label:m[0].toLowerCase(), start:m.index, end:m.index+m[0].length});
+  }
+  var row = {};
+  for(var i=0; i<matches.length; i++){
+    if(matches[i].label in row) continue; // first occurrence wins
+    var start = matches[i].end;
+    // "message" is always the last real field, so it runs to the end of the
+    // text unconditionally — the inquiry text itself may well contain words
+    // like "email" or "phone", which would otherwise be mistaken by this
+    // same scan for the start of a later field and truncate the message.
+    if(matches[i].label==='message'){
+      row.message = flatText.slice(start).trim();
+      break;
+    }
+    var end = matches[i+1] ? matches[i+1].start : flatText.length;
+    row[matches[i].label] = flatText.slice(start, end).trim();
+  }
+  return row;
+}
+function processContactFormRow(row, counters){
+  var firstName = (row.first_name||'').trim();
+  var lastName = (row.last_name||'').trim();
+  var name = (firstName+' '+lastName).trim();
+  if(!name){ counters.skipped++; return; }
+  var email = (row.email||'').trim();
+  var phone = (row.phone||'').trim();
+  var message = (row.message||'').trim();
+
+  var nameFirst = firstName.toLowerCase(), nameLast = lastName.toLowerCase();
+  var client = db.clients.find(function(c){
+    if(email && c.email && c.email.toLowerCase()===email.toLowerCase()) return true;
+    if((c.name||'').toLowerCase().trim()===name.toLowerCase().trim()) return true;
+    var cFirst=getFirstName(c.name).toLowerCase(), cLast=getLastName(c.name).toLowerCase();
+    return nameFirst && nameLast && nameFirst!==nameLast && cFirst===nameFirst && cLast===nameLast;
+  });
+
+  var leadNoteText = 'Contact form inquiry'+(message?': '+message:'');
+  var ts = new Date().toLocaleString();
+
+  if(client){
+    if(email && !client.email) client.email = email;
+    if(phone && !client.phone) client.phone = phone;
+    if(!client.notesLog) client.notesLog = [];
+    client.notesLog.push({ts:ts, text:leadNoteText, noteType:'Lead', source:'contact-form'});
+    counters.enriched++;
+  } else {
+    client = {id:newId('C',db.clients), name:toLastFirst(name), email:email, phone:phone,
+      streetAddress:'', city:'', state:'', zip:'', birthdate:'', countryOfCitizenship:'', countryOfBirth:'',
+      referredBy:'', referredByDetail:'', preferredAirline:'', preferredHotel:'', preferredCruiseLine:'',
+      mileageBalances:{}, hotelBalances:{}, cruiseBalances:{}, carRentalBalances:{}, creditCardBalances:{},
+      notes:'', joined:today(), totalTrips:0,
+      notesLog:[{ts:ts, text:leadNoteText, noteType:'Lead', source:'contact-form'}]};
+    db.clients.push(client);
+    counters.added++;
+  }
+
+  db.planner.push({
+    id:newId('PL',db.planner),
+    title:'New contact form lead: '+client.name,
+    dueDate:today(), done:false, clientId:client.id, vendorId:'', tripId:'',
+    completionNoteType:'Lead',
+    desc: message || 'New contact form submission — no message provided.',
+    createdAt: today()
+  });
+  counters.tasksCreated++;
+}
+async function checkForNewContactFormEmails(silent){
+  try{
+    var token = await getValidMsToken(false);
+    if(!token){
+      if(!silent) toast('Connect Outlook first (Debug Panel > Sync Outlook Emails)','err');
+      return;
+    }
+    var lastCheck = localStorage.getItem('mm_last_contactform_check') || (function(){
+      var d = new Date(); d.setDate(d.getDate()-1); return d.toISOString();
+    })();
+    var processedIds = JSON.parse(localStorage.getItem('mm_contactform_processed_ids')||'[]');
+    var checkedAt = new Date().toISOString();
+
+    var url = 'https://graph.microsoft.com/v1.0/me/messages'+
+      '?$select=id,subject,receivedDateTime,body'+
+      '&$orderby=receivedDateTime desc&$top=50'+
+      '&$filter=receivedDateTime+ge+'+encodeURIComponent(lastCheck);
+    var r = await fetch(url, {headers:{Authorization:'Bearer '+token}});
+    var d = await r.json();
+    if(!r.ok){
+      debugLog('Contact form email check error: '+(d.error&&d.error.message||r.status));
+      return;
+    }
+    var messages = (d.value||[]).filter(function(m){
+      return m.subject===CONTACT_FORM_EMAIL_SUBJECT && processedIds.indexOf(m.id)===-1;
+    });
+    debugLog('Contact form email check: '+messages.length+' new submission email(s)');
+    localStorage.setItem('mm_last_contactform_check', checkedAt);
+    if(!messages.length) return;
+
+    var counters = {added:0, enriched:0, tasksCreated:0, skipped:0};
+    messages.forEach(function(msg){
+      var flatText = stripHtml(msg.body && msg.body.content || '');
+      var row = parseContactFormEmailText(flatText);
+      processContactFormRow(row, counters);
+      processedIds.push(msg.id);
+    });
+    if(processedIds.length > 500) processedIds = processedIds.slice(processedIds.length-500);
+    localStorage.setItem('mm_contactform_processed_ids', JSON.stringify(processedIds));
+
+    if(counters.added || counters.enriched){
+      snapshot('Auto-import contact form emails');
+      saveDB(); render();
+      toast('Auto-imported '+counters.added+' new lead'+(counters.added!==1?'s':'')+(counters.enriched?', enriched '+counters.enriched+' existing':'')+' from contact form email','ok');
+    }
+  }catch(e){
+    debugLog('Contact form email check failed: '+e.message);
+  }
+}
+setInterval(function(){ checkForNewTripFormEmails(true); checkForNewContactFormEmails(true); }, 5*60*1000);
+setTimeout(function(){ checkForNewTripFormEmails(true); checkForNewContactFormEmails(true); }, 5000);
 
 // ── Book a Trip Form PDF import ──────────────────────────────────────────
 // Imports "Book a Trip" Google Form submissions exported as PDFs (the Google
@@ -3622,6 +4068,10 @@ function renderReports(){
       '<div id="rpt-results"><div class="empty" style="padding:40px">Set filters above and click Run Report</div></div>')
     :
       ('<div class="report-filter">'+
+        '<div><label>Filter By</label><select id="rpt-inv-datetype">'+
+          '<option value="departDate">Travel Date</option>'+
+          '<option value="invoiceDate">Invoice Date</option>'+
+        '</select></div>'+
         '<div><label>From Date</label><input type="date" id="rpt-inv-from"/></div>'+
         '<div><label>To Date</label><input type="date" id="rpt-inv-to"/></div>'+
         '<div><label>Supplier</label><select id="rpt-inv-supplier"><option value="">All suppliers</option>'+
@@ -3679,13 +4129,22 @@ function getInvoiceReportData(){
   var toDate   = (document.getElementById('rpt-inv-to')||{}).value||'';
   var supplierId = (document.getElementById('rpt-inv-supplier')||{}).value||'';
   var clientId = (document.getElementById('rpt-inv-client')||{}).value||'';
+  // "Travel Date" (departDate) or "Invoice Date" (invoiceDate) — these can
+  // legitimately differ (booked in one period, travel happens in another),
+  // so the From/To range needs to be explicit about which one it's filtering.
+  // invoiceDate is only ever populated by the revenue importer (§4 of
+  // DOCUMENTATION.md); trips added by hand or from the Book a Trip form
+  // don't have one, so an empty invoiceDate sorts before any real fromDate
+  // and those trips are excluded when filtering by Invoice Date with a From
+  // Date set — not a bug, there's genuinely no invoice date recorded for them.
+  var dateField = (document.getElementById('rpt-inv-datetype')||{}).value||'departDate';
 
   // Group trips by invoice number
   var groups = {};
   db.trips.forEach(function(t){
     if(supplierId && t.supplierId !== supplierId) return;
     if(clientId && t.clientId !== clientId) return;
-    var tripDate = t.departDate||'';
+    var tripDate = t[dateField]||'';
     if(fromDate && tripDate < fromDate) return;
     if(toDate   && tripDate > toDate)   return;
     var key = t.invoiceNum || t.bookingRef || ('(no invoice) '+t.id);
@@ -3697,8 +4156,8 @@ function getInvoiceReportData(){
 
   var rows = Object.keys(groups).map(function(k){ return groups[k]; });
   rows.sort(function(a,b){
-    var ad = (a.trips[0]&&a.trips[0].departDate)||'';
-    var bd = (b.trips[0]&&b.trips[0].departDate)||'';
+    var ad = (a.trips[0]&&a.trips[0][dateField])||'';
+    var bd = (b.trips[0]&&b.trips[0][dateField])||'';
     return bd.localeCompare(ad);
   });
   return rows;
@@ -3725,17 +4184,18 @@ function runInvoiceReport(){
         '<td>'+(t.clientName||'')+'</td>'+
         '<td>'+(t.destination||'')+'</td>'+
         '<td style="white-space:nowrap">'+(t.departDate||'')+'</td>'+
+        '<td style="white-space:nowrap">'+(t.invoiceDate||'—')+'</td>'+
         '<td>'+(t.supplierName||'—')+'</td>'+
         '<td style="text-align:right">$'+Number(t.totalValue||0).toLocaleString()+'</td>'+
       '</tr>';
     });
-    rowsHtml += '<tr style="background:#f9fafb"><td colspan="5" style="text-align:right;font-weight:700;color:#374151;padding:6px 12px">Invoice '+g.invoiceNum+' Total:</td><td style="text-align:right;font-weight:700;color:#111">$'+Number(g.totalValue).toLocaleString()+'</td></tr>';
+    rowsHtml += '<tr style="background:#f9fafb"><td colspan="6" style="text-align:right;font-weight:700;color:#374151;padding:6px 12px">Invoice '+g.invoiceNum+' Total:</td><td style="text-align:right;font-weight:700;color:#111">$'+Number(g.totalValue).toLocaleString()+'</td></tr>';
   });
 
   container.innerHTML =
     '<div style="font-size:13px;color:#888;margin-bottom:10px">'+groups.length+' invoice'+(groups.length!==1?'s':'')+' · '+db.trips.length+' trip rows · Grand Total: <strong style="color:#111">$'+Number(grandTotal).toLocaleString()+'</strong></div>'+
     '<div class="tbl-wrap"><table class="report-table"><thead><tr>'+
-      '<th>Invoice #</th><th>Client</th><th>Destination</th><th>Date</th><th>Supplier</th><th style="text-align:right">Value</th>'+
+      '<th>Invoice #</th><th>Client</th><th>Destination</th><th>Travel Date</th><th>Invoice Date</th><th>Supplier</th><th style="text-align:right">Value</th>'+
     '</tr></thead><tbody>'+rowsHtml+'</tbody></table></div>';
 }
 
@@ -3743,13 +4203,13 @@ function exportInvoiceReport(){
   var groups = getInvoiceReportData();
   if(!groups.length){ toast('No data to export','err'); return; }
   var esc = function(v){ var s=String(v==null?'':v); return s.includes(',')||s.includes('"')||s.includes('\n')?'"'+s.replace(/"/g,'""')+'"':s; };
-  var headers = ['Invoice #','Client','Destination','Date','Supplier','Value'];
+  var headers = ['Invoice #','Client','Destination','Travel Date','Invoice Date','Supplier','Value'];
   var rows = [];
   groups.forEach(function(g){
     g.trips.forEach(function(t){
-      rows.push([g.invoiceNum, t.clientName, t.destination, t.departDate, t.supplierName||'', t.totalValue||0]);
+      rows.push([g.invoiceNum, t.clientName, t.destination, t.departDate, t.invoiceDate||'', t.supplierName||'', t.totalValue||0]);
     });
-    rows.push(['', '', '', '', 'Invoice Total', g.totalValue]);
+    rows.push(['', '', '', '', '', 'Invoice Total', g.totalValue]);
   });
   var csv = [headers].concat(rows).map(function(r){return r.map(esc).join(',');}).join('\n');
   var b = new Blob([csv],{type:'text/csv'});
@@ -4233,12 +4693,12 @@ function openVendorDetail(id){
     '</div>'+
     (v.primaryClientName?'<div style="font-size:13px;color:#2563eb;font-weight:600;margin-bottom:12px">&#128100; '+v.primaryClientName+'</div>':'')+
     '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:18px">'+
-      '<div class="stat"><div class="stat-lbl">Transactions</div><div class="stat-val">'+stats.tripList.length+'</div></div>'+
-      '<div class="stat"><div class="stat-lbl">Cash Paid</div><div class="stat-val">$'+Number(totalCash).toLocaleString()+'</div></div>'+
-      '<div class="stat"><div class="stat-lbl">Total Value</div><div class="stat-val">$'+Number(totalRevenue).toLocaleString()+'</div></div>'+
+      '<div class="stat" id="stat-vendor-tx"><div class="stat-lbl">Transactions</div><div class="stat-val">'+stats.tripList.length+'</div></div>'+
+      '<div class="stat" id="stat-vendor-cash"><div class="stat-lbl">Cash Paid</div><div class="stat-val">$'+Number(totalCash).toLocaleString()+'</div></div>'+
+      '<div class="stat" id="stat-vendor-value"><div class="stat-lbl">Total Value</div><div class="stat-val">$'+Number(totalRevenue).toLocaleString()+'</div></div>'+
     '</div>'+
     (txRows ?
-      '<div class="tbl-wrap" style="max-height:400px;overflow-y:auto"><table>'+
+      '<div class="tbl-wrap" id="vendor-tx-table" style="max-height:400px;overflow-y:auto">'+'<table>'+
         '<thead><tr>'+
           '<th>Client</th><th>Destination</th><th>Dates</th><th>Status</th><th>Cash Paid</th><th>Total Value</th><th>Product</th><th>Trip ID</th>'+
         '</tr></thead>'+
@@ -4254,27 +4714,32 @@ function openVendorDetail(id){
   $('modal-close').addEventListener('click', closeModal);
   $('modal-close2').addEventListener('click', closeModal);
   $('modal-edit-vendor').addEventListener('click', function(){closeModal(); openVendorForm(this.dataset.id);});
+  ['stat-vendor-tx','stat-vendor-cash','stat-vendor-value'].forEach(function(id){
+    var el = $(id);
+    if(el) el.addEventListener('click', function(){ flashDrilldownTarget($('vendor-tx-table')); });
+  });
 }
 
 function renderVendors(){
   var sorted = [...db.vendors].sort(function(a,b){return (a.name||'').localeCompare(b.name||'');});
 
   // Compute global stats
-  var totalTrips=0, totalRevenue=0, totalClients=new Set();
+  var totalTrips=0, totalRevenue=0, totalClients=new Set(), allVendorTrips=[];
   db.vendors.forEach(function(v){
     var s=getVendorStats(v);
     totalTrips+=s.tripList.length;
     totalRevenue+=s.tripList.reduce(function(a,t){return a+(t.totalValue||0);},0);
     s.clients.forEach(function(c){totalClients.add(c);});
+    allVendorTrips = allVendorTrips.concat(s.tripList);
   });
 
   $('main').innerHTML =
     '<div class="page-hdr"><div class="page-title">Suppliers</div><button class="add-btn" id="btn-add-supplier">+ Add Supplier</button></div>'+
     '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px">'+
-      '<div class="stat"><div class="stat-lbl">Total Suppliers</div><div class="stat-val">'+db.vendors.length+'</div></div>'+
-      '<div class="stat"><div class="stat-lbl">Total Trips</div><div class="stat-val">'+totalTrips+'</div></div>'+
-      '<div class="stat"><div class="stat-lbl">Total Clients</div><div class="stat-val">'+totalClients.size+'</div></div>'+
-      '<div class="stat"><div class="stat-lbl">Total Value</div><div class="stat-val">$'+Number(totalRevenue).toLocaleString()+'</div></div>'+
+      '<div class="stat" id="stat-vendors-count"><div class="stat-lbl">Total Suppliers</div><div class="stat-val">'+db.vendors.length+'</div></div>'+
+      '<div class="stat" id="stat-vendors-trips"><div class="stat-lbl">Total Trips</div><div class="stat-val">'+totalTrips+'</div></div>'+
+      '<div class="stat" id="stat-vendors-clients"><div class="stat-lbl">Total Clients</div><div class="stat-val">'+totalClients.size+'</div></div>'+
+      '<div class="stat" id="stat-vendors-value"><div class="stat-lbl">Total Revenue</div><div class="stat-val">$'+Number(totalRevenue).toLocaleString()+'</div></div>'+
     '</div>'+
     '<div class="search-row">'+
       '<input id="supplier-search" placeholder="Search suppliers..."/>'+
@@ -4351,6 +4816,29 @@ function renderVendors(){
 
   $('btn-add-supplier').addEventListener('click', function(){openVendorForm();});
   var btnImportVendors = $('btn-import-suppliers'); if(btnImportVendors) btnImportVendors.addEventListener('click', importVendorsCSV);
+  var statVendorsCount = $('stat-vendors-count');
+  if(statVendorsCount) statVendorsCount.addEventListener('click', function(){
+    openStatDrilldownModal('Suppliers', ['Supplier','Type','Trips','Total Value'], sorted.map(function(v){
+      var s = getVendorStats(v);
+      return {cells:[v.name||'',v.type||'',s.tripList.length,'$'+fmt(s.tripList.reduce(function(a,t){return a+(t.totalValue||0);},0))],onClick:function(){openVendorForm(v.id);}};
+    }));
+  });
+  var vendorTripHeaders = ['Client','Destination','Depart','Supplier','Total Value'];
+  function vendorTripRow(t){
+    var sup = t.supplierId ? db.vendors.find(function(v){return v.id===t.supplierId;}) : null;
+    return {cells:[t.clientName||'',t.destination||'',t.departDate||'—',(sup?sup.name:t.supplierName)||'—','$'+fmt(t.totalValue)],onClick:function(){openTripForm(t.id);}};
+  }
+  var statVendorsTrips = $('stat-vendors-trips');
+  if(statVendorsTrips) statVendorsTrips.addEventListener('click', function(){ openStatDrilldownModal('Supplier Trips', vendorTripHeaders, allVendorTrips.map(vendorTripRow)); });
+  var statVendorsValue = $('stat-vendors-value');
+  if(statVendorsValue) statVendorsValue.addEventListener('click', function(){ openStatDrilldownModal('Supplier Revenue', vendorTripHeaders, allVendorTrips.map(vendorTripRow)); });
+  var statVendorsClients = $('stat-vendors-clients');
+  if(statVendorsClients) statVendorsClients.addEventListener('click', function(){
+    openStatDrilldownModal('Supplier Clients', ['Client','Contact'], Array.from(totalClients).map(function(name){
+      var c = db.clients.find(function(x){return x.name===name;});
+      return {cells:[name,(c&&c.email)||''],onClick:function(){ if(c) openClientForm(c.id); }};
+    }));
+  });
   $('supplier-search').addEventListener('input', function(){
     var q = this.value.toLowerCase();
     document.querySelectorAll('.vendor-card').forEach(function(el){
@@ -4810,12 +5298,12 @@ function renderDash(){
   $('main').innerHTML=
     '<div class="page-hdr"><div class="page-title">Dashboard</div><div style="font-size:12px;color:#888">'+new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'})+'</div></div>'+
     '<div class="stats-grid">'+
-      '<div class="stat"><div class="stat-lbl">Clients</div><div class="stat-val">'+s.clients+'</div></div>'+
-      '<div class="stat"><div class="stat-lbl">Total trips</div><div class="stat-val">'+s.trips+'</div></div>'+
-      '<div class="stat"><div class="stat-lbl">Confirmed</div><div class="stat-val">'+s.confirmed+'</div></div>'+
-      '<div class="stat"><div class="stat-lbl">Upcoming</div><div class="stat-val">'+s.upcoming+'</div></div>'+
-      '<div class="stat"><div class="stat-lbl">Total value</div><div class="stat-val">$'+fmt(s.value)+'</div></div>'+
-      '<div class="stat"><div class="stat-lbl">Points deployed</div><div class="stat-val">'+fmt(s.pts)+'</div></div>'+
+      '<div class="stat" id="stat-dash-clients"><div class="stat-lbl">Clients</div><div class="stat-val">'+s.clients+'</div></div>'+
+      '<div class="stat" id="stat-dash-trips"><div class="stat-lbl">Total trips</div><div class="stat-val">'+s.trips+'</div></div>'+
+      '<div class="stat" id="stat-dash-confirmed"><div class="stat-lbl">Confirmed</div><div class="stat-val">'+s.confirmed+'</div></div>'+
+      '<div class="stat" id="stat-dash-upcoming"><div class="stat-lbl">Upcoming</div><div class="stat-val">'+s.upcoming+'</div></div>'+
+      '<div class="stat" id="stat-dash-value"><div class="stat-lbl">Total Revenue</div><div class="stat-val">$'+fmt(s.value)+'</div></div>'+
+      '<div class="stat" id="stat-dash-pts"><div class="stat-lbl">Points deployed</div><div class="stat-val">'+fmt(s.pts)+'</div></div>'+
     '</div>'+
     '<div class="two-col">'+
       '<div class="card">'+
@@ -4847,6 +5335,35 @@ function renderDash(){
       e.stopPropagation();
       openClientForm(el.dataset.id);
     });
+  });
+  function tripRow(t){
+    return {cells:[t.clientName||'',t.destination||'',t.departDate||'—',displayStatus(t),'$'+fmt(t.totalValue)],onClick:function(){openTripForm(t.id);}};
+  }
+  var tripHeaders = ['Client','Destination','Depart','Status','Total Value'];
+  var statDashClients = $('stat-dash-clients');
+  if(statDashClients) statDashClients.addEventListener('click', function(){
+    openStatDrilldownModal('Clients', ['Client','Contact','Revenue'], db.clients.map(function(c){
+      return {cells:[c.name||'',c.email||'','$'+fmt(clientLiveRevenue(c.id))],onClick:function(){openClientForm(c.id);}};
+    }));
+  });
+  var statDashTrips = $('stat-dash-trips');
+  if(statDashTrips) statDashTrips.addEventListener('click', function(){ openStatDrilldownModal('All Trips', tripHeaders, db.trips.map(tripRow)); });
+  var statDashConfirmed = $('stat-dash-confirmed');
+  if(statDashConfirmed) statDashConfirmed.addEventListener('click', function(){
+    openStatDrilldownModal('Confirmed Trips', tripHeaders, db.trips.filter(function(t){return t.status==='Confirmed';}).map(tripRow));
+  });
+  var statDashUpcoming = $('stat-dash-upcoming');
+  if(statDashUpcoming) statDashUpcoming.addEventListener('click', function(){
+    openStatDrilldownModal('Upcoming Trips', tripHeaders, db.trips.filter(function(t){return (t.departDate||'')>=today();}).map(tripRow));
+  });
+  var statDashValue = $('stat-dash-value');
+  if(statDashValue) statDashValue.addEventListener('click', function(){ openStatDrilldownModal('Total Revenue', tripHeaders, db.trips.map(tripRow)); });
+  var statDashPts = $('stat-dash-pts');
+  if(statDashPts) statDashPts.addEventListener('click', function(){
+    openStatDrilldownModal('Points Deployed', ['Client','Destination','Depart','Status','Points Used'],
+      db.trips.filter(function(t){return t.pointsUsed;}).map(function(t){
+        return {cells:[t.clientName||'',t.destination||'',t.departDate||'—',displayStatus(t),fmt(t.pointsUsed)],onClick:function(){openTripForm(t.id);}};
+      }));
   });
 }
 
@@ -4893,9 +5410,9 @@ function renderClients(){
       },0);
       var totalTrips = list.reduce(function(a,c){return a+countDistinctTrips(c.id);},0);
       return '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px">'+
-        '<div class="stat"><div class="stat-lbl">Clients</div><div class="stat-val">'+list.length+'</div></div>'+
-        '<div class="stat"><div class="stat-lbl">Total Revenue</div><div class="stat-val">$'+Number(totalRevenue).toLocaleString()+'</div></div>'+
-        '<div class="stat"><div class="stat-lbl">Total Trips</div><div class="stat-val">'+totalTrips+'</div></div>'+
+        '<div class="stat" id="stat-clients-count"><div class="stat-lbl">Clients</div><div class="stat-val">'+list.length+'</div></div>'+
+        '<div class="stat" id="stat-clients-revenue"><div class="stat-lbl">Total Revenue</div><div class="stat-val">$'+Number(totalRevenue).toLocaleString()+'</div></div>'+
+        '<div class="stat" id="stat-clients-trips"><div class="stat-lbl">Total Trips</div><div class="stat-val">'+totalTrips+'</div></div>'+
       '</div>';
     })()+
     '<div class="search-row">'+
@@ -4930,6 +5447,26 @@ function renderClients(){
     '</tbody></table></div>';
 
   $('btn-add-client').addEventListener('click',function(){openClientForm();});
+  var statClientsCount = $('stat-clients-count');
+  if(statClientsCount) statClientsCount.addEventListener('click', function(){
+    openStatDrilldownModal('Clients', ['Client','Contact','Revenue','Trips'], list.map(function(c){
+      return {cells:[c.name||'',c.email||'','$'+fmt(db.trips.filter(function(t){return t.clientId===c.id;}).reduce(function(x,t){return x+(t.totalValue||0);},0)),countDistinctTrips(c.id)],onClick:function(){openClientForm(c.id);}};
+    }));
+  });
+  function clientTripDrilldownRows(){
+    var rows = [];
+    list.forEach(function(c){
+      db.trips.filter(function(t){return t.clientId===c.id;}).forEach(function(t){
+        rows.push({cells:[c.name||'',t.destination||'',t.departDate||'—',displayStatus(t),'$'+fmt(t.totalValue)],onClick:function(){openTripForm(t.id);}});
+      });
+    });
+    return rows;
+  }
+  var clientTripHeaders = ['Client','Destination','Depart','Status','Total Value'];
+  var statClientsRevenue = $('stat-clients-revenue');
+  if(statClientsRevenue) statClientsRevenue.addEventListener('click', function(){ openStatDrilldownModal('Client Revenue', clientTripHeaders, clientTripDrilldownRows()); });
+  var statClientsTrips = $('stat-clients-trips');
+  if(statClientsTrips) statClientsTrips.addEventListener('click', function(){ openStatDrilldownModal('Client Trips', clientTripHeaders, clientTripDrilldownRows()); });
   document.querySelectorAll('.sort-th-c').forEach(function(th){
     th.addEventListener('click', function(){
       var col = th.dataset.sort;
@@ -5033,6 +5570,48 @@ function sortArrow(col){
   return tripSortDir==='asc' ? ' &#9650;' : ' &#9660;';
 }
 
+// Generic drill-down modal for a page-level stat tile: shows the list of
+// records that add up to that number, each row clickable to open the real
+// record. Used by every top-level page's stats (Dashboard, Clients, Trips,
+// Suppliers, Planner) — NOT by stats that already live inside another open
+// modal (vendor detail, invoice detail), since this app has a single shared
+// modal container and can't nest one on top of another; those instead just
+// scroll to/highlight the breakdown table already shown alongside them.
+function openStatDrilldownModal(title, headers, rows){
+  var bodyRows = rows.map(function(r,i){
+    return '<tr class="stat-drilldown-row" data-idx="'+i+'" style="cursor:pointer">'+
+      r.cells.map(function(c){return '<td style="padding:8px 12px;font-size:13px;color:#374151">'+c+'</td>';}).join('')+
+    '</tr>';
+  }).join('');
+  $('modal').innerHTML =
+    '<div class="modal-hdr"><div class="modal-title">'+title+'</div><button class="close-btn" id="modal-close">&#x2715;</button></div>'+
+    (rows.length
+      ? '<div class="tbl-wrap" style="max-height:440px;overflow-y:auto"><table><thead><tr>'+headers.map(function(h){return '<th>'+h+'</th>';}).join('')+'</tr></thead><tbody>'+bodyRows+'</tbody></table></div>'
+      : '<div class="empty">No records</div>')+
+    '<div class="form-actions"><button class="cancel-btn" id="modal-close2">Close</button></div>';
+  $('overlay').classList.add('open');
+  $('modal-close').addEventListener('click', closeModal);
+  $('modal-close2').addEventListener('click', closeModal);
+  document.querySelectorAll('.stat-drilldown-row').forEach(function(tr){
+    tr.addEventListener('click', function(){
+      var r = rows[Number(this.dataset.idx)];
+      closeModal();
+      if(r.onClick) r.onClick();
+    });
+  });
+}
+// Scrolls to and briefly highlights an already-visible breakdown table —
+// used for stats that live inside a modal that's already showing that same
+// table (vendor detail, invoice detail), where opening a second modal isn't
+// possible.
+function flashDrilldownTarget(el){
+  if(!el) return;
+  el.scrollIntoView({behavior:'smooth', block:'nearest'});
+  var prevOutline = el.style.outline, prevOffset = el.style.outlineOffset;
+  el.style.outline = '2px solid #2563eb';
+  el.style.outlineOffset = '2px';
+  setTimeout(function(){ el.style.outline = prevOutline; el.style.outlineOffset = prevOffset; }, 900);
+}
 function openInvoiceDetail(invoiceNum){
   if(!invoiceNum) return;
   var matchingTrips = db.trips.filter(function(t){
@@ -5061,11 +5640,11 @@ function openInvoiceDetail(invoiceNum){
   $('modal').innerHTML =
     '<div class="modal-hdr"><div class="modal-title">Invoice #'+invoiceNum+'</div><button class="close-btn" id="modal-close">&#x2715;</button></div>'+
     '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px">'+
-      '<div class="stat"><div class="stat-lbl">Line Items</div><div class="stat-val">'+matchingTrips.length+'</div></div>'+
-      '<div class="stat"><div class="stat-lbl">Total Cash Paid</div><div class="stat-val">$'+Number(totalCash).toLocaleString()+'</div></div>'+
-      '<div class="stat"><div class="stat-lbl">Total Value</div><div class="stat-val">$'+Number(totalValue).toLocaleString()+'</div></div>'+
+      '<div class="stat" id="stat-invoice-items"><div class="stat-lbl">Line Items</div><div class="stat-val">'+matchingTrips.length+'</div></div>'+
+      '<div class="stat" id="stat-invoice-cash"><div class="stat-lbl">Total Cash Paid</div><div class="stat-val">$'+Number(totalCash).toLocaleString()+'</div></div>'+
+      '<div class="stat" id="stat-invoice-value"><div class="stat-lbl">Total Value</div><div class="stat-val">$'+Number(totalValue).toLocaleString()+'</div></div>'+
     '</div>'+
-    '<div class="tbl-wrap" style="max-height:400px;overflow-y:auto"><table>'+
+    '<div class="tbl-wrap" id="invoice-detail-table" style="max-height:400px;overflow-y:auto"><table>'+
       '<thead><tr>'+
         '<th>Client</th><th>Destination</th><th>Product</th><th>Supplier</th><th>Status</th><th style="text-align:right">Cash Paid</th><th style="text-align:right">Total Value</th>'+
       '</tr></thead>'+
@@ -5082,6 +5661,10 @@ function openInvoiceDetail(invoiceNum){
       openTripForm(row.dataset.tripId);
     });
   });
+  ['stat-invoice-items','stat-invoice-cash','stat-invoice-value'].forEach(function(id){
+    var el = $(id);
+    if(el) el.addEventListener('click', function(){ flashDrilldownTarget($('invoice-detail-table')); });
+  });
 }
 
 function renderTrips(){
@@ -5094,11 +5677,6 @@ function renderTrips(){
     return ms&&(!fStatus||t.status===fStatus)&&(!selCid||t.clientId===selCid);
   });
   // Sort
-  function displayStatus(t){
-    var st = t.status||'Planning';
-    if(st==='Completed' && t.departDate && t.departDate>=today()) st='Upcoming';
-    return st;
-  }
   list = list.slice().sort(function(a,b){
     var av, bv;
     if(tripSortCol==='status'){
@@ -5125,13 +5703,11 @@ function renderTrips(){
       '<button class="add-btn" id="btn-add-trip">+ Add Trip</button>'+
     '</div>'+
     (function(){
-      var totalValue = list.reduce(function(a,t){return a+(t.totalValue||0);},0);
       var totalCash  = list.reduce(function(a,t){return a+(t.cashPaid||0);},0);
       var invoiceCount = selC ? countDistinctTrips(selC.id) : countDistinctInvoicesIn(list);
-      return '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px">'+
-        '<div class="stat"><div class="stat-lbl">Trips (Distinct Invoices)</div><div class="stat-val">'+invoiceCount+'</div></div>'+
-        '<div class="stat"><div class="stat-lbl">Total Cash Paid</div><div class="stat-val">$'+Number(totalCash).toLocaleString()+'</div></div>'+
-        '<div class="stat"><div class="stat-lbl">Total Value</div><div class="stat-val">$'+Number(totalValue).toLocaleString()+'</div></div>'+
+      return '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:16px">'+
+        '<div class="stat" id="stat-trips-count"><div class="stat-lbl">Trips (Distinct Invoices)</div><div class="stat-val">'+invoiceCount+'</div></div>'+
+        '<div class="stat" id="stat-trips-cash"><div class="stat-lbl">Total Revenue</div><div class="stat-val">$'+Number(totalCash).toLocaleString()+'</div></div>'+
       '</div>';
     })()+
     '<div class="search-row">'+
@@ -5179,6 +5755,16 @@ function renderTrips(){
     '</tbody></table></div>';
 
   $('btn-add-trip').addEventListener('click',function(){openTripForm();});
+  function tripStatDrilldownRows(){
+    return list.map(function(t){
+      return {cells:[t.clientName||'',t.destination||'',t.departDate||'—',displayStatus(t),'$'+fmt(t.cashPaid),'$'+fmt(t.totalValue)],onClick:function(){openTripForm(t.id);}};
+    });
+  }
+  var tripStatHeaders = ['Client','Destination','Depart','Status','Cash Paid','Total Value'];
+  ['stat-trips-count','stat-trips-cash'].forEach(function(id){
+    var el = $(id);
+    if(el) el.addEventListener('click', function(){ openStatDrilldownModal('Trips', tripStatHeaders, tripStatDrilldownRows()); });
+  });
   document.querySelectorAll('.sort-th').forEach(function(th){
     th.addEventListener('click', function(){
       var col = th.dataset.sort;
@@ -5192,7 +5778,13 @@ function renderTrips(){
       renderTrips();
     });
   });
-  $('trip-search').addEventListener('input',function(){fSearch=this.value;renderTrips();});
+  $('trip-search').addEventListener('input',function(){
+    var pos=this.selectionStart;
+    fSearch=this.value;
+    renderTrips();
+    var el=$('trip-search');
+    if(el){el.focus();try{el.setSelectionRange(pos,pos);}catch(e){}}
+  });
   $('trip-status-filter').addEventListener('change',function(){fStatus=this.value;renderTrips();});
   if($('btn-back')) $('btn-back').addEventListener('click',function(){selCid=null;render();});
   document.querySelectorAll('.trip-sup-link').forEach(function(el){
@@ -5764,6 +6356,213 @@ function bindTripBalanceListeners(){
     });
   });
 }
+// ── Booked Trip Details ──────────────────────────────────────────────────
+// A confirmed-booking recap, organized into the same categories as the
+// Book a Trip form's "Type of Travel Needed" checkboxes (Airline, Hotel,
+// Cruise, Car Rental, Tours, Theme Park, Train), each with its own
+// confirmation number. Stored as trip.booked = {airline,hotel,cruise,
+// carRental,tours,themePark,train}, kept separate from the trip's existing
+// top-level fields (airline/destination/departDate/etc., which stay the
+// at-a-glance summary used everywhere else in the app — Trips list,
+// Calendar, exports) so nothing else has to change to support this.
+function pointsProgramOptionsHtml(selected){
+  function opts(list){ return list.map(function(o){return '<option value="'+o+'"'+(o===selected?' selected':'')+'>'+o+'</option>';}).join(''); }
+  return '<option value="">Select...</option>'+
+    '<optgroup label="Airlines">'+opts(AIRLINES)+'</optgroup>'+
+    '<optgroup label="Hotels">'+opts(HOTELS)+'</optgroup>'+
+    '<optgroup label="Credit Cards">'+opts(CREDIT_CARDS)+'</optgroup>';
+}
+function pointsRedemptionRowHtml(idPrefix, n, block){
+  block = block || {};
+  return '<div class="field full"><label>Miles/Points Redemption #'+n+'</label>'+
+    '<div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:8px">'+
+      '<select id="'+idPrefix+'-program'+n+'">'+pointsProgramOptionsHtml(block.program)+'</select>'+
+      inp(idPrefix+'-amount'+n,'number',block.amount||'','Points/miles used')+
+      inp(idPrefix+'-cost'+n,'number',block.cost||'','Cost $')+
+    '</div>'+
+  '</div>';
+}
+function pointsRedemptionBlocksHtml(idPrefix, blocks){
+  blocks = blocks || [];
+  var html = '';
+  for(var i=1;i<=3;i++){ html += pointsRedemptionRowHtml(idPrefix, i, blocks[i-1]); }
+  return html;
+}
+function readPointsRedemptions(idPrefix){
+  var out = [];
+  for(var i=1;i<=3;i++){
+    var program = gv(idPrefix+'-program'+i);
+    var amount = gn(idPrefix+'-amount'+i);
+    var cost = gn(idPrefix+'-cost'+i);
+    if(program || amount || cost) out.push({program:program, amount:amount, cost:cost});
+  }
+  return out;
+}
+// Hotel entries are a dynamic add/remove list (a multi-city trip can have
+// any number of hotel stays), unlike the fixed-3 points-redemption blocks
+// above. Rows are read back by class selector in DOM order at save time —
+// no ids to keep in sync — and added/removed as real DOM nodes (not a
+// full-list re-render) so typing in one row is never disturbed by editing
+// another, the same technique the client-notes editor already uses.
+function hotelEntryRowInnerHtml(entry){
+  entry = entry || {};
+  return '<div style="display:flex;justify-content:flex-end;margin-bottom:4px">'+
+      '<button type="button" class="del-hotel-entry-btn" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:12px">&#128465;&#65039; Remove</button>'+
+    '</div>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
+      '<div class="field"><label>Hotel</label><select class="hotel-entry-brand"><option value="">-- Select --</option>'+selOpts(HOTELS,entry.hotelBrand)+'</select></div>'+
+      '<div class="field"><label>Confirmation Number</label><input class="hotel-entry-conf" type="text" value="'+(entry.confirmationNumber||'').toString().replace(/"/g,'&quot;')+'"></div>'+
+      '<div class="field"><label>Check-in Date</label><input class="hotel-entry-checkin" type="date" value="'+(entry.checkInDate||'')+'"></div>'+
+      '<div class="field"><label>Nights</label><input class="hotel-entry-nights" type="number" value="'+(entry.nights||'')+'"></div>'+
+      '<div class="field"><label>Price ($)</label><input class="hotel-entry-price" type="number" value="'+(entry.price||'')+'"></div>'+
+      '<div class="field"><label>Miles/Points Program</label><select class="hotel-entry-program">'+pointsProgramOptionsHtml(entry.program)+'</select></div>'+
+      '<div class="field"><label>Miles/Points Used</label><input class="hotel-entry-amount" type="number" value="'+(entry.amount||'')+'"></div>'+
+    '</div>';
+}
+function hotelEntryRowHtml(entry){
+  return '<div class="hotel-entry-row" style="border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin-bottom:10px;background:#fafafa">'+hotelEntryRowInnerHtml(entry)+'</div>';
+}
+function hotelEntriesListHtml(entries){
+  return entries.length ? entries.map(hotelEntryRowHtml).join('') : '<div id="tb-hotel-entries-empty" style="color:#aaa;font-size:12px;padding:6px 0">No hotels added yet</div>';
+}
+function readHotelEntries(){
+  return Array.from(document.querySelectorAll('#tb-hotel-entries .hotel-entry-row')).map(function(row){
+    return {
+      hotelBrand: (row.querySelector('.hotel-entry-brand')||{}).value||'',
+      confirmationNumber: (row.querySelector('.hotel-entry-conf')||{}).value||'',
+      checkInDate: (row.querySelector('.hotel-entry-checkin')||{}).value||'',
+      nights: Number((row.querySelector('.hotel-entry-nights')||{}).value)||0,
+      price: Number((row.querySelector('.hotel-entry-price')||{}).value)||0,
+      program: (row.querySelector('.hotel-entry-program')||{}).value||'',
+      amount: Number((row.querySelector('.hotel-entry-amount')||{}).value)||0
+    };
+  }).filter(function(e){
+    return e.hotelBrand||e.confirmationNumber||e.checkInDate||e.nights||e.price||e.program||e.amount;
+  });
+}
+function bookedTripDetailsHtml(bd){
+  bd = bd || {};
+  var air = bd.airline||{}, cru = bd.cruise||{}, car = bd.carRental||{},
+      tou = bd.tours||{}, tp = bd.themePark||{}, tra = bd.train||{};
+  var cruiseCabinTypes = getQuoteConfig(cru.cruiseLine).cabinTypes;
+  // bd.hotel used to be a single object (one hotel per trip); now it's a
+  // list, so an old single-object shape gets wrapped into a one-entry list
+  // rather than losing that data.
+  var hotelEntries = Array.isArray(bd.hotel) ? bd.hotel : (bd.hotel && Object.keys(bd.hotel).length ? [bd.hotel] : []);
+  if(!hotelEntries.length) hotelEntries = [{}];
+  return ''+
+    '<div class="modal-section-title">Booked Trip Details</div>'+
+    '<div class="modal-section-title">Airline</div>'+
+    fld('Confirmation Number',inp('tb-air-conf','text',air.confirmationNumber,'e.g. ABC123'))+
+    fld('Airline',sel('tb-air-airline',AIRLINES,air.airline))+
+    fld('Class of Service',sel('tb-air-class',CLASSES,air.classOfService))+
+    fld('Non-Stop Flights Only',sel('tb-air-nonstop',['Yes','No'],air.nonStop))+
+    fld('Origin',inp('tb-air-origin','text',air.origin,'e.g. JFK'))+
+    fld('Destination',inp('tb-air-dest','text',air.destination,'e.g. Tokyo, Japan'))+
+    fld('Depart Date',inp('tb-air-depart','date',air.departDate))+
+    fld('Return Date',inp('tb-air-return','date',air.returnDate))+
+    pointsRedemptionBlocksHtml('tb-air',air.pts)+
+    '<div class="modal-section-title">Hotel</div>'+
+    '<div class="field full"><label>Hotels <span class="hint" style="text-transform:none;font-weight:400">(add one entry per hotel stay on this trip)</span></label>'+
+      '<div id="tb-hotel-entries">'+hotelEntriesListHtml(hotelEntries)+'</div>'+
+      '<button type="button" id="tb-hotel-add-btn" style="padding:5px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit">+ Add Hotel</button>'+
+    '</div>'+
+    '<div class="modal-section-title">Cruise</div>'+
+    fld('Confirmation Number',inp('tb-cruise-conf','text',cru.confirmationNumber,'e.g. C-445566'))+
+    fld('Cruise Line',sel('tb-cruise-line',CRUISE_LINES,cru.cruiseLine))+
+    fld('Ship Name','<select id="tb-cruise-ship">'+shipOptionsHtml(cru.cruiseLine,cru.shipName)+'</select>')+
+    fld('Sailing Date',inp('tb-cruise-sailing','date',cru.sailingDate))+
+    fld('Nights',inp('tb-cruise-nights','number',cru.nights||''))+
+    fld('Departure Port',inp('tb-cruise-port','text',cru.departurePort,'e.g. Fort Lauderdale, FL'))+
+    fld('Cabin Type','<select id="tb-cruise-cabin"><option value="">-- Select --</option>'+selOpts(cruiseCabinTypes,cru.cabinType)+'</select>')+
+    fld('People In Cabin',inp('tb-cruise-people','number',cru.peopleInCabin||''))+
+    fld('Loyalty Number',inp('tb-cruise-loyalty','text',cru.loyaltyNumber))+
+    '<div class="modal-section-title">Car Rental</div>'+
+    fld('Confirmation Number',inp('tb-car-conf','text',car.confirmationNumber,'e.g. CR-778899'))+
+    fld('Company',sel('tb-car-company',CAR_RENTALS,car.company))+
+    fld('Car Size',sel('tb-car-size',CAR_SIZES,car.carSize))+
+    fld('Pickup Location',inp('tb-car-pickuploc','text',car.pickupLocation,'e.g. Miami Airport (MIA)'))+
+    fld('Dropoff Location',inp('tb-car-dropoffloc','text',car.dropoffLocation,'e.g. Miami Airport (MIA)'))+
+    fld('Pickup Date',inp('tb-car-pickupdate','date',car.pickupDate))+
+    fld('Dropoff Date',inp('tb-car-dropoffdate','date',car.dropoffDate))+
+    fld('Pickup Time',inp('tb-car-pickuptime','time',car.pickupTime))+
+    fld('Dropoff Time',inp('tb-car-dropofftime','time',car.dropoffTime))+
+    '<div class="modal-section-title">Tours</div>'+
+    fld('Confirmation Number',inp('tb-tours-conf','text',tou.confirmationNumber,'e.g. T-112233'))+
+    fld('Tour Vendor',inp('tb-tours-vendor','text',tou.vendor,'e.g. Tauck'))+
+    fld('Description','<textarea id="tb-tours-desc">'+(tou.description||'')+'</textarea>',true)+
+    '<div class="modal-section-title">Theme Park</div>'+
+    fld('Confirmation Number',inp('tb-tp-conf','text',tp.confirmationNumber,'e.g. TP-334455'))+
+    fld('Park',sel('tb-tp-park',THEME_PARKS,tp.park))+
+    fld('Ticket Type',inp('tb-tp-ticket','text',tp.ticketType,'e.g. Park Hopper'))+
+    '<div class="modal-section-title">Train</div>'+
+    fld('Confirmation Number',inp('tb-train-conf','text',tra.confirmationNumber,'e.g. AMTK-556677'))+
+    fld('Departure City',inp('tb-train-depcity','text',tra.departureCity,'e.g. New York, NY'))+
+    fld('Arrival City',inp('tb-train-arrcity','text',tra.arrivalCity,'e.g. Washington, DC'))+
+    fld('Departure Date',inp('tb-train-depdate','date',tra.departureDate))+
+    fld('Return Date',inp('tb-train-retdate','date',tra.returnDate))+
+    fld('Class of Service',sel('tb-train-class',TRAIN_CLASSES,tra.classOfService));
+}
+function bindBookedTripDetailsListeners(){
+  var cruiseLineSel = document.getElementById('tb-cruise-line');
+  if(cruiseLineSel){
+    cruiseLineSel.addEventListener('change', function(){
+      document.getElementById('tb-cruise-ship').innerHTML = shipOptionsHtml(this.value,'');
+      document.getElementById('tb-cruise-cabin').innerHTML = '<option value="">-- Select --</option>'+selOpts(getQuoteConfig(this.value).cabinTypes,'');
+    });
+  }
+  var hotelEntriesEl = document.getElementById('tb-hotel-entries');
+  var hotelAddBtn = document.getElementById('tb-hotel-add-btn');
+  if(hotelAddBtn && hotelEntriesEl){
+    hotelAddBtn.addEventListener('click', function(){
+      var empty = document.getElementById('tb-hotel-entries-empty');
+      if(empty) empty.remove();
+      var div = document.createElement('div');
+      div.className = 'hotel-entry-row';
+      div.style.cssText = 'border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin-bottom:10px;background:#fafafa';
+      div.innerHTML = hotelEntryRowInnerHtml({});
+      hotelEntriesEl.appendChild(div);
+    });
+  }
+  if(hotelEntriesEl){
+    hotelEntriesEl.addEventListener('click', function(e){
+      var btn = e.target.closest ? e.target.closest('.del-hotel-entry-btn') : null;
+      if(!btn) return;
+      var row = btn.closest('.hotel-entry-row');
+      if(row) row.remove();
+      if(!hotelEntriesEl.querySelector('.hotel-entry-row')){
+        hotelEntriesEl.innerHTML = '<div id="tb-hotel-entries-empty" style="color:#aaa;font-size:12px;padding:6px 0">No hotels added yet</div>';
+      }
+    });
+  }
+}
+function readBookedTripDetails(){
+  return {
+    airline: {
+      confirmationNumber: gv('tb-air-conf'), airline: gv('tb-air-airline'), classOfService: gv('tb-air-class'),
+      nonStop: gv('tb-air-nonstop'), origin: gv('tb-air-origin'), destination: gv('tb-air-dest'),
+      departDate: gv('tb-air-depart'), returnDate: gv('tb-air-return'), pts: readPointsRedemptions('tb-air')
+    },
+    hotel: readHotelEntries(),
+    cruise: {
+      confirmationNumber: gv('tb-cruise-conf'), cruiseLine: gv('tb-cruise-line'), shipName: gv('tb-cruise-ship'),
+      sailingDate: gv('tb-cruise-sailing'), nights: gn('tb-cruise-nights'), departurePort: gv('tb-cruise-port'),
+      cabinType: gv('tb-cruise-cabin'), peopleInCabin: gn('tb-cruise-people'), loyaltyNumber: gv('tb-cruise-loyalty')
+    },
+    carRental: {
+      confirmationNumber: gv('tb-car-conf'), company: gv('tb-car-company'), carSize: gv('tb-car-size'),
+      pickupLocation: gv('tb-car-pickuploc'), dropoffLocation: gv('tb-car-dropoffloc'),
+      pickupDate: gv('tb-car-pickupdate'), dropoffDate: gv('tb-car-dropoffdate'),
+      pickupTime: gv('tb-car-pickuptime'), dropoffTime: gv('tb-car-dropofftime')
+    },
+    tours: { confirmationNumber: gv('tb-tours-conf'), vendor: gv('tb-tours-vendor'), description: gv('tb-tours-desc') },
+    themePark: { confirmationNumber: gv('tb-tp-conf'), park: gv('tb-tp-park'), ticketType: gv('tb-tp-ticket') },
+    train: {
+      confirmationNumber: gv('tb-train-conf'), departureCity: gv('tb-train-depcity'), arrivalCity: gv('tb-train-arrcity'),
+      departureDate: gv('tb-train-depdate'), returnDate: gv('tb-train-retdate'), classOfService: gv('tb-train-class')
+    }
+  };
+}
 function openTripForm(id){
   const d=id?(db.trips.find(function(t){return t.id===id;})||{}):{};
   const initCid=d.clientId||selCid||'';
@@ -5794,9 +6593,11 @@ function openTripForm(id){
       fld('Cruise Line',sel('tcr',CRUISE_LINES,d.cruiseLine))+fld('Ship Name','<select id="tship">'+shipOptionsHtml(d.cruiseLine,d.shipName)+'</select>')+
       fld('Points Used',inp('tpu','number',d.pointsUsed||0))+fld('Cash Paid ($)',inp('tcp','number',d.cashPaid||0))+
       fld('Total Value ($)',inp('tva','number',d.totalValue||0))+fld('Booking Reference',inp('tbr','text',d.bookingRef,'e.g. UA-44129LHR'))+
+      fld('Invoice Date',inp('tinv','date',d.invoiceDate))+
       fld('Product',inp('tpr','text',d.product,'e.g. Airline Booking:Roundtrip Intl Business'))+
       '<div id="trip-balance-sections">'+tripBalanceSectionsHtml(initCid)+'</div>'+
       fld('Notes','<textarea id="tno">'+(d.notes||'')+'</textarea>',true)+
+      bookedTripDetailsHtml(d.booked)+
     '</div>'+
     '<div class="form-actions"><button class="cancel-btn" id="modal-cancel">Cancel</button><button class="save-btn" id="modal-save-trip" data-id="'+(id||'')+'">Save Trip</button></div>';
   $('modal').classList.add('modal-wide');
@@ -5812,6 +6613,7 @@ function openTripForm(id){
     document.getElementById('tship').innerHTML = shipOptionsHtml(this.value,'');
   });
   bindTripBalanceListeners();
+  bindBookedTripDetailsListeners();
 }
 
 function closeModal(){$('overlay').classList.remove('open');$('modal').classList.remove('modal-wide');}
@@ -5864,7 +6666,7 @@ function saveTrip(id){
   // and invoice-dedup logic all key off this) — clientIds is purely additional
   // travelers linked to the same trip so it also shows on their own records.
   const additionalClientIds=Array.from(document.querySelectorAll('.trip-client-cb:checked')).map(function(cb){return cb.value;}).filter(function(cid){return cid!==clientId;});
-  const data={clientId:clientId,clientName:client?client.name:'',clientIds:additionalClientIds,supplierId:supplierId,supplierName:supplier?supplier.name:'',origin:gv('tor'),destination:dest,departDate:gv('tdd'),returnDate:gv('trd'),status:gv('tst')||'Planning',type:gv('tty')||'Leisure',airline:gv('tai'),flightClass:gv('tcl')||'Economy',hotel:gv('tho'),hotelNights:gn('thn'),cruiseLine:gv('tcr'),shipName:gv('tship'),pointsUsed:gn('tpu'),cashPaid:gn('tcp'),totalValue:gn('tva'),bookingRef:gv('tbr'),product:gv('tpr'),notes:gv('tno')};
+  const data={clientId:clientId,clientName:client?client.name:'',clientIds:additionalClientIds,supplierId:supplierId,supplierName:supplier?supplier.name:'',origin:gv('tor'),destination:dest,departDate:gv('tdd'),returnDate:gv('trd'),status:gv('tst')||'Planning',type:gv('tty')||'Leisure',airline:gv('tai'),flightClass:gv('tcl')||'Economy',hotel:gv('tho'),hotelNights:gn('thn'),cruiseLine:gv('tcr'),shipName:gv('tship'),pointsUsed:gn('tpu'),cashPaid:gn('tcp'),totalValue:gn('tva'),bookingRef:gv('tbr'),invoiceDate:gv('tinv'),product:gv('tpr'),notes:gv('tno'),booked:readBookedTripDetails()};
   if(client){
     client.mileageBalances=readBalanceGrid('mb',AIRLINES,AIRLINE_STATUS);
     client.hotelBalances=readBalanceGrid('hb',HOTELS,HOTEL_STATUS);
@@ -5966,8 +6768,8 @@ function renderPlanner(){
       '<div></div>'+
     '</div>'+
     '<div class="stats-grid" style="grid-template-columns:repeat(2,1fr)">'+
-      '<div class="stat"><div class="stat-lbl">Open Tasks</div><div class="stat-val">'+openCount+'</div></div>'+
-      '<div class="stat"><div class="stat-lbl">Total Tasks</div><div class="stat-val">'+db.planner.length+'</div></div>'+
+      '<div class="stat" id="stat-planner-open"><div class="stat-lbl">Open Tasks</div><div class="stat-val">'+openCount+'</div></div>'+
+      '<div class="stat" id="stat-planner-total"><div class="stat-lbl">Total Tasks</div><div class="stat-val">'+db.planner.length+'</div></div>'+
     '</div>'+
     '<div class="search-row">'+
       '<input id="planner-search" placeholder="Search tasks..."/>'+
@@ -6011,6 +6813,18 @@ function renderPlanner(){
     }).join('')+'</tbody></table></div>' : '<div class="empty">No tasks yet — add one to start planning follow-ups tied to clients, suppliers, or trips</div>');
 
   $('btn-add-task').addEventListener('click', function(){openTaskForm();});
+  function taskRow(t){
+    return {cells:[t.title||'',t.dueDate||'—',clientName(t)||'—',t.done?'Done':'Open'],onClick:function(){openTaskForm(t.id);}};
+  }
+  var taskHeaders = ['Task','Due Date','Client','Status'];
+  var statPlannerOpen = $('stat-planner-open');
+  if(statPlannerOpen) statPlannerOpen.addEventListener('click', function(){
+    openStatDrilldownModal('Open Tasks', taskHeaders, db.planner.filter(function(t){return !t.done;}).map(taskRow));
+  });
+  var statPlannerTotal = $('stat-planner-total');
+  if(statPlannerTotal) statPlannerTotal.addEventListener('click', function(){
+    openStatDrilldownModal('All Tasks', taskHeaders, db.planner.map(taskRow));
+  });
   $('planner-search').addEventListener('input', function(){
     var qv = this.value.toLowerCase();
     document.querySelectorAll('[data-task-id]').forEach(function(row){
@@ -6362,6 +7176,7 @@ function bindClick(id, handler){
   bindClick('btn-restore', importJSON);
   bindClick('btn-mass-email', openMassEmailModal);
   bindClick('btn-email-quote', openEmailQuoteModal);
+  bindClick('btn-email-itinerary', openEmailItineraryModal);
   bindClick('btn-log-mailchimp', openLogMailchimpModal);
   bindClick('btn-sync-mailchimp', syncMailchimpEmails);
   bindClick('btn-import-csv', importCSV);
