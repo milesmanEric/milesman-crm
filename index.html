@@ -5836,7 +5836,7 @@ function renderClients(){
 }
 
 function sortArrow(col){
-  var tripSortCol = window._tripSortCol || 'departDate';
+  var tripSortCol = window._tripSortCol || 'id';
   var tripSortDir = window._tripSortDir || 'desc';
   if(tripSortCol!==col) return '';
   return tripSortDir==='asc' ? ' &#9650;' : ' &#9660;';
@@ -5940,7 +5940,7 @@ function openInvoiceDetail(invoiceNum){
 }
 
 function renderTrips(){
-  var tripSortCol = window._tripSortCol || 'departDate';
+  var tripSortCol = window._tripSortCol || 'id';
   var tripSortDir = window._tripSortDir || 'desc';
   const selC=db.clients.find(function(c){return c.id===selCid;});
   const q=fSearch.toLowerCase();
@@ -5953,6 +5953,12 @@ function renderTrips(){
     var av, bv;
     if(tripSortCol==='status'){
       av=displayStatus(a); bv=displayStatus(b);
+    } else if(tripSortCol==='id'){
+      // Default sort (newest added first) — compare the numeric part of
+      // the id (T1, T2, ...T10...) rather than the string, since string
+      // comparison would put "T10" before "T9".
+      av=parseInt((a.id||'').replace(/\D/g,''),10)||0;
+      bv=parseInt((b.id||'').replace(/\D/g,''),10)||0;
     } else {
       av=a[tripSortCol]; bv=b[tripSortCol];
     }
