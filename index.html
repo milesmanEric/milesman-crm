@@ -2225,6 +2225,111 @@ function princessQuoteOpts(entries, meta){
 }
 function princessQuoteHtml(entries, meta){ return quoteEmailShellHtml(princessQuoteOpts(entries, meta)); }
 function princessQuoteBodyHtml(entries, meta){ return quoteEmailBodyHtml(princessQuoteOpts(entries, meta)); }
+
+// ── Save a quote PDF to Google Drive ────────────────────────────────────
+// Every time a quote is emailed, a PDF copy of the same body (the styled
+// template for Virgin Voyages/Princess, or a simple text rendering for any
+// other line) gets rendered client-side with html2pdf.js and uploaded into
+// a "Miles Man Quotes" Drive folder — a record separate from the note
+// logged on the client. Runs fire-and-forget right after the mailto: opens
+// so sending the quote itself never waits on rendering/upload; failures
+// (no Drive token, network) just toast/log rather than blocking anything.
+let _html2pdfLibPromise=null;
+function loadHtml2PdfLib(){
+  if(!_html2pdfLibPromise){
+    _html2pdfLibPromise=new Promise(function(resolve,reject){
+      if(window.html2pdf){resolve(window.html2pdf);return;}
+      var s=document.createElement('script');
+      s.src='https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.2/dist/html2pdf.bundle.min.js';
+      s.onload=function(){resolve(window.html2pdf);};
+      s.onerror=function(){reject(new Error('Failed to load html2pdf.js'));};
+      document.head.appendChild(s);
+    });
+  }
+  return _html2pdfLibPromise;
+}
+function plainQuoteBodyHtml(bodyParts, subject){
+  return '<div style="font-family:Arial,sans-serif;font-size:14px;color:#111;padding:24px;max-width:600px">'+
+    '<h2 style="margin:0 0 16px">'+escHtml(subject)+'</h2>'+
+    '<div style="white-space:pre-wrap;line-height:1.6">'+bodyParts.map(escHtml).join('\n')+'</div>'+
+  '</div>';
+}
+async function generateQuotePdfBlob(bodyHtml){
+  var html2pdfLib = await loadHtml2PdfLib();
+  var container = document.createElement('div');
+  // Positioned off left/top would seem like the obvious way to keep this
+  // invisible, but html2canvas renders a blank (0-height) canvas for
+  // anything placed far outside the viewport, and the same happens with
+  // opacity:0 or visibility:hidden — it needs to be somewhere the browser
+  // actually paints. A negative z-index keeps it on-screen at (0,0) but
+  // tucked behind the app's own (opaque) content, invisible in practice
+  // without breaking the capture. Explicit width/height/windowWidth/
+  // windowHeight (matched to the container's real rendered size, forced
+  // via the offsetHeight read below) are also required — without them
+  // html2canvas falls back to measuring the whole window and gets 0.
+  container.style.cssText='position:fixed;top:0;left:0;width:650px;background:#fff;z-index:-1';
+  container.innerHTML = bodyHtml;
+  document.body.appendChild(container);
+  void container.offsetHeight; // force layout before measuring
+  var w = container.scrollWidth, h = container.scrollHeight;
+  try{
+    return await html2pdfLib().set({
+      margin:10, image:{type:'jpeg',quality:0.95},
+      html2canvas:{scale:2, width:w, height:h, windowWidth:w, windowHeight:h},
+      jsPDF:{unit:'pt', format:'letter'}
+    }).from(container).outputPdf('blob');
+  } finally {
+    document.body.removeChild(container);
+  }
+}
+const DRIVE_QUOTES_FOLDER_NAME = 'Miles Man Quotes';
+let _driveQuotesFolderId = null;
+async function getOrCreateDriveQuotesFolder(token){
+  if(_driveQuotesFolderId) return _driveQuotesFolderId;
+  var q = encodeURIComponent("name='"+DRIVE_QUOTES_FOLDER_NAME+"' and mimeType='application/vnd.google-apps.folder' and trashed=false");
+  var r = await fetch('https://www.googleapis.com/drive/v3/files?q='+q+'&fields=files(id,name)',{headers:{Authorization:'Bearer '+token}});
+  var d = await r.json();
+  if(!r.ok) throw new Error('Drive returned '+r.status+' looking up quotes folder');
+  if(d.files && d.files.length){ _driveQuotesFolderId = d.files[0].id; return _driveQuotesFolderId; }
+  var cr = await fetch('https://www.googleapis.com/drive/v3/files',{
+    method:'POST', headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},
+    body: JSON.stringify({name:DRIVE_QUOTES_FOLDER_NAME, mimeType:'application/vnd.google-apps.folder'})
+  });
+  var created = await cr.json();
+  if(!cr.ok) throw new Error('Drive returned '+cr.status+' creating quotes folder');
+  _driveQuotesFolderId = created.id;
+  return _driveQuotesFolderId;
+}
+async function saveQuotePdfToDrive(d, bodyHtml, subject){
+  try{
+    debugLog('Quote PDF: rendering "'+subject+'"...');
+    var blob = await generateQuotePdfBlob(bodyHtml);
+    // Silent variant deliberately — this runs unattended right after the
+    // mailto: opens, so it must never force-redirect the page to Google's
+    // login screen if Drive isn't connected yet (that would hijack the tab
+    // away from the email the user is actually trying to send).
+    var token = await getDriveTokenSilent();
+    if(!token){
+      debugLog('Quote PDF: Google Drive not connected — skipped saving (connect via File menu > Backup to Google Drive)');
+      toast('Quote PDF not saved — connect Google Drive first (File menu)','info');
+      return;
+    }
+    var folderId = await getOrCreateDriveQuotesFolder(token);
+    var filename = ((d.client?d.client.name+' - ':'')+subject+' - '+today()+'.pdf').replace(/[\\/:*?"<>|]/g,'-');
+    var meta = new Blob([JSON.stringify({name:filename, mimeType:'application/pdf', parents:[folderId]})], {type:'application/json'});
+    var form = new FormData(); form.append('metadata', meta); form.append('file', blob);
+    var r = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink', {
+      method:'POST', headers:{Authorization:'Bearer '+token}, body:form
+    });
+    if(!r.ok) throw new Error('Drive returned '+r.status+' saving quote PDF');
+    debugLog('Quote PDF saved to Google Drive: "'+filename+'"');
+    toast('Quote PDF saved to Google Drive','ok');
+  }catch(e){
+    console.error(e);
+    debugLog('Quote PDF save failed: '+e.message);
+    toast('Could not save quote PDF to Drive: '+e.message,'err');
+  }
+}
 // Cruise lines with a matching HTML email template (virgin_voyages_quote_template.html,
 // princess_cruises_quote_template.html) get a styled HTML quote (copied to the
 // clipboard for pasting into Outlook, since mailto: bodies are plain-text only)
@@ -2391,6 +2496,7 @@ function openEmailQuoteModal(){
       }else{
         toast('Could not copy the quote automatically — click Preview, then select all (Ctrl+A) and copy (Ctrl+C) from there to paste into Outlook','err');
       }
+      saveQuotePdfToDrive(d, bodyHtml, subject);
     }else{
       var bodyParts = ['Cruise Line: '+d.cruiseLine];
       if(d.ship) bodyParts.push('Ship: '+d.ship);
@@ -2402,6 +2508,7 @@ function openEmailQuoteModal(){
       var mailto2 = 'mailto:'+(d.client&&d.client.email?mailtoAddr(d.client.email):'')+'?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(body);
       window.location.href = mailto2;
       toast('Opening Outlook with quote'+(d.client?' for '+d.client.name:''),'ok');
+      saveQuotePdfToDrive(d, plainQuoteBodyHtml(bodyParts, subject), subject);
     }
 
     logQuoteNote(d, subject);
