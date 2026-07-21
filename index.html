@@ -3984,6 +3984,12 @@ async function checkForNewRevenueReportEmails(silent){
       debugLog('Revenue report email check error: '+(d.error&&d.error.message||r.status));
       return;
     }
+    debugLog('Revenue report email check: fetched '+(d.value||[]).length+' message(s) since '+lastCheck);
+    (d.value||[]).forEach(function(m){
+      if((m.subject||'').trim()===REVENUE_REPORT_EMAIL_SUBJECT.trim()){
+        debugLog('Revenue report email check: found subject match — id='+m.id+' hasAttachments='+m.hasAttachments+' alreadyProcessed='+(processedIds.indexOf(m.id)!==-1)+' receivedDateTime='+m.receivedDateTime);
+      }
+    });
     var messages = (d.value||[]).filter(function(m){
       return m.subject===REVENUE_REPORT_EMAIL_SUBJECT && m.hasAttachments && processedIds.indexOf(m.id)===-1;
     });
