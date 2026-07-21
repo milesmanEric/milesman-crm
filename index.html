@@ -3777,17 +3777,35 @@ async function checkForNewContactFormEmails(silent){
 // Ship Date, Item, Class, Qty, Sales Price, Amount) as the file "Clean &
 // Import Revenue File" already reads from CSV/XLSX. A PDF has no real grid
 // though, so each row's cells are rebuilt from pdf.js text-item x/y
-// positions: the column header line (found by matching label text) gives
-// every column's horizontal center, then each other text item on a line is
-// bucketed into whichever column center it sits closest to — this handles
-// header labels being visually centered over columns whose data is left- or
-// right-aligned. A line only counts as a transaction row if its Date-column
-// cell parses as a date, which quietly excludes customer group headers,
-// "Total <name>" subtotals, and the grand "TOTAL" line (none of those have
-// a real date in that position). The reconstructed table is then fed
-// through the exact same cleanImportTable + extractRevenueRow +
-// startRevenueImport pipeline as a manual CSV import, so client/supplier
-// matching and duplicate detection behave identically either way.
+// positions.
+//
+// Two wrinkles this has to handle:
+// 1. When the report is too wide for one page, QuickBooks splits the
+//    columns across sequential PDF pages instead of wrapping rows — e.g.
+//    page 1 has Date/Num/Memo/Name/Ship Date/Item and page 2 has
+//    Class/Qty/Sales Price/Amount for the SAME rows, aligned by matching
+//    y-coordinates. A page's header row is found by label text; if it
+//    includes "Date" it starts a new batch of rows, otherwise (no "Date")
+//    it's a continuation whose columns get merged into whichever batch is
+//    currently open, matching rows to the open batch by y-position.
+// 2. Within a row, a header label sits centered over its column, but a
+//    short data value (e.g. a 7-digit invoice number in a wide Memo
+//    column) can end up spatially closer to an earlier neighboring
+//    column's header than to its own — plain nearest-center matching
+//    misassigns it. Walking each row's items left to right with a
+//    forward-only column pointer (each item claims the nearest column
+//    that's not already been passed) fixes that while still letting a
+//    genuinely blank column (e.g. an empty Class) be skipped over.
+//
+// A row only counts as a transaction if its Date-column cell parses as a
+// date, and only rows below the header line on a page are ever considered
+// — that quietly excludes the report's title/print-date block, customer
+// group headers, "Total <name>" subtotals, and the grand "TOTAL" line
+// (none of those have a real date in that position). The reconstructed
+// table is then fed through the exact same cleanImportTable +
+// extractRevenueRow + startRevenueImport pipeline as a manual CSV import,
+// so client/supplier matching and duplicate detection behave identically
+// either way.
 const REVENUE_REPORT_EMAIL_SUBJECT = 'Report(s) from Miles Man';
 const REVENUE_REPORT_PDF_PASSWORD = 'milesman';
 const REVENUE_PDF_COLUMNS = ['Date','Num','Memo','Name','Ship Date','Item','Class','Qty','Sales Price','Amount'];
@@ -3803,21 +3821,53 @@ function groupPdfItemsIntoRows(items){
   rows.sort(function(a,b){ return b.y-a.y; }); // PDF y grows upward — top of page first
   return rows;
 }
-function findRevenuePdfHeaderRow(row){
-  var centers = {};
-  row.items.forEach(function(it){
+// Returns this page's recognized header labels in left-to-right order (not
+// just a name->center map) — classifyRowCells needs the order to walk its
+// forward-only pointer. Requires at least 2 matches to avoid a stray cell
+// that happens to equal a single column name being mistaken for a header.
+function findPageHeaderColumns(row){
+  var found = [];
+  row.items.slice().sort(function(a,b){return a.x-b.x;}).forEach(function(it){
     var label = REVENUE_PDF_COLUMNS.find(function(h){ return h.toLowerCase()===it.str.trim().toLowerCase(); });
-    if(label) centers[label] = it.x + it.w/2;
+    if(label) found.push({name:label, center: it.x + it.w/2});
   });
-  var required = ['Date','Num','Memo','Name','Amount'];
-  var hasAll = required.every(function(h){ return centers[h]!==undefined; });
-  return hasAll ? centers : null;
+  return found.length>=2 ? found : null;
+}
+function findOrCreateBatchRow(batchRows, y){
+  var row = batchRows.find(function(r){ return Math.abs(r.y-y)<2; });
+  if(!row){ row = {y:y, cells:{}}; batchRows.push(row); }
+  return row;
+}
+function classifyRowCells(row, pageColumns){
+  var cells = {};
+  var pointer = 0;
+  row.items.slice().sort(function(a,b){return a.x-b.x;}).forEach(function(it){
+    var center = it.x + it.w/2;
+    var bestIdx = -1, bestDist = Infinity;
+    for(var i=pointer; i<pageColumns.length; i++){
+      var dist = Math.abs(pageColumns[i].center-center);
+      if(dist<bestDist){ bestDist=dist; bestIdx=i; }
+    }
+    if(bestIdx===-1) return;
+    var name = pageColumns[bestIdx].name;
+    cells[name] = (cells[name]?cells[name]+' ':'') + it.str.trim();
+    pointer = bestIdx+1;
+  });
+  return cells;
 }
 async function extractRevenueTableFromPdf(arrayBuffer, password){
   var pdfjsLib = await loadPdfJs();
   var pdf = await pdfjsLib.getDocument({data:arrayBuffer, password:password}).promise;
-  var colCenters = null;
-  var dataRows = [];
+
+  var finishedRows = [];
+  var batchRows = null; // rows for the batch currently being accumulated
+  var sawAnyHeader = false;
+
+  function flushBatch(){
+    if(batchRows) finishedRows = finishedRows.concat(batchRows);
+    batchRows = null;
+  }
+
   for(var p=1; p<=pdf.numPages; p++){
     var page = await pdf.getPage(p);
     var content = await page.getTextContent();
@@ -3825,27 +3875,41 @@ async function extractRevenueTableFromPdf(arrayBuffer, password){
       var tr = it.transform;
       return {str:it.str, x:tr[4], y:tr[5], w:it.width};
     });
-    groupPdfItemsIntoRows(items).forEach(function(row){
-      var hdr = findRevenuePdfHeaderRow(row);
-      if(hdr){ colCenters = hdr; return; }
-      if(!colCenters) return; // report title/date-range lines above the first header
-      var cells = {};
-      row.items.forEach(function(it){
-        var center = it.x + it.w/2;
-        var bestCol = null, bestDist = Infinity;
-        REVENUE_PDF_COLUMNS.forEach(function(h){
-          if(colCenters[h]===undefined) return;
-          var dist = Math.abs(colCenters[h]-center);
-          if(dist<bestDist){ bestDist=dist; bestCol=h; }
-        });
-        if(bestCol) cells[bestCol] = (cells[bestCol]?cells[bestCol]+' ':'') + it.str.trim();
-      });
-      if(/^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test((cells['Date']||'').trim())){
-        dataRows.push(REVENUE_PDF_COLUMNS.map(function(h){ return cells[h]||''; }));
-      }
+    var rows = groupPdfItemsIntoRows(items);
+
+    var headerRowRef = null, pageColumns = null;
+    for(var ri=0; ri<rows.length; ri++){
+      var hc = findPageHeaderColumns(rows[ri]);
+      if(hc){ headerRowRef = rows[ri]; pageColumns = hc; break; }
+    }
+    if(!pageColumns) continue; // no recognizable header on this page at all
+
+    sawAnyHeader = true;
+    var isPrimary = pageColumns.some(function(c){return c.name==='Date';});
+    if(isPrimary){
+      flushBatch(); // start a new row batch, finalizing whatever was pending
+      batchRows = [];
+    } else if(!batchRows){
+      continue; // continuation page with no open batch to merge into
+    }
+
+    var headerY = headerRowRef.y;
+    rows.forEach(function(row){
+      if(row===headerRowRef) return;
+      if(row.y >= headerY) return; // report title/date-range lines sit above the header — skip
+      var pageCells = classifyRowCells(row, pageColumns);
+      var batchRow = findOrCreateBatchRow(batchRows, row.y);
+      Object.keys(pageCells).forEach(function(k){ batchRow.cells[k]=pageCells[k]; });
     });
   }
-  if(!colCenters) throw new Error('Could not find the report\'s column headers (Num/Memo/Name/Amount) in the PDF — is this a "Sales by Customer Detail" report?');
+  flushBatch();
+
+  if(!sawAnyHeader) throw new Error('Could not find the report\'s column headers (Num/Memo/Name/Amount) in the PDF — is this a "Sales by Customer Detail" report?');
+
+  var dataRows = finishedRows
+    .filter(function(r){ return /^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test((r.cells['Date']||'').trim()); })
+    .map(function(r){ return REVENUE_PDF_COLUMNS.map(function(h){ return r.cells[h]||''; }); });
+
   return {header:REVENUE_PDF_COLUMNS, rows:dataRows};
 }
 // Same cleaning + revenue-row-extraction + import pipeline as
