@@ -87,9 +87,10 @@ nav{padding:10px 8px}
   /* Planner table mobile labels (overrides the client labels above by class specificity) */
   .tbl-wrap table.tbl-planner tr td:nth-child(1):before{content:none}
   .tbl-wrap table.tbl-planner tr td:nth-child(2):before{content:'Client'}
-  .tbl-wrap table.tbl-planner tr td:nth-child(3):before{content:'Task'}
-  .tbl-wrap table.tbl-planner tr td:nth-child(4):before{content:'Due Date'}
-  .tbl-wrap table.tbl-planner tr td:nth-child(5):before{content:'Trip'}
+  .tbl-wrap table.tbl-planner tr td:nth-child(3):before{content:'Phone'}
+  .tbl-wrap table.tbl-planner tr td:nth-child(4):before{content:'Task'}
+  .tbl-wrap table.tbl-planner tr td:nth-child(5):before{content:'Due Date'}
+  .tbl-wrap table.tbl-planner tr td:nth-child(6):before{content:'Trip'}
 
   /* Stats grid 2 col on mobile */
   .stats-grid{grid-template-columns:repeat(2,1fr)}
@@ -6986,6 +6987,7 @@ function renderPlanner(){
     (tasks.length ? '<div class="tbl-wrap"><table class="tbl-planner"><thead><tr>'+
       '<th style="width:32px"></th>'+
       '<th class="sort-th-pl" data-sort="client" style="cursor:pointer">Client'+plannerSortArrow('client')+'</th>'+
+      '<th>Phone</th>'+
       '<th class="sort-th-pl" data-sort="title" style="cursor:pointer">Task'+plannerSortArrow('title')+'</th>'+
       '<th class="sort-th-pl" data-sort="dueDate" style="cursor:pointer">Due Date'+plannerSortArrow('dueDate')+'</th>'+
       '<th>Trip</th>'+
@@ -6995,11 +6997,13 @@ function renderPlanner(){
       var badgesHtml = entityBadges(t);
       var cid = taskClientId(t);
       var cName = clientName(t);
+      var cPhone = (function(){ var c=cid?db.clients.find(function(x){return x.id===cid;}):null; return c?c.phone:''; })();
       return '<tr data-task-id="'+t.id+'">'+
         '<td style="width:32px"><input type="checkbox" class="task-done-cb" data-id="'+t.id+'" '+(t.done?'checked':'')+' style="width:15px;height:15px"></td>'+
         '<td>'+(cName?('<span class="planner-client-link" data-id="'+cid+'" style="color:#2563eb;cursor:pointer;text-decoration:underline">'+cName+'</span>'):'<span style="color:#aaa">No client linked</span>')+
           (t.email?('<div style="margin-top:2px"><a href="mailto:'+mailtoAddr(t.email)+'" style="font-size:11px;color:#2563eb;text-decoration:none" title="Email in Outlook">&#9993;&#65039; '+t.email+'</a></div>'):'')+
         '</td>'+
+        '<td style="white-space:nowrap">'+(cPhone||'<span style="color:#aaa">—</span>')+'</td>'+
         '<td>'+
           '<div class="task-title-link" data-id="'+t.id+'" style="font-size:14px;font-weight:600;color:'+(t.done?'#aaa':'#2563eb')+';cursor:pointer;text-decoration:'+(t.done?'line-through':'underline')+'">'+t.title+'</div>'+
           (t.desc ? '<div style="margin-top:4px;font-size:12px;color:#666">'+t.desc+'</div>' : '')+
