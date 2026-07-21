@@ -6999,12 +6999,19 @@ function renderPlanner(){
       var badgesHtml = entityBadges(t);
       var cid = taskClientId(t);
       var cName = clientName(t);
-      var cPhone = (function(){ var c=cid?db.clients.find(function(x){return x.id===cid;}):null; return c?c.phone:''; })();
+      var linkedClient = cid ? db.clients.find(function(x){return x.id===cid;}) : null;
+      var cPhone = linkedClient ? linkedClient.phone : '';
+      // Tasks only ever get their own stored email once the task form is
+      // saved with a client selected — plenty of existing tasks are linked
+      // to a client but never had that trigger, so this list falls back to
+      // the linked client's email too (same fallback openTaskForm uses),
+      // rather than showing blank for a task that's clearly linked.
+      var displayEmail = t.email || (linkedClient ? linkedClient.email : '');
       return '<tr data-task-id="'+t.id+'">'+
         '<td style="width:32px"><input type="checkbox" class="task-done-cb" data-id="'+t.id+'" '+(t.done?'checked':'')+' style="width:15px;height:15px"></td>'+
         '<td>'+(cName?('<span class="planner-client-link" data-id="'+cid+'" style="color:#2563eb;cursor:pointer;text-decoration:underline">'+cName+'</span>'):'<span style="color:#aaa">No client linked</span>')+'</td>'+
         '<td style="white-space:nowrap">'+(cPhone||'<span style="color:#aaa">—</span>')+'</td>'+
-        '<td style="white-space:nowrap">'+(t.email?('<a href="mailto:'+mailtoAddr(t.email)+'" style="font-size:12px;color:#2563eb;text-decoration:none" title="Email in Outlook">&#9993;&#65039; '+t.email+'</a>'):'<span style="color:#aaa">—</span>')+'</td>'+
+        '<td style="white-space:nowrap">'+(displayEmail?('<a href="mailto:'+mailtoAddr(displayEmail)+'" style="font-size:12px;color:#2563eb;text-decoration:none" title="Email in Outlook">&#9993;&#65039; '+displayEmail+'</a>'):'<span style="color:#aaa">—</span>')+'</td>'+
         '<td>'+
           '<div class="task-title-link" data-id="'+t.id+'" style="font-size:14px;font-weight:600;color:'+(t.done?'#aaa':'#2563eb')+';cursor:pointer;text-decoration:'+(t.done?'line-through':'underline')+'">'+t.title+'</div>'+
           (t.desc ? '<div style="margin-top:4px;font-size:12px;color:#666">'+t.desc+'</div>' : '')+
