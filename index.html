@@ -302,6 +302,9 @@ tr:last-child td{border-bottom:none}
       <button id="debug-close" style="background:none;border:1px solid #ff4444;color:#ff4444;cursor:pointer;font-size:10px;padding:2px 8px;border-radius:4px">Close</button>
     </div>
     <div id="debug-log"></div>
+    <div style="text-align:center;margin-top:8px">
+      <button id="debug-close-bottom" style="background:none;border:1px solid #ff4444;color:#ff4444;cursor:pointer;font-size:10px;padding:2px 8px;border-radius:4px">Close</button>
+    </div>
   </div>
 <div id="import-match-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:3000;display:none;align-items:center;justify-content:center;padding:20px">
   <div id="import-match-box" style="background:#fff;border-radius:12px;padding:26px;width:520px;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.2)">
@@ -7542,6 +7545,7 @@ function bindClick(id, handler){
     p.style.display=p.style.display==='none'?'block':'none';
   });
   bindClick('debug-close', function(){$('debug-panel').style.display='none';});
+  bindClick('debug-close-bottom', function(){$('debug-panel').style.display='none';});
   bindClick('btn-test-connectivity', function(){
     $('debug-panel').style.display='block';
     debugLog('=== Connectivity Test Started ===');
