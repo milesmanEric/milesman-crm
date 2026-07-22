@@ -2373,7 +2373,8 @@ async function saveQuotePdfToDrive(d, bodyHtml, subject){
       return;
     }
     var folderId = await getOrCreateDriveQuotesFolder(token);
-    var filename = ((d.client?d.client.name+' - ':'')+subject+' - '+today()+'.pdf').replace(/[\\/:*?"<>|]/g,'-');
+    var filenameParts = [d.client?d.client.name:'Quote', d.cruiseLine||'Quote', d.sailingDate||today()];
+    var filename = (filenameParts.join('.')+'.pdf').replace(/[\\/:*?"<>|]/g,'-');
     var meta = new Blob([JSON.stringify({name:filename, mimeType:'application/pdf', parents:[folderId]})], {type:'application/json'});
     var form = new FormData(); form.append('metadata', meta); form.append('file', blob);
     var r = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink', {
@@ -4796,15 +4797,24 @@ var TEMPLATES = [
     description:'Thank a client after booking and share the referral program',
     subject:'Thank You for Booking with Miles Man!',
     body:"Hi {{firstName}},\n\nThank you so much for booking your upcoming trip with Miles Man! It's clients like you that make this job so rewarding, and I can't wait to help you make the most of your travels.\n\nWhile I have you, I wanted to share a little bonus: the Miles Man referral program! Here's how it works:\n\nRefer a friend, family member, or coworker to Miles Man. When they mention your name and book a trip with Miles Man, you'll receive $100 off your next booking. There's no limit to how many times you can earn this bonus, so feel free to spread the word as often as you'd like!\n\nIf you know anyone who could use some help planning their next getaway, send them my way \u2014 themilesman.com or (908) 419-7700.\n\nThanks again for trusting me with your travel plans.\n\nBest,\nEric"
+  },
+  {
+    id:'referralcredit',
+    name:'Referral Credit Earned',
+    description:'Let a client know they earned a $100 credit for referring someone',
+    requiresReferral:true,
+    subject:'You\u2019ve Earned a $100 Referral Credit!',
+    body:"Hi {{firstName}},\n\nGreat news \u2014 you've earned a $100 referral credit! {{referredName}} recently mentioned your name and booked a trip with Miles Man, so you now have $100 to put toward your next booking.\n\nThank you so much for spreading the word \u2014 referrals like this mean the world to me. If you know anyone else who could use help planning their next trip, I'd love an introduction!\n\nBest,\nEric"
   }
 ];
 
-function fillTemplate(body, client){
+function fillTemplate(body, client, referredClient){
   var firstName = getFirstName(client.name) || client.name || '';
   return body
     .replace(/{{firstName}}/g, firstName)
     .replace(/{{fullName}}/g, toFirstLast(client.name)||'')
-    .replace(/{{email}}/g, client.email||'');
+    .replace(/{{email}}/g, client.email||'')
+    .replace(/{{referredName}}/g, referredClient?(toFirstLast(referredClient.name)||referredClient.name):'');
 }
 
 function renderEmail(){
@@ -4838,6 +4848,10 @@ function renderEmail(){
         '<select id="email-client-sel" style="width:100%;padding:8px 11px;border-radius:7px;border:1px solid #d1d5db;font-size:13px;font-family:inherit;color:#111;background:#fafafa;margin-bottom:16px">'+clientOpts+'</select>'+
         '<div style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">2. Select Template</div>'+
         templateCards+
+        '<div id="email-referred-wrap" style="display:none;margin-top:14px">'+
+          '<div style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Referred Client</div>'+
+          '<select id="email-referred-sel" style="width:100%;padding:8px 11px;border-radius:7px;border:1px solid #d1d5db;font-size:13px;font-family:inherit;color:#111;background:#fafafa"></select>'+
+        '</div>'+
       '</div>'+
       '<div>'+
         '<div style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">3. Preview & Send</div>'+
@@ -4849,6 +4863,13 @@ function renderEmail(){
 
   var selClient = null;
   var selTemplate = null;
+  var selReferredClient = null;
+
+  function referredClientOptsHtml(){
+    return '<option value="">Select referred client...</option>'+
+      sortedClients.filter(function(c){return !selClient||c.id!==selClient.id;})
+        .map(function(c){return '<option value="'+c.id+'">'+c.name+'</option>';}).join('');
+  }
 
   function updatePreview(){
     const area = document.getElementById('email-preview-area');
@@ -4856,8 +4877,12 @@ function renderEmail(){
       area.innerHTML='<div style="color:#aaa;font-size:13px;padding:20px;text-align:center">Select a client and template to preview</div>';
       return;
     }
-    var body = fillTemplate(selTemplate.body, selClient);
-    var subject = fillTemplate(selTemplate.subject, selClient);
+    if(selTemplate.requiresReferral && !selReferredClient){
+      area.innerHTML='<div style="color:#aaa;font-size:13px;padding:20px;text-align:center">Select the referred client to preview</div>';
+      return;
+    }
+    var body = fillTemplate(selTemplate.body, selClient, selReferredClient);
+    var subject = fillTemplate(selTemplate.subject, selClient, selReferredClient);
     area.innerHTML =
       '<div style="margin-bottom:10px">'+
         '<div style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">To</div>'+
@@ -4897,6 +4922,15 @@ function renderEmail(){
 
   document.getElementById('email-client-sel').addEventListener('change',function(){
     selClient = db.clients.find(function(c){return c.id===this.value;},this)||null;
+    if(selReferredClient && selClient && selReferredClient.id===selClient.id) selReferredClient=null;
+    var referredSel = document.getElementById('email-referred-sel');
+    referredSel.innerHTML = referredClientOptsHtml();
+    referredSel.value = selReferredClient?selReferredClient.id:'';
+    updatePreview();
+  });
+
+  document.getElementById('email-referred-sel').addEventListener('change',function(){
+    selReferredClient = db.clients.find(function(c){return c.id===this.value;},this)||null;
     updatePreview();
   });
 
@@ -4924,6 +4958,15 @@ function renderEmail(){
       document.querySelectorAll('.template-card').forEach(function(c){c.classList.remove('selected');});
       card.classList.add('selected');
       selTemplate=TEMPLATES.find(function(t){return t.id===card.dataset.templateId;})||null;
+      var referredWrap = document.getElementById('email-referred-wrap');
+      if(selTemplate && selTemplate.requiresReferral){
+        referredWrap.style.display='block';
+        document.getElementById('email-referred-sel').innerHTML = referredClientOptsHtml();
+        document.getElementById('email-referred-sel').value = selReferredClient?selReferredClient.id:'';
+      }else{
+        referredWrap.style.display='none';
+        selReferredClient=null;
+      }
       updatePreview();
     });
   });
