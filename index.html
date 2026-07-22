@@ -2225,6 +2225,41 @@ function princessQuoteOpts(entries, meta){
 }
 function princessQuoteHtml(entries, meta){ return quoteEmailShellHtml(princessQuoteOpts(entries, meta)); }
 function princessQuoteBodyHtml(entries, meta){ return quoteEmailBodyHtml(princessQuoteOpts(entries, meta)); }
+// entries: array of {cabin, price, insurance, addons} (insurance/addons optional) —
+// Royal Caribbean doesn't have named fare packages like Virgin/Princess, so this
+// uses the same generic Insurance/Add-ons columns already collected by the
+// pricing grid for every non-template cruise line.
+function royalCaribbeanQuoteOpts(entries, meta){
+  var hf="font-family:'Times New Roman',Times,serif; ";
+  var headerHtml =
+    '<td width="180" style="'+hf+'padding:10px 14px; color:#ffffff; font-size:14px; font-weight:bold; width:180px;">Cabin Category</td>'+
+    '<td width="118" style="'+hf+'padding:10px 14px; color:#ffffff; font-size:14px; font-weight:bold; width:118px;" align="right">Total Price</td>'+
+    '<td width="118" style="'+hf+'padding:10px 14px; color:#ffffff; font-size:14px; font-weight:bold; width:118px;" align="right">Insurance</td>'+
+    '<td width="120" style="'+hf+'padding:10px 14px; color:#ffffff; font-size:14px; font-weight:bold; width:120px;" align="right">Add-ons</td>';
+  var rowsHtml = entries.map(function(r,i){
+    var bg = i%2===0?'#f8f9ff':'#ffffff';
+    var bd = i===entries.length-1?'':'border-bottom:1px solid #eeeeee;';
+    return '<tr style="background-color:'+bg+';">'+
+      '<td width="180" style="'+hf+'padding:10px 14px; font-size:14px; color:#333333; width:180px; '+bd+'">'+escHtml(r.cabin)+'</td>'+
+      '<td width="118" style="'+hf+'padding:10px 14px; font-size:14px; color:#333333; width:118px; '+bd+'" align="right">$'+escHtml(r.price)+'</td>'+
+      '<td width="118" style="'+hf+'padding:10px 14px; font-size:14px; color:#333333; width:118px; '+bd+'" align="right">'+(r.insurance?'$'+escHtml(r.insurance):'-')+'</td>'+
+      '<td width="120" style="'+hf+'padding:10px 14px; font-size:14px; color:#333333; width:120px; '+bd+'" align="right">'+(r.addons?'$'+escHtml(r.addons):'-')+'</td>'+
+    '</tr>';
+  }).join('');
+  return Object.assign({
+    docTitle:'Royal Caribbean Quote - Miles Man',
+    introText:'Thanks for reaching out! I\'ve put together a Royal Caribbean quote based on what you\'re looking for. Here are the details:',
+    pricingHeaderHtml:headerHtml,
+    pricingRowsHtml:rowsHtml,
+    pricingCaption:'All prices per stateroom, based on double occupancy.',
+    includedItemsHtml:
+      '<li>Main dining room &amp; Windjammer buffet dining</li>'+
+      '<li>Onboard entertainment &amp; activities</li>'+
+      '<li>Stateroom accommodations</li>'
+  }, meta);
+}
+function royalCaribbeanQuoteHtml(entries, meta){ return quoteEmailShellHtml(royalCaribbeanQuoteOpts(entries, meta)); }
+function royalCaribbeanQuoteBodyHtml(entries, meta){ return quoteEmailBodyHtml(royalCaribbeanQuoteOpts(entries, meta)); }
 
 // ── Save a quote PDF to Google Drive ────────────────────────────────────
 // Every time a quote is emailed, a PDF copy of the same body (the styled
@@ -2335,7 +2370,7 @@ async function saveQuotePdfToDrive(d, bodyHtml, subject){
 // clipboard for pasting into Outlook, since mailto: bodies are plain-text only)
 // plus the extra trip fields those templates need. Every other line keeps the
 // simpler plain-text mailto body.
-var QUOTE_TEMPLATE_LINES = ['Virgin Voyages','Princess'];
+var QUOTE_TEMPLATE_LINES = ['Virgin Voyages','Princess','Royal Caribbean'];
 function openEmailQuoteModal(){
   var sortedClients = [...db.clients].sort(function(a,b){return (a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase());});
   var clientOpts = sortedClients.map(function(c){return '<option value="'+c.id+'">'+c.name+'</option>';}).join('');
@@ -2350,7 +2385,8 @@ function openEmailQuoteModal(){
       '<div id="eq-template-fields" style="display:none">'+
         fld('Itinerary / Destinations',inp('eq-itinerary','text','','e.g. Eastern Caribbean: Miami, San Juan, St. Thomas'),true)+
         fld('Return Date',inp('eq-return-date','date',''))+
-        fld('Number of Guests',inp('eq-guests','number','2'))+
+        fld('Adults',inp('eq-adults','number','2'))+
+        fld('Children (17 and under)',inp('eq-children','number','0'))+
         fld('Deposit Amount',inp('eq-deposit','text','','e.g. 500'))+
         fld('Payment Deadline Date',inp('eq-payment-deadline','date',''))+
         fld('Final Payment Date',inp('eq-final-payment','date',''))+
@@ -2422,9 +2458,22 @@ function openEmailQuoteModal(){
           princessPlus:cellsByKey[rowLabel+'|Princess Plus'],
           princessPremier:cellsByKey[rowLabel+'|Princess Premier']
         });
+      }else if(cruiseLine==='Royal Caribbean'){
+        templateEntries.push({
+          cabin:rowLabel,
+          price:price,
+          insurance: cellsByKey[rowLabel+'|Insurance'],
+          addons: cellsByKey[rowLabel+'|Add-ons']
+        });
       }
     });
     if(!lines.length){toast('Enter at least one price','err');return null;}
+
+    var adults = gv('eq-adults');
+    var children = gv('eq-children');
+    var guestsParts = [];
+    if(adults) guestsParts.push(adults+' Adult'+(adults==='1'?'':'s'));
+    if(children && children!=='0') guestsParts.push(children+' Child'+(children==='1'?'':'ren'));
 
     var meta = {
       clientFirstName: client?getFirstName(client.name):'',
@@ -2433,7 +2482,7 @@ function openEmailQuoteModal(){
       departDate: sailingDate,
       returnDate: gv('eq-return-date'),
       nights: computeNights(sailingDate, gv('eq-return-date')),
-      guests: gv('eq-guests'),
+      guests: guestsParts.join(', '),
       depositAmount: gv('eq-deposit'),
       paymentDeadline: gv('eq-payment-deadline'),
       finalPaymentDate: gv('eq-final-payment'),
@@ -2444,10 +2493,14 @@ function openEmailQuoteModal(){
   }
 
   function buildTemplateHtml(d){
-    return d.cruiseLine==='Virgin Voyages' ? virginVoyagesQuoteHtml(d.templateEntries, d.meta) : princessQuoteHtml(d.templateEntries, d.meta);
+    if(d.cruiseLine==='Virgin Voyages') return virginVoyagesQuoteHtml(d.templateEntries, d.meta);
+    if(d.cruiseLine==='Royal Caribbean') return royalCaribbeanQuoteHtml(d.templateEntries, d.meta);
+    return princessQuoteHtml(d.templateEntries, d.meta);
   }
   function buildTemplateBodyHtml(d){
-    return d.cruiseLine==='Virgin Voyages' ? virginVoyagesQuoteBodyHtml(d.templateEntries, d.meta) : princessQuoteBodyHtml(d.templateEntries, d.meta);
+    if(d.cruiseLine==='Virgin Voyages') return virginVoyagesQuoteBodyHtml(d.templateEntries, d.meta);
+    if(d.cruiseLine==='Royal Caribbean') return royalCaribbeanQuoteBodyHtml(d.templateEntries, d.meta);
+    return princessQuoteBodyHtml(d.templateEntries, d.meta);
   }
 
   document.getElementById('eq-preview').addEventListener('click', function(){
