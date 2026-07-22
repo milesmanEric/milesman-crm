@@ -3781,6 +3781,7 @@ async function checkForNewTripFormEmails(silent){
     var token = await getValidMsToken(false);
     if(!token){
       if(!silent) toast('Connect Outlook first (Debug Panel > Sync Outlook Emails)','err');
+      else debugLog('Trip form email check: skipped — Outlook not connected');
       return;
     }
     var lastCheck = localStorage.getItem('mm_last_tripform_check') || (function(){
@@ -3799,8 +3800,14 @@ async function checkForNewTripFormEmails(silent){
       debugLog('Trip form email check error: '+(d.error&&d.error.message||r.status));
       return;
     }
+    debugLog('Trip form email check: fetched '+(d.value||[]).length+' message(s) since '+lastCheck);
+    (d.value||[]).forEach(function(m){
+      if((m.subject||'').trim()===TRIPFORM_EMAIL_SUBJECT.trim()){
+        debugLog('Trip form email check: found subject match — id='+m.id+' alreadyProcessed='+(processedIds.indexOf(m.id)!==-1)+' receivedDateTime='+m.receivedDateTime);
+      }
+    });
     var messages = (d.value||[]).filter(function(m){
-      return m.subject===TRIPFORM_EMAIL_SUBJECT && processedIds.indexOf(m.id)===-1;
+      return (m.subject||'').trim()===TRIPFORM_EMAIL_SUBJECT.trim() && processedIds.indexOf(m.id)===-1;
     });
     debugLog('Trip form email check: '+messages.length+' new submission email(s)');
     localStorage.setItem('mm_last_tripform_check', checkedAt);
@@ -3914,6 +3921,7 @@ async function checkForNewContactFormEmails(silent){
     var token = await getValidMsToken(false);
     if(!token){
       if(!silent) toast('Connect Outlook first (Debug Panel > Sync Outlook Emails)','err');
+      else debugLog('Contact form email check: skipped — Outlook not connected');
       return;
     }
     var lastCheck = localStorage.getItem('mm_last_contactform_check') || (function(){
@@ -3932,8 +3940,14 @@ async function checkForNewContactFormEmails(silent){
       debugLog('Contact form email check error: '+(d.error&&d.error.message||r.status));
       return;
     }
+    debugLog('Contact form email check: fetched '+(d.value||[]).length+' message(s) since '+lastCheck);
+    (d.value||[]).forEach(function(m){
+      if((m.subject||'').trim()===CONTACT_FORM_EMAIL_SUBJECT.trim()){
+        debugLog('Contact form email check: found subject match — id='+m.id+' alreadyProcessed='+(processedIds.indexOf(m.id)!==-1)+' receivedDateTime='+m.receivedDateTime);
+      }
+    });
     var messages = (d.value||[]).filter(function(m){
-      return m.subject===CONTACT_FORM_EMAIL_SUBJECT && processedIds.indexOf(m.id)===-1;
+      return (m.subject||'').trim()===CONTACT_FORM_EMAIL_SUBJECT.trim() && processedIds.indexOf(m.id)===-1;
     });
     debugLog('Contact form email check: '+messages.length+' new submission email(s)');
     localStorage.setItem('mm_last_contactform_check', checkedAt);
@@ -4153,6 +4167,7 @@ async function checkForNewRevenueReportEmails(silent){
     var token = await getValidMsToken(false);
     if(!token){
       if(!silent) toast('Connect Outlook first (Debug Panel > Sync Outlook Emails)','err');
+      else debugLog('Revenue report email check: skipped — Outlook not connected');
       return;
     }
     var lastCheck = localStorage.getItem('mm_last_revenuereport_check') || (function(){
