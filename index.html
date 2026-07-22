@@ -3674,7 +3674,11 @@ function importFormspreeSubmissions(){
 // in the email text in one pass, and takes each match's value as the text
 // up to the next matched label. Longest labels are tried first so a
 // prefix like "Referred By" can't shadow "Referred By Detail".
-const TRIPFORM_EMAIL_SUBJECT = 'New submission for Book a trip';
+// The notification service's exact wording between "New submission" and
+// "Book a trip" has changed at least once already ("for" vs "-"), so match
+// loosely on the stable start/end phrases rather than the whole literal
+// string.
+var TRIPFORM_EMAIL_SUBJECT_RE = /^New submission\b.*\bBook a trip$/i;
 function buildTripFormFieldLabels(){
   var labels = ['Full Name','Email','Phone','Street Address','City','State','Zip Code','Number of Travelers',
     'Birthdate','Country of Citizenship','Country of Birth','Referred By','Referred By Detail',
@@ -3802,12 +3806,12 @@ async function checkForNewTripFormEmails(silent){
     }
     debugLog('Trip form email check: fetched '+(d.value||[]).length+' message(s) since '+lastCheck);
     (d.value||[]).forEach(function(m){
-      if((m.subject||'').trim()===TRIPFORM_EMAIL_SUBJECT.trim()){
-        debugLog('Trip form email check: found subject match — id='+m.id+' alreadyProcessed='+(processedIds.indexOf(m.id)!==-1)+' receivedDateTime='+m.receivedDateTime);
+      if(TRIPFORM_EMAIL_SUBJECT_RE.test((m.subject||'').trim())){
+        debugLog('Trip form email check: found subject match — id='+m.id+' subject="'+m.subject+'" alreadyProcessed='+(processedIds.indexOf(m.id)!==-1)+' receivedDateTime='+m.receivedDateTime);
       }
     });
     var messages = (d.value||[]).filter(function(m){
-      return (m.subject||'').trim()===TRIPFORM_EMAIL_SUBJECT.trim() && processedIds.indexOf(m.id)===-1;
+      return TRIPFORM_EMAIL_SUBJECT_RE.test((m.subject||'').trim()) && processedIds.indexOf(m.id)===-1;
     });
     debugLog('Trip form email check: '+messages.length+' new submission email(s)');
     localStorage.setItem('mm_last_tripform_check', checkedAt);
