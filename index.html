@@ -4827,13 +4827,34 @@ var TEMPLATES = [
   }
 ];
 
-function fillTemplate(body, client, referredClient){
-  var firstName = getFirstName(client.name) || client.name || '';
+// "Smith, John Michael" -> "John Smith" (drops any middle name/initial —
+// used for the referred-person mention, which reads oddly with a middle
+// name included: "John Michael Smith recently mentioned your name...").
+function toFirstLastNoMiddle(name){
+  if(!name) return '';
+  var first = (getFirstName(name)||'').split(/\s+/)[0]||'';
+  var last = getLastName(name)||'';
+  return (first+' '+last).trim();
+}
+// "A" / "A and B" / "A, B, and C" — for greeting/mentioning multiple people.
+function joinNames(names){
+  names = names.filter(Boolean);
+  if(!names.length) return '';
+  if(names.length===1) return names[0];
+  if(names.length===2) return names[0]+' and '+names[1];
+  return names.slice(0,-1).join(', ')+', and '+names[names.length-1];
+}
+function fillTemplate(body, clients, referredClients){
+  clients = Array.isArray(clients) ? clients : (clients?[clients]:[]);
+  referredClients = Array.isArray(referredClients) ? referredClients : (referredClients?[referredClients]:[]);
+  var firstNames = joinNames(clients.map(function(c){return getFirstName(c.name)||c.name||'';}));
+  var fullNames = joinNames(clients.map(function(c){return toFirstLast(c.name)||'';}));
+  var referredNames = joinNames(referredClients.map(function(c){return toFirstLastNoMiddle(c.name)||c.name||'';}));
   return body
-    .replace(/{{firstName}}/g, firstName)
-    .replace(/{{fullName}}/g, toFirstLast(client.name)||'')
-    .replace(/{{email}}/g, client.email||'')
-    .replace(/{{referredName}}/g, referredClient?(toFirstLast(referredClient.name)||referredClient.name):'');
+    .replace(/{{firstName}}/g, firstNames)
+    .replace(/{{fullName}}/g, fullNames)
+    .replace(/{{email}}/g, clients[0]?clients[0].email||'':'')
+    .replace(/{{referredName}}/g, referredNames);
 }
 
 function renderEmail(){
@@ -4855,21 +4876,34 @@ function renderEmail(){
     '</div>';
   }).join('');
 
+  function clientChecklistHtml(cbClass){
+    return sortedClients.map(function(c){
+      return '<label style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:13px;cursor:pointer">'+
+        '<input type="checkbox" class="'+cbClass+'" value="'+c.id+'" style="width:14px;height:14px">'+
+        '<span>'+c.name+(c.email?' <span style="color:#999;font-size:11px">&lt;'+c.email+'&gt;</span>':'')+'</span>'+
+      '</label>';
+    }).join('') || '<div style="color:#aaa;font-size:12px">No clients yet</div>';
+  }
+  var checklistBoxStyle = 'border:1px solid #e5e7eb;border-radius:8px;padding:10px;max-height:200px;overflow-y:auto;background:#fafafa';
+
   $('main').innerHTML =
     '<div class="page-hdr"><div class="page-title">Email</div></div>'+
     '<div class="email-two-col">'+
       '<div>'+
-        '<div style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">1. Select Client</div>'+
+        '<div id="email-client-label" style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">1. Select Client</div>'+
         '<div style="display:flex;gap:14px;margin-bottom:8px">'+
           '<label style="display:flex;align-items:center;gap:5px;font-size:12px;color:#374151;cursor:pointer"><input type="checkbox" id="email-filter-paying" style="width:13px;height:13px"> Paying clients only</label>'+
           '<label style="display:flex;align-items:center;gap:5px;font-size:12px;color:#374151;cursor:pointer"><input type="checkbox" id="email-filter-subscriber" style="width:13px;height:13px"> Subscribers only</label>'+
         '</div>'+
         '<select id="email-client-sel" style="width:100%;padding:8px 11px;border-radius:7px;border:1px solid #d1d5db;font-size:13px;font-family:inherit;color:#111;background:#fafafa;margin-bottom:16px">'+clientOpts+'</select>'+
+        '<div id="email-referrers-wrap" style="display:none;margin-bottom:16px">'+
+          '<div id="email-referrers-list" style="'+checklistBoxStyle+'">'+clientChecklistHtml('email-referrer-cb')+'</div>'+
+        '</div>'+
         '<div style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">2. Select Template</div>'+
         templateCards+
         '<div id="email-referred-wrap" style="display:none;margin-top:14px">'+
-          '<div style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Referred Client</div>'+
-          '<select id="email-referred-sel" style="width:100%;padding:8px 11px;border-radius:7px;border:1px solid #d1d5db;font-size:13px;font-family:inherit;color:#111;background:#fafafa"></select>'+
+          '<div style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Referred Client(s)</div>'+
+          '<div id="email-referred-list" style="'+checklistBoxStyle+'">'+clientChecklistHtml('email-referred-cb')+'</div>'+
         '</div>'+
       '</div>'+
       '<div>'+
@@ -4882,30 +4916,17 @@ function renderEmail(){
 
   var selClient = null;
   var selTemplate = null;
-  var selReferredClient = null;
+  var selReferrers = [];
+  var selReferredClients = [];
 
-  function referredClientOptsHtml(){
-    return '<option value="">Select referred client...</option>'+
-      sortedClients.filter(function(c){return !selClient||c.id!==selClient.id;})
-        .map(function(c){return '<option value="'+c.id+'">'+c.name+'</option>';}).join('');
-  }
+  function isReferralTemplate(){ return !!(selTemplate && selTemplate.requiresReferral); }
 
-  function updatePreview(){
-    const area = document.getElementById('email-preview-area');
-    if(!selClient || !selTemplate){
-      area.innerHTML='<div style="color:#aaa;font-size:13px;padding:20px;text-align:center">Select a client and template to preview</div>';
-      return;
-    }
-    if(selTemplate.requiresReferral && !selReferredClient){
-      area.innerHTML='<div style="color:#aaa;font-size:13px;padding:20px;text-align:center">Select the referred client to preview</div>';
-      return;
-    }
-    var body = fillTemplate(selTemplate.body, selClient, selReferredClient);
-    var subject = fillTemplate(selTemplate.subject, selClient, selReferredClient);
+  function renderPreviewArea(toDisplay, subject, body, mailtoEmails, recipientClients){
+    var area = document.getElementById('email-preview-area');
     area.innerHTML =
       '<div style="margin-bottom:10px">'+
         '<div style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">To</div>'+
-        '<div style="font-size:13px;color:#111;padding:6px 10px;background:#fff;border:1px solid #e5e7eb;border-radius:6px">'+(selClient.email||'(no email on file)')+'</div>'+
+        '<div style="font-size:13px;color:#111;padding:6px 10px;background:#fff;border:1px solid #e5e7eb;border-radius:6px">'+toDisplay+'</div>'+
       '</div>'+
       '<div style="margin-bottom:10px">'+
         '<div style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Subject</div>'+
@@ -4921,7 +4942,7 @@ function renderEmail(){
       '</div>';
 
     document.getElementById('email-send-btn').addEventListener('click',function(){
-      var mailto='mailto:'+mailtoAddr(selClient.email)+
+      var mailto='mailto:'+mailtoEmails.map(mailtoAddr).join(',')+
         '?subject='+encodeURIComponent(subject)+
         '&body='+encodeURIComponent(body);
       window.location.href=mailto;
@@ -4929,29 +4950,78 @@ function renderEmail(){
 
     document.getElementById('email-log-btn').addEventListener('click',function(){
       var newNote={ts:tsNow(),text:'Email Sent: '+subject+'\n'+body,noteType:'Email Sent',source:'template'};
+      var ids = recipientClients.map(function(c){return c.id;});
       db.clients=db.clients.map(function(c){
-        if(c.id!==selClient.id)return c;
+        if(ids.indexOf(c.id)===-1) return c;
         var nl=Array.isArray(c.notesLog)?[...c.notesLog,newNote]:[newNote];
         return Object.assign({},c,{notesLog:nl});
       });
       saveDB();
-      toast('Email logged as note on '+selClient.name,'ok');
+      toast('Email logged as note on '+recipientClients.map(function(c){return c.name;}).join(', '),'ok');
     });
+  }
+
+  function updatePreview(){
+    const area = document.getElementById('email-preview-area');
+    if(!selTemplate || (isReferralTemplate() ? !selReferrers.length : !selClient)){
+      area.innerHTML='<div style="color:#aaa;font-size:13px;padding:20px;text-align:center">Select a client and template to preview</div>';
+      return;
+    }
+    if(isReferralTemplate()){
+      if(!selReferredClients.length){
+        area.innerHTML='<div style="color:#aaa;font-size:13px;padding:20px;text-align:center">Select at least one referred client to preview</div>';
+        return;
+      }
+      var overlapNames = selReferrers.filter(function(r){
+        return selReferredClients.some(function(rf){return rf.id===r.id;});
+      }).map(function(c){return c.name;});
+      if(overlapNames.length){
+        area.innerHTML='<div style="color:#b91c1c;font-size:13px;padding:20px;text-align:center">'+overlapNames.join(', ')+' can\'t be both a referrer and a referred client</div>';
+        return;
+      }
+      var body = fillTemplate(selTemplate.body, selReferrers, selReferredClients);
+      var subject = fillTemplate(selTemplate.subject, selReferrers, selReferredClients);
+      var toDisplay = selReferrers.map(function(c){return c.email?c.name+' &lt;'+c.email+'&gt;':c.name+' (no email on file)';}).join(', ');
+      var mailtoEmails = selReferrers.map(function(c){return c.email;}).filter(Boolean);
+      renderPreviewArea(toDisplay, subject, body, mailtoEmails, selReferrers);
+      return;
+    }
+    var body = fillTemplate(selTemplate.body, selClient, null);
+    var subject = fillTemplate(selTemplate.subject, selClient, null);
+    renderPreviewArea(selClient.email||'(no email on file)', subject, body, selClient.email?[selClient.email]:[], [selClient]);
   }
 
   document.getElementById('email-client-sel').addEventListener('change',function(){
     selClient = db.clients.find(function(c){return c.id===this.value;},this)||null;
-    if(selReferredClient && selClient && selReferredClient.id===selClient.id) selReferredClient=null;
-    var referredSel = document.getElementById('email-referred-sel');
-    referredSel.innerHTML = referredClientOptsHtml();
-    referredSel.value = selReferredClient?selReferredClient.id:'';
     updatePreview();
   });
 
-  document.getElementById('email-referred-sel').addEventListener('change',function(){
-    selReferredClient = db.clients.find(function(c){return c.id===this.value;},this)||null;
-    updatePreview();
-  });
+  function bindReferrerChecklist(){
+    document.querySelectorAll('.email-referrer-cb').forEach(function(cb){
+      cb.checked = selReferrers.some(function(c){return c.id===cb.value;});
+      cb.addEventListener('change',function(){
+        var c = db.clients.find(function(x){return x.id===cb.value;});
+        if(!c) return;
+        if(cb.checked){ if(!selReferrers.some(function(x){return x.id===c.id;})) selReferrers.push(c); }
+        else{ selReferrers = selReferrers.filter(function(x){return x.id!==c.id;}); }
+        updatePreview();
+      });
+    });
+  }
+  function bindReferredChecklist(){
+    document.querySelectorAll('.email-referred-cb').forEach(function(cb){
+      cb.checked = selReferredClients.some(function(c){return c.id===cb.value;});
+      cb.addEventListener('change',function(){
+        var c = db.clients.find(function(x){return x.id===cb.value;});
+        if(!c) return;
+        if(cb.checked){ if(!selReferredClients.some(function(x){return x.id===c.id;})) selReferredClients.push(c); }
+        else{ selReferredClients = selReferredClients.filter(function(x){return x.id!==c.id;}); }
+        updatePreview();
+      });
+    });
+  }
+  bindReferrerChecklist();
+  bindReferredChecklist();
 
   function applyEmailFilters(){
     var payingOnly = document.getElementById('email-filter-paying').checked;
@@ -4968,6 +5038,11 @@ function renderEmail(){
     // Restore selection if still valid
     if(filtered.some(function(c){return c.id===prevVal;})) sel.value = prevVal;
     else { selClient=null; updatePreview(); }
+
+    document.getElementById('email-referrers-list').innerHTML = clientChecklistHtml('email-referrer-cb');
+    document.getElementById('email-referred-list').innerHTML = clientChecklistHtml('email-referred-cb');
+    bindReferrerChecklist();
+    bindReferredChecklist();
   }
   document.getElementById('email-filter-paying').addEventListener('change', applyEmailFilters);
   document.getElementById('email-filter-subscriber').addEventListener('change', applyEmailFilters);
@@ -4978,13 +5053,19 @@ function renderEmail(){
       card.classList.add('selected');
       selTemplate=TEMPLATES.find(function(t){return t.id===card.dataset.templateId;})||null;
       var referredWrap = document.getElementById('email-referred-wrap');
-      if(selTemplate && selTemplate.requiresReferral){
+      var referrersWrap = document.getElementById('email-referrers-wrap');
+      var clientSel = document.getElementById('email-client-sel');
+      var clientLabel = document.getElementById('email-client-label');
+      if(isReferralTemplate()){
         referredWrap.style.display='block';
-        document.getElementById('email-referred-sel').innerHTML = referredClientOptsHtml();
-        document.getElementById('email-referred-sel').value = selReferredClient?selReferredClient.id:'';
+        referrersWrap.style.display='block';
+        clientSel.style.display='none';
+        clientLabel.textContent = '1. Select Referrer(s)';
       }else{
         referredWrap.style.display='none';
-        selReferredClient=null;
+        referrersWrap.style.display='none';
+        clientSel.style.display='block';
+        clientLabel.textContent = '1. Select Client';
       }
       updatePreview();
     });
