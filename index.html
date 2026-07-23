@@ -7710,7 +7710,22 @@ function renderPlanner(){
 
   document.querySelectorAll('.task-done-cb').forEach(function(cb){
     cb.addEventListener('click', function(e){ e.stopPropagation(); });
-    cb.addEventListener('change', function(){ toggleTaskDone(this.dataset.id); });
+    cb.addEventListener('change', function(){
+      var id = this.dataset.id;
+      var checked = this.checked;
+      toggleTaskDone(id, true);
+      var row = document.querySelector('tr[data-task-id="'+id+'"]');
+      if(row){
+        var titleEl = row.querySelector('.task-title-link');
+        if(titleEl){
+          titleEl.style.color = checked ? '#aaa' : '#2563eb';
+          titleEl.style.textDecoration = checked ? 'line-through' : 'underline';
+        }
+        row.style.opacity = checked ? '0.6' : '1';
+      }
+      var openCountEl = document.querySelector('#stat-planner-open .stat-val');
+      if(openCountEl) openCountEl.textContent = db.planner.filter(function(t){return !t.done;}).length;
+    });
   });
   document.querySelectorAll('.task-title-link').forEach(function(el){
     el.addEventListener('click', function(){ openTaskForm(this.dataset.id); });
@@ -7873,14 +7888,19 @@ function saveTask(id){
   saveDB();closeModal();render();
 }
 
-function toggleTaskDone(id){
+// skipRender: the planner checkbox handler passes true so checking a task
+// off updates that row in place (still checked/struck-through, still there
+// to delete if it was a mistake) instead of the whole list immediately
+// re-filtering it out of view.
+function toggleTaskDone(id, skipRender){
   var task = db.planner.find(function(t){return t.id===id;});
   if(!task) return;
   var wasDone = !!task.done;
   snapshot('Toggle task');
   db.planner = db.planner.map(function(t){return t.id===id?Object.assign({},t,{done:!t.done}):t;});
   if(!wasDone) logTaskCompletionNote(db.planner.find(function(t){return t.id===id;}));
-  saveDB();render();
+  saveDB();
+  if(!skipRender) render();
 }
 
 // Marking a task done logs it as a note on the linked client record, so
