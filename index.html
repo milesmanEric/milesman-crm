@@ -222,6 +222,7 @@ tr:last-child td{border-bottom:none}
 </style>
 </head>
 <body>
+<div id="auth-gate" style="display:none"></div>
 <button id="mobile-nav-toggle">&#9776;</button>
 <div id="sidebar-overlay"></div>
 <div id="app">
@@ -283,6 +284,8 @@ tr:last-child td{border-bottom:none}
 
       <button class="sync-btn" id="btn-debug-toggle" style="color:#888;border-color:#ddd;font-size:11px">&#128030; Debug Panel</button>
       <button class="sync-btn" id="btn-test-connectivity" style="color:#888;border-color:#ddd;font-size:11px">&#128225; Test Connectivity</button>
+      <button class="sync-btn" id="btn-change-password" style="color:#888;border-color:#ddd;font-size:11px">&#128273; Change Password</button>
+      <button class="sync-btn" id="btn-lock-app" style="color:#888;border-color:#ddd;font-size:11px">&#128274; Lock</button>
       <div class="footer-txt">(908) 419-7700 &middot; themilesman.com</div>
     </div>
   </div>
@@ -346,6 +349,149 @@ window.onerror = function(msg, src, line, col, err) {
   console.error('Script error:', msg, 'line:', line);
   return false;
 };
+
+// ── Password gate ────────────────────────────────────────────────────────
+// A simple client-side password screen, not real security (this is a
+// public repo — the check itself and the localStorage data it's guarding
+// are both readable by anyone who looks). It's meant only to keep a casual
+// visitor who stumbles on the GitHub Pages URL from seeing client data.
+// The password is never hardcoded or committed: on first use, each
+// browser/device sets its own password, and only a salted SHA-256 hash of
+// it is kept in that browser's localStorage — never sent anywhere.
+const AUTH_HASH_KEY = 'mm_auth_hash';
+const AUTH_SALT_KEY = 'mm_auth_salt';
+const AUTH_UNLOCKED_KEY = 'mm_authed';
+async function sha256Hex(str){
+  var enc = new TextEncoder().encode(str);
+  var buf = await crypto.subtle.digest('SHA-256', enc);
+  return Array.from(new Uint8Array(buf)).map(function(b){return b.toString(16).padStart(2,'0');}).join('');
+}
+function randomSalt(){
+  var arr = new Uint8Array(16);
+  crypto.getRandomValues(arr);
+  return Array.from(arr).map(function(b){return b.toString(16).padStart(2,'0');}).join('');
+}
+function authGateBoxHtml(inner){
+  return '<div style="background:#fff;border-radius:12px;padding:36px 32px;width:320px;max-width:90vw;box-shadow:0 4px 24px rgba(0,0,0,.08);text-align:center;font-family:\'Times New Roman\',Times,serif">'+inner+'</div>';
+}
+function authLoginFormHtml(){
+  return authGateBoxHtml(
+    '<div style="font-size:20px;font-weight:700;color:#111;margin-bottom:4px">Miles Man CRM</div>'+
+    '<div style="font-size:12px;color:#888;margin-bottom:20px">Enter password to continue</div>'+
+    '<input type="password" id="auth-pw-input" placeholder="Password" style="width:100%;padding:10px 12px;border-radius:7px;border:1px solid #d1d5db;font-size:14px;font-family:inherit;margin-bottom:10px;box-sizing:border-box">'+
+    '<div id="auth-error" style="color:#dc2626;font-size:12px;margin-bottom:10px;min-height:14px"></div>'+
+    '<button id="auth-submit-btn" style="width:100%;padding:10px;border-radius:8px;border:none;background:#2563eb;color:#fff;cursor:pointer;font-size:14px;font-weight:600;font-family:inherit">Unlock</button>'+
+    '<div style="margin-top:14px"><a href="#" id="auth-forgot-link" style="font-size:12px;color:#888;text-decoration:underline">Forgot password?</a></div>'
+  );
+}
+function authSetupFormHtml(){
+  return authGateBoxHtml(
+    '<div style="font-size:20px;font-weight:700;color:#111;margin-bottom:4px">Miles Man CRM</div>'+
+    '<div style="font-size:12px;color:#888;margin-bottom:20px">Set a password for this device</div>'+
+    '<input type="password" id="auth-pw-input" placeholder="New password" style="width:100%;padding:10px 12px;border-radius:7px;border:1px solid #d1d5db;font-size:14px;font-family:inherit;margin-bottom:10px;box-sizing:border-box">'+
+    '<input type="password" id="auth-pw-confirm" placeholder="Confirm password" style="width:100%;padding:10px 12px;border-radius:7px;border:1px solid #d1d5db;font-size:14px;font-family:inherit;margin-bottom:10px;box-sizing:border-box">'+
+    '<div id="auth-error" style="color:#dc2626;font-size:12px;margin-bottom:10px;min-height:14px"></div>'+
+    '<button id="auth-submit-btn" style="width:100%;padding:10px;border-radius:8px;border:none;background:#2563eb;color:#fff;cursor:pointer;font-size:14px;font-weight:600;font-family:inherit">Set Password</button>'+
+    '<div style="font-size:11px;color:#aaa;margin-top:14px">Stored only on this device — it isn\'t sent anywhere and can\'t be recovered if you forget it.</div>'
+  );
+}
+function bindAuthLoginForm(){
+  var input = document.getElementById('auth-pw-input');
+  var err = document.getElementById('auth-error');
+  function attempt(){
+    var pw = input.value;
+    if(!pw) return;
+    var salt = localStorage.getItem(AUTH_SALT_KEY)||'';
+    sha256Hex(salt+pw).then(function(hash){
+      if(hash === localStorage.getItem(AUTH_HASH_KEY)){
+        localStorage.setItem(AUTH_UNLOCKED_KEY, '1');
+        unlockApp();
+      }else{
+        err.textContent = 'Incorrect password';
+        input.value='';
+        input.focus();
+      }
+    });
+  }
+  document.getElementById('auth-submit-btn').addEventListener('click', attempt);
+  input.addEventListener('keydown', function(e){ if(e.key==='Enter') attempt(); });
+  input.focus();
+  document.getElementById('auth-forgot-link').addEventListener('click', function(e){
+    e.preventDefault();
+    // Only clears the password gate, never the CRM data itself (a separate
+    // localStorage key) — safe to offer since there's no server to verify
+    // identity against anyway; this is a convenience reset, not recovery.
+    if(confirm('Reset the password for this device? You\'ll be asked to set a new one. Your client data is not affected.')){
+      localStorage.removeItem(AUTH_HASH_KEY);
+      localStorage.removeItem(AUTH_SALT_KEY);
+      localStorage.removeItem(AUTH_UNLOCKED_KEY);
+      showAuthGate();
+    }
+  });
+}
+function bindAuthSetupForm(){
+  var input = document.getElementById('auth-pw-input');
+  var confirmInput = document.getElementById('auth-pw-confirm');
+  var err = document.getElementById('auth-error');
+  function attempt(){
+    var pw = input.value, pw2 = confirmInput.value;
+    if(!pw || pw.length<4){ err.textContent='Password must be at least 4 characters'; return; }
+    if(pw !== pw2){ err.textContent='Passwords don\'t match'; confirmInput.value=''; confirmInput.focus(); return; }
+    var salt = randomSalt();
+    sha256Hex(salt+pw).then(function(hash){
+      localStorage.setItem(AUTH_SALT_KEY, salt);
+      localStorage.setItem(AUTH_HASH_KEY, hash);
+      localStorage.setItem(AUTH_UNLOCKED_KEY, '1');
+      unlockApp();
+    });
+  }
+  document.getElementById('auth-submit-btn').addEventListener('click', attempt);
+  confirmInput.addEventListener('keydown', function(e){ if(e.key==='Enter') attempt(); });
+  input.focus();
+}
+function showAuthGate(){
+  var gate = document.getElementById('auth-gate');
+  gate.style.cssText = 'display:flex;position:fixed;inset:0;background:#f4f5f7;z-index:99999;align-items:center;justify-content:center';
+  var hasPassword = !!localStorage.getItem(AUTH_HASH_KEY);
+  gate.innerHTML = hasPassword ? authLoginFormHtml() : authSetupFormHtml();
+  if(hasPassword) bindAuthLoginForm(); else bindAuthSetupForm();
+}
+function unlockApp(){
+  document.getElementById('auth-gate').style.display = 'none';
+  bootApp();
+}
+function lockApp(){
+  localStorage.removeItem(AUTH_UNLOCKED_KEY);
+  location.reload();
+}
+function changeAuthPassword(){
+  var current = prompt('Enter your current password to continue:');
+  if(current===null) return;
+  var salt = localStorage.getItem(AUTH_SALT_KEY)||'';
+  sha256Hex(salt+current).then(function(hash){
+    if(hash !== localStorage.getItem(AUTH_HASH_KEY)){
+      toast('Incorrect current password','err');
+      return;
+    }
+    var next = prompt('Enter a new password (at least 4 characters):');
+    if(next===null) return;
+    if(next.length<4){ toast('Password must be at least 4 characters','err'); return; }
+    var newSalt = randomSalt();
+    sha256Hex(newSalt+next).then(function(newHash){
+      localStorage.setItem(AUTH_SALT_KEY, newSalt);
+      localStorage.setItem(AUTH_HASH_KEY, newHash);
+      toast('Password updated','ok');
+    });
+  });
+}
+if(localStorage.getItem(AUTH_UNLOCKED_KEY)==='1'){
+  bootApp();
+}else{
+  showAuthGate();
+}
+
+// Everything below runs only after the password gate is passed.
+function bootApp(){
 
 // ── Config ────────────────────────────────────────────────────────────────
 const MS_CLIENT_ID     = 'f59cebe9-632b-4361-bdab-71dda33c174c';
@@ -7979,6 +8125,8 @@ function bindClick(id, handler){
   bindClick('note-expand-overlay', function(e){
     if(e.target === document.getElementById('note-expand-overlay')) closeNoteExpand();
   });
+  bindClick('btn-change-password', changeAuthPassword);
+  bindClick('btn-lock-app', lockApp);
 })();
 
 // ── Note expand ──────────────────────────────────────────────────────────────
@@ -8049,6 +8197,7 @@ updateUndoBtn();
 checkDriveRedirect();
 updateSyncStatusDisplay();
 console.log('[CRM] Ready. Clients:', db.clients.length, 'Trips:', db.trips.length);
+} // end bootApp()
 </script>
 </body>
 
