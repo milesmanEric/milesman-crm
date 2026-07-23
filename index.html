@@ -6141,7 +6141,10 @@ function renderDash(){
     openStatDrilldownModal('Upcoming Trips', tripHeaders, db.trips.filter(function(t){return (t.departDate||'')>=today();}).map(tripRow));
   });
   var statDashValue = $('stat-dash-value');
-  if(statDashValue) statDashValue.addEventListener('click', function(){ openStatDrilldownModal('Total Revenue', tripHeaders, db.trips.map(tripRow)); });
+  if(statDashValue) statDashValue.addEventListener('click', function(){
+    var revenueTrips = db.trips.filter(function(t){ var st=displayStatus(t); return st==='Completed'||st==='Upcoming'; });
+    openStatDrilldownModal('Total Revenue', tripHeaders, revenueTrips.map(tripRow));
+  });
   var statDashPts = $('stat-dash-pts');
   if(statDashPts) statDashPts.addEventListener('click', function(){
     openStatDrilldownModal('Points Deployed', ['Client','Destination','Depart','Status','Points Used'],
