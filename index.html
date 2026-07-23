@@ -6138,7 +6138,12 @@ function renderDash(){
   });
   var statDashUpcoming = $('stat-dash-upcoming');
   if(statDashUpcoming) statDashUpcoming.addEventListener('click', function(){
-    openStatDrilldownModal('Upcoming Trips', tripHeaders, db.trips.filter(function(t){return (t.departDate||'')>=today();}).map(tripRow));
+    var upcomingTrips = db.trips.filter(function(t){
+      if((t.departDate||'')<today()) return false;
+      var st=displayStatus(t);
+      return st==='Completed'||st==='Upcoming';
+    });
+    openStatDrilldownModal('Upcoming Trips', tripHeaders, upcomingTrips.map(tripRow));
   });
   var statDashValue = $('stat-dash-value');
   if(statDashValue) statDashValue.addEventListener('click', function(){
