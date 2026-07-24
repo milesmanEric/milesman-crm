@@ -2705,6 +2705,18 @@ function plainQuoteBodyHtml(bodyParts, subject){
     '<div style="white-space:pre-wrap;line-height:1.6">'+bodyParts.map(escHtml).join('\n')+'</div>'+
   '</div>';
 }
+// Triggers a browser download of a PDF blob — used for the referral
+// certificate, since mailto: links have no way to attach a file
+// automatically; downloading it here is the closest thing to "attached",
+// and the file lands in Downloads ready to drag into the Outlook compose
+// window that mailto: opens right alongside it.
+function downloadPdfBlob(blob, filename){
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+}
 async function generateQuotePdfBlob(bodyHtml){
   var html2pdfLib = await loadHtml2PdfLib();
   var container = document.createElement('div');
@@ -5219,10 +5231,13 @@ var TEMPLATES = [
   {
     id:'referralcredit',
     name:'Referral Credit Earned',
-    description:'Let a client know they earned a $100 credit for referring someone',
+    description:'Let a client know they earned a $100 credit for referring someone, with a certificate',
     requiresReferral:true,
-    subject:'You\u2019ve Earned a $100 Referral Credit!',
-    body:"Hi {{firstName}},\n\nGreat news \u2014 you've earned a $100 referral credit! {{referredName}} recently mentioned your name and booked a trip with Miles Man, so you now have $100 to put toward your next booking.\n\nThank you so much for spreading the word \u2014 referrals like this mean the world to me. If you know anyone else who could use help planning their next trip, I'd love an introduction!\n\nBest,\nEric"
+    subject:'You\u2019ve Earned a $100 Referral Credit!'
+    // No plain-text `body` \u2014 this template always sends as styled HTML (see
+    // renderReferralCreditPreview/referralCreditEmailBodyHtml) since the
+    // certificate embeds the Miles Man logo, which a plain mailto: body
+    // can't carry.
   }
 ];
 
@@ -5257,17 +5272,201 @@ function fillTemplate(body, clients, referredClients){
 }
 // Records one referral-credit row per (referrer, referred person) pair on
 // each referrer's client record — shown/edited in the Referral Credits
-// section of the client form (name, date, $100 default, used checkbox).
-function addReferralCreditEntries(referrers, referredClients){
+// section of the client form (name, date, $100 default, used checkbox,
+// certificate number). certNumbers is a flat array already assigned by the
+// caller (consumeCertificateNumbers), one per (referrer, referred) pair in
+// the same referrers-outer/referredClients-inner order used to build the
+// email itself (referralCreditEmailBodyHtml), so the number on a client's
+// row always matches the number on the certificate they were actually sent.
+function addReferralCreditEntries(referrers, referredClients, certNumbers){
   var d = today();
-  var referrerIds = referrers.map(function(c){return c.id;});
-  var newRowsByReferrer = referredClients.map(function(rf){
-    return {referredName: toFirstLastNoMiddle(rf.name)||rf.name||'', date:d, amount:100, used:false};
+  var rowsByReferrerId = {};
+  var idx = 0;
+  referrers.forEach(function(r){
+    rowsByReferrerId[r.id] = referredClients.map(function(rf){
+      var num = certNumbers[idx]; idx++;
+      return {referredName: toFirstLastNoMiddle(rf.name)||rf.name||'', date:d, amount:100, used:false, certNumber:num};
+    });
   });
   db.clients = db.clients.map(function(c){
-    if(referrerIds.indexOf(c.id)===-1) return c;
+    var newRows = rowsByReferrerId[c.id];
+    if(!newRows) return c;
     var existing = Array.isArray(c.referralCredits) ? c.referralCredits : [];
-    return Object.assign({}, c, {referralCredits: existing.concat(newRowsByReferrer)});
+    return Object.assign({}, c, {referralCredits: existing.concat(newRows)});
+  });
+}
+
+// Certificate numbers are a single ever-increasing counter shared across all
+// referral credit emails (never reused, never reset) — peek shows what the
+// next one(s) would be for preview purposes without consuming them; consume
+// is called exactly once per actually-sent/logged email (see
+// renderReferralCreditPreview's finalize()), advancing the counter for real.
+function peekNextCertificateNumber(){
+  return parseInt(localStorage.getItem('mm_next_certificate_number')||'1',10);
+}
+function consumeCertificateNumbers(count){
+  var start = peekNextCertificateNumber();
+  localStorage.setItem('mm_next_certificate_number', String(start+count));
+  var nums = [];
+  for(var i=0;i<count;i++) nums.push(start+i);
+  return nums;
+}
+// One $100 referral bonus certificate — Miles Man logo, who it's issued to,
+// its unique number, and the redemption terms. Embedding the logo means this
+// can't go out as a plain mailto: body (mailto is plain-text only) — see
+// renderReferralCreditPreview, which sends this the same styled-HTML +
+// clipboard-copy way Email Quote/Itinerary already do.
+function referralCertificateHtml(recipientName, certNumber){
+  var hf="font-family:'Times New Roman',Times,serif; ";
+  var numStr = String(certNumber).padStart(6,'0');
+  return ''+
+'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:20px 0;">'+
+'<tr><td align="center">'+
+'<table role="presentation" width="536" cellpadding="0" cellspacing="0" style="border:3px double #1a1aff; border-radius:8px;">'+
+'<tr><td style="padding:28px 32px; text-align:center;">'+
+'<img src="'+MILES_MAN_LOGO_DATA_URI+'" width="88" height="54" alt="Miles Man" style="display:block; margin:0 auto 14px auto; width:88px; height:54px;">'+
+'<div style="'+hf+'font-size:11px; letter-spacing:0.12em; text-transform:uppercase; color:#777777; margin-bottom:6px;">Miles Man Travel</div>'+
+'<div style="'+hf+'font-size:24px; font-weight:bold; color:#1a1aff; margin-bottom:14px;">$100 Referral Bonus Certificate</div>'+
+'<div style="'+hf+'font-size:14px; color:#333333; margin-bottom:4px;">This certificate is issued to</div>'+
+'<div style="'+hf+'font-size:18px; font-weight:bold; color:#111111; margin-bottom:14px;">'+escHtml(recipientName)+'</div>'+
+'<div style="'+hf+'font-size:12px; color:#777777; margin-bottom:20px;">Certificate No. '+numStr+'</div>'+
+'<div style="border-top:1px solid #dcdfff; margin:0 0 16px 0;"></div>'+
+'<div style="'+hf+'font-size:11px; color:#777777; line-height:1.6; text-align:left;">'+
+'<strong>Terms:</strong> This certificate is good for $100 off your next booking fees and/or trip cost. A trip is considered a trip with a unique booking record number. Once the $100 value has been redeemed and used, this certificate has no further value. This certificate is non-transferable, but may be used when booking a trip for another person using your miles/points and/or credit card.'+
+'</div>'+
+'</td></tr>'+
+'</table>'+
+'</td></tr>'+
+'</table>';
+}
+// Full styled HTML body for the Referral Credit Earned email — intro text,
+// then one certificate per (referrer, referred) pair (same order/count as
+// addReferralCreditEntries), then sign-off.
+function referralCreditEmailBodyHtml(referrers, referredClients, certNumbers){
+  var hf="font-family:'Times New Roman',Times,serif; ";
+  var firstNames = joinNames(referrers.map(function(c){return getFirstName(c.name)||c.name||'';}));
+  var referredNames = joinNames(referredClients.map(function(c){return toFirstLastNoMiddle(c.name)||c.name||'';}));
+  var idx = 0;
+  var certsHtml = referrers.map(function(r){
+    return referredClients.map(function(rf){
+      var num = certNumbers[idx]; idx++;
+      return referralCertificateHtml(toFirstLast(r.name)||r.name, num);
+    }).join('');
+  }).join('');
+  return ''+
+'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f5f7; padding:30px 0;">'+
+'<tr><td align="center">'+
+'<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff; border-radius:8px; overflow:hidden;">'+
+'<tr><td style="padding:32px 32px 8px 32px;">'+
+'<p style="'+hf+'font-size:14px; color:#111111; margin:0 0 16px 0;">Hi '+escHtml(firstNames)+',</p>'+
+'<p style="'+hf+'font-size:14px; color:#333333; line-height:1.5; margin:0 0 16px 0;">Great news — you\'ve earned a $100 referral credit! '+escHtml(referredNames)+' recently mentioned your name and booked a trip with Miles Man, so you now have $100 to put toward your next booking. Your certificate is below.</p>'+
+'</td></tr>'+
+'<tr><td style="padding:0 32px;">'+certsHtml+'</td></tr>'+
+'<tr><td style="padding:0 32px 32px 32px;">'+
+'<p style="'+hf+'font-size:14px; color:#333333; line-height:1.5; margin:0;">Thank you so much for spreading the word — referrals like this mean the world to me. If you know anyone else who could use help planning their next trip, I\'d love an introduction!</p>'+
+'<p style="'+hf+'font-size:14px; color:#333333; line-height:1.5; margin:20px 0 0 0;">Best,<br>Eric</p>'+
+'</td></tr>'+
+'</table>'+
+'</td></tr>'+
+'</table>';
+}
+// Just the certificate block(s) alone (no email chrome/intro text) — what
+// actually gets rendered to the PDF that's downloaded for manual attachment,
+// since mailto: has no way to attach a file automatically.
+function certificatesPdfHtml(referrers, referredClients, certNumbers){
+  var idx = 0;
+  var certsHtml = referrers.map(function(r){
+    return referredClients.map(function(rf){
+      var num = certNumbers[idx]; idx++;
+      return referralCertificateHtml(toFirstLast(r.name)||r.name, num);
+    }).join('');
+  }).join('');
+  return '<div style="background:#ffffff;padding:10px;max-width:600px">'+certsHtml+'</div>';
+}
+function certificatePdfFilename(numbers){
+  if(numbers.length===1) return 'Referral-Certificate-'+String(numbers[0]).padStart(6,'0')+'.pdf';
+  return 'Referral-Certificates-'+String(numbers[0]).padStart(6,'0')+'-'+String(numbers[numbers.length-1]).padStart(6,'0')+'.pdf';
+}
+
+// Dedicated preview/send flow for the Referral Credit Earned template — it
+// can't reuse the generic renderPreviewArea() below because it sends styled
+// HTML (for the certificate's Miles Man logo) via clipboard-copy instead of
+// a plain mailto: body, and because sending it must also consume real
+// certificate numbers (only once, however many times Send/Log get clicked
+// for the same preview — see finalize()'s memoization).
+function renderReferralCreditPreview(referrers, referredClients){
+  var area = document.getElementById('email-preview-area');
+  var totalCerts = referrers.length * referredClients.length;
+  var peekStart = peekNextCertificateNumber();
+  var peekedNumbers = [];
+  for(var i=0;i<totalCerts;i++) peekedNumbers.push(peekStart+i);
+
+  var subject = fillTemplate(TEMPLATES.find(function(t){return t.id==='referralcredit';}).subject, referrers, referredClients);
+  var htmlBody = referralCreditEmailBodyHtml(referrers, referredClients, peekedNumbers);
+  var toDisplay = referrers.map(function(c){return c.email?c.name+' &lt;'+c.email+'&gt;':c.name+' (no email on file)';}).join(', ');
+  var mailtoEmails = referrers.map(function(c){return c.email;}).filter(Boolean);
+
+  area.innerHTML =
+    '<div style="margin-bottom:10px">'+
+      '<div style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">To</div>'+
+      '<div style="font-size:13px;color:#111;padding:6px 10px;background:#fff;border:1px solid #e5e7eb;border-radius:6px">'+toDisplay+'</div>'+
+    '</div>'+
+    '<div style="margin-bottom:10px">'+
+      '<div style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Subject</div>'+
+      '<div style="font-size:13px;color:#111;padding:6px 10px;background:#fff;border:1px solid #e5e7eb;border-radius:6px">'+subject+'</div>'+
+    '</div>'+
+    '<div style="margin-bottom:12px">'+
+      '<div style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Body — certificate number'+(totalCerts>1?'s are':' is')+' assigned when sent</div>'+
+      '<div class="email-preview" style="white-space:normal">'+htmlBody+'</div>'+
+    '</div>'+
+    '<div style="display:flex;gap:8px">'+
+      '<button id="email-send-btn" style="padding:9px 20px;border-radius:8px;border:none;background:#2563eb;color:#fff;cursor:pointer;font-size:13px;font-weight:600;font-family:inherit">&#9993;&#65039; Open in Outlook</button>'+
+      '<button id="email-log-btn" style="padding:9px 20px;border-radius:8px;border:1px solid #d1d5db;background:#fff;color:#374151;cursor:pointer;font-size:13px;font-family:inherit">&#128221; Log as Note</button>'+
+    '</div>';
+
+  var finalized = null;
+  function finalize(){
+    if(finalized) return finalized;
+    var realNumbers = consumeCertificateNumbers(totalCerts);
+    var finalHtmlBody = referralCreditEmailBodyHtml(referrers, referredClients, realNumbers);
+    addReferralCreditEntries(referrers, referredClients, realNumbers);
+    saveDB();
+    finalized = {htmlBody:finalHtmlBody, numbers:realNumbers};
+    return finalized;
+  }
+
+  document.getElementById('email-send-btn').addEventListener('click',async function(){
+    var result = finalize();
+    var copied = copyHtmlToClipboard(result.htmlBody);
+    var mailto = 'mailto:'+mailtoEmails.map(mailtoAddr).join(',')+'?subject='+encodeURIComponent(subject);
+    window.location.href = mailto;
+    // mailto: links can't attach a file automatically (no email client
+    // supports that) — downloading the PDF right alongside opening Outlook
+    // is the closest equivalent: it lands in Downloads, ready to drag into
+    // the compose window that just opened.
+    var certFilename = certificatePdfFilename(result.numbers);
+    try{
+      var pdfBlob = await generateQuotePdfBlob(certificatesPdfHtml(referrers, referredClients, result.numbers));
+      downloadPdfBlob(pdfBlob, certFilename);
+      toast((copied?'Certificate copied (paste with Ctrl+V) and ':'')+certFilename+' downloaded — attach it in Outlook (mailto can\'t attach files automatically)','ok');
+    }catch(e){
+      debugLog('Referral certificate PDF generation failed: '+e.message);
+      toast((copied?'Certificate copied — paste into the email body (Ctrl+V). ':'')+'PDF generation failed: '+e.message,'err');
+    }
+  });
+
+  document.getElementById('email-log-btn').addEventListener('click',function(){
+    var result = finalize();
+    var certList = result.numbers.map(function(n){return '#'+String(n).padStart(6,'0');}).join(', ');
+    var newNote = {ts:tsNow(), text:'Email Sent: '+subject+'\nReferral certificate(s) issued: '+certList, noteType:'Email Sent', source:'template'};
+    var ids = referrers.map(function(c){return c.id;});
+    db.clients = db.clients.map(function(c){
+      if(ids.indexOf(c.id)===-1) return c;
+      var nl = Array.isArray(c.notesLog) ? [...c.notesLog, newNote] : [newNote];
+      return Object.assign({}, c, {notesLog:nl});
+    });
+    saveDB();
+    toast('Email logged as note on '+referrers.map(function(c){return c.name;}).join(', '),'ok');
   });
 }
 
@@ -5410,11 +5609,7 @@ function renderEmail(){
         area.innerHTML='<div style="color:#b91c1c;font-size:13px;padding:20px;text-align:center">'+overlapNames.join(', ')+' can\'t be both a referrer and a referred client</div>';
         return;
       }
-      var body = fillTemplate(selTemplate.body, selReferrers, selReferredClients);
-      var subject = fillTemplate(selTemplate.subject, selReferrers, selReferredClients);
-      var toDisplay = selReferrers.map(function(c){return c.email?c.name+' &lt;'+c.email+'&gt;':c.name+' (no email on file)';}).join(', ');
-      var mailtoEmails = selReferrers.map(function(c){return c.email;}).filter(Boolean);
-      renderPreviewArea(toDisplay, subject, body, mailtoEmails, selReferrers, selReferredClients);
+      renderReferralCreditPreview(selReferrers, selReferredClients);
       return;
     }
     var body = fillTemplate(selTemplate.body, selClient, null);
@@ -6965,13 +7160,20 @@ function refDetailLabel(referredBy){
   return '';
 }
 // One row of the Referral Credits section (client form) — referred person's
-// name, the date credited, the $ amount, and a checkbox for whether it's
-// been used. Rows are read straight from the DOM at save time (like
-// notesLog), so no separate in-memory array to keep in sync.
+// name, the certificate number (if this row was issued a certificate —
+// system-assigned, read-only, carried through save via a hidden input), the
+// date credited, the $ amount, and a checkbox for whether it's been used.
+// Rows are read straight from the DOM at save time (like notesLog), so no
+// separate in-memory array to keep in sync.
 function refCreditRowHtml(rc){
   rc = rc || {};
+  var certBadge = (rc.certNumber!=null && rc.certNumber!=='')
+    ? '<span style="font-size:10px;color:#1a1aff;white-space:nowrap;font-family:monospace" title="Certificate number">#'+String(rc.certNumber).padStart(6,'0')+'</span>'
+    : '';
   return '<div class="ref-credit-row" style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #f0f0f0">'+
+    '<input type="hidden" class="ref-credit-certnum" value="'+(rc.certNumber!=null?rc.certNumber:'')+'">'+
     '<input type="text" class="ref-credit-name" placeholder="Referred person\'s name" value="'+(rc.referredName||'').toString().replace(/"/g,'&quot;')+'" style="flex:1;min-width:0;padding:5px 8px;border:1px solid #d1d5db;border-radius:5px;font-size:12px;font-family:inherit">'+
+    certBadge+
     '<input type="date" class="ref-credit-date" value="'+(rc.date||today())+'" style="padding:5px 8px;border:1px solid #d1d5db;border-radius:5px;font-size:12px;font-family:inherit">'+
     '<span style="font-size:12px;color:#555">$</span>'+
     '<input type="number" class="ref-credit-amount" value="'+(rc.amount!=null?rc.amount:100)+'" style="width:64px;padding:5px 6px;border:1px solid #d1d5db;border-radius:5px;font-size:12px;font-family:inherit">'+
@@ -7733,11 +7935,13 @@ function saveClient(id){
   const referredBy=gv('fref');
   const referredByDetail=REF_DETAIL_TYPES.indexOf(referredBy)!==-1?gv('frefdetail'):'';
   const referralCredits=Array.from(document.querySelectorAll('.ref-credit-row')).map(function(row){
+    var certRaw=(row.querySelector('.ref-credit-certnum')||{}).value;
     return {
       referredName:(row.querySelector('.ref-credit-name')||{}).value ? row.querySelector('.ref-credit-name').value.trim() : '',
       date:(row.querySelector('.ref-credit-date')||{}).value||'',
       amount:Number((row.querySelector('.ref-credit-amount')||{}).value)||0,
-      used:!!(row.querySelector('.ref-credit-used')||{}).checked
+      used:!!(row.querySelector('.ref-credit-used')||{}).checked,
+      certNumber:certRaw?Number(certRaw):undefined
     };
   }).filter(function(rc){return rc.referredName;});
   const data={name:name,email:email,phone:gv('fp'),streetAddress:gv('fst'),city:gv('fcty'),state:gv('fstate'),zip:gv('fzip'),birthdate:gv('fbd'),countryOfCitizenship:gv('fcoc'),countryOfBirth:gv('fcob'),referredBy:referredBy,referredByDetail:referredByDetail,preferredAirline:gv('fpa'),preferredHotel:gv('fph'),preferredCruiseLine:gv('fpc'),mileageBalances:mileageBalances,hotelBalances:hotelBalances,cruiseBalances:cruiseBalances,carRentalBalances:carRentalBalances,creditCardBalances:creditCardBalances,notesLog:notesLog,isPayingClient:document.getElementById('f-paying')?document.getElementById('f-paying').checked:false,isSubscriber:document.getElementById('f-subscriber')?document.getElementById('f-subscriber').checked:false,attachments:window._currentClientAttachments||[],referralCredits:referralCredits};
