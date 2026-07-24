@@ -246,12 +246,14 @@ tr:last-child td{border-bottom:none}
       <button class="sync-btn" id="btn-undo" disabled style="color:#7c3aed;border-color:#c4b5fd;opacity:.4" title="Nothing to undo">&#8630; Undo</button>
       <button class="menu-toggle-btn" data-menu="menu-file">&#128193; File <span class="menu-caret">&#9656;</span></button>
       <div class="menu-group" id="menu-file" style="display:none">
-        <button class="sync-btn" id="drive-btn" style="color:#1a73e8;border-color:#93c5fd">&#9729; Backup to Google Drive</button>
-        <button class="sync-btn" id="drive-restore-btn" style="color:#1a73e8;border-color:#93c5fd">&#9729; Restore from Google Drive</button>
+        <div style="font-size:10px;font-weight:700;color:#059669;text-transform:uppercase;letter-spacing:.04em;margin:2px 0 4px">&#128274; Secure Sync</div>
+        <button class="sync-btn" id="secure-sync-backup-btn" style="color:#059669;border-color:#6ee7b7" title="Server-verified — checks your identity server-side before touching any data">&#128274; Secure Sync: Save</button>
+        <button class="sync-btn" id="secure-sync-restore-btn" style="color:#059669;border-color:#6ee7b7" title="Server-verified — checks your identity server-side before touching any data">&#128274; Secure Sync: Load</button>
+        <div style="font-size:10px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.04em;margin:10px 0 4px;border-top:1px solid #eee;padding-top:8px">Manual Fallback (not identity-verified)</div>
+        <button class="sync-btn" id="drive-btn" style="color:#888;border-color:#ddd;font-size:11px" title="Direct Drive access with no server-side identity check — prefer Secure Sync above once it's set up">&#9729; Backup to Google Drive</button>
+        <button class="sync-btn" id="drive-restore-btn" style="color:#888;border-color:#ddd;font-size:11px" title="Direct Drive access with no server-side identity check — prefer Secure Sync above once it's set up">&#9729; Restore from Google Drive</button>
         <button class="sync-btn" id="btn-drive-signout" style="color:#888;border-color:#ddd;font-size:11px">&#9729;&#65039; Reset Drive Login</button>
         <button class="sync-btn" id="btn-reset-clean-folder" style="color:#888;border-color:#ddd;font-size:11px">&#128193; Choose Cleaned-File Save Folder</button>
-        <button class="sync-btn" id="secure-sync-backup-btn" style="color:#059669;border-color:#6ee7b7" title="Server-verified alternative to Backup — same file, verifies your identity server-side first">&#128274; Secure Sync: Save</button>
-        <button class="sync-btn" id="secure-sync-restore-btn" style="color:#059669;border-color:#6ee7b7" title="Server-verified alternative to Restore — same file, verifies your identity server-side first">&#128274; Secure Sync: Load</button>
         <div class="io-row">
           <button class="io-btn" id="btn-clients-csv">&#11015; Clients CSV</button>
           <button class="io-btn" id="btn-trips-csv">&#11015; Trips CSV</button>
