@@ -16,9 +16,21 @@ Both are checked automatically every 5 minutes as long as the CRM tab is open an
 
 ---
 
+## Signing in
+
+The first time you open the CRM on a new device/browser, you'll be asked to set a password for that device — it's stored only in that browser, never sent anywhere, and can't be recovered if you forget it (use **Forgot password?** on the login screen to reset it, which only resets the login itself, never your client data). After that, you'll stay signed in on that device until you click **Lock** (sidebar, near the bottom) or clear your browser data.
+
+Worth knowing: this password screen keeps a casual visitor who stumbles on the CRM's web address from seeing your data at a glance, but it isn't real security — anyone who deliberately went looking could get around it. **Secure Sync** (see [Backing up your data](#backing-up-your-data)) is the one feature with actual server-verified access control.
+
+**Change Password** (sidebar) lets you set a new one (asks for the current password first).
+
+---
+
 ## The stat numbers at the top of every page are clickable
 
 Every number in the row of boxes at the top of Dashboard, Clients, Trips, Suppliers, and Planner can be clicked. It opens a list of exactly which records add up to that number — click any row in that list to jump straight to that client, trip, supplier, or task. This is the fastest way to answer "which trips make up this revenue number" or "who are these upcoming clients."
+
+On the Dashboard specifically, the **Total Revenue** and **Upcoming** tiles' lists only show trips that are actually Completed or Upcoming — a trip still in Planning, just Confirmed, or Cancelled won't clutter either list even if it has a future date or a dollar value on it.
 
 (On a Supplier's or Invoice's own detail screen, the numbers there instead scroll you down to the transaction table that's already shown below — no extra click needed to see the detail, it's already on the same screen.)
 
@@ -33,6 +45,8 @@ Every number in the row of boxes at the top of Dashboard, Clients, Trips, Suppli
 **Paying Client / Subscriber**: two checkboxes on the client record, useful for filtering your list down to real clients vs. newsletter-only contacts.
 
 **Attachments**: paste Google Drive links directly, or use "Browse Google Drive" to pick a file without leaving the CRM.
+
+**Referral Credits**: a section on the client record listing who they've referred, when, the $ amount, and whether it's been used yet (checkbox). Rows get added automatically when you send the "Referral Credit Earned" email (see [Emailing clients](#emailing-clients)), or add one yourself with **+ Add Referral Credit** for anything not sent through that flow.
 
 ---
 
@@ -63,7 +77,9 @@ The Suppliers page (labeled "Suppliers" in the nav, called `vendors` internally)
 
 ## Planner
 
-Your follow-up task list. Most tasks get created automatically — one per new trip request and one per new contact-form lead — but you can add your own anytime with **+ Add Task**. Marking a task Done hides it from the default view; switch the filter to "Done" to see completed tasks again.
+Your follow-up task list, with the linked client's phone and email shown right in the table. Most tasks get created automatically — one per new trip request and one per new contact-form lead — but you can add your own anytime with **+ Add Task**.
+
+Checking a task's box marks it done immediately, but the row stays put — checked, struck through — instead of vanishing right away, so you can still see what you just did and hit the trash icon on it if it was a mistake. It'll drop off the default (Open) view the next time you navigate away and back, or switch the filter to "Done" and back. The trash icon deletes a task outright, any time.
 
 ---
 
@@ -89,8 +105,9 @@ Two tabs:
 
 Three different tools, depending on what you need:
 
-- **Email** (the mail-merge tool) — quick canned messages: Welcome New Client, General Follow-Up, or Trip Confirmation. Pick a client, preview with their name/email filled in, send.
-- **Email Quote** — for building a real cruise pricing quote to send a client, with cabin options and pricing laid out in a styled email. Has ready-made polished templates for Virgin Voyages and Princess.
+- **Email** (the mail-merge tool) — quick canned messages: Welcome New Client, General Follow-Up, Trip Confirmation, Thank You & Referral, or **Referral Credit Earned**. Pick a client, preview with their name/email filled in, send.
+  - **Referral Credit Earned** works differently from the others: pick one or more **referrers** (the checkbox list replaces the usual single-client dropdown) and one or more **referred clients**. The email greets all the referrers together ("Hi Aaron and Alice,"), mentions all the referred people in the body, goes out to every referrer's email at once, and adds a row to each referrer's **Referral Credits** section (see [Clients](#clients)) when you click Send or Log as Note. You can't pick the same person as both a referrer and someone they referred — you'll get a warning instead of a nonsensical email.
+- **Email Quote** — for building a real cruise pricing quote to send a client, with cabin options and pricing laid out in a styled email. Ready-made polished templates now cover **Virgin Voyages, Princess, Royal Caribbean, Ritz Carlton Yachts, Seabourn, and Explora Journeys** (the last three are all-inclusive ultra-luxury lines, so their "what's included" lists reflect that — all-suite, dining, beverages, gratuities, WiFi). Every sent quote also gets a PDF copy saved automatically to a "Miles Man Quotes" folder in Google Drive, named `<client>.<cruise line>.<sailing date>.pdf`.
 - **Email Itinerary** — pick a client and one of their **actual booked trips**, and it builds a nicely formatted recap email straight from whatever's on that trip record (dates, flight/hotel/cruise details, confirmation info, points/cash/value, and your trip notes). Any section the trip doesn't have data for is simply left out — it never shows an empty "Hotel Details" box for a flight-only trip.
 
 All three work the same way at send time: the email gets copied to your clipboard (since a plain `mailto:` link can't carry formatting) and Outlook opens addressed to the client — paste (Ctrl/Cmd+V) into the body and send. A note gets logged on the client's record automatically.
@@ -111,7 +128,12 @@ If something seems stuck (Outlook not syncing, an import that should have happen
 
 ## Backing up your data
 
-Everything lives in your browser only — closing the tab doesn't lose data, but clearing your browser's data, or a browser crash with corrupted storage, would. Use **Backup to Google Drive** regularly (or after any significant batch of changes) as your real safety net. **Restore from Google Drive** pulls the latest backup down if you ever need to recover, or if you're picking up on a different computer.
+Everything lives in your browser only — closing the tab doesn't lose data, but clearing your browser's data, or a browser crash with corrupted storage, would. The File menu has two ways to back up/restore against the same Google Drive file — either works, but they're not equally secure:
+
+- **Secure Sync: Save / Load** (top of the File menu) — the recommended option. Checks your identity against Google's own servers before touching anything.
+- **Backup to Google Drive / Restore from Google Drive** (grouped under "Manual Fallback (not identity-verified)" below it) — still fully functional, kept as a fallback for now.
+
+Use whichever is set up and working for you regularly (or after any significant batch of changes) as your real safety net — the "Restore"/"Load" side of either one pulls the latest backup down if you ever need to recover, or if you're picking up on a different computer.
 
 If you back up from two devices without restoring in between, the CRM will warn you and block the upload rather than silently overwriting the other device's newer data — restore first, then back up again.
 

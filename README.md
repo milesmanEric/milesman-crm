@@ -2,7 +2,9 @@
 
 Client CRM for The Miles Man.
 
-Outlook email sync via Microsoft Graph; Google Drive JSON backup.
+Outlook email sync via Microsoft Graph; Google Drive JSON backup (plus an optional server-verified Secure Sync path).
+
+Password-gated per device (client-side only — a casual deterrent, not real security; see DOCUMENTATION.md §1).
 
 Static single-page app, deployed via GitHub Pages.
 
