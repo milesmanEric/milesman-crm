@@ -5041,6 +5041,7 @@ function renderReports(){
     '<div style="display:flex;gap:8px;margin-bottom:16px;border-bottom:1px solid #e5e7eb">'+
       '<button class="rpt-tab-btn'+(activeTab==='activity'?' active':'')+'" data-tab="activity">Activity Report</button>'+
       '<button class="rpt-tab-btn'+(activeTab==='invoice'?' active':'')+'" data-tab="invoice">By Invoice #</button>'+
+      '<button class="rpt-tab-btn'+(activeTab==='certs'?' active':'')+'" data-tab="certs">Unused Certificates</button>'+
     '</div>'+
     (activeTab==='activity' ?
       ('<div class="report-filter">'+
@@ -5056,7 +5057,7 @@ function renderReports(){
         '</div>'+
       '</div>'+
       '<div id="rpt-results"><div class="empty" style="padding:40px">Set filters above and click Run Report</div></div>')
-    :
+    : activeTab==='invoice' ?
       ('<div class="report-filter">'+
         '<div><label>Filter By</label><select id="rpt-inv-datetype">'+
           '<option value="departDate">Travel Date</option>'+
@@ -5076,6 +5077,17 @@ function renderReports(){
         '</div>'+
       '</div>'+
       '<div id="rpt-inv-results"><div class="empty" style="padding:40px">Set filters above and click Run Report</div></div>')
+    :
+      ('<div class="report-filter">'+
+        '<div><label>Client</label><select id="rpt-cert-client"><option value="">All clients</option>'+
+          [...db.clients].sort(function(a,b){return (a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase());}).map(function(c){return '<option value="'+c.id+'">'+c.name+'</option>';}).join('')+
+        '</select></div>'+
+        '<div style="display:flex;gap:8px;align-self:flex-end">'+
+          '<button class="report-run-btn" id="rpt-cert-run">Run Report</button>'+
+          '<button class="report-export-btn" id="rpt-cert-export">Export CSV</button>'+
+        '</div>'+
+      '</div>'+
+      '<div id="rpt-cert-results"><div class="empty" style="padding:40px">Click Run Report to list every unredeemed referral certificate</div></div>')
     );
 
   document.querySelectorAll('.rpt-tab-btn').forEach(function(btn){
@@ -5099,7 +5111,7 @@ function renderReports(){
       }, 50);
     });
     document.getElementById('rpt-export').addEventListener('click', exportReport);
-  } else {
+  } else if(activeTab==='invoice'){
     document.getElementById('rpt-inv-run').addEventListener('click', function(){
       runInvoiceReport();
       setTimeout(function(){
@@ -5111,6 +5123,18 @@ function renderReports(){
       }, 50);
     });
     document.getElementById('rpt-inv-export').addEventListener('click', exportInvoiceReport);
+  } else {
+    document.getElementById('rpt-cert-run').addEventListener('click', function(){
+      runCertificatesReport();
+      setTimeout(function(){
+        document.querySelectorAll('.rpt-cert-row').forEach(function(row){
+          row.addEventListener('click', function(){
+            openClientForm(row.dataset.clientId);
+          });
+        });
+      }, 50);
+    });
+    document.getElementById('rpt-cert-export').addEventListener('click', exportCertificatesReport);
   }
 }
 
@@ -5204,6 +5228,70 @@ function exportInvoiceReport(){
   var csv = [headers].concat(rows).map(function(r){return r.map(esc).join(',');}).join('\n');
   var b = new Blob([csv],{type:'text/csv'});
   var a = document.createElement('a'); a.href=URL.createObjectURL(b); a.download='milesman-invoice-report.csv'; a.click();
+  toast('Report exported ✓');
+}
+
+// A certificate can have a referralCredits row on more than one client's
+// record (every referrer named on it gets one — see addReferralCreditEntries
+// and syncReferralCreditUsedAcrossClients), so this groups by certNumber
+// across all clients rather than listing raw rows, and shows the full set of
+// referrers and referred names that share each certificate.
+function getUnusedCertificatesReportData(){
+  var clientFilter = (document.getElementById('rpt-cert-client')||{}).value||'';
+  var groups = {};
+  db.clients.forEach(function(c){
+    (c.referralCredits||[]).forEach(function(rc){
+      if(rc.certNumber==null) return;
+      var g = groups[rc.certNumber];
+      if(!g){ g = groups[rc.certNumber] = {certNumber:rc.certNumber, referrerIds:[], referrerNames:[], referredNames:[], date:rc.date||'', amount:rc.amount||0, used:false}; }
+      if(g.referrerIds.indexOf(c.id)===-1){ g.referrerIds.push(c.id); g.referrerNames.push(c.name||''); }
+      if(rc.referredName && g.referredNames.indexOf(rc.referredName)===-1) g.referredNames.push(rc.referredName);
+      if(rc.used) g.used = true;
+    });
+  });
+  var rows = Object.keys(groups).map(function(k){return groups[k];}).filter(function(g){
+    if(g.used) return false;
+    if(clientFilter && g.referrerIds.indexOf(clientFilter)===-1) return false;
+    return true;
+  });
+  rows.sort(function(a,b){return (b.certNumber||0)-(a.certNumber||0);});
+  return rows;
+}
+function runCertificatesReport(){
+  var rows = getUnusedCertificatesReportData();
+  var container = document.getElementById('rpt-cert-results');
+  if(!container) return;
+  if(!rows.length){
+    container.innerHTML = '<div class="empty" style="padding:40px">No unused certificates match the selected filters</div>';
+    return;
+  }
+  var grandTotal = rows.reduce(function(a,g){return a+(g.amount||0);},0);
+  var rowsHtml = rows.map(function(g){
+    return '<tr class="rpt-cert-row" style="cursor:pointer" data-client-id="'+g.referrerIds[0]+'">'+
+      '<td style="white-space:nowrap;font-family:monospace">#'+String(g.certNumber).padStart(6,'0')+'</td>'+
+      '<td>'+g.referrerNames.join(', ')+'</td>'+
+      '<td>'+g.referredNames.join(', ')+'</td>'+
+      '<td style="white-space:nowrap">'+(g.date||'—')+'</td>'+
+      '<td style="text-align:right">$'+Number(g.amount||0).toLocaleString()+'</td>'+
+    '</tr>';
+  }).join('');
+  container.innerHTML =
+    '<div style="font-size:13px;color:#888;margin-bottom:10px">'+rows.length+' unused certificate'+(rows.length!==1?'s':'')+' · Total: <strong style="color:#111">$'+Number(grandTotal).toLocaleString()+'</strong></div>'+
+    '<div class="tbl-wrap"><table class="report-table"><thead><tr>'+
+      '<th>Certificate #</th><th>Referrer(s)</th><th>Referred</th><th>Date Issued</th><th style="text-align:right">Amount</th>'+
+    '</tr></thead><tbody>'+rowsHtml+'</tbody></table></div>';
+}
+function exportCertificatesReport(){
+  var rows = getUnusedCertificatesReportData();
+  if(!rows.length){ toast('No data to export','err'); return; }
+  var esc = function(v){ var s=String(v==null?'':v); return s.includes(',')||s.includes('"')||s.includes('\n')?'"'+s.replace(/"/g,'""')+'"':s; };
+  var headers = ['Certificate #','Referrer(s)','Referred','Date Issued','Amount'];
+  var csvRows = rows.map(function(g){
+    return ['#'+String(g.certNumber).padStart(6,'0'), g.referrerNames.join(', '), g.referredNames.join(', '), g.date||'', g.amount||0];
+  });
+  var csv = [headers].concat(csvRows).map(function(r){return r.map(esc).join(',');}).join('\n');
+  var b = new Blob([csv],{type:'text/csv'});
+  var a = document.createElement('a'); a.href=URL.createObjectURL(b); a.download='milesman-unused-certificates-report.csv'; a.click();
   toast('Report exported ✓');
 }
 

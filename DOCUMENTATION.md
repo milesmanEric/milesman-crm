@@ -105,9 +105,10 @@ Checking a task's box (`toggleTaskDone(id, skipRender)`) saves the change immedi
 Every stat tile at the top of a page (Dashboard, Clients, Trips, Suppliers, Planner) is clickable and opens a modal listing the records behind that number, each row clickable through to open that client/trip/supplier/task (`openStatDrilldownModal()`). The two stats that live inside another already-open modal — Vendor Detail and Invoice Detail — instead scroll to and briefly highlight the breakdown table already shown right below them (`flashDrilldownTarget()`), since the app has a single shared modal container and can't nest a second modal on top of the first.
 
 ### Reports
-Two tabs:
+Three tabs (`window._rptActiveTab`: `activity` / `invoice` / `certs`):
 - **Activity Report** — filter `notesLog` entries across all clients by date range, note type, and client; export to CSV.
 - **By Invoice #** — filter trips by date range, supplier, and client; export to CSV. ("Invoice" here means a distinct trip/booking reference, used to avoid double-counting revenue across records that share a booking.) The date range can filter by either **Travel Date** (`departDate`) or **Invoice Date** (`invoiceDate`) — pick whichever matches what you're trying to answer, since a trip's travel date and its transaction/booking date can fall in different periods. Both dates are shown as separate columns in the results and CSV export regardless of which one is being filtered.
+- **Unused Certificates** (`getUnusedCertificatesReportData()`) — scans every client's `referralCredits` and groups the rows by `certNumber` (one certificate can have a row on more than one client's record — see the Email section below on **Referral Credit Earned**), collecting the full set of referrer names and referred names onto each group, then filters out any group where `used` is true. Optionally filterable to one referrer client; exports to CSV; clicking a row opens the first referrer's client record. Since `syncReferralCreditUsedAcrossClients()` (see below) keeps every row for a given certNumber in sync, a group's `used` flag is really one shared fact, not independent per row.
 
 ### Calendar
 Month-grid view. Trips are painted across every day from `departDate` to `returnDate` (capped at 60 days per trip to avoid runaway rendering on bad data).
