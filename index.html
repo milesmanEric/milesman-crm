@@ -5381,19 +5381,44 @@ function fillTemplate(body, clients, referredClients){
 // Records one referral-credit row per (referrer, referred person) pair on
 // each referrer's client record — shown/edited in the Referral Credits
 // section of the client form (name, date, $100 default, used checkbox,
-// certificate number). certNumbers is a flat array already assigned by the
-// caller (consumeCertificateNumbers), one per (referrer, referred) pair in
-// the same referrers-outer/referredClients-inner order used to build the
-// email itself (referralCreditEmailBodyHtml), so the number on a client's
-// row always matches the number on the certificate they were actually sent.
-function addReferralCreditEntries(referrers, referredClients, certNumbers){
+// certificate number). A single email send now always produces exactly one
+// certificate (see referralCreditEmailBodyHtml) shared by every referrer
+// named on it, so every row recorded here — regardless of which referrer or
+// referred person it's for — carries that same certNumber.
+// One physical certificate can carry rows on more than one client's record
+// (every referrer named on it gets a matching row — see
+// addReferralCreditEntries), so checking a row "Used" only means something
+// if every row sharing that same certNumber, on every client, agrees. Called
+// after saving a client whose referralCredits may have just changed a Used
+// checkbox; propagates that row's used value onto any other client's row(s)
+// with the same certNumber (in either direction — marking used, or
+// un-marking it, both need to stay in sync since they represent one
+// certificate, not independent ones).
+function syncReferralCreditUsedAcrossClients(changedClientId, referralCredits){
+  var usedByCertNumber = {};
+  (referralCredits||[]).forEach(function(rc){
+    if(rc.certNumber!=null) usedByCertNumber[rc.certNumber] = rc.used;
+  });
+  if(!Object.keys(usedByCertNumber).length) return;
+  db.clients = db.clients.map(function(c){
+    if(c.id===changedClientId || !Array.isArray(c.referralCredits) || !c.referralCredits.length) return c;
+    var changed = false;
+    var updated = c.referralCredits.map(function(rc){
+      if(rc.certNumber!=null && usedByCertNumber.hasOwnProperty(rc.certNumber) && rc.used!==usedByCertNumber[rc.certNumber]){
+        changed = true;
+        return Object.assign({}, rc, {used: usedByCertNumber[rc.certNumber]});
+      }
+      return rc;
+    });
+    return changed ? Object.assign({}, c, {referralCredits: updated}) : c;
+  });
+}
+function addReferralCreditEntries(referrers, referredClients, certNumber){
   var d = today();
   var rowsByReferrerId = {};
-  var idx = 0;
   referrers.forEach(function(r){
     rowsByReferrerId[r.id] = referredClients.map(function(rf){
-      var num = certNumbers[idx]; idx++;
-      return {referredName: toFirstLastNoMiddle(rf.name)||rf.name||'', date:d, amount:100, used:false, certNumber:num};
+      return {referredName: toFirstLastNoMiddle(rf.name)||rf.name||'', date:d, amount:100, used:false, certNumber:certNumber};
     });
   });
   db.clients = db.clients.map(function(c){
@@ -5450,17 +5475,12 @@ function referralCertificateHtml(recipientName, certNumber){
 // Full styled HTML body for the Referral Credit Earned email — intro text,
 // then one certificate per (referrer, referred) pair (same order/count as
 // addReferralCreditEntries), then sign-off.
-function referralCreditEmailBodyHtml(referrers, referredClients, certNumbers){
+function referralCreditEmailBodyHtml(referrers, referredClients, certNumber){
   var hf="font-family:'Times New Roman',Times,serif; ";
   var firstNames = joinNames(referrers.map(function(c){return getFirstName(c.name)||c.name||'';}));
   var referredNames = joinNames(referredClients.map(function(c){return toFirstLastNoMiddle(c.name)||c.name||'';}));
-  var idx = 0;
-  var certsHtml = referrers.map(function(r){
-    return referredClients.map(function(rf){
-      var num = certNumbers[idx]; idx++;
-      return referralCertificateHtml(toFirstLast(r.name)||r.name, num);
-    }).join('');
-  }).join('');
+  var allReferrerNames = joinNames(referrers.map(function(c){return toFirstLast(c.name)||c.name||'';}));
+  var certsHtml = referralCertificateHtml(allReferrerNames, certNumber);
   return ''+
 '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f5f7; padding:30px 0;">'+
 '<tr><td align="center">'+
@@ -5478,22 +5498,16 @@ function referralCreditEmailBodyHtml(referrers, referredClients, certNumbers){
 '</td></tr>'+
 '</table>';
 }
-// Just the certificate block(s) alone (no email chrome/intro text) — what
+// Just the certificate block alone (no email chrome/intro text) — what
 // actually gets rendered to the PDF that's downloaded for manual attachment,
 // since mailto: has no way to attach a file automatically.
-function certificatesPdfHtml(referrers, referredClients, certNumbers){
-  var idx = 0;
-  var certsHtml = referrers.map(function(r){
-    return referredClients.map(function(rf){
-      var num = certNumbers[idx]; idx++;
-      return referralCertificateHtml(toFirstLast(r.name)||r.name, num);
-    }).join('');
-  }).join('');
+function certificatesPdfHtml(referrers, referredClients, certNumber){
+  var allReferrerNames = joinNames(referrers.map(function(c){return toFirstLast(c.name)||c.name||'';}));
+  var certsHtml = referralCertificateHtml(allReferrerNames, certNumber);
   return '<div style="background:#ffffff;padding:10px;max-width:600px">'+certsHtml+'</div>';
 }
-function certificatePdfFilename(numbers){
-  if(numbers.length===1) return 'Referral-Certificate-'+String(numbers[0]).padStart(6,'0')+'.pdf';
-  return 'Referral-Certificates-'+String(numbers[0]).padStart(6,'0')+'-'+String(numbers[numbers.length-1]).padStart(6,'0')+'.pdf';
+function certificatePdfFilename(certNumber){
+  return 'Referral-Certificate-'+String(certNumber).padStart(6,'0')+'.pdf';
 }
 
 // Dedicated preview/send flow for the Referral Credit Earned template — it
@@ -5504,13 +5518,10 @@ function certificatePdfFilename(numbers){
 // for the same preview — see finalize()'s memoization).
 function renderReferralCreditPreview(referrers, referredClients){
   var area = document.getElementById('email-preview-area');
-  var totalCerts = referrers.length * referredClients.length;
-  var peekStart = peekNextCertificateNumber();
-  var peekedNumbers = [];
-  for(var i=0;i<totalCerts;i++) peekedNumbers.push(peekStart+i);
+  var peekedNumber = peekNextCertificateNumber();
 
   var subject = fillTemplate(TEMPLATES.find(function(t){return t.id==='referralcredit';}).subject, referrers, referredClients);
-  var htmlBody = referralCreditEmailBodyHtml(referrers, referredClients, peekedNumbers);
+  var htmlBody = referralCreditEmailBodyHtml(referrers, referredClients, peekedNumber);
   var toDisplay = referrers.map(function(c){return c.email?c.name+' &lt;'+c.email+'&gt;':c.name+' (no email on file)';}).join(', ');
   var mailtoEmails = referrers.map(function(c){return c.email;}).filter(Boolean);
 
@@ -5524,7 +5535,7 @@ function renderReferralCreditPreview(referrers, referredClients){
       '<div style="font-size:13px;color:#111;padding:6px 10px;background:#fff;border:1px solid #e5e7eb;border-radius:6px">'+subject+'</div>'+
     '</div>'+
     '<div style="margin-bottom:12px">'+
-      '<div style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Body — certificate number'+(totalCerts>1?'s are':' is')+' assigned when sent</div>'+
+      '<div style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Body — certificate number is assigned when sent</div>'+
       '<div class="email-preview" style="white-space:normal">'+htmlBody+'</div>'+
     '</div>'+
     '<div style="display:flex;gap:8px">'+
@@ -5535,11 +5546,11 @@ function renderReferralCreditPreview(referrers, referredClients){
   var finalized = null;
   function finalize(){
     if(finalized) return finalized;
-    var realNumbers = consumeCertificateNumbers(totalCerts);
-    var finalHtmlBody = referralCreditEmailBodyHtml(referrers, referredClients, realNumbers);
-    addReferralCreditEntries(referrers, referredClients, realNumbers);
+    var realNumber = consumeCertificateNumbers(1)[0];
+    var finalHtmlBody = referralCreditEmailBodyHtml(referrers, referredClients, realNumber);
+    addReferralCreditEntries(referrers, referredClients, realNumber);
     saveDB();
-    finalized = {htmlBody:finalHtmlBody, numbers:realNumbers};
+    finalized = {htmlBody:finalHtmlBody, number:realNumber};
     return finalized;
   }
 
@@ -5552,9 +5563,9 @@ function renderReferralCreditPreview(referrers, referredClients){
     // supports that) — downloading the PDF right alongside opening Outlook
     // is the closest equivalent: it lands in Downloads, ready to drag into
     // the compose window that just opened.
-    var certFilename = certificatePdfFilename(result.numbers);
+    var certFilename = certificatePdfFilename(result.number);
     try{
-      var pdfBlob = await generateQuotePdfBlob(certificatesPdfHtml(referrers, referredClients, result.numbers));
+      var pdfBlob = await generateQuotePdfBlob(certificatesPdfHtml(referrers, referredClients, result.number));
       downloadPdfBlob(pdfBlob, certFilename);
       toast((copied?'Certificate copied (paste with Ctrl+V) and ':'')+certFilename+' downloaded — attach it in Outlook (mailto can\'t attach files automatically)','ok');
     }catch(e){
@@ -5565,8 +5576,7 @@ function renderReferralCreditPreview(referrers, referredClients){
 
   document.getElementById('email-log-btn').addEventListener('click',function(){
     var result = finalize();
-    var certList = result.numbers.map(function(n){return '#'+String(n).padStart(6,'0');}).join(', ');
-    var newNote = {ts:tsNow(), text:'Email Sent: '+subject+'\nReferral certificate(s) issued: '+certList, noteType:'Email Sent', source:'template'};
+    var newNote = {ts:tsNow(), text:'Email Sent: '+subject+'\nReferral certificate issued: #'+String(result.number).padStart(6,'0'), noteType:'Email Sent', source:'template'};
     var ids = referrers.map(function(c){return c.id;});
     db.clients = db.clients.map(function(c){
       if(ids.indexOf(c.id)===-1) return c;
@@ -8087,6 +8097,7 @@ function saveClient(id){
     db.clients.push(Object.assign({},data,{id:resultId,joined:today(),totalTrips:0}));
     toast('Client added');
   }
+  syncReferralCreditUsedAcrossClients(resultId, referralCredits);
   saveDB();closeModal();render();
   return resultId;
 }
