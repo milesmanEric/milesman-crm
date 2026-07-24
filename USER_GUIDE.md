@@ -6,7 +6,7 @@ A plain-English walkthrough of how to actually use the CRM day to day. For techn
 
 ## What this tool does
 
-The CRM tracks everything about your clients, their trips, your suppliers, and your follow-up tasks — clients booking trips (flights, hotels, cruises, car rentals, tours, theme parks, trains), often paid for partly or fully with miles/points.
+The CRM tracks everything about your clients, their trips, your suppliers, and your follow-up tasks — clients booking trips (flights, hotels, cruises, car rentals, tours, theme parks, trains, buses), often paid for partly or fully with miles/points.
 
 Two things feed it automatically, with no action needed from you:
 - **Book a Trip form** submissions (from the website) become client + trip records.
@@ -30,7 +30,7 @@ Worth knowing: this password screen keeps a casual visitor who stumbles on the C
 
 Every number in the row of boxes at the top of Dashboard, Clients, Trips, Suppliers, and Planner can be clicked. It opens a list of exactly which records add up to that number — click any row in that list to jump straight to that client, trip, supplier, or task. This is the fastest way to answer "which trips make up this revenue number" or "who are these upcoming clients."
 
-On the Dashboard specifically, the **Total Revenue** and **Upcoming** tiles' lists only show trips that are actually Completed or Upcoming — a trip still in Planning, just Confirmed, or Cancelled won't clutter either list even if it has a future date or a dollar value on it.
+On the Dashboard specifically, the **Total Revenue** and **Upcoming** tiles' lists only show trips that are actually Completed or Upcoming — a trip still in Planning, just Confirmed, or Cancelled won't clutter either list even if it has a future date or a dollar value on it. **Points deployed** totals only the actual miles/points redemptions recorded in trips' Booked Trip Details (the per-program amounts under Airline and each Hotel entry) — not the simple Points Used field on the basic trip form.
 
 (On a Supplier's or Invoice's own detail screen, the numbers there instead scroll you down to the transaction table that's already shown below — no extra click needed to see the detail, it's already on the same screen.)
 
@@ -58,7 +58,7 @@ The trip form has two parts:
 
 1. **The basics** — origin/destination, dates, status (Planning/Confirmed/Completed/Cancelled), trip type, airline, hotel, cruise line, points used, cash paid, total value, booking reference, and a free-text Notes box. This is what shows up in the Trips list and on the Calendar.
 
-2. **Booked Trip Details** — a more detailed, confirmed-booking recap, broken into the same categories as the public trip-request form: **Airline, Hotel, Cruise, Car Rental, Tours, Theme Park, Train.** Each one has its own **confirmation number** field, so you're not hunting through Notes for a locator code.
+2. **Booked Trip Details** — a more detailed, confirmed-booking recap, broken into the same categories as the public trip-request form: **Airline, Hotel, Cruise, Car Rental, Tours, Theme Park, Train, Bus.** Each one has its own **confirmation number** field, so you're not hunting through Notes for a locator code.
    - **Airline** and **Hotel** also let you record **miles/points redemptions** — pick the loyalty program (any airline, hotel, or credit card program) it came from, how many points/miles were used, and the cash cost that went with it (taxes/fees, or however you like to track it). This is important when a booking is paid for with a mix of sources — e.g. part Delta miles, part a transferred Amex points balance.
    - **Hotel** supports **more than one hotel per trip** — click **+ Add Hotel** for each additional stay (useful for multi-city trips). Each hotel entry gets its own confirmation number, check-in date, number of nights, price, and its own miles/points program + amount. Remove a hotel entry with the trash icon on that row.
    - Picking a **Cruise Line** automatically updates the Ship Name and Cabin Type choices to that cruise line's real options.
@@ -110,7 +110,7 @@ Three different tools, depending on what you need:
     - Each referrer gets a **$100 certificate** for each person they referred — with the Miles Man logo, their name, a unique certificate number that only ever goes up, and the redemption terms (good for $100 off booking fees/trip cost; a trip means a unique booking record number; no value once redeemed; non-transferable, but usable if you book a trip for someone else with your own miles/points/credit card). The certificate number only gets assigned once you actually click Send or Log — previewing or changing your selections doesn't burn a number.
     - Clicking **Open in Outlook** also downloads a PDF of the certificate(s) and copies the certificate itself to your clipboard. Paste it into the email body (Ctrl/Cmd+V) like usual, and **attach the downloaded PDF yourself** — Outlook (or any email app) can't auto-attach a file from a `mailto:` link, so this is the one email in the CRM where you need that one extra manual step.
 - **Email Quote** — for building a real cruise pricing quote to send a client, with cabin options and pricing laid out in a styled email. Ready-made polished templates now cover **Virgin Voyages, Princess, Royal Caribbean, Ritz Carlton Yachts, Seabourn, and Explora Journeys** (the last three are all-inclusive ultra-luxury lines, so their "what's included" lists reflect that — all-suite, dining, beverages, gratuities, WiFi). Every sent quote also gets a PDF copy saved automatically to a "Miles Man Quotes" folder in Google Drive, named `<client>.<cruise line>.<sailing date>.pdf`.
-- **Email Itinerary** — pick a client and one of their **actual booked trips**, and it builds a nicely formatted recap email straight from whatever's on that trip record (dates, flight/hotel/cruise details, confirmation info, points/cash/value, and your trip notes). Any section the trip doesn't have data for is simply left out — it never shows an empty "Hotel Details" box for a flight-only trip.
+- **Email Itinerary** — pick a client and one of their **actual booked trips**, and it builds a nicely formatted recap email straight from whatever's on that trip record (dates, flight/hotel/cruise details, car rental, tours, theme park, train, bus, confirmation info, points/cash/value, and your trip notes). Any section the trip doesn't have data for is simply left out — it never shows an empty "Hotel Details" box for a flight-only trip.
 
 All three work the same way at send time: the email gets copied to your clipboard (since a plain `mailto:` link can't carry formatting) and Outlook opens addressed to the client — paste (Ctrl/Cmd+V) into the body and send. A note gets logged on the client's record automatically.
 
