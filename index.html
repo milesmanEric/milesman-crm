@@ -250,6 +250,8 @@ tr:last-child td{border-bottom:none}
         <button class="sync-btn" id="drive-restore-btn" style="color:#1a73e8;border-color:#93c5fd">&#9729; Restore from Google Drive</button>
         <button class="sync-btn" id="btn-drive-signout" style="color:#888;border-color:#ddd;font-size:11px">&#9729;&#65039; Reset Drive Login</button>
         <button class="sync-btn" id="btn-reset-clean-folder" style="color:#888;border-color:#ddd;font-size:11px">&#128193; Choose Cleaned-File Save Folder</button>
+        <button class="sync-btn" id="secure-sync-backup-btn" style="color:#059669;border-color:#6ee7b7" title="Server-verified alternative to Backup — same file, verifies your identity server-side first">&#128274; Secure Sync: Save</button>
+        <button class="sync-btn" id="secure-sync-restore-btn" style="color:#059669;border-color:#6ee7b7" title="Server-verified alternative to Restore — same file, verifies your identity server-side first">&#128274; Secure Sync: Load</button>
         <div class="io-row">
           <button class="io-btn" id="btn-clients-csv">&#11015; Clients CSV</button>
           <button class="io-btn" id="btn-trips-csv">&#11015; Trips CSV</button>
@@ -286,6 +288,7 @@ tr:last-child td{border-bottom:none}
       <button class="sync-btn" id="btn-test-connectivity" style="color:#888;border-color:#ddd;font-size:11px">&#128225; Test Connectivity</button>
       <button class="sync-btn" id="btn-change-password" style="color:#888;border-color:#ddd;font-size:11px">&#128273; Change Password</button>
       <button class="sync-btn" id="btn-lock-app" style="color:#888;border-color:#ddd;font-size:11px">&#128274; Lock</button>
+      <button class="sync-btn" id="btn-copy-drive-refresh" style="color:#888;border-color:#ddd;font-size:11px" title="One-time Secure Sync server setup — copies this device's Drive refresh token for pasting into Vercel">&#128203; Copy Drive Refresh Token</button>
       <div class="footer-txt">(908) 419-7700 &middot; themilesman.com</div>
     </div>
   </div>
@@ -500,7 +503,11 @@ const MS_AUTH_SERVER   = 'https://milesman-auth.vercel.app'; // no secret in bro
 const MS_SCOPE         = 'https://graph.microsoft.com/Mail.Read offline_access';
 const MS_REDIRECT      = 'https://milesmaneric.github.io/milesman-crm';
 const DRIVE_CLIENT_ID  = '1055867383042-an9l58o1qg22pt7o4ak8vaneeftv54ib.apps.googleusercontent.com';
-const DRIVE_SCOPE      = 'https://www.googleapis.com/auth/drive.file';
+// "openid email" alongside drive.file so the same token exchange/refresh
+// also returns a Google ID token — used only by the Secure Sync feature
+// below (server-verified path), completely separate from the drive.file
+// access token that the existing Backup/Restore buttons use directly.
+const DRIVE_SCOPE      = 'https://www.googleapis.com/auth/drive.file openid email';
 const DRIVE_REDIRECT   = 'https://milesmaneric.github.io/milesman-crm/';
 const DRIVE_AUTH_SERVER = 'https://milesman-auth.vercel.app';
 const BACKUP_FILENAME  = 'milesman-crm-backup.json';
@@ -1278,6 +1285,7 @@ async function getDriveToken(){
         localStorage.setItem('mm_drive_token', d.access_token);
         localStorage.setItem('mm_drive_expiry', String(Date.now()+(d.expires_in-60)*1000));
         if(d.refresh_token) localStorage.setItem('mm_drive_refresh', d.refresh_token);
+        if(d.id_token) localStorage.setItem('mm_drive_id_token', d.id_token);
         return d.access_token;
       }
     }catch(e){ debugLog('Drive refresh failed: '+e.message); }
@@ -1310,6 +1318,7 @@ async function getDriveTokenSilent(){
       localStorage.setItem('mm_drive_token', d.access_token);
       localStorage.setItem('mm_drive_expiry', String(Date.now()+(d.expires_in-60)*1000));
       if(d.refresh_token) localStorage.setItem('mm_drive_refresh', d.refresh_token);
+      if(d.id_token) localStorage.setItem('mm_drive_id_token', d.id_token);
       return d.access_token;
     }
   }catch(e){ debugLog('Silent Drive refresh failed: '+e.message); }
@@ -1399,6 +1408,7 @@ function checkDriveRedirect(){
       localStorage.setItem('mm_drive_token',   d.access_token);
       localStorage.setItem('mm_drive_expiry',  String(Date.now()+(d.expires_in-60)*1000));
       if(d.refresh_token) localStorage.setItem('mm_drive_refresh', d.refresh_token);
+      if(d.id_token) localStorage.setItem('mm_drive_id_token', d.id_token);
       localStorage.removeItem('mm_drive_pkce');
       driveToken = d.access_token;
       debugLog('Drive token obtained successfully');
@@ -1575,6 +1585,111 @@ async function driveRestore(){
     else{toast('Restore failed: '+e,'err');}
   }
   if(btn){btn.textContent='Restore from Google Drive';btn.disabled=false;}
+}
+
+// ── Secure Sync (server-verified, additive) ──────────────────────────────
+// Alternative to Backup/Restore above: instead of the browser holding a
+// Drive credential directly, this sends a Google ID token to the
+// milesman-auth Vercel proxy, which verifies it server-side against an
+// allowlist and only then reads/writes the SAME backup file using its own
+// stored credential — the browser never holds a token capable of touching
+// Drive on this path. Doesn't replace Backup/Restore above; both read/write
+// the same file, so either can be used interchangeably.
+async function getValidDriveIdToken(){
+  // Reuses the existing Drive token machinery (refresh flow) purely to
+  // obtain a fresh id_token as a side effect — the resulting access_token
+  // isn't used here at all.
+  await getDriveToken();
+  return localStorage.getItem('mm_drive_id_token');
+}
+async function secureSyncBackup(){
+  const btn = $('secure-sync-backup-btn');
+  if(btn){btn.textContent='Saving...';btn.disabled=true;}
+  try{
+    const idToken = await getValidDriveIdToken();
+    if(!idToken){
+      toast('Connect Google Drive first (Backup to Google Drive), then try Secure Sync','err');
+      if(btn){btn.textContent='Secure Sync: Save';btn.disabled=false;}
+      return;
+    }
+    debugLog('Secure Sync: uploading...');
+    const r = await fetch(DRIVE_AUTH_SERVER+'/api/secure-sync',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+idToken},
+      body: JSON.stringify(db)
+    });
+    const d = await r.json();
+    if(!r.ok){
+      debugLog('Secure Sync backup failed: '+(d.error_description||d.error||r.status));
+      toast('Secure Sync failed: '+(d.error_description||d.error||r.status),'err');
+      if(btn){btn.textContent='Secure Sync: Save';btn.disabled=false;}
+      return;
+    }
+    debugLog('Secure Sync: saved successfully, verified as '+d.syncedBy);
+    toast('Secure Sync saved (verified as '+d.syncedBy+')','ok');
+  }catch(e){
+    debugLog('Secure Sync backup error: '+e.message);
+    toast('Secure Sync failed: '+e.message,'err');
+  }
+  if(btn){btn.textContent='Secure Sync: Save';btn.disabled=false;}
+}
+async function secureSyncRestore(){
+  const btn = $('secure-sync-restore-btn');
+  if(btn){btn.textContent='Loading...';btn.disabled=true;}
+  try{
+    const idToken = await getValidDriveIdToken();
+    if(!idToken){
+      toast('Connect Google Drive first (Backup to Google Drive), then try Secure Sync','err');
+      if(btn){btn.textContent='Secure Sync: Load';btn.disabled=false;}
+      return;
+    }
+    debugLog('Secure Sync: downloading...');
+    const r = await fetch(DRIVE_AUTH_SERVER+'/api/secure-sync',{
+      headers:{'Authorization':'Bearer '+idToken}
+    });
+    if(!r.ok){
+      const errBody = await r.json().catch(function(){return {};});
+      debugLog('Secure Sync restore failed: '+(errBody.error_description||errBody.error||r.status));
+      toast('Secure Sync failed: '+(errBody.error_description||errBody.error||r.status),'err');
+      if(btn){btn.textContent='Secure Sync: Load';btn.disabled=false;}
+      return;
+    }
+    const d = await r.json();
+    if(Array.isArray(d.clients)&&Array.isArray(d.trips)){
+      db={
+        clients:Array.isArray(d.clients)?d.clients:[],
+        trips:Array.isArray(d.trips)?d.trips:[],
+        vendors:Array.isArray(d.vendors)?d.vendors:[],
+        planner:Array.isArray(d.planner)?d.planner:[]
+      };
+      db.clients.forEach(function(c){ if(c.name && !c.name.includes(',')) c.name=toLastFirst(c.name); });
+      saveDB();render();
+      debugLog('Secure Sync: restore success — '+db.clients.length+' clients, '+db.trips.length+' trips');
+      toast('Secure Sync loaded — '+db.clients.length+' clients, '+db.trips.length+' trips','ok');
+    }else{
+      debugLog('Secure Sync: JSON missing clients/trips arrays');
+      toast('Backup file appears corrupted','err');
+    }
+  }catch(e){
+    debugLog('Secure Sync restore error: '+e.message);
+    toast('Secure Sync failed: '+e.message,'err');
+  }
+  if(btn){btn.textContent='Secure Sync: Load';btn.disabled=false;}
+}
+// One-time setup helper: copies the Drive refresh token already sitting in
+// this browser (from having connected Backup/Restore at least once) to the
+// clipboard, so it can be pasted into Vercel's DRIVE_SERVER_REFRESH_TOKEN
+// environment variable — no separate OAuth flow needed to stand up the
+// server side of Secure Sync.
+function copyDriveRefreshToken(){
+  var rt = localStorage.getItem('mm_drive_refresh');
+  if(!rt){ toast('No Drive refresh token yet — click "Backup to Google Drive" first to connect','err'); return; }
+  navigator.clipboard.writeText(rt).then(function(){
+    toast('Drive refresh token copied — paste into Vercel as DRIVE_SERVER_REFRESH_TOKEN','ok');
+  }).catch(function(){
+    toast('Could not copy automatically — check Debug Panel log for the value','err');
+  });
+  debugLog('Drive refresh token (for Secure Sync setup): '+rt);
 }
 
 // ── Mailchimp Activity Sync ─────────────────────────────────────────────────
@@ -8213,6 +8328,9 @@ function bindClick(id, handler){
   bindClick('outlook-btn', syncOutlook);
   bindClick('drive-btn', driveBackup);
   bindClick('drive-restore-btn', driveRestore);
+  bindClick('secure-sync-backup-btn', secureSyncBackup);
+  bindClick('secure-sync-restore-btn', secureSyncRestore);
+  bindClick('btn-copy-drive-refresh', copyDriveRefreshToken);
   bindClick('btn-reset-clean-folder', chooseCleanFileSaveFolder);
   bindClick('btn-clients-csv', function(){exportCSV('clients');});
   bindClick('btn-trips-csv', function(){exportCSV('trips');});
