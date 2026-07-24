@@ -50,15 +50,15 @@ Other: `notesLog` (array of `{ts, text, noteType, source?, msgId?, mcKey?}` — 
 
 These top-level fields are the at-a-glance summary used by the Trips list, Calendar, Dashboard, and CSV exports — they stay populated exactly as before and nothing else had to change when `booked` (below) was added.
 
-`booked` — the **Booked Trip Details** section (Add/Edit Trip modal), a confirmed-booking recap organized into the same categories as the intake form's "Type of Travel Needed" checkboxes, each with its own confirmation number:
-- `booked.airline` — `confirmationNumber`, `airline`, `classOfService`, `nonStop` (Yes/No), `origin`, `destination`, `departDate`, `returnDate`, `pts` (see below)
-- `booked.hotel` — an **array** of hotel-stay entries (a trip can have multiple hotels), each `{hotelBrand, confirmationNumber, checkInDate, nights, price, program, amount}`. Rows are added/removed dynamically in the UI (no fixed count).
-- `booked.cruise` — `confirmationNumber`, `cruiseLine`, `shipName`, `sailingDate`, `nights`, `departurePort`, `cabinType`, `peopleInCabin`, `loyaltyNumber`
-- `booked.carRental` — `confirmationNumber`, `company`, `carSize`, `pickupLocation`, `dropoffLocation`, `pickupDate`, `dropoffDate`, `pickupTime`, `dropoffTime`
-- `booked.tours` — `confirmationNumber`, `vendor`, `description`
-- `booked.themePark` — `confirmationNumber`, `park`, `ticketType`
-- `booked.train` — `confirmationNumber`, `departureCity`, `arrivalCity`, `departureDate`, `returnDate`, `classOfService`
-- `booked.bus` — same shape as `booked.train`: `confirmationNumber`, `departureCity`, `arrivalCity`, `departureDate`, `returnDate`, `classOfService`
+`booked` — the **Booked Trip Details** section (Add/Edit Trip modal), a confirmed-booking recap organized into the same categories as the intake form's "Type of Travel Needed" checkboxes, each with its own confirmation number and its own `price` (a plain dollar amount, separate from the trip's top-level `totalValue`/`cashPaid` — lets a trip's cost be broken down by category, e.g. $2,000 for the flight vs. $500 for the tour):
+- `booked.airline` — `confirmationNumber`, `airline`, `classOfService`, `nonStop` (Yes/No), `origin`, `destination`, `departDate`, `returnDate`, `price`, `pts` (see below)
+- `booked.hotel` — an **array** of hotel-stay entries (a trip can have multiple hotels), each `{hotelBrand, confirmationNumber, checkInDate, nights, price, program, amount}` — already had its own per-entry `price` before this round of categories got one.
+- `booked.cruise` — `confirmationNumber`, `cruiseLine`, `shipName`, `sailingDate`, `nights`, `departurePort`, `cabinType`, `peopleInCabin`, `loyaltyNumber`, `price`
+- `booked.carRental` — `confirmationNumber`, `company`, `carSize`, `pickupLocation`, `dropoffLocation`, `pickupDate`, `dropoffDate`, `pickupTime`, `dropoffTime`, `price`
+- `booked.tours` — `confirmationNumber`, `vendor`, `description`, `price`
+- `booked.themePark` — `confirmationNumber`, `park`, `ticketType`, `price`
+- `booked.train` — `confirmationNumber`, `departureCity`, `arrivalCity`, `departureDate`, `returnDate`, `classOfService`, `price`
+- `booked.bus` — same shape as `booked.train`: `confirmationNumber`, `departureCity`, `arrivalCity`, `departureDate`, `returnDate`, `classOfService`, `price`
 
 `pts` (on `booked.airline` only — `booked.hotel` entries have their own single `program`/`amount`/`price` instead, one per hotel stay) is an array of up to 3 miles/points redemption blocks, each `{program, amount, cost}` — `program` is picked from a combined list of all airlines, hotels, and credit cards (a booking often mixes airline miles with a transferred credit-card-points balance), `amount` is points/miles used, `cost` is the cash paid alongside them (e.g. taxes/fees). Empty blocks/rows are filtered out on save, not stored as blanks.
 

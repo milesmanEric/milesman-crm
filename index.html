@@ -7975,6 +7975,7 @@ function bookedTripDetailsHtml(bd){
     fld('Destination',inp('tb-air-dest','text',air.destination,'e.g. Tokyo, Japan'))+
     fld('Depart Date',inp('tb-air-depart','date',air.departDate))+
     fld('Return Date',inp('tb-air-return','date',air.returnDate))+
+    fld('Price ($)',inp('tb-air-price','number',air.price))+
     pointsRedemptionBlocksHtml('tb-air',air.pts)+
     '<div class="modal-section-title">Hotel</div>'+
     '<div class="field full"><label>Hotels <span class="hint" style="text-transform:none;font-weight:400">(add one entry per hotel stay on this trip)</span></label>'+
@@ -7991,6 +7992,7 @@ function bookedTripDetailsHtml(bd){
     fld('Cabin Type','<select id="tb-cruise-cabin"><option value="">-- Select --</option>'+selOpts(cruiseCabinTypes,cru.cabinType)+'</select>')+
     fld('People In Cabin',inp('tb-cruise-people','number',cru.peopleInCabin||''))+
     fld('Loyalty Number',inp('tb-cruise-loyalty','text',cru.loyaltyNumber))+
+    fld('Price ($)',inp('tb-cruise-price','number',cru.price))+
     '<div class="modal-section-title">Car Rental</div>'+
     fld('Confirmation Number',inp('tb-car-conf','text',car.confirmationNumber,'e.g. CR-778899'))+
     fld('Company',sel('tb-car-company',CAR_RENTALS,car.company))+
@@ -8001,14 +8003,17 @@ function bookedTripDetailsHtml(bd){
     fld('Dropoff Date',inp('tb-car-dropoffdate','date',car.dropoffDate))+
     fld('Pickup Time',inp('tb-car-pickuptime','time',car.pickupTime))+
     fld('Dropoff Time',inp('tb-car-dropofftime','time',car.dropoffTime))+
+    fld('Price ($)',inp('tb-car-price','number',car.price))+
     '<div class="modal-section-title">Tours</div>'+
     fld('Confirmation Number',inp('tb-tours-conf','text',tou.confirmationNumber,'e.g. T-112233'))+
     fld('Tour Vendor',inp('tb-tours-vendor','text',tou.vendor,'e.g. Tauck'))+
     fld('Description','<textarea id="tb-tours-desc">'+(tou.description||'')+'</textarea>',true)+
+    fld('Price ($)',inp('tb-tours-price','number',tou.price))+
     '<div class="modal-section-title">Theme Park</div>'+
     fld('Confirmation Number',inp('tb-tp-conf','text',tp.confirmationNumber,'e.g. TP-334455'))+
     fld('Park',sel('tb-tp-park',THEME_PARKS,tp.park))+
     fld('Ticket Type',inp('tb-tp-ticket','text',tp.ticketType,'e.g. Park Hopper'))+
+    fld('Price ($)',inp('tb-tp-price','number',tp.price))+
     '<div class="modal-section-title">Train</div>'+
     fld('Confirmation Number',inp('tb-train-conf','text',tra.confirmationNumber,'e.g. AMTK-556677'))+
     fld('Departure City',inp('tb-train-depcity','text',tra.departureCity,'e.g. New York, NY'))+
@@ -8016,13 +8021,15 @@ function bookedTripDetailsHtml(bd){
     fld('Departure Date',inp('tb-train-depdate','date',tra.departureDate))+
     fld('Return Date',inp('tb-train-retdate','date',tra.returnDate))+
     fld('Class of Service',sel('tb-train-class',TRAIN_CLASSES,tra.classOfService))+
+    fld('Price ($)',inp('tb-train-price','number',tra.price))+
     '<div class="modal-section-title">Bus</div>'+
     fld('Confirmation Number',inp('tb-bus-conf','text',bus.confirmationNumber,'e.g. GRY-556677'))+
     fld('Departure City',inp('tb-bus-depcity','text',bus.departureCity,'e.g. New York, NY'))+
     fld('Arrival City',inp('tb-bus-arrcity','text',bus.arrivalCity,'e.g. Washington, DC'))+
     fld('Departure Date',inp('tb-bus-depdate','date',bus.departureDate))+
     fld('Return Date',inp('tb-bus-retdate','date',bus.returnDate))+
-    fld('Class of Service',sel('tb-bus-class',TRAIN_CLASSES,bus.classOfService));
+    fld('Class of Service',sel('tb-bus-class',TRAIN_CLASSES,bus.classOfService))+
+    fld('Price ($)',inp('tb-bus-price','number',bus.price));
 }
 function bindBookedTripDetailsListeners(){
   var cruiseLineSel = document.getElementById('tb-cruise-line');
@@ -8062,29 +8069,32 @@ function readBookedTripDetails(){
     airline: {
       confirmationNumber: gv('tb-air-conf'), airline: gv('tb-air-airline'), classOfService: gv('tb-air-class'),
       nonStop: gv('tb-air-nonstop'), origin: gv('tb-air-origin'), destination: gv('tb-air-dest'),
-      departDate: gv('tb-air-depart'), returnDate: gv('tb-air-return'), pts: readPointsRedemptions('tb-air')
+      departDate: gv('tb-air-depart'), returnDate: gv('tb-air-return'), price: gn('tb-air-price'), pts: readPointsRedemptions('tb-air')
     },
     hotel: readHotelEntries(),
     cruise: {
       confirmationNumber: gv('tb-cruise-conf'), cruiseLine: gv('tb-cruise-line'), shipName: gv('tb-cruise-ship'),
       sailingDate: gv('tb-cruise-sailing'), nights: gn('tb-cruise-nights'), departurePort: gv('tb-cruise-port'),
-      cabinType: gv('tb-cruise-cabin'), peopleInCabin: gn('tb-cruise-people'), loyaltyNumber: gv('tb-cruise-loyalty')
+      cabinType: gv('tb-cruise-cabin'), peopleInCabin: gn('tb-cruise-people'), loyaltyNumber: gv('tb-cruise-loyalty'),
+      price: gn('tb-cruise-price')
     },
     carRental: {
       confirmationNumber: gv('tb-car-conf'), company: gv('tb-car-company'), carSize: gv('tb-car-size'),
       pickupLocation: gv('tb-car-pickuploc'), dropoffLocation: gv('tb-car-dropoffloc'),
       pickupDate: gv('tb-car-pickupdate'), dropoffDate: gv('tb-car-dropoffdate'),
-      pickupTime: gv('tb-car-pickuptime'), dropoffTime: gv('tb-car-dropofftime')
+      pickupTime: gv('tb-car-pickuptime'), dropoffTime: gv('tb-car-dropofftime'), price: gn('tb-car-price')
     },
-    tours: { confirmationNumber: gv('tb-tours-conf'), vendor: gv('tb-tours-vendor'), description: gv('tb-tours-desc') },
-    themePark: { confirmationNumber: gv('tb-tp-conf'), park: gv('tb-tp-park'), ticketType: gv('tb-tp-ticket') },
+    tours: { confirmationNumber: gv('tb-tours-conf'), vendor: gv('tb-tours-vendor'), description: gv('tb-tours-desc'), price: gn('tb-tours-price') },
+    themePark: { confirmationNumber: gv('tb-tp-conf'), park: gv('tb-tp-park'), ticketType: gv('tb-tp-ticket'), price: gn('tb-tp-price') },
     train: {
       confirmationNumber: gv('tb-train-conf'), departureCity: gv('tb-train-depcity'), arrivalCity: gv('tb-train-arrcity'),
-      departureDate: gv('tb-train-depdate'), returnDate: gv('tb-train-retdate'), classOfService: gv('tb-train-class')
+      departureDate: gv('tb-train-depdate'), returnDate: gv('tb-train-retdate'), classOfService: gv('tb-train-class'),
+      price: gn('tb-train-price')
     },
     bus: {
       confirmationNumber: gv('tb-bus-conf'), departureCity: gv('tb-bus-depcity'), arrivalCity: gv('tb-bus-arrcity'),
-      departureDate: gv('tb-bus-depdate'), returnDate: gv('tb-bus-retdate'), classOfService: gv('tb-bus-class')
+      departureDate: gv('tb-bus-depdate'), returnDate: gv('tb-bus-retdate'), classOfService: gv('tb-bus-class'),
+      price: gn('tb-bus-price')
     }
   };
 }
