@@ -3437,20 +3437,27 @@ function extractRevenueRow(getCol, cols){
 
   if(!namesMatch){
     // Try to match nameVal against a known supplier first (most common case:
-    // Name = supplier being paid, Class = the client the cost is for).
+    // Name = supplier being paid, Class = the client the cost is for). If
+    // nothing matches, Name is still presumed to be the supplier — leave
+    // supplierId blank but keep the candidate name so finalizeImport() can
+    // create that Supplier record on the fly instead of silently dropping
+    // the link.
     var matchedSupplier = db.vendors.find(function(v){
       return (v.name||'').toLowerCase().trim()===nameVal.toLowerCase().trim();
     });
     if(matchedSupplier){
       supplierId   = matchedSupplier.id;
       supplierName = matchedSupplier.name;
+    } else {
+      supplierName = nameVal.trim();
     }
   }
 
   // Also try to enrich supplier from the product/item text — exact match only,
   // no loose 'contains' matching (loose matching caused wrong suppliers like Melio/Marriott
-  // to collide on short substrings). Only used if we don't already have a supplier match.
-  if(!supplierId && classVal){
+  // to collide on short substrings). Only used if we don't already have a supplier match or
+  // candidate name (a substring guess should never override the Name-based candidate above).
+  if(!supplierId && !supplierName && classVal){
     var prodParts = classVal.split(':');
     for(var pi=0;pi<prodParts.length;pi++){
       var seg = prodParts[pi].trim().toLowerCase();
@@ -3622,7 +3629,27 @@ function finalizeImport(){
   const state=window._importState;
   let imported=0,skipped=0,totalRev=0,relinked=0;
   var seenInBatch={}; // track signature counts seen so far in THIS import batch
+  var suppliersCreated=0;
   state.rows.forEach(function(row){
+    // Create the Supplier first if this row named one that doesn't exist
+    // yet (extractRevenueRow() already decided Name is the supplier, but
+    // only sets supplierId when an existing record matched it) — before any
+    // client/trip creation below, so the trip is never left pointing at a
+    // supplier name with no actual Supplier record behind it. Re-checks
+    // db.vendors fresh each row, so multiple rows naming the same new
+    // supplier within this batch dedupe onto the one record created for
+    // the first of them.
+    if(row.supplierName && !row.supplierId){
+      var newSupplier=db.vendors.find(function(v){return (v.name||'').toLowerCase().trim()===row.supplierName.toLowerCase().trim();});
+      if(!newSupplier){
+        newSupplier={id:newId('V',db.vendors),name:row.supplierName,type:'Supplier',category:'',clientIds:[],website:'',notes:'',notesLog:[]};
+        db.vendors.push(newSupplier);
+        suppliersCreated++;
+        debugLog('Revenue: created new Supplier "'+newSupplier.name+'" ('+newSupplier.id+')');
+      }
+      row.supplierId=newSupplier.id;
+    }
+
     // Find client by name
     const cl=row.name.toLowerCase().trim();
     const parts=cl.split(/\s+/);
@@ -3779,6 +3806,7 @@ function finalizeImport(){
   saveDB();render();
   window._importState=null;
   toast('Imported '+imported+' trips — $'+totalRev.toLocaleString()+
+    (suppliersCreated?', created '+suppliersCreated+' new supplier'+(suppliersCreated!==1?'s':''):'')+
     (relinked?', backfilled '+relinked+' existing trip'+(relinked!==1?'s':''):'')+
     (skipped?' ('+skipped+' skipped)':''),'ok');
 }
