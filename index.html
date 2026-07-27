@@ -7994,6 +7994,50 @@ function readTourEntries(){
     return e.confirmationNumber||e.vendor||e.price||e.description;
   });
 }
+// Flight segments are the same dynamic add/remove pattern as hotel/tour
+// entries above (a connecting or round-trip itinerary is more than one
+// segment) — Confirmation Number, the points redemption blocks, and Price
+// stay at the Airline-section level (one PNR/one price covers the whole
+// booking), while Airline, Flight Number, Origin, Destination, Depart Date,
+// Depart Time, Arrival Time, and Class of Service vary per segment.
+function flightEntryRowInnerHtml(entry){
+  entry = entry || {};
+  return '<div style="display:flex;justify-content:flex-end;margin-bottom:4px">'+
+      '<button type="button" class="del-flight-entry-btn" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:12px">&#128465;&#65039; Remove</button>'+
+    '</div>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
+      '<div class="field"><label>Airline</label><select class="flight-entry-airline"><option value="">-- Select --</option>'+selOpts(AIRLINES,entry.airline)+'</select></div>'+
+      '<div class="field"><label>Flight Number</label><input class="flight-entry-num" type="text" value="'+(entry.flightNumber||'').toString().replace(/"/g,'&quot;')+'" placeholder="e.g. DL123"></div>'+
+      '<div class="field"><label>Origin</label><input class="flight-entry-origin" type="text" value="'+(entry.origin||'').toString().replace(/"/g,'&quot;')+'" placeholder="e.g. JFK"></div>'+
+      '<div class="field"><label>Destination</label><input class="flight-entry-dest" type="text" value="'+(entry.destination||'').toString().replace(/"/g,'&quot;')+'" placeholder="e.g. LAX"></div>'+
+      '<div class="field"><label>Depart Date</label><input class="flight-entry-departdate" type="date" value="'+(entry.departDate||'')+'"></div>'+
+      '<div class="field"><label>Class of Service</label><select class="flight-entry-class"><option value="">-- Select --</option>'+selOpts(CLASSES,entry.classOfService)+'</select></div>'+
+      '<div class="field"><label>Depart Time</label><input class="flight-entry-departtime" type="time" value="'+(entry.departTime||'')+'"></div>'+
+      '<div class="field"><label>Arrival Time</label><input class="flight-entry-arrivaltime" type="time" value="'+(entry.arrivalTime||'')+'"></div>'+
+    '</div>';
+}
+function flightEntryRowHtml(entry){
+  return '<div class="flight-entry-row" style="border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin-bottom:10px;background:#fafafa">'+flightEntryRowInnerHtml(entry)+'</div>';
+}
+function flightEntriesListHtml(entries){
+  return entries.length ? entries.map(flightEntryRowHtml).join('') : '<div id="tb-flight-entries-empty" style="color:#aaa;font-size:12px;padding:6px 0">No flights added yet</div>';
+}
+function readFlightEntries(){
+  return Array.from(document.querySelectorAll('#tb-flight-entries .flight-entry-row')).map(function(row){
+    return {
+      airline: (row.querySelector('.flight-entry-airline')||{}).value||'',
+      flightNumber: (row.querySelector('.flight-entry-num')||{}).value||'',
+      origin: (row.querySelector('.flight-entry-origin')||{}).value||'',
+      destination: (row.querySelector('.flight-entry-dest')||{}).value||'',
+      departDate: (row.querySelector('.flight-entry-departdate')||{}).value||'',
+      departTime: (row.querySelector('.flight-entry-departtime')||{}).value||'',
+      arrivalTime: (row.querySelector('.flight-entry-arrivaltime')||{}).value||'',
+      classOfService: (row.querySelector('.flight-entry-class')||{}).value||''
+    };
+  }).filter(function(e){
+    return e.airline||e.flightNumber||e.origin||e.destination||e.departDate||e.departTime||e.arrivalTime||e.classOfService;
+  });
+}
 function bookedTripDetailsHtml(bd){
   bd = bd || {};
   var air = bd.airline||{}, cru = bd.cruise||{}, car = bd.carRental||{},
@@ -8006,18 +8050,30 @@ function bookedTripDetailsHtml(bd){
   if(!hotelEntries.length) hotelEntries = [{}];
   var tourEntries = Array.isArray(bd.tours) ? bd.tours : (bd.tours && Object.keys(bd.tours).length ? [bd.tours] : []);
   if(!tourEntries.length) tourEntries = [{}];
+  // booked.airline used to hold one flight's airline/class/origin/
+  // destination/departDate directly, plus a single returnDate for the trip
+  // back — now those live per-entry in booked.airline.segments so a
+  // connecting or round-trip itinerary can have any number of legs. An old
+  // trip's single-flight shape (and its returnDate, as a second leg with
+  // origin/destination swapped) still loads fine as a 1-2 entry list.
+  var flightEntries = Array.isArray(air.segments) ? air.segments : [];
+  if(!flightEntries.length && (air.airline||air.origin||air.destination||air.departDate||air.classOfService)){
+    flightEntries.push({airline:air.airline||'', flightNumber:'', origin:air.origin||'', destination:air.destination||'', departDate:air.departDate||'', departTime:'', arrivalTime:'', classOfService:air.classOfService||''});
+    if(air.returnDate){
+      flightEntries.push({airline:air.airline||'', flightNumber:'', origin:air.destination||'', destination:air.origin||'', departDate:air.returnDate||'', departTime:'', arrivalTime:'', classOfService:air.classOfService||''});
+    }
+  }
+  if(!flightEntries.length) flightEntries = [{}];
   return ''+
     '<div class="modal-section-title">Booked Trip Details</div>'+
     '<div class="modal-section-title">Airline</div>'+
     fld('Confirmation Number',inp('tb-air-conf','text',air.confirmationNumber,'e.g. ABC123'))+
-    fld('Airline',sel('tb-air-airline',AIRLINES,air.airline))+
-    fld('Class of Service',sel('tb-air-class',CLASSES,air.classOfService))+
     fld('Non-Stop Flights Only',sel('tb-air-nonstop',['Yes','No'],air.nonStop))+
-    fld('Origin',inp('tb-air-origin','text',air.origin,'e.g. JFK'))+
-    fld('Destination',inp('tb-air-dest','text',air.destination,'e.g. Tokyo, Japan'))+
-    fld('Depart Date',inp('tb-air-depart','date',air.departDate))+
-    fld('Return Date',inp('tb-air-return','date',air.returnDate))+
     fld('Price ($)',inp('tb-air-price','number',air.price))+
+    '<div class="field full"><label>Flights <span class="hint" style="text-transform:none;font-weight:400">(add one entry per flight segment)</span></label>'+
+      '<div id="tb-flight-entries">'+flightEntriesListHtml(flightEntries)+'</div>'+
+      '<button type="button" id="tb-flight-add-btn" style="padding:5px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit">+ Add Flight</button>'+
+    '</div>'+
     pointsRedemptionBlocksHtml('tb-air',air.pts)+
     '<div class="modal-section-title">Hotel</div>'+
     '<div class="field full"><label>Hotels <span class="hint" style="text-transform:none;font-weight:400">(add one entry per hotel stay on this trip)</span></label>'+
@@ -8081,6 +8137,30 @@ function bindBookedTripDetailsListeners(){
       document.getElementById('tb-cruise-cabin').innerHTML = '<option value="">-- Select --</option>'+selOpts(getQuoteConfig(this.value).cabinTypes,'');
     });
   }
+  var flightEntriesEl = document.getElementById('tb-flight-entries');
+  var flightAddBtn = document.getElementById('tb-flight-add-btn');
+  if(flightAddBtn && flightEntriesEl){
+    flightAddBtn.addEventListener('click', function(){
+      var empty = document.getElementById('tb-flight-entries-empty');
+      if(empty) empty.remove();
+      var div = document.createElement('div');
+      div.className = 'flight-entry-row';
+      div.style.cssText = 'border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin-bottom:10px;background:#fafafa';
+      div.innerHTML = flightEntryRowInnerHtml({});
+      flightEntriesEl.appendChild(div);
+    });
+  }
+  if(flightEntriesEl){
+    flightEntriesEl.addEventListener('click', function(e){
+      var btn = e.target.closest ? e.target.closest('.del-flight-entry-btn') : null;
+      if(!btn) return;
+      var row = btn.closest('.flight-entry-row');
+      if(row) row.remove();
+      if(!flightEntriesEl.querySelector('.flight-entry-row')){
+        flightEntriesEl.innerHTML = '<div id="tb-flight-entries-empty" style="color:#aaa;font-size:12px;padding:6px 0">No flights added yet</div>';
+      }
+    });
+  }
   var hotelEntriesEl = document.getElementById('tb-hotel-entries');
   var hotelAddBtn = document.getElementById('tb-hotel-add-btn');
   if(hotelAddBtn && hotelEntriesEl){
@@ -8133,9 +8213,8 @@ function bindBookedTripDetailsListeners(){
 function readBookedTripDetails(){
   return {
     airline: {
-      confirmationNumber: gv('tb-air-conf'), airline: gv('tb-air-airline'), classOfService: gv('tb-air-class'),
-      nonStop: gv('tb-air-nonstop'), origin: gv('tb-air-origin'), destination: gv('tb-air-dest'),
-      departDate: gv('tb-air-depart'), returnDate: gv('tb-air-return'), price: gn('tb-air-price'), pts: readPointsRedemptions('tb-air')
+      confirmationNumber: gv('tb-air-conf'), nonStop: gv('tb-air-nonstop'), price: gn('tb-air-price'),
+      segments: readFlightEntries(), pts: readPointsRedemptions('tb-air')
     },
     hotel: readHotelEntries(),
     cruise: {
