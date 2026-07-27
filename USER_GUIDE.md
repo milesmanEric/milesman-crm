@@ -90,7 +90,7 @@ Checking a task's box marks it done immediately, but the row stays put — check
 
 ## Calendar
 
-A month view with every trip painted across its travel dates. Click into a day to see (and add) trips landing on that date.
+A month view with every trip painted across its travel dates. Click into a day to see (and add) trips landing on that date. A trip marked **Cancelled** never shows here — not on the month grid, not in a day's trip list — even if it has dates that would otherwise land in view.
 
 ---
 

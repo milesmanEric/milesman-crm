@@ -113,7 +113,7 @@ Three tabs (`window._rptActiveTab`: `activity` / `invoice` / `certs`):
 - **Unused Certificates** (`getUnusedCertificatesReportData()`) — scans every client's `referralCredits` and groups the rows by `certNumber` (one certificate can have a row on more than one client's record — see the Email section below on **Referral Credit Earned**), collecting the full set of referrer names and referred names onto each group, then filters out any group where `used` is true. Optionally filterable to one referrer client; exports to CSV; clicking a row opens the first referrer's client record. Since `syncReferralCreditUsedAcrossClients()` (see below) keeps every row for a given certNumber in sync, a group's `used` flag is really one shared fact, not independent per row.
 
 ### Calendar
-Month-grid view. Trips are painted across every day from `departDate` to `returnDate` (capped at 60 days per trip to avoid runaway rendering on bad data).
+Month-grid view. Trips are painted across every day from `departDate` to `returnDate` (capped at 60 days per trip to avoid runaway rendering on bad data). Cancelled trips are excluded entirely — `renderCalendar()`'s `tripMap` build skips any trip with `status==='Cancelled'` before painting cells, so a cancelled trip shows on neither the month grid nor the day-detail modal (`openDayTripsModal`, which reads from that same `tripMap`).
 
 ### Email
 A lightweight mail-merge tool: pick a client (or, for the referral template, multiple clients — see below), pick one of the canned templates (`TEMPLATES` in index.html — Welcome New Client, General Follow-Up, Trip Confirmation, Thank You & Referral, **Referral Credit Earned**), preview with placeholders substituted, then send.
