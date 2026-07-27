@@ -622,6 +622,19 @@
     {label:'Sea View', types:['Oceanview']},
     {label:'Insider', types:['Insider']}
   ];
+  // Best-effort from published brand materials, not independently confirmed
+  // with each line — same caveat as the CRM's copy of these four lists.
+  var EXPLORA_JOURNEYS_CABIN_TYPES = ['Ocean Terrace','Ocean Vista','Ocean Panorama','Ocean Penthouse','Ocean Residence','Ocean Grand Residence','Ocean Loft Residence'];
+  var SEABOURN_CABIN_TYPES = ['Veranda Suite','Penthouse Suite','Signature Suite','Wintergarden Suite','Grand Suite','Owner\'s Suite'];
+  var RITZ_CARLTON_YACHTS_CABIN_TYPES = ['Signature Suite','Signature Suite with Terrace','Grand Suite','Owner\'s Suite','Duplex Owner\'s Suite'];
+  var WINDSTAR_CABIN_TYPES = ['Ocean View Stateroom','Deluxe Ocean View Stateroom','Star Suite','Owner\'s Suite','Bridge Suite'];
+  var CABIN_TYPES_BY_CRUISE_LINE = {
+    'Princess': PRINCESS_CABIN_TYPES,
+    'Explora Journeys': EXPLORA_JOURNEYS_CABIN_TYPES,
+    'Seabourn': SEABOURN_CABIN_TYPES,
+    'Ritz Carlton Yachts': RITZ_CARLTON_YACHTS_CABIN_TYPES,
+    'Windstar': WINDSTAR_CABIN_TYPES
+  };
   function cabinTypeOptionsHtml(cruiseLine, selected){
     if(!cruiseLine) return '<option value="">-- Select cruise line first --</option>';
     if(cruiseLine === 'Virgin Voyages'){
@@ -629,7 +642,7 @@
         return '<optgroup label="'+g.label+'">'+g.types.map(function(t){return '<option'+(t===selected?' selected':'')+'>'+t+'</option>';}).join('')+'</optgroup>';
       }).join('');
     }
-    var types = cruiseLine === 'Princess' ? PRINCESS_CABIN_TYPES : GENERIC_CABIN_TYPES;
+    var types = CABIN_TYPES_BY_CRUISE_LINE[cruiseLine] || GENERIC_CABIN_TYPES;
     return '<option value="">-- Select --</option>'+types.map(function(t){return '<option'+(t===selected?' selected':'')+'>'+t+'</option>';}).join('');
   }
   var THEME_PARK_TICKET_TYPES = {

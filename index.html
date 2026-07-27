@@ -630,9 +630,22 @@ const VIRGIN_VOYAGES_FARE_TIERS = ['Basic','Essential','Premium'];
 // every other line falls back to generic cabin types and one Insurance/
 // Add-ons column with no group headers.
 const PRINCESS_CABIN_TYPES = ['Interior','Oceanview','Balcony','Mini-Suite','Suite'];
+// These four are all-suite ultra-luxury/small-ship lines, so their real
+// categories are named suite tiers rather than Interior/Oceanview/Balcony —
+// best-effort from published brand materials, not independently confirmed
+// with each line the way the ten original lines' categories were, same
+// caveat as CRUISE_STATUS's generic placeholder tiers for these lines.
+const EXPLORA_JOURNEYS_CABIN_TYPES = ['Ocean Terrace','Ocean Vista','Ocean Panorama','Ocean Penthouse','Ocean Residence','Ocean Grand Residence','Ocean Loft Residence'];
+const SEABOURN_CABIN_TYPES = ['Veranda Suite','Penthouse Suite','Signature Suite','Wintergarden Suite','Grand Suite','Owner\'s Suite'];
+const RITZ_CARLTON_YACHTS_CABIN_TYPES = ['Signature Suite','Signature Suite with Terrace','Grand Suite','Owner\'s Suite','Duplex Owner\'s Suite'];
+const WINDSTAR_CABIN_TYPES = ['Ocean View Stateroom','Deluxe Ocean View Stateroom','Star Suite','Owner\'s Suite','Bridge Suite'];
 const QUOTE_CRUISE_CONFIG = {
   'Princess': {cabinTypes:PRINCESS_CABIN_TYPES, insuranceCols:['Cancellation Insurance','Platinum Insurance'], addonCols:['Princess Plus','Princess Premier']},
-  'Virgin Voyages': {cabinTypes:VIRGIN_VOYAGES_CABIN_TYPES, cabinGroups:VIRGIN_VOYAGES_CABIN_GROUPS, fareTiers:VIRGIN_VOYAGES_FARE_TIERS, priceCols:['Price','Lock-It-In Rate'], addonCols:['Add-ons','Gratuities']}
+  'Virgin Voyages': {cabinTypes:VIRGIN_VOYAGES_CABIN_TYPES, cabinGroups:VIRGIN_VOYAGES_CABIN_GROUPS, fareTiers:VIRGIN_VOYAGES_FARE_TIERS, priceCols:['Price','Lock-It-In Rate'], addonCols:['Add-ons','Gratuities']},
+  'Explora Journeys': {cabinTypes:EXPLORA_JOURNEYS_CABIN_TYPES},
+  'Seabourn': {cabinTypes:SEABOURN_CABIN_TYPES},
+  'Ritz Carlton Yachts': {cabinTypes:RITZ_CARLTON_YACHTS_CABIN_TYPES},
+  'Windstar': {cabinTypes:WINDSTAR_CABIN_TYPES}
 };
 function getQuoteConfig(cruiseLine){
   var base = {cabinTypes:CABIN_TYPES, cabinGroups:null, fareTiers:null, priceCols:['Price'], insuranceCols:['Insurance'], addonCols:['Add-ons']};
@@ -8026,6 +8039,41 @@ function readTourEntries(){
     return e.confirmationNumber||e.vendor||e.price||e.description;
   });
 }
+// Cabin entries are the same dynamic add/remove pattern as hotel/tour
+// entries above (a booking can cover more than one cabin on the same
+// sailing) — Confirmation Number, Cruise Line, Ship Name, Sailing Date,
+// Nights, Departure Port, Loyalty Number, and Price stay at the
+// Cruise-section level (one booking/one price covers every cabin),
+// while Cabin Type and People In Cabin vary per cabin. The cabin type
+// options depend on which cruise line is selected (same getQuoteConfig
+// used by Email Quote), so every row is rebuilt when Cruise Line changes.
+function cabinEntryRowInnerHtml(entry, cruiseLine){
+  entry = entry || {};
+  var cabinTypes = getQuoteConfig(cruiseLine).cabinTypes;
+  return '<div style="display:flex;justify-content:flex-end;margin-bottom:4px">'+
+      '<button type="button" class="del-cabin-entry-btn" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:12px">&#128465;&#65039; Remove</button>'+
+    '</div>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
+      '<div class="field"><label>Cabin Type</label><select class="cabin-entry-type"><option value="">-- Select --</option>'+selOpts(cabinTypes,entry.cabinType)+'</select></div>'+
+      '<div class="field"><label>People In Cabin</label><input class="cabin-entry-people" type="number" value="'+(entry.peopleInCabin||'')+'"></div>'+
+    '</div>';
+}
+function cabinEntryRowHtml(entry, cruiseLine){
+  return '<div class="cabin-entry-row" style="border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin-bottom:10px;background:#fafafa">'+cabinEntryRowInnerHtml(entry, cruiseLine)+'</div>';
+}
+function cabinEntriesListHtml(entries, cruiseLine){
+  return entries.length ? entries.map(function(e){return cabinEntryRowHtml(e, cruiseLine);}).join('') : '<div id="tb-cabin-entries-empty" style="color:#aaa;font-size:12px;padding:6px 0">No cabins added yet</div>';
+}
+function readCabinEntries(){
+  return Array.from(document.querySelectorAll('#tb-cabin-entries .cabin-entry-row')).map(function(row){
+    return {
+      cabinType: (row.querySelector('.cabin-entry-type')||{}).value||'',
+      peopleInCabin: Number((row.querySelector('.cabin-entry-people')||{}).value)||0
+    };
+  }).filter(function(e){
+    return e.cabinType||e.peopleInCabin;
+  });
+}
 // Flight segments are the same dynamic add/remove pattern as hotel/tour
 // entries above (a connecting or round-trip itinerary is more than one
 // segment) — Confirmation Number, the points redemption blocks, and Price
@@ -8074,7 +8122,6 @@ function bookedTripDetailsHtml(bd){
   bd = bd || {};
   var air = bd.airline||{}, cru = bd.cruise||{}, car = bd.carRental||{},
       tp = bd.themePark||{}, tra = bd.train||{}, bus = bd.bus||{};
-  var cruiseCabinTypes = getQuoteConfig(cru.cruiseLine).cabinTypes;
   // bd.hotel/bd.tours used to each be a single object (one hotel, one tour
   // per trip); now they're lists, so an old single-object shape gets
   // wrapped into a one-entry list rather than losing that data.
@@ -8082,6 +8129,12 @@ function bookedTripDetailsHtml(bd){
   if(!hotelEntries.length) hotelEntries = [{}];
   var tourEntries = Array.isArray(bd.tours) ? bd.tours : (bd.tours && Object.keys(bd.tours).length ? [bd.tours] : []);
   if(!tourEntries.length) tourEntries = [{}];
+  // booked.cruise used to hold one cabinType/peopleInCabin pair directly —
+  // now a booking can cover more than one cabin, so those live per-entry in
+  // booked.cruise.cabins instead. An old trip's single-cabin shape still
+  // loads fine as a one-entry list.
+  var cabinEntries = Array.isArray(cru.cabins) ? cru.cabins : ((cru.cabinType||cru.peopleInCabin) ? [{cabinType:cru.cabinType||'', peopleInCabin:cru.peopleInCabin||0}] : []);
+  if(!cabinEntries.length) cabinEntries = [{}];
   // booked.airline used to hold one flight's airline/class/origin/
   // destination/departDate directly, plus a single returnDate for the trip
   // back — now those live per-entry in booked.airline.segments so a
@@ -8119,10 +8172,12 @@ function bookedTripDetailsHtml(bd){
     fld('Sailing Date',inp('tb-cruise-sailing','date',cru.sailingDate))+
     fld('Nights',inp('tb-cruise-nights','number',cru.nights||''))+
     fld('Departure Port',inp('tb-cruise-port','text',cru.departurePort,'e.g. Fort Lauderdale, FL'))+
-    fld('Cabin Type','<select id="tb-cruise-cabin"><option value="">-- Select --</option>'+selOpts(cruiseCabinTypes,cru.cabinType)+'</select>')+
-    fld('People In Cabin',inp('tb-cruise-people','number',cru.peopleInCabin||''))+
     fld('Loyalty Number',inp('tb-cruise-loyalty','text',cru.loyaltyNumber))+
     fld('Price ($)',inp('tb-cruise-price','number',cru.price))+
+    '<div class="field full"><label>Cabins <span class="hint" style="text-transform:none;font-weight:400">(add one entry per cabin booked on this sailing)</span></label>'+
+      '<div id="tb-cabin-entries">'+cabinEntriesListHtml(cabinEntries,cru.cruiseLine)+'</div>'+
+      '<button type="button" id="tb-cabin-add-btn" style="padding:5px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit">+ Add Cabin</button>'+
+    '</div>'+
     '<div class="modal-section-title">Car Rental</div>'+
     fld('Confirmation Number',inp('tb-car-conf','text',car.confirmationNumber,'e.g. CR-778899'))+
     fld('Company',sel('tb-car-company',CAR_RENTALS,car.company))+
@@ -8166,7 +8221,35 @@ function bindBookedTripDetailsListeners(){
   if(cruiseLineSel){
     cruiseLineSel.addEventListener('change', function(){
       document.getElementById('tb-cruise-ship').innerHTML = shipOptionsHtml(this.value,'');
-      document.getElementById('tb-cruise-cabin').innerHTML = '<option value="">-- Select --</option>'+selOpts(getQuoteConfig(this.value).cabinTypes,'');
+      var cabinTypes = getQuoteConfig(this.value).cabinTypes;
+      document.querySelectorAll('#tb-cabin-entries .cabin-entry-type').forEach(function(sel){
+        var current = sel.value;
+        sel.innerHTML = '<option value="">-- Select --</option>'+selOpts(cabinTypes,current);
+      });
+    });
+  }
+  var cabinEntriesEl = document.getElementById('tb-cabin-entries');
+  var cabinAddBtn = document.getElementById('tb-cabin-add-btn');
+  if(cabinAddBtn && cabinEntriesEl){
+    cabinAddBtn.addEventListener('click', function(){
+      var empty = document.getElementById('tb-cabin-entries-empty');
+      if(empty) empty.remove();
+      var div = document.createElement('div');
+      div.className = 'cabin-entry-row';
+      div.style.cssText = 'border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin-bottom:10px;background:#fafafa';
+      div.innerHTML = cabinEntryRowInnerHtml({}, cruiseLineSel ? cruiseLineSel.value : '');
+      cabinEntriesEl.appendChild(div);
+    });
+  }
+  if(cabinEntriesEl){
+    cabinEntriesEl.addEventListener('click', function(e){
+      var btn = e.target.closest ? e.target.closest('.del-cabin-entry-btn') : null;
+      if(!btn) return;
+      var row = btn.closest('.cabin-entry-row');
+      if(row) row.remove();
+      if(!cabinEntriesEl.querySelector('.cabin-entry-row')){
+        cabinEntriesEl.innerHTML = '<div id="tb-cabin-entries-empty" style="color:#aaa;font-size:12px;padding:6px 0">No cabins added yet</div>';
+      }
     });
   }
   var flightEntriesEl = document.getElementById('tb-flight-entries');
@@ -8252,8 +8335,7 @@ function readBookedTripDetails(){
     cruise: {
       confirmationNumber: gv('tb-cruise-conf'), cruiseLine: gv('tb-cruise-line'), shipName: gv('tb-cruise-ship'),
       sailingDate: gv('tb-cruise-sailing'), nights: gn('tb-cruise-nights'), departurePort: gv('tb-cruise-port'),
-      cabinType: gv('tb-cruise-cabin'), peopleInCabin: gn('tb-cruise-people'), loyaltyNumber: gv('tb-cruise-loyalty'),
-      price: gn('tb-cruise-price')
+      loyaltyNumber: gv('tb-cruise-loyalty'), price: gn('tb-cruise-price'), cabins: readCabinEntries()
     },
     carRental: {
       confirmationNumber: gv('tb-car-conf'), company: gv('tb-car-company'), carSize: gv('tb-car-size'),
