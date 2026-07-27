@@ -38,11 +38,19 @@ The Dashboard also has a **Planner tasks — today & overdue** card: your 10 mos
 
 ---
 
+## Clicking outside a popup window won't lose your changes
+
+Any popup window (Edit Client, Edit Task, Add Trip, etc.) stays open if you click the dimmed area outside it — that used to close the window immediately, discarding anything you'd typed. Close it on purpose instead, with its **X** button or **Cancel**.
+
+---
+
 ## Clients
 
 **Adding a client**: Clients page → **+ Add Client**. Name and email are required. Everything else — phone, address, birthdate, citizenship/birth country, how they were referred, preferred airline/hotel/cruise line, and mileage/points balances for every airline, hotel, cruise line, car rental, and credit card program — is optional and can be filled in over time.
 
 **Notes**: every client has a running note timeline. Add a note and tag it with a type (Email Sent, Email Received, Initial Call, Follow-up, General, Text Message Sent/Received, **Lead**, Mailchimp Email Sent, Facebook Message) so the Activity Report can filter on it later.
+
+**Tasks**: a client's own Planner tasks show right on their record — title, due date, and Open/Done status — with **+ Add Task** to add a new one linked to them. Clicking a task opens the full task editor (same one Planner uses), so you can change its due date, description, or anything else without leaving the client record.
 
 **Paying Client / Subscriber**: two checkboxes on the client record, useful for filtering your list down to real clients vs. newsletter-only contacts.
 

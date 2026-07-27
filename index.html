@@ -7672,7 +7672,7 @@ function openClientForm(id){
   document.querySelectorAll('.client-task-row').forEach(function(row){
     row.addEventListener('click', function(){
       closeModal();
-      openTaskNotes(row.dataset.taskId);
+      openTaskForm(row.dataset.taskId);
     });
   });
   document.querySelectorAll('.client-add-task-btn').forEach(function(btn){
@@ -8436,7 +8436,10 @@ function openTripForm(id){
 }
 
 function closeModal(){$('overlay').classList.remove('open');$('modal').classList.remove('modal-wide');}
-$('overlay').addEventListener('click',function(e){if(e.target===$('overlay'))closeModal();});
+// Clicking the backdrop outside a modal is intentionally a no-op — an open
+// modal (Edit Client, Edit Task, etc.) can hold unsaved edits, and an
+// accidental click outside it used to discard them silently. Closing now
+// only happens via the modal's own X/Cancel button.
 
 // ── CRUD ──────────────────────────────────────────────────────────────────
 function saveClient(id){
