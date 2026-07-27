@@ -588,6 +588,10 @@ const CAR_RENTAL_STATUS = {
   'Dollar': ['Express Rewards']
 };
 const CRUISE_LINES = ['Virgin Voyages','Royal Caribbean','Carnival','Norwegian','Princess','Celebrity','Disney Cruise Line','Holland America','MSC Cruises','Viking','Explora Journeys','Seabourn','Ritz Carlton Yachts','Windstar'];
+// A booked tour's vendor is often the cruise line itself selling a shore
+// excursion, so this is the cruise line list plus the dedicated tour
+// operators used on the public intake form's Tour Vendor pulldown.
+const TOUR_VENDORS = CRUISE_LINES.concat(['Tauck','Viator','Get Your Guide']);
 const CABIN_TYPES = ['Interior','Window','Balcony','Suite'];
 const SHIPS_BY_CRUISE_LINE = {
   'Virgin Voyages': ['Scarlet Lady','Valiant Lady','Resilient Lady','Brilliant Lady'],
@@ -3092,9 +3096,13 @@ function itineraryEmailBodyHtml(opts){
     itineraryDetailRow('Pickup', [opts.carPickupLocation,opts.carPickupDate].filter(Boolean).join(' — ')) +
     itineraryDetailRow('Dropoff', [opts.carDropoffLocation,opts.carDropoffDate].filter(Boolean).join(' — ')) +
     itineraryDetailRow('Confirmation Number', opts.carConfirmationNumber);
-  var toursRows = itineraryDetailRow('Vendor', opts.tourVendor) +
-    itineraryDetailRow('Description', opts.tourDescription) +
-    itineraryDetailRow('Confirmation Number', opts.tourConfirmationNumber);
+  var tourEntries = opts.tourEntries || [];
+  var toursBoxesHtml = tourEntries.map(function(t, i){
+    var rows = itineraryDetailRow('Vendor', t.vendor) +
+      itineraryDetailRow('Description', t.description) +
+      itineraryDetailRow('Confirmation Number', t.confirmationNumber);
+    return itineraryDetailBox(tourEntries.length>1 ? 'Tour '+(i+1)+' Details' : 'Tour Details', rows);
+  }).join('');
   var themeParkRows = itineraryDetailRow('Park', opts.themePark) +
     itineraryDetailRow('Ticket Type', opts.themeParkTicketType) +
     itineraryDetailRow('Confirmation Number', opts.themeParkConfirmationNumber);
@@ -3144,7 +3152,7 @@ itineraryDetailBox('Flight Details', flightRows)+
 itineraryDetailBox('Hotel Details', hotelRows)+
 itineraryDetailBox('Cruise Details', cruiseRows)+
 itineraryDetailBox('Car Rental Details', carRentalRows)+
-itineraryDetailBox('Tour Details', toursRows)+
+toursBoxesHtml+
 itineraryDetailBox('Theme Park Details', themeParkRows)+
 itineraryDetailBox('Train Details', trainRows)+
 itineraryDetailBox('Bus Details', busRows)+
@@ -3190,7 +3198,8 @@ itineraryEmailBodyHtml(opts)+
 function tripToItineraryOpts(trip, client, extraNotes){
   var sup = trip.supplierId ? db.vendors.find(function(v){return v.id===trip.supplierId;}) : null;
   var b = trip.booked || {};
-  var car = b.carRental||{}, tou = b.tours||{}, tp = b.themePark||{}, tra = b.train||{}, bus = b.bus||{};
+  var car = b.carRental||{}, tp = b.themePark||{}, tra = b.train||{}, bus = b.bus||{};
+  var tourEntries = Array.isArray(b.tours) ? b.tours : (b.tours && Object.keys(b.tours).length ? [b.tours] : []);
   return {
     clientFirstName: client?getFirstName(client.name):'',
     destination: trip.destination||'',
@@ -3212,9 +3221,7 @@ function tripToItineraryOpts(trip, client, extraNotes){
     carPickupDate: car.pickupDate?fmtDate(car.pickupDate):'',
     carDropoffDate: car.dropoffDate?fmtDate(car.dropoffDate):'',
     carConfirmationNumber: car.confirmationNumber||'',
-    tourVendor: tou.vendor||'',
-    tourDescription: tou.description||'',
-    tourConfirmationNumber: tou.confirmationNumber||'',
+    tourEntries: tourEntries,
     themePark: tp.park||'',
     themeParkTicketType: tp.ticketType||'',
     themeParkConfirmationNumber: tp.confirmationNumber||'',
@@ -7954,16 +7961,51 @@ function readHotelEntries(){
     return e.hotelBrand||e.confirmationNumber||e.checkInDate||e.nights||e.price||e.program||e.amount;
   });
 }
+// Tour entries are the same dynamic add/remove pattern as hotel entries
+// above (a trip can book more than one tour/activity) — read back by class
+// selector in DOM order, added/removed as real DOM nodes.
+function tourEntryRowInnerHtml(entry){
+  entry = entry || {};
+  return '<div style="display:flex;justify-content:flex-end;margin-bottom:4px">'+
+      '<button type="button" class="del-tour-entry-btn" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:12px">&#128465;&#65039; Remove</button>'+
+    '</div>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
+      '<div class="field"><label>Confirmation Number</label><input class="tour-entry-conf" type="text" value="'+(entry.confirmationNumber||'').toString().replace(/"/g,'&quot;')+'" placeholder="e.g. T-112233"></div>'+
+      '<div class="field"><label>Tour Vendor</label><select class="tour-entry-vendor"><option value="">-- Select --</option>'+selOpts(TOUR_VENDORS,entry.vendor)+'</select></div>'+
+      '<div class="field"><label>Price ($)</label><input class="tour-entry-price" type="number" value="'+(entry.price||'')+'"></div>'+
+      '<div class="field full"><label>Description</label><textarea class="tour-entry-desc">'+(entry.description||'')+'</textarea></div>'+
+    '</div>';
+}
+function tourEntryRowHtml(entry){
+  return '<div class="tour-entry-row" style="border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin-bottom:10px;background:#fafafa">'+tourEntryRowInnerHtml(entry)+'</div>';
+}
+function tourEntriesListHtml(entries){
+  return entries.length ? entries.map(tourEntryRowHtml).join('') : '<div id="tb-tours-entries-empty" style="color:#aaa;font-size:12px;padding:6px 0">No tours added yet</div>';
+}
+function readTourEntries(){
+  return Array.from(document.querySelectorAll('#tb-tours-entries .tour-entry-row')).map(function(row){
+    return {
+      confirmationNumber: (row.querySelector('.tour-entry-conf')||{}).value||'',
+      vendor: (row.querySelector('.tour-entry-vendor')||{}).value||'',
+      price: Number((row.querySelector('.tour-entry-price')||{}).value)||0,
+      description: (row.querySelector('.tour-entry-desc')||{}).value||''
+    };
+  }).filter(function(e){
+    return e.confirmationNumber||e.vendor||e.price||e.description;
+  });
+}
 function bookedTripDetailsHtml(bd){
   bd = bd || {};
   var air = bd.airline||{}, cru = bd.cruise||{}, car = bd.carRental||{},
-      tou = bd.tours||{}, tp = bd.themePark||{}, tra = bd.train||{}, bus = bd.bus||{};
+      tp = bd.themePark||{}, tra = bd.train||{}, bus = bd.bus||{};
   var cruiseCabinTypes = getQuoteConfig(cru.cruiseLine).cabinTypes;
-  // bd.hotel used to be a single object (one hotel per trip); now it's a
-  // list, so an old single-object shape gets wrapped into a one-entry list
-  // rather than losing that data.
+  // bd.hotel/bd.tours used to each be a single object (one hotel, one tour
+  // per trip); now they're lists, so an old single-object shape gets
+  // wrapped into a one-entry list rather than losing that data.
   var hotelEntries = Array.isArray(bd.hotel) ? bd.hotel : (bd.hotel && Object.keys(bd.hotel).length ? [bd.hotel] : []);
   if(!hotelEntries.length) hotelEntries = [{}];
+  var tourEntries = Array.isArray(bd.tours) ? bd.tours : (bd.tours && Object.keys(bd.tours).length ? [bd.tours] : []);
+  if(!tourEntries.length) tourEntries = [{}];
   return ''+
     '<div class="modal-section-title">Booked Trip Details</div>'+
     '<div class="modal-section-title">Airline</div>'+
@@ -8005,10 +8047,10 @@ function bookedTripDetailsHtml(bd){
     fld('Dropoff Time',inp('tb-car-dropofftime','time',car.dropoffTime))+
     fld('Price ($)',inp('tb-car-price','number',car.price))+
     '<div class="modal-section-title">Tours</div>'+
-    fld('Confirmation Number',inp('tb-tours-conf','text',tou.confirmationNumber,'e.g. T-112233'))+
-    fld('Tour Vendor',inp('tb-tours-vendor','text',tou.vendor,'e.g. Tauck'))+
-    fld('Description','<textarea id="tb-tours-desc">'+(tou.description||'')+'</textarea>',true)+
-    fld('Price ($)',inp('tb-tours-price','number',tou.price))+
+    '<div class="field full"><label>Tours <span class="hint" style="text-transform:none;font-weight:400">(add one entry per tour/activity booked on this trip)</span></label>'+
+      '<div id="tb-tours-entries">'+tourEntriesListHtml(tourEntries)+'</div>'+
+      '<button type="button" id="tb-tours-add-btn" style="padding:5px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit">+ Add Tour</button>'+
+    '</div>'+
     '<div class="modal-section-title">Theme Park</div>'+
     fld('Confirmation Number',inp('tb-tp-conf','text',tp.confirmationNumber,'e.g. TP-334455'))+
     fld('Park',sel('tb-tp-park',THEME_PARKS,tp.park))+
@@ -8063,6 +8105,30 @@ function bindBookedTripDetailsListeners(){
       }
     });
   }
+  var toursEntriesEl = document.getElementById('tb-tours-entries');
+  var toursAddBtn = document.getElementById('tb-tours-add-btn');
+  if(toursAddBtn && toursEntriesEl){
+    toursAddBtn.addEventListener('click', function(){
+      var empty = document.getElementById('tb-tours-entries-empty');
+      if(empty) empty.remove();
+      var div = document.createElement('div');
+      div.className = 'tour-entry-row';
+      div.style.cssText = 'border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin-bottom:10px;background:#fafafa';
+      div.innerHTML = tourEntryRowInnerHtml({});
+      toursEntriesEl.appendChild(div);
+    });
+  }
+  if(toursEntriesEl){
+    toursEntriesEl.addEventListener('click', function(e){
+      var btn = e.target.closest ? e.target.closest('.del-tour-entry-btn') : null;
+      if(!btn) return;
+      var row = btn.closest('.tour-entry-row');
+      if(row) row.remove();
+      if(!toursEntriesEl.querySelector('.tour-entry-row')){
+        toursEntriesEl.innerHTML = '<div id="tb-tours-entries-empty" style="color:#aaa;font-size:12px;padding:6px 0">No tours added yet</div>';
+      }
+    });
+  }
 }
 function readBookedTripDetails(){
   return {
@@ -8084,7 +8150,7 @@ function readBookedTripDetails(){
       pickupDate: gv('tb-car-pickupdate'), dropoffDate: gv('tb-car-dropoffdate'),
       pickupTime: gv('tb-car-pickuptime'), dropoffTime: gv('tb-car-dropofftime'), price: gn('tb-car-price')
     },
-    tours: { confirmationNumber: gv('tb-tours-conf'), vendor: gv('tb-tours-vendor'), description: gv('tb-tours-desc'), price: gn('tb-tours-price') },
+    tours: readTourEntries(),
     themePark: { confirmationNumber: gv('tb-tp-conf'), park: gv('tb-tp-park'), ticketType: gv('tb-tp-ticket'), price: gn('tb-tp-price') },
     train: {
       confirmationNumber: gv('tb-train-conf'), departureCity: gv('tb-train-depcity'), arrivalCity: gv('tb-train-arrcity'),
