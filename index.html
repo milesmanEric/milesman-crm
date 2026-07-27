@@ -6789,10 +6789,15 @@ function renderDash(){
     clients:db.clients.length,trips:db.trips.length,
     value:db.trips.reduce(function(a,t){return a+(t.totalValue||0);},0),
     pts:db.trips.reduce(function(a,t){return a+tripBookedPoints(t);},0),
-    confirmed:db.trips.filter(function(t){return t.status==='Confirmed';}).length,
     upcoming:db.trips.filter(function(t){return (t.departDate||'')>=today();}).length
   };
   const recent=[].concat(db.trips).sort(function(a,b){return (b.id||'').localeCompare(a.id||'');}).slice(0,6);
+  // Same "Today & Overdue" definition Planner's own date filter uses
+  // (dueDate<=today(), not done), sorted most-overdue-first, capped to 10
+  // so this doesn't grow unbounded on a busy day.
+  const plannerTasks=db.planner.filter(function(t){
+    return !t.done && t.dueDate && t.dueDate<=today();
+  }).sort(function(a,b){return (a.dueDate||'').localeCompare(b.dueDate||'');}).slice(0,10);
   function clientLiveRevenue(cid){return db.trips.filter(function(t){return t.clientId===cid;}).reduce(function(a,t){return a+(t.totalValue||0);},0);}
   const top=[].concat(db.clients).sort(function(a,b){return clientLiveRevenue(b.id)-clientLiveRevenue(a.id);}).slice(0,5);
   $('main').innerHTML=
@@ -6800,7 +6805,6 @@ function renderDash(){
     '<div class="stats-grid">'+
       '<div class="stat" id="stat-dash-clients"><div class="stat-lbl">Clients</div><div class="stat-val">'+s.clients+'</div></div>'+
       '<div class="stat" id="stat-dash-trips"><div class="stat-lbl">Total trips</div><div class="stat-val">'+s.trips+'</div></div>'+
-      '<div class="stat" id="stat-dash-confirmed"><div class="stat-lbl">Confirmed</div><div class="stat-val">'+s.confirmed+'</div></div>'+
       '<div class="stat" id="stat-dash-upcoming"><div class="stat-lbl">Upcoming</div><div class="stat-val">'+s.upcoming+'</div></div>'+
       '<div class="stat" id="stat-dash-value"><div class="stat-lbl">Total Revenue</div><div class="stat-val">$'+fmt(s.value)+'</div></div>'+
       '<div class="stat" id="stat-dash-pts"><div class="stat-lbl">Points deployed</div><div class="stat-val">'+fmt(s.pts)+'</div></div>'+
@@ -6824,9 +6828,34 @@ function renderDash(){
           top.map(function(c){var rev=clientLiveRevenue(c.id);return '<div class="cli-row" data-cid="'+c.id+'">'+av(c.name)+'<div style="flex:1;min-width:0"><div class="dash-client-link" data-id="'+c.id+'" style="font-size:13px;font-weight:600;color:#2563eb;text-decoration:underline;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+c.name+'</div><div style="font-size:11px;color:#888">$'+Number(rev).toLocaleString()+'</div></div></div>';}).join(''):
           '<div class="empty">No clients yet</div>')+
       '</div>'+
+    '</div>'+
+    '<div class="card">'+
+      '<div class="card-hdr"><span class="card-title">Planner tasks — today &amp; overdue</span><button class="view-all" id="dash-planner-view-all">View all &rarr;</button></div>'+
+      (plannerTasks.length?
+        '<table><thead><tr><th>Task</th><th>Client</th><th>Due Date</th></tr></thead><tbody>'+
+        plannerTasks.map(function(t){
+          var cid=taskClientId(t);
+          var c=cid?db.clients.find(function(x){return x.id===cid;}):null;
+          var overdue=t.dueDate<today();
+          return '<tr class="dash-task-row" data-id="'+t.id+'" style="cursor:pointer">'+
+            '<td class="n">'+(t.title||'')+'</td>'+
+            '<td>'+(c?('<span class="dash-client-link" data-id="'+c.id+'" style="color:#2563eb;cursor:pointer;text-decoration:underline">'+c.name+'</span>'):'<span style="color:#aaa">—</span>')+'</td>'+
+            '<td>'+(overdue?'<span style="color:#dc2626;font-weight:600">'+t.dueDate+'</span>':t.dueDate)+'</td>'+
+          '</tr>';
+        }).join('')+
+        '</tbody></table>':
+        '<div class="empty">No tasks due today or overdue</div>')+
     '</div>';
   const va=$('dash-view-all');
   if(va) va.addEventListener('click',function(){go('trips');});
+  const dpva=$('dash-planner-view-all');
+  if(dpva) dpva.addEventListener('click',function(){
+    window._plannerDateFilter='today-overdue';
+    go('planner');
+  });
+  document.querySelectorAll('.dash-task-row[data-id]').forEach(function(el){
+    el.addEventListener('click',function(){openTaskForm(el.dataset.id);});
+  });
   document.querySelectorAll('.cli-row[data-cid]').forEach(function(el){
     el.addEventListener('click',function(){go('trips',el.dataset.cid);});
   });
@@ -6848,10 +6877,6 @@ function renderDash(){
   });
   var statDashTrips = $('stat-dash-trips');
   if(statDashTrips) statDashTrips.addEventListener('click', function(){ openStatDrilldownModal('All Trips', tripHeaders, db.trips.map(tripRow)); });
-  var statDashConfirmed = $('stat-dash-confirmed');
-  if(statDashConfirmed) statDashConfirmed.addEventListener('click', function(){
-    openStatDrilldownModal('Confirmed Trips', tripHeaders, db.trips.filter(function(t){return t.status==='Confirmed';}).map(tripRow));
-  });
   var statDashUpcoming = $('stat-dash-upcoming');
   if(statDashUpcoming) statDashUpcoming.addEventListener('click', function(){
     var upcomingTrips = db.trips.filter(function(t){

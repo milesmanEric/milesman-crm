@@ -32,6 +32,8 @@ Every number in the row of boxes at the top of Dashboard, Clients, Trips, Suppli
 
 On the Dashboard specifically, the **Total Revenue** and **Upcoming** tiles' lists only show trips that are actually Completed or Upcoming — a trip still in Planning, just Confirmed, or Cancelled won't clutter either list even if it has a future date or a dollar value on it. **Points deployed** totals only the actual miles/points redemptions recorded in trips' Booked Trip Details (the per-program amounts under Airline and each Hotel entry) — not the simple Points Used field on the basic trip form.
 
+The Dashboard also has a **Planner tasks — today & overdue** card: your 10 most pressing open tasks (whatever's due today or already past due, most-overdue first), each showing its linked client and due date. Click a task to open it, click the client name to open their record instead, or hit **View all** to jump to the full Planner list filtered the same way.
+
 (On a Supplier's or Invoice's own detail screen, the numbers there instead scroll you down to the transaction table that's already shown below — no extra click needed to see the detail, it's already on the same screen.)
 
 ---
