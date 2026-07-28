@@ -6905,15 +6905,23 @@ function openDayTripsModal(dateStr, entries){
 }
 
 // "Points deployed" totals the actual redemption entries recorded in a
-// trip's Booked Trip Details (airline pts blocks + each hotel stay's
-// amount) — the granular, per-program figures — not the simple top-level
-// Points Used field on the basic trip form, which is a separate, less
-// precise number that isn't rolled into this.
+// trip's Booked Trip Details (every section's Points Used entries, plus
+// each hotel stay's amount) — the granular, per-program figures — not the
+// simple top-level Points Used field on the basic trip form, which is a
+// separate, less precise number that isn't rolled into this.
 function tripBookedPoints(t){
   var b = (t && t.booked) || {};
   var total = 0;
-  var airlinePts = (b.airline && Array.isArray(b.airline.pts)) ? b.airline.pts : [];
-  total += airlinePts.reduce(function(a,p){return a+(Number(p&&p.amount)||0);},0);
+  function sumPts(arr){
+    return (Array.isArray(arr) ? arr : []).reduce(function(a,p){return a+(Number(p&&p.amount)||0);},0);
+  }
+  total += sumPts(b.airline && b.airline.pts);
+  total += sumPts(b.cruise && b.cruise.pts);
+  total += sumPts(b.carRental && b.carRental.pts);
+  total += sumPts(b.toursPts);
+  total += sumPts(b.themePark && b.themePark.pts);
+  total += sumPts(b.train && b.train.pts);
+  total += sumPts(b.bus && b.bus.pts);
   var hotels = Array.isArray(b.hotel) ? b.hotel : [];
   total += hotels.reduce(function(a,h){return a+(Number(h&&h.amount)||0);},0);
   return total;
@@ -8097,31 +8105,75 @@ function pointsProgramOptionsHtml(selected){
     '<optgroup label="Hotels">'+opts(HOTELS)+'</optgroup>'+
     '<optgroup label="Credit Cards">'+opts(CREDIT_CARDS)+'</optgroup>';
 }
-function pointsRedemptionRowHtml(idPrefix, n, block){
-  block = block || {};
-  return '<div class="field full"><label>Miles/Points Redemption #'+n+'</label>'+
-    '<div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:8px">'+
-      '<select id="'+idPrefix+'-program'+n+'">'+pointsProgramOptionsHtml(block.program)+'</select>'+
-      inp(idPrefix+'-amount'+n,'number',block.amount||'','Points/miles used')+
-      inp(idPrefix+'-cost'+n,'number',block.cost||'','Cost $')+
+// Points Used entries are a dynamic add/remove list (same pattern as hotel/
+// tour/cabin/flight entries) rather than the old fixed-3-block layout, so
+// any section can record any number of redemptions — a booking often mixes
+// more than one program (e.g. airline miles plus a transferred credit-card
+// balance). One shared list per section (not per sub-entry like a flight
+// segment or hotel stay), same as Confirmation Number/Price/Notes.
+function pointsEntryRowInnerHtml(entry){
+  entry = entry || {};
+  return '<div style="display:flex;justify-content:flex-end;margin-bottom:4px">'+
+      '<button type="button" class="del-points-entry-btn" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:12px">&#128465;&#65039; Remove</button>'+
     '</div>'+
+    '<div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:8px">'+
+      '<div class="field"><label>Program</label><select class="points-entry-program">'+pointsProgramOptionsHtml(entry.program)+'</select></div>'+
+      '<div class="field"><label>Points/Miles Used</label><input class="points-entry-amount" type="number" value="'+(entry.amount||'')+'"></div>'+
+      '<div class="field"><label>Cost ($)</label><input class="points-entry-cost" type="number" value="'+(entry.cost||'')+'"></div>'+
+    '</div>';
+}
+function pointsEntryRowHtml(entry){
+  return '<div class="points-entry-row" style="border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin-bottom:10px;background:#fafafa">'+pointsEntryRowInnerHtml(entry)+'</div>';
+}
+function pointsEntriesListHtml(entries, emptyId){
+  return entries.length ? entries.map(pointsEntryRowHtml).join('') : '<div id="'+emptyId+'" style="color:#aaa;font-size:12px;padding:6px 0">No points/miles redemptions added yet</div>';
+}
+// Takes the container element directly (not an id) so the same function
+// works for a page-level container (document.getElementById(...)) as well
+// as any future per-entry nested container — querySelectorAll only ever
+// searches that element's own descendants, so callers naturally stay
+// isolated from each other without extra scoping logic.
+function readPointsEntriesFrom(containerEl){
+  if(!containerEl) return [];
+  return Array.from(containerEl.querySelectorAll('.points-entry-row')).map(function(row){
+    return {
+      program: (row.querySelector('.points-entry-program')||{}).value||'',
+      amount: Number((row.querySelector('.points-entry-amount')||{}).value)||0,
+      cost: Number((row.querySelector('.points-entry-cost')||{}).value)||0
+    };
+  }).filter(function(e){ return e.program||e.amount||e.cost; });
+}
+function pointsEntriesSectionHtml(entries, containerId, addBtnId){
+  return '<div class="field full"><label>Points Used <span class="hint" style="text-transform:none;font-weight:400">(add one row per miles/points redemption)</span></label>'+
+    '<div id="'+containerId+'">'+pointsEntriesListHtml(entries, containerId+'-empty')+'</div>'+
+    '<button type="button" id="'+addBtnId+'" style="padding:5px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit">+ Add Points Used</button>'+
   '</div>';
 }
-function pointsRedemptionBlocksHtml(idPrefix, blocks){
-  blocks = blocks || [];
-  var html = '';
-  for(var i=1;i<=3;i++){ html += pointsRedemptionRowHtml(idPrefix, i, blocks[i-1]); }
-  return html;
-}
-function readPointsRedemptions(idPrefix){
-  var out = [];
-  for(var i=1;i<=3;i++){
-    var program = gv(idPrefix+'-program'+i);
-    var amount = gn(idPrefix+'-amount'+i);
-    var cost = gn(idPrefix+'-cost'+i);
-    if(program || amount || cost) out.push({program:program, amount:amount, cost:cost});
+function bindPointsEntriesListeners(containerId, addBtnId){
+  var containerEl = document.getElementById(containerId);
+  var addBtn = document.getElementById(addBtnId);
+  if(addBtn && containerEl){
+    addBtn.addEventListener('click', function(){
+      var empty = document.getElementById(containerId+'-empty');
+      if(empty) empty.remove();
+      var div = document.createElement('div');
+      div.className = 'points-entry-row';
+      div.style.cssText = 'border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin-bottom:10px;background:#fafafa';
+      div.innerHTML = pointsEntryRowInnerHtml({});
+      containerEl.appendChild(div);
+    });
   }
-  return out;
+  if(containerEl){
+    containerEl.addEventListener('click', function(e){
+      var btn = e.target.closest ? e.target.closest('.del-points-entry-btn') : null;
+      if(!btn) return;
+      var row = btn.closest('.points-entry-row');
+      if(row) row.remove();
+      if(!containerEl.querySelector('.points-entry-row')){
+        containerEl.innerHTML = '<div id="'+containerId+'-empty" style="color:#aaa;font-size:12px;padding:6px 0">No points/miles redemptions added yet</div>';
+      }
+    });
+  }
 }
 // Hotel entries are a dynamic add/remove list (a multi-city trip can have
 // any number of hotel stays), unlike the fixed-3 points-redemption blocks
@@ -8321,7 +8373,7 @@ function bookedTripDetailsHtml(bd){
       '<div id="tb-flight-entries">'+flightEntriesListHtml(flightEntries)+'</div>'+
       '<button type="button" id="tb-flight-add-btn" style="padding:5px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit">+ Add Flight</button>'+
     '</div>'+
-    pointsRedemptionBlocksHtml('tb-air',air.pts)+
+    pointsEntriesSectionHtml(air.pts||[], 'tb-air-pts-entries', 'tb-air-pts-add-btn')+
     '<div class="modal-section-title">Hotel</div>'+
     '<div class="field full"><label>Hotels <span class="hint" style="text-transform:none;font-weight:400">(add one entry per hotel stay on this trip)</span></label>'+
       '<div id="tb-hotel-entries">'+hotelEntriesListHtml(hotelEntries)+'</div>'+
@@ -8341,6 +8393,7 @@ function bookedTripDetailsHtml(bd){
       '<div id="tb-cabin-entries">'+cabinEntriesListHtml(cabinEntries,cru.cruiseLine)+'</div>'+
       '<button type="button" id="tb-cabin-add-btn" style="padding:5px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit">+ Add Cabin</button>'+
     '</div>'+
+    pointsEntriesSectionHtml(cru.pts||[], 'tb-cruise-pts-entries', 'tb-cruise-pts-add-btn')+
     '<div class="modal-section-title">Car Rental</div>'+
     fld('Confirmation Number',inp('tb-car-conf','text',car.confirmationNumber,'e.g. CR-778899'))+
     fld('Company',sel('tb-car-company',CAR_RENTALS,car.company))+
@@ -8353,17 +8406,20 @@ function bookedTripDetailsHtml(bd){
     fld('Dropoff Time',inp('tb-car-dropofftime','time',car.dropoffTime))+
     fld('Price ($)',inp('tb-car-price','number',car.price))+
     fld('Notes','<textarea id="tb-car-notes">'+(car.notes||'')+'</textarea>',true)+
+    pointsEntriesSectionHtml(car.pts||[], 'tb-car-pts-entries', 'tb-car-pts-add-btn')+
     '<div class="modal-section-title">Tours</div>'+
     '<div class="field full"><label>Tours <span class="hint" style="text-transform:none;font-weight:400">(add one entry per tour/activity booked on this trip)</span></label>'+
       '<div id="tb-tours-entries">'+tourEntriesListHtml(tourEntries)+'</div>'+
       '<button type="button" id="tb-tours-add-btn" style="padding:5px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit">+ Add Tour</button>'+
     '</div>'+
+    pointsEntriesSectionHtml(bd.toursPts||[], 'tb-tours-pts-entries', 'tb-tours-pts-add-btn')+
     '<div class="modal-section-title">Theme Park</div>'+
     fld('Confirmation Number',inp('tb-tp-conf','text',tp.confirmationNumber,'e.g. TP-334455'))+
     fld('Park',sel('tb-tp-park',THEME_PARKS,tp.park))+
     fld('Ticket Type',inp('tb-tp-ticket','text',tp.ticketType,'e.g. Park Hopper'))+
     fld('Price ($)',inp('tb-tp-price','number',tp.price))+
     fld('Notes','<textarea id="tb-tp-notes">'+(tp.notes||'')+'</textarea>',true)+
+    pointsEntriesSectionHtml(tp.pts||[], 'tb-tp-pts-entries', 'tb-tp-pts-add-btn')+
     '<div class="modal-section-title">Train</div>'+
     fld('Confirmation Number',inp('tb-train-conf','text',tra.confirmationNumber,'e.g. AMTK-556677'))+
     fld('Departure City',inp('tb-train-depcity','text',tra.departureCity,'e.g. New York, NY'))+
@@ -8373,6 +8429,7 @@ function bookedTripDetailsHtml(bd){
     fld('Class of Service',sel('tb-train-class',TRAIN_CLASSES,tra.classOfService))+
     fld('Price ($)',inp('tb-train-price','number',tra.price))+
     fld('Notes','<textarea id="tb-train-notes">'+(tra.notes||'')+'</textarea>',true)+
+    pointsEntriesSectionHtml(tra.pts||[], 'tb-train-pts-entries', 'tb-train-pts-add-btn')+
     '<div class="modal-section-title">Bus</div>'+
     fld('Confirmation Number',inp('tb-bus-conf','text',bus.confirmationNumber,'e.g. GRY-556677'))+
     fld('Departure City',inp('tb-bus-depcity','text',bus.departureCity,'e.g. New York, NY'))+
@@ -8381,7 +8438,8 @@ function bookedTripDetailsHtml(bd){
     fld('Return Date',inp('tb-bus-retdate','date',bus.returnDate))+
     fld('Class of Service',sel('tb-bus-class',TRAIN_CLASSES,bus.classOfService))+
     fld('Price ($)',inp('tb-bus-price','number',bus.price))+
-    fld('Notes','<textarea id="tb-bus-notes">'+(bus.notes||'')+'</textarea>',true);
+    fld('Notes','<textarea id="tb-bus-notes">'+(bus.notes||'')+'</textarea>',true)+
+    pointsEntriesSectionHtml(bus.pts||[], 'tb-bus-pts-entries', 'tb-bus-pts-add-btn');
 }
 function bindBookedTripDetailsListeners(){
   var cruiseLineSel = document.getElementById('tb-cruise-line');
@@ -8491,37 +8549,49 @@ function bindBookedTripDetailsListeners(){
       }
     });
   }
+  bindPointsEntriesListeners('tb-air-pts-entries', 'tb-air-pts-add-btn');
+  bindPointsEntriesListeners('tb-cruise-pts-entries', 'tb-cruise-pts-add-btn');
+  bindPointsEntriesListeners('tb-car-pts-entries', 'tb-car-pts-add-btn');
+  bindPointsEntriesListeners('tb-tours-pts-entries', 'tb-tours-pts-add-btn');
+  bindPointsEntriesListeners('tb-tp-pts-entries', 'tb-tp-pts-add-btn');
+  bindPointsEntriesListeners('tb-train-pts-entries', 'tb-train-pts-add-btn');
+  bindPointsEntriesListeners('tb-bus-pts-entries', 'tb-bus-pts-add-btn');
 }
 function readBookedTripDetails(){
   return {
     airline: {
       confirmationNumber: gv('tb-air-conf'), nonStop: gv('tb-air-nonstop'), price: gn('tb-air-price'),
-      notes: gv('tb-air-notes'), segments: readFlightEntries(), pts: readPointsRedemptions('tb-air')
+      notes: gv('tb-air-notes'), segments: readFlightEntries(), pts: readPointsEntriesFrom(document.getElementById('tb-air-pts-entries'))
     },
     hotel: readHotelEntries(),
     cruise: {
       confirmationNumber: gv('tb-cruise-conf'), cruiseLine: gv('tb-cruise-line'), shipName: gv('tb-cruise-ship'),
       sailingDate: gv('tb-cruise-sailing'), nights: gn('tb-cruise-nights'), departurePort: gv('tb-cruise-port'),
-      loyaltyNumber: gv('tb-cruise-loyalty'), price: gn('tb-cruise-price'), notes: gv('tb-cruise-notes'), cabins: readCabinEntries()
+      loyaltyNumber: gv('tb-cruise-loyalty'), price: gn('tb-cruise-price'), notes: gv('tb-cruise-notes'), cabins: readCabinEntries(),
+      pts: readPointsEntriesFrom(document.getElementById('tb-cruise-pts-entries'))
     },
     carRental: {
       confirmationNumber: gv('tb-car-conf'), company: gv('tb-car-company'), carSize: gv('tb-car-size'),
       pickupLocation: gv('tb-car-pickuploc'), dropoffLocation: gv('tb-car-dropoffloc'),
       pickupDate: gv('tb-car-pickupdate'), dropoffDate: gv('tb-car-dropoffdate'),
       pickupTime: gv('tb-car-pickuptime'), dropoffTime: gv('tb-car-dropofftime'), price: gn('tb-car-price'),
-      notes: gv('tb-car-notes')
+      notes: gv('tb-car-notes'), pts: readPointsEntriesFrom(document.getElementById('tb-car-pts-entries'))
     },
     tours: readTourEntries(),
-    themePark: { confirmationNumber: gv('tb-tp-conf'), park: gv('tb-tp-park'), ticketType: gv('tb-tp-ticket'), price: gn('tb-tp-price'), notes: gv('tb-tp-notes') },
+    toursPts: readPointsEntriesFrom(document.getElementById('tb-tours-pts-entries')),
+    themePark: {
+      confirmationNumber: gv('tb-tp-conf'), park: gv('tb-tp-park'), ticketType: gv('tb-tp-ticket'), price: gn('tb-tp-price'), notes: gv('tb-tp-notes'),
+      pts: readPointsEntriesFrom(document.getElementById('tb-tp-pts-entries'))
+    },
     train: {
       confirmationNumber: gv('tb-train-conf'), departureCity: gv('tb-train-depcity'), arrivalCity: gv('tb-train-arrcity'),
       departureDate: gv('tb-train-depdate'), returnDate: gv('tb-train-retdate'), classOfService: gv('tb-train-class'),
-      price: gn('tb-train-price'), notes: gv('tb-train-notes')
+      price: gn('tb-train-price'), notes: gv('tb-train-notes'), pts: readPointsEntriesFrom(document.getElementById('tb-train-pts-entries'))
     },
     bus: {
       confirmationNumber: gv('tb-bus-conf'), departureCity: gv('tb-bus-depcity'), arrivalCity: gv('tb-bus-arrcity'),
       departureDate: gv('tb-bus-depdate'), returnDate: gv('tb-bus-retdate'), classOfService: gv('tb-bus-class'),
-      price: gn('tb-bus-price'), notes: gv('tb-bus-notes')
+      price: gn('tb-bus-price'), notes: gv('tb-bus-notes'), pts: readPointsEntriesFrom(document.getElementById('tb-bus-pts-entries'))
     }
   };
 }
