@@ -2863,6 +2863,59 @@ async function saveQuotePdfToDrive(d, bodyHtml, subject){
     toast('Could not save quote PDF to Drive: '+e.message,'err');
   }
 }
+// Same fire-and-forget PDF-to-Drive pattern as quotes above, in its own
+// "Miles Man Itineraries" folder since an itinerary is a confirmed-booking
+// recap, not a pricing quote — keeping them separate avoids mixing the two
+// document types together in one folder.
+const DRIVE_ITINERARIES_FOLDER_NAME = 'Miles Man Itineraries';
+let _driveItinerariesFolderId = null;
+async function getOrCreateDriveItinerariesFolder(token){
+  if(_driveItinerariesFolderId) return _driveItinerariesFolderId;
+  var q = encodeURIComponent("name='"+DRIVE_ITINERARIES_FOLDER_NAME+"' and mimeType='application/vnd.google-apps.folder' and trashed=false");
+  var r = await fetch('https://www.googleapis.com/drive/v3/files?q='+q+'&fields=files(id,name)',{headers:{Authorization:'Bearer '+token}});
+  var d = await r.json();
+  if(!r.ok) throw new Error('Drive returned '+r.status+' looking up itineraries folder');
+  if(d.files && d.files.length){ _driveItinerariesFolderId = d.files[0].id; return _driveItinerariesFolderId; }
+  var cr = await fetch('https://www.googleapis.com/drive/v3/files',{
+    method:'POST', headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},
+    body: JSON.stringify({name:DRIVE_ITINERARIES_FOLDER_NAME, mimeType:'application/vnd.google-apps.folder'})
+  });
+  var created = await cr.json();
+  if(!cr.ok) throw new Error('Drive returned '+cr.status+' creating itineraries folder');
+  _driveItinerariesFolderId = created.id;
+  return _driveItinerariesFolderId;
+}
+async function saveItineraryPdfToDrive(client, trip, bodyHtml, subject){
+  try{
+    debugLog('Itinerary PDF: rendering "'+subject+'"...');
+    var blob = await generateQuotePdfBlob(bodyHtml);
+    // Silent variant deliberately — this runs unattended right after the
+    // mailto: opens, so it must never force-redirect the page to Google's
+    // login screen if Drive isn't connected yet (that would hijack the tab
+    // away from the email the user is actually trying to send).
+    var token = await getDriveTokenSilent();
+    if(!token){
+      debugLog('Itinerary PDF: Google Drive not connected — skipped saving (connect via File menu > Backup to Google Drive)');
+      toast('Itinerary PDF not saved — connect Google Drive first (File menu)','info');
+      return;
+    }
+    var folderId = await getOrCreateDriveItinerariesFolder(token);
+    var filenameParts = [client?client.name:'Itinerary', trip.destination||'Itinerary', trip.departDate||today()];
+    var filename = (filenameParts.join('.')+'.pdf').replace(/[\\/:*?"<>|]/g,'-');
+    var meta = new Blob([JSON.stringify({name:filename, mimeType:'application/pdf', parents:[folderId]})], {type:'application/json'});
+    var form = new FormData(); form.append('metadata', meta); form.append('file', blob);
+    var r = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink', {
+      method:'POST', headers:{Authorization:'Bearer '+token}, body:form
+    });
+    if(!r.ok) throw new Error('Drive returned '+r.status+' saving itinerary PDF');
+    debugLog('Itinerary PDF saved to Google Drive: "'+filename+'"');
+    toast('Itinerary PDF saved to Google Drive','ok');
+  }catch(e){
+    console.error(e);
+    debugLog('Itinerary PDF save failed: '+e.message);
+    toast('Could not save itinerary PDF to Drive: '+e.message,'err');
+  }
+}
 // Cruise lines with a matching HTML email template (virgin_voyages_quote_template.html,
 // princess_cruises_quote_template.html) get a styled HTML quote (copied to the
 // clipboard for pasting into Outlook, since mailto: bodies are plain-text only)
@@ -3417,6 +3470,7 @@ function openEmailItineraryModal(){
     }else{
       toast('Could not copy the itinerary automatically — click Preview, then select all (Ctrl+A) and copy (Ctrl+C) from there to paste into Outlook','err');
     }
+    saveItineraryPdfToDrive(d.client, d.trip, bodyHtml, subject);
 
     var ts = tsNow();
     var note = {ts:ts, text:'Itinerary: '+subject, noteType:'Email Sent'};
