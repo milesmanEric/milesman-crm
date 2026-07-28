@@ -32,7 +32,7 @@ Every number in the row of boxes at the top of Dashboard, Clients, Trips, Suppli
 
 On the Dashboard specifically, the **Total Revenue** and **Upcoming** tiles' lists only show trips that are actually Completed or Upcoming — a trip still in Planning, just Confirmed, or Cancelled won't clutter either list even if it has a future date or a dollar value on it. **Points deployed** totals only the actual miles/points redemptions recorded in trips' Booked Trip Details (the per-program amounts under every section's Points Used block — Airline, Cruise, Car Rental, Tours, Theme Park, Train, Bus, and each individual Hotel entry's own Points Used block) — not the simple Points Used field on the basic trip form.
 
-The Dashboard also has a **Planner tasks — today & overdue** card: your 10 most pressing open tasks (whatever's due today or already past due, most-overdue first), each showing its linked client and due date. Click a task to open it, click the client name to open their record instead, or hit **View all** to jump to the full Planner list filtered the same way.
+The Dashboard also has a **Planner tasks — today & overdue** card: your 10 most pressing open tasks (whatever's due today or already past due, most-overdue first), each showing its linked client(s) and due date. Click a task to open it, click a client name to open their record instead (a task linked to more than one client lists each of them separately), or hit **View all** to jump to the full Planner list filtered the same way.
 
 (On a Supplier's or Invoice's own detail screen, the numbers there instead scroll you down to the transaction table that's already shown below — no extra click needed to see the detail, it's already on the same screen.)
 
@@ -50,7 +50,7 @@ Any popup window (Edit Client, Edit Task, Add Trip, etc.) stays open if you clic
 
 **Notes**: every client has a running note timeline. Add a note and tag it with a type (Email Sent, Email Received, Initial Call, Follow-up, General, Text Message Sent/Received, **Lead**, Mailchimp Email Sent, Facebook Message) so the Activity Report can filter on it later.
 
-**Tasks**: a client's own Planner tasks show right on their record — title, due date, and Open/Done status — with **+ Add Task** to add a new one linked to them. Clicking a task opens the full task editor (same one Planner uses), so you can change its due date, description, or anything else without leaving the client record.
+**Tasks**: a client's own Planner tasks show right on their record — title, due date, and Open/Done status — with **+ Add Task** to add a new one linked to them. This includes tasks where the client is only one of several linked (see [Planner](#planner)), not just tasks where they're the primary contact. Clicking a task opens the full task editor (same one Planner uses), so you can change its due date, description, or anything else without leaving the client record.
 
 **Paying Client / Subscriber**: two checkboxes on the client record, useful for filtering your list down to real clients vs. newsletter-only contacts.
 
@@ -93,6 +93,8 @@ The Suppliers page (labeled "Suppliers" in the nav, called `vendors` internally)
 ## Planner
 
 Your follow-up task list, with the linked client's phone and email shown right in the table. Most tasks get created automatically — one per new trip request and one per new contact-form lead — but you can add your own anytime with **+ Add Task**.
+
+**A task can link to more than one client.** The task form's **Linked Client** dropdown is the primary contact; check any others under **Additional Clients** below it. The Client column then lists everyone linked, each one clickable to jump to their record, and the task shows up on every one of those clients' own task lists — not just the primary's. The Email field auto-fills with every linked client's email (comma-separated, so one click on the mail icon reaches all of them at once) — it re-fills whenever you change who's linked, and you can still type over it by hand if you need something different. Marking the task done logs a completion note on every linked client's record, not just the primary's.
 
 Checking a task's box marks it done immediately, but the row stays put — checked, struck through — instead of vanishing right away, so you can still see what you just did and hit the trash icon on it if it was a mistake. It'll drop off the default (Open) view the next time you navigate away and back, or switch the filter to "Done" and back. The trash icon deletes a task outright, any time.
 

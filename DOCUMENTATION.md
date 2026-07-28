@@ -69,7 +69,11 @@ A trip saved before `booked` existed has no such key at all — every reader tre
 `name`, `type` (Supplier / Referral Partner / DMC), `category` (Airline/Hotel/Cruise Line/Car Rental/Tour Operator/Other), `clientIds` (clients who've booked through this vendor), `website`, `notes`.
 
 ### `db.planner` (`PL001`, ...)
-Follow-up tasks: `title`, `dueDate`, `done`, `clientId`, `tripId` (links back to the trip that spawned it), `completionNoteType`, `desc`, `createdAt`.
+Follow-up tasks: `title`, `dueDate`, `done`, `clientId`, `clientIds`, `vendorId`, `tripId` (links back to the trip that spawned it), `email`, `completionNoteType`, `desc`, `createdAt`.
+
+`clientId`/`clientIds` is the same primary/additional split `db.trips` uses for companions: `clientId` is the one client the Linked Client dropdown selects (drives the task's own `email` field autofill and is what a single-id lookup like `taskClientId()` returns), `clientIds` is every other client checked in the Additional Clients list. `taskClientIds()` returns the full deduped set (primary + additional), falling back to the linked trip's own `clientId`+`clientIds` only when the task has no client links of its own; `taskClients()` resolves that to the actual client records. Marking a task done (`logTaskCompletionNote()`) logs the completion note onto every one of those clients' records, not just the primary.
+
+`email` autofills from every linked client's email, comma-joined (`linkedClientEmailsStr()`) — comma is the mailto: multi-recipient separator, so the "Email in Outlook" link reaches all of them at once with no extra work. It re-derives every time the Linked Client dropdown or an Additional Clients checkbox changes, and is still a plain editable text field if you need to override it by hand.
 
 ---
 
@@ -84,12 +88,12 @@ Summary stats (client count, total trips, upcoming, **Total Revenue**, points de
 
 The **Total Revenue** and **Upcoming** stat tiles' drill-down lists (§ below) are filtered to trips whose *displayed* status is Completed or Upcoming — Planning, Confirmed, and Cancelled trips are excluded from those two lists specifically (a Completed trip with a future `departDate` displays as "Upcoming" and counts for both). The headline dollar/count figures themselves are unaffected — only the drill-down row lists are filtered. The other stat tiles' drill-downs (Clients, Total trips, Points deployed) are unfiltered by status, same as before.
 
-**Planner tasks — today & overdue** card: the same "Today & Overdue" definition Planner's own date filter uses (`!t.done && t.dueDate && t.dueDate<=today()`), sorted most-overdue-first, capped to the top 10 so a backlog doesn't blow out the card. Each row shows the task title, its linked client (if any, clickable to open that client), and due date (styled red if overdue); clicking a row opens that task in `openTaskForm()`. **View all** navigates to the Planner page and forces its date filter to "Today & Overdue" (`window._plannerDateFilter='today-overdue'`) so what you land on matches what the dashboard card just showed, regardless of whatever filter Planner was last left on.
+**Planner tasks — today & overdue** card: the same "Today & Overdue" definition Planner's own date filter uses (`!t.done && t.dueDate && t.dueDate<=today()`), sorted most-overdue-first, capped to the top 10 so a backlog doesn't blow out the card. Each row shows the task title, every linked client (if any, each independently clickable to open that client), and due date (styled red if overdue); clicking anywhere else on the row opens that task in `openTaskForm()`. **View all** navigates to the Planner page and forces its date filter to "Today & Overdue" (`window._plannerDateFilter='today-overdue'`) so what you land on matches what the dashboard card just showed, regardless of whatever filter Planner was last left on.
 
 ### Clients
 Searchable/sortable table (search matches name, email, city). Click a row to open the Add/Edit Client modal with the full field set from §2, plus a note-taking timeline (`notesLog`) with typed entries (Email Sent/Received, Initial Call, Follow-up, General, Trip Import, Text Message Sent/Received, Lead, Mailchimp Email Sent, Facebook Message), file attachments, and inline Paying Client / Subscriber toggles.
 
-The client form also lists that client's own `db.planner` tasks (`taskClientId(t)===id`, sorted open-before-done then by due date), with **+ Add Task** to create one already linked to this client. Clicking a `.client-task-row` opens the real task editor (`openTaskForm(taskId)`), same as everywhere else tasks are opened (Dashboard, Planner) — it used to open a stripped-down `openTaskNotes()` modal instead (a "log a note against this task's linked records" form with no due date field), which is why the due date wasn't reachable from here before.
+The client form also lists that client's own `db.planner` tasks (`taskClientIds(t).indexOf(id)!==-1`, sorted open-before-done then by due date) — this matches whether the client is the task's primary Linked Client or one of its Additional Clients, so a task tied to more than one client shows up on every one of their records, not just the primary's. **+ Add Task** creates one already linked to this client. Clicking a `.client-task-row` opens the real task editor (`openTaskForm(taskId)`), same as everywhere else tasks are opened (Dashboard, Planner) — it used to open a stripped-down `openTaskNotes()` modal instead (a "log a note against this task's linked records" form with no due date field), which is why the due date wasn't reachable from here before.
 
 Stats: Clients, Total Revenue, Total Trips.
 
@@ -105,6 +109,8 @@ Vendor/partner directory with per-vendor stats (trip count, linked clients, reve
 
 ### Planner
 Task list of follow-ups, most created automatically by the trip-form importer (one per new submission) or the contact-form importer (§4.5). Stats: Open Tasks, Total Tasks.
+
+The task form's **Linked Client** dropdown is the primary contact; an **Additional Clients** checkbox list below it (same pattern as the trip form's own Additional Clients) links any number of other clients to the same task — the Client column in both the Planner list and the Dashboard's Planner card lists every linked client, each independently clickable, and the task shows up on every linked client's own task list (§2), not just the primary's.
 
 Checking a task's box (`toggleTaskDone(id, skipRender)`) saves the change immediately but updates that row in place (checked, struck through, faded) instead of fully re-rendering the list — so it stays visible and its edit/delete buttons stay reachable right after checking it, rather than instantly disappearing from the Open-tasks filter. The row drops out of view the next time the Planner page actually re-renders (navigating away and back, or changing the Open/Done filter). Delete (trash icon) always works immediately regardless.
 

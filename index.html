@@ -793,6 +793,27 @@ function taskClientId(t){
   }
   return null;
 }
+// clientId is the primary/first client (drives the task's own Email field
+// autofill and is what a single-id lookup like taskClientId wants); clientIds
+// is every additional client also linked to the task, same clientId/clientIds
+// split trips already use for companions. Falls back to the linked trip's own
+// clientId+clientIds only when the task has no client links of its own.
+function taskClientIds(t){
+  var ids = [];
+  if(t.clientId) ids.push(t.clientId);
+  (t.clientIds||[]).forEach(function(cid){ if(cid && ids.indexOf(cid)===-1) ids.push(cid); });
+  if(!ids.length && t.tripId){
+    var trip = db.trips.find(function(tr){return tr.id===t.tripId;});
+    if(trip){
+      if(trip.clientId) ids.push(trip.clientId);
+      (trip.clientIds||[]).forEach(function(cid){ if(cid && ids.indexOf(cid)===-1) ids.push(cid); });
+    }
+  }
+  return ids;
+}
+function taskClients(t){
+  return taskClientIds(t).map(function(cid){return db.clients.find(function(c){return c.id===cid;});}).filter(Boolean);
+}
 function countDistinctTrips(clientId){
   var trips = db.trips.filter(function(t){return t.clientId===clientId || (t.clientIds||[]).includes(clientId);});
   var seen = {};
@@ -6983,12 +7004,11 @@ function renderDash(){
       (plannerTasks.length?
         '<table><thead><tr><th>Task</th><th>Client</th><th>Due Date</th></tr></thead><tbody>'+
         plannerTasks.map(function(t){
-          var cid=taskClientId(t);
-          var c=cid?db.clients.find(function(x){return x.id===cid;}):null;
+          var cs=taskClients(t);
           var overdue=t.dueDate<today();
           return '<tr class="dash-task-row" data-id="'+t.id+'" style="cursor:pointer">'+
             '<td class="n">'+(t.title||'')+'</td>'+
-            '<td>'+(c?('<span class="dash-client-link" data-id="'+c.id+'" style="color:#2563eb;cursor:pointer;text-decoration:underline">'+c.name+'</span>'):'<span style="color:#aaa">—</span>')+'</td>'+
+            '<td>'+(cs.length?cs.map(function(c){return '<span class="dash-client-link" data-id="'+c.id+'" style="color:#2563eb;cursor:pointer;text-decoration:underline">'+c.name+'</span>';}).join(', '):'<span style="color:#aaa">—</span>')+'</td>'+
             '<td>'+(overdue?'<span style="color:#dc2626;font-weight:600">'+t.dueDate+'</span>':t.dueDate)+'</td>'+
           '</tr>';
         }).join('')+
@@ -7760,7 +7780,7 @@ function openClientForm(id){
           '<tbody>'+tripRows+supRows+'</tbody></table></div></div>';
       })() : '') +
       (function(){
-        var clientTasks = id ? db.planner.filter(function(t){return taskClientId(t)===id;}).sort(function(a,b){
+        var clientTasks = id ? db.planner.filter(function(t){return taskClientIds(t).indexOf(id)!==-1;}).sort(function(a,b){
           if(!!a.done !== !!b.done) return a.done ? 1 : -1;
           var ad=a.dueDate||'9999-99-99', bd=b.dueDate||'9999-99-99';
           return ad.localeCompare(bd);
@@ -7838,7 +7858,7 @@ function openClientForm(id){
       openTaskForm();
       var sel=document.getElementById('tk-client');
       if(sel) sel.value=savedId;
-      fillTaskEmailFromClient(savedId);
+      refreshTaskEmailFromLinkedClients();
     });
   });
 
@@ -8838,10 +8858,12 @@ function renderPlanner(){
   var openCount = db.planner.filter(function(t){return !t.done;}).length;
 
   function clientName(t){
-    var cid=taskClientId(t);
-    if(!cid) return null;
-    var c=db.clients.find(function(x){return x.id===cid;});
-    return c ? c.name : null;
+    var cs=taskClients(t);
+    return cs.length ? cs.map(function(c){return c.name;}).join(', ') : null;
+  }
+  function clientLinksHtml(t){
+    var cs=taskClients(t);
+    return cs.length ? cs.map(function(c){return '<span class="planner-client-link" data-id="'+c.id+'" style="color:#2563eb;cursor:pointer;text-decoration:underline">'+c.name+'</span>';}).join(', ') : '<span style="color:#aaa">No client linked</span>';
   }
 
   function entityBadges(t){
@@ -8890,19 +8912,21 @@ function renderPlanner(){
     '</tr></thead><tbody>'+tasks.map(function(t){
       var overdue = t.dueDate && !t.done && t.dueDate < today();
       var badgesHtml = entityBadges(t);
+      // Phone/Email columns reflect just the primary linked client — the
+      // Client column itself lists every linked client (see clientLinksHtml).
       var cid = taskClientId(t);
-      var cName = clientName(t);
       var linkedClient = cid ? db.clients.find(function(x){return x.id===cid;}) : null;
       var cPhone = linkedClient ? linkedClient.phone : '';
       // Tasks only ever get their own stored email once the task form is
       // saved with a client selected — plenty of existing tasks are linked
       // to a client but never had that trigger, so this list falls back to
-      // the linked client's email too (same fallback openTaskForm uses),
-      // rather than showing blank for a task that's clearly linked.
-      var displayEmail = t.email || (linkedClient ? linkedClient.email : '');
+      // every linked client's email too (same fallback openTaskForm uses,
+      // comma-joined so the mailto link reaches all of them), rather than
+      // showing blank for a task that's clearly linked.
+      var displayEmail = t.email || linkedClientEmailsStr(t.clientId, t.clientIds);
       return '<tr data-task-id="'+t.id+'">'+
         '<td style="width:32px"><input type="checkbox" class="task-done-cb" data-id="'+t.id+'" '+(t.done?'checked':'')+' style="width:15px;height:15px"></td>'+
-        '<td>'+(cName?('<span class="planner-client-link" data-id="'+cid+'" style="color:#2563eb;cursor:pointer;text-decoration:underline">'+cName+'</span>'):'<span style="color:#aaa">No client linked</span>')+'</td>'+
+        '<td>'+clientLinksHtml(t)+'</td>'+
         '<td style="white-space:nowrap">'+(cPhone||'<span style="color:#aaa">—</span>')+'</td>'+
         '<td style="white-space:nowrap">'+(displayEmail?('<a href="mailto:'+mailtoAddr(displayEmail)+'" style="font-size:12px;color:#2563eb;text-decoration:none" title="Email in Outlook">&#9993;&#65039; '+displayEmail+'</a>'):'<span style="color:#aaa">—</span>')+'</td>'+
         '<td>'+
@@ -8997,18 +9021,26 @@ function renderPlanner(){
   });
 }
 
+// Every linked client's email (primary + additional), comma-joined — comma
+// is the mailto: multi-recipient separator, so this string can be dropped
+// straight into an "Email in Outlook" link with no further work.
+function linkedClientEmailsStr(clientId, additionalIds){
+  var ids = [];
+  if(clientId) ids.push(clientId);
+  (additionalIds||[]).forEach(function(cid){ if(cid && ids.indexOf(cid)===-1) ids.push(cid); });
+  return ids.map(function(cid){
+    var c = db.clients.find(function(x){return x.id===cid;});
+    return c && c.email;
+  }).filter(Boolean).join(', ');
+}
 function openTaskForm(id){
   var d = id ? (db.planner.find(function(t){return t.id===id;})||{}) : {};
   // Existing tasks linked to a client before this task ever had its own
   // Email field (or ones the client dropdown was never re-touched on)
   // otherwise show up with a blank Email despite being linked — fall back
-  // to the linked client's email so the field reflects reality on open,
-  // not just after re-selecting the client.
-  var displayEmail = d.email;
-  if(!displayEmail && d.clientId){
-    var linkedClient = db.clients.find(function(c){return c.id===d.clientId;});
-    if(linkedClient && linkedClient.email) displayEmail = linkedClient.email;
-  }
+  // to every linked client's email so the field reflects reality on open,
+  // not just after re-selecting clients.
+  var displayEmail = d.email || linkedClientEmailsStr(d.clientId, d.clientIds);
   var sortedClients = [...db.clients].sort(function(a,b){return (a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase());});
   var sortedVendors = [...db.vendors].sort(function(a,b){return (a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase());});
   var sortedTrips = [...db.trips].sort(function(a,b){return (b.departDate||'').localeCompare(a.departDate||'');});
@@ -9019,6 +9051,17 @@ function openTaskForm(id){
     var c = db.clients.find(function(x){return x.id===t.clientId;});
     var label = (t.destination||'Trip')+(c?' — '+c.name:'')+(t.departDate?' ('+t.departDate+')':'');
     return '<option value="'+t.id+'"'+(t.id===d.tripId?' selected':'')+'>'+label+'</option>';
+  }).join('');
+  // Linked Client (tk-client) stays the primary contact — drives the Email
+  // autofill and is the one client a single-id lookup like taskClientId
+  // wants — while this checkbox list is every additional client also on the
+  // task, same clientId/clientIds split the trip form already uses.
+  var additionalClientChecks = sortedClients.map(function(c){
+    var checked = (d.clientIds||[]).includes(c.id) ? 'checked' : '';
+    return '<label style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:13px;cursor:pointer">'+
+      '<input type="checkbox" class="task-client-cb" value="'+c.id+'" '+checked+' style="width:14px;height:14px">'+
+      '<span>'+c.name+'</span>'+
+    '</label>';
   }).join('');
 
   $('modal').innerHTML=
@@ -9033,6 +9076,11 @@ function openTaskForm(id){
       fld('Status','<select id="tk-done"><option value="0"'+(!d.done?' selected':'')+'>Open</option><option value="1"'+(d.done?' selected':'')+'>Done</option></select>')+
       fld('Completion Note Type', sel('tk-note-type', NOTE_TYPES, d.completionNoteType||'General'))+
       fld('Linked Client','<select id="tk-client"><option value="">None</option>'+clientOpts+'</select>')+
+      '<div class="field full"><label>Additional Clients <span class="hint" style="text-transform:none;font-weight:400">(if more than one client is tied to this task)</span></label>'+
+        '<div style="border:1px solid #e5e7eb;border-radius:8px;padding:10px;max-height:180px;overflow-y:auto;background:#fafafa">'+
+          (additionalClientChecks || '<div style="color:#aaa;font-size:12px">No clients yet</div>')+
+        '</div>'+
+      '</div>'+
       fld('Linked Supplier','<select id="tk-vendor"><option value="">None</option>'+vendorOpts+'</select>')+
       fld('Linked Trip','<select id="tk-trip"><option value="">None</option>'+tripOpts+'</select>')+
       fld('Description', '<textarea id="tk-desc" rows="3">'+(d.desc||'')+'</textarea>', true)+
@@ -9050,18 +9098,27 @@ function openTaskForm(id){
   $('modal-save-task').addEventListener('click', function(){ saveTask(this.dataset.id); });
   $('modal-save-new-task').addEventListener('click', function(){ saveTaskAndNew(this.dataset.id); });
   $('tk-email').addEventListener('input', updateTaskEmailLinkDisplay);
-  $('tk-client').addEventListener('change', function(){ fillTaskEmailFromClient(this.value); });
+  $('tk-client').addEventListener('change', refreshTaskEmailFromLinkedClients);
+  document.querySelectorAll('.task-client-cb').forEach(function(cb){
+    cb.addEventListener('change', refreshTaskEmailFromLinkedClients);
+  });
 }
-// Linking a client on the task form also carries over that client's email —
-// selecting a different client updates the Email field (and its mailto
-// link) to match, so the task's "Email in Outlook" link stays in sync with
-// whoever it's actually linked to instead of needing to be typed by hand.
-function fillTaskEmailFromClient(clientId){
+// Linking clients on the task form also carries over their email(s) — the
+// primary Linked Client plus every checked Additional Client — so the
+// Email field (and its "Email in Outlook" mailto link, which can carry more
+// than one recipient as a comma-separated list) stays in sync with whoever
+// is actually linked instead of needing to be typed by hand. Re-runs on
+// every change to either the primary select or an additional-client
+// checkbox, so adding/removing a linked client updates it immediately.
+function refreshTaskEmailFromLinkedClients(){
   var emailInput = document.getElementById('tk-email');
   if(!emailInput) return;
-  var client = clientId ? db.clients.find(function(c){return c.id===clientId;}) : null;
-  if(client && client.email){
-    emailInput.value = client.email;
+  var clientSel = document.getElementById('tk-client');
+  var clientId = clientSel ? clientSel.value : '';
+  var additionalIds = Array.from(document.querySelectorAll('.task-client-cb:checked')).map(function(cb){return cb.value;});
+  var emails = linkedClientEmailsStr(clientId, additionalIds);
+  if(emails){
+    emailInput.value = emails;
     updateTaskEmailLinkDisplay();
   }
 }
@@ -9081,6 +9138,7 @@ function saveTaskAndNew(id){
   if(!title){toast('Task title is required','err');return;}
   var email = gv('tk-email');
   var clientId = gv('tk-client');
+  var additionalClientIds = Array.from(document.querySelectorAll('.task-client-cb:checked')).map(function(cb){return cb.value;});
   var vendorId = gv('tk-vendor');
   var tripId = gv('tk-trip');
   var noteType = gv('tk-note-type');
@@ -9092,6 +9150,7 @@ function saveTaskAndNew(id){
   document.getElementById('tk-title').value = title;
   document.getElementById('tk-email').value = email;
   var clientSel=document.getElementById('tk-client'); if(clientSel) clientSel.value=clientId;
+  document.querySelectorAll('.task-client-cb').forEach(function(cb){ cb.checked = additionalClientIds.indexOf(cb.value)!==-1; });
   var vendorSel=document.getElementById('tk-vendor'); if(vendorSel) vendorSel.value=vendorId;
   var tripSel=document.getElementById('tk-trip'); if(tripSel) tripSel.value=tripId;
   var noteTypeSel=document.getElementById('tk-note-type'); if(noteTypeSel) noteTypeSel.value=noteType;
@@ -9108,6 +9167,11 @@ function saveTask(id){
     var existing = db.planner.find(function(t){return t.id===id;});
     wasDone = existing ? !!existing.done : false;
   }
+  var clientId = gv('tk-client');
+  // clientId stays the primary contact (drives the task's Email autofill and
+  // is what a single-id lookup like taskClientId wants) — clientIds is every
+  // additional client also tied to the task, same split the trip form uses.
+  var additionalClientIds = Array.from(document.querySelectorAll('.task-client-cb:checked')).map(function(cb){return cb.value;}).filter(function(cid){return cid!==clientId;});
   var data = {
     title:title,
     email:gv('tk-email'),
@@ -9115,7 +9179,8 @@ function saveTask(id){
     dueTime:gv('tk-time'),
     done: gv('tk-done')==='1',
     completionNoteType: gv('tk-note-type')||'General',
-    clientId: gv('tk-client'),
+    clientId: clientId,
+    clientIds: additionalClientIds,
     vendorId: gv('tk-vendor'),
     tripId: gv('tk-trip'),
     desc: gv('tk-desc')
@@ -9148,17 +9213,15 @@ function toggleTaskDone(id, skipRender){
   if(!skipRender) render();
 }
 
-// Marking a task done logs it as a note on the linked client record, so
-// closing out a follow-up leaves a trail on the client without extra steps.
+// Marking a task done logs it as a note on every linked client's record, so
+// closing out a follow-up leaves a trail on each client without extra steps.
 function logTaskCompletionNote(task){
   if(!task) return;
-  var taskCid = taskClientId(task);
-  if(!taskCid) return;
-  var client = db.clients.find(function(c){return c.id===taskCid;});
-  if(!client) return;
+  var taskCids = taskClientIds(task);
+  if(!taskCids.length) return;
   var text = 'Task completed: '+task.title+(task.desc?('\n'+task.desc):'');
   db.clients = db.clients.map(function(c){
-    if(c.id!==taskCid) return c;
+    if(taskCids.indexOf(c.id)===-1) return c;
     var nl = Array.isArray(c.notesLog)?c.notesLog.slice():[];
     nl.push({ts:tsNow(),text:text,noteType:task.completionNoteType||'General',source:'planner'});
     return Object.assign({},c,{notesLog:nl});
