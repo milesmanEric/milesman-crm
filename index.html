@@ -3099,15 +3099,69 @@ function itineraryEmailBodyHtml(opts){
   var datesLine = (opts.departDate?fmtDate(opts.departDate):'') + (opts.departDate&&opts.returnDate?' – ':'') + (opts.returnDate?fmtDate(opts.returnDate):'');
   var overviewRows = itineraryDetailRow('Destination', opts.destination) +
     itineraryDetailRow('Travel Dates', datesLine) +
-    itineraryDetailRow('Trip Type', opts.tripType) +
-    itineraryDetailRow('Status', opts.status);
-  var flightRows = itineraryDetailRow('Airline', opts.airline) +
-    itineraryDetailRow('Route', opts.origin&&opts.destination ? (opts.origin+' → '+opts.destination) : '') +
-    itineraryDetailRow('Class of Service', opts.flightClass);
-  var hotelRows = itineraryDetailRow('Hotel', opts.hotel) +
-    itineraryDetailRow('Nights', opts.hotelNights);
+    itineraryDetailRow('Passengers', opts.passengers);
+  // Flight/Hotel/Cruise prefer the actual Booked Trip Details entries
+  // (real flight segments, hotel stays, cruise cabins) whenever that
+  // section has anything recorded — only falling back to the trip's
+  // simpler top-level basic fields when Booked Trip Details was never
+  // filled in for that category at all, so the itinerary reflects
+  // whatever's actually completed there instead of a stale/blank summary.
+  var flightSegments = opts.flightSegments || [];
+  var flightBoxesHtml;
+  if(flightSegments.length){
+    flightBoxesHtml = flightSegments.map(function(f, i){
+      var rows = itineraryDetailRow('Airline', f.airline) +
+        itineraryDetailRow('Flight Number', f.flightNumber) +
+        itineraryDetailRow('Route', f.origin&&f.destination ? (f.origin+' → '+f.destination) : '') +
+        itineraryDetailRow('Depart Date', f.departDate?fmtDate(f.departDate):'') +
+        itineraryDetailRow('Depart Time', f.departTime) +
+        itineraryDetailRow('Arrival Time', f.arrivalTime) +
+        itineraryDetailRow('Class of Service', f.classOfService) +
+        itineraryDetailRow('Confirmation Number', opts.flightConfirmationNumber);
+      return itineraryDetailBox(flightSegments.length>1 ? 'Flight '+(i+1)+' Details' : 'Flight Details', rows);
+    }).join('');
+  } else {
+    // flightClass defaults to 'Economy' at save time even when a trip has
+    // no flight info at all (see saveTrip()), so it alone can't be treated
+    // as a sign this section is actually "completed" — only show it once
+    // Airline or Origin (both blank by default, never auto-filled) confirm
+    // there's real flight info here.
+    var flightRows = (opts.airline||opts.origin) ? (
+      itineraryDetailRow('Airline', opts.airline) +
+      itineraryDetailRow('Route', opts.origin&&opts.destination ? (opts.origin+' → '+opts.destination) : '') +
+      itineraryDetailRow('Class of Service', opts.flightClass)
+    ) : '';
+    flightBoxesHtml = itineraryDetailBox('Flight Details', flightRows);
+  }
+  var hotelEntries = opts.hotelEntries || [];
+  var hotelBoxesHtml;
+  if(hotelEntries.length){
+    hotelBoxesHtml = hotelEntries.map(function(h, i){
+      var rows = itineraryDetailRow('Hotel', h.hotelBrand) +
+        itineraryDetailRow('Check-in Date', h.checkInDate?fmtDate(h.checkInDate):'') +
+        itineraryDetailRow('Nights', h.nights?(h.nights+(h.nights===1?' night':' nights')):'') +
+        itineraryDetailRow('Confirmation Number', h.confirmationNumber);
+      return itineraryDetailBox(hotelEntries.length>1 ? 'Hotel '+(i+1)+' Details' : 'Hotel Details', rows);
+    }).join('');
+  } else {
+    var hotelRows = itineraryDetailRow('Hotel', opts.hotel) +
+      itineraryDetailRow('Nights', opts.hotelNights);
+    hotelBoxesHtml = itineraryDetailBox('Hotel Details', hotelRows);
+  }
+  var cruiseCabins = opts.cruiseCabins || [];
+  var cruiseCabinRows = cruiseCabins.map(function(c, i){
+    var label = cruiseCabins.length>1 ? 'Cabin '+(i+1) : 'Cabin Type';
+    var val = [c.cabinType, c.peopleInCabin?(c.peopleInCabin+(c.peopleInCabin===1?' person':' people')):''].filter(Boolean).join(' — ');
+    return itineraryDetailRow(label, val);
+  }).join('');
   var cruiseRows = itineraryDetailRow('Cruise Line', opts.cruiseLine) +
-    itineraryDetailRow('Ship', opts.shipName);
+    itineraryDetailRow('Ship', opts.shipName) +
+    itineraryDetailRow('Sailing Date', opts.cruiseSailingDate) +
+    itineraryDetailRow('Nights', opts.cruiseNights) +
+    itineraryDetailRow('Departure Port', opts.cruiseDeparturePort) +
+    cruiseCabinRows +
+    itineraryDetailRow('Confirmation Number', opts.cruiseConfirmationNumber) +
+    itineraryDetailRow('Loyalty Number', opts.cruiseLoyaltyNumber);
   var carRentalRows = itineraryDetailRow('Company', opts.carRentalCompany) +
     itineraryDetailRow('Car Size', opts.carSize) +
     itineraryDetailRow('Pickup', [opts.carPickupLocation,opts.carPickupDate].filter(Boolean).join(' — ')) +
@@ -3165,8 +3219,8 @@ function itineraryEmailBodyHtml(opts){
 '</table>'+
 '</td>'+
 '</tr>'+
-itineraryDetailBox('Flight Details', flightRows)+
-itineraryDetailBox('Hotel Details', hotelRows)+
+flightBoxesHtml+
+hotelBoxesHtml+
 itineraryDetailBox('Cruise Details', cruiseRows)+
 itineraryDetailBox('Car Rental Details', carRentalRows)+
 toursBoxesHtml+
@@ -3215,22 +3269,48 @@ itineraryEmailBodyHtml(opts)+
 function tripToItineraryOpts(trip, client, extraNotes){
   var sup = trip.supplierId ? db.vendors.find(function(v){return v.id===trip.supplierId;}) : null;
   var b = trip.booked || {};
-  var car = b.carRental||{}, tp = b.themePark||{}, tra = b.train||{}, bus = b.bus||{};
+  var air = b.airline||{}, cru = b.cruise||{}, car = b.carRental||{}, tp = b.themePark||{}, tra = b.train||{}, bus = b.bus||{};
   var tourEntries = Array.isArray(b.tours) ? b.tours : (b.tours && Object.keys(b.tours).length ? [b.tours] : []);
+  // Booked Trip Details is the source of truth whenever it actually has
+  // something recorded for a category — a trip can have real flight
+  // segments/hotel stays/cabins there that the top-level basic fields
+  // (trip.airline/trip.hotel/trip.cruiseLine, filled in on the simpler
+  // "basics" tab) never reflect. Those top-level fields stay as the
+  // fallback for a trip that only ever used the basic form and never
+  // touched Booked Trip Details for that category at all.
+  var flightSegments = Array.isArray(air.segments) ? air.segments : [];
+  var hotelEntries = Array.isArray(b.hotel) ? b.hotel : (b.hotel && Object.keys(b.hotel).length ? [b.hotel] : []);
+  var cruiseCabins = Array.isArray(cru.cabins) ? cru.cabins : ((cru.cabinType||cru.peopleInCabin) ? [{cabinType:cru.cabinType||'', peopleInCabin:cru.peopleInCabin||0}] : []);
+  // clientId is the primary/billing contact, clientIds is every additional
+  // traveler linked to the same trip (see saveTrip()) — both together are
+  // the full passenger list for this itinerary.
+  var passengerIds = [trip.clientId].concat(trip.clientIds||[]).filter(Boolean);
+  var passengerNames = passengerIds.map(function(cid){
+    var c = db.clients.find(function(x){return x.id===cid;});
+    return c ? (toFirstLast(c.name)||c.name||'') : '';
+  }).filter(Boolean);
   return {
     clientFirstName: client?getFirstName(client.name):'',
+    passengers: joinNames(passengerNames),
     destination: trip.destination||'',
     origin: trip.origin||'',
     departDate: trip.departDate||'',
     returnDate: trip.returnDate||'',
-    tripType: trip.type||'',
-    status: trip.status||'',
     airline: trip.airline||'',
     flightClass: trip.flightClass||'',
     hotel: trip.hotel||'',
     hotelNights: trip.hotelNights?(trip.hotelNights+(trip.hotelNights===1?' night':' nights')):'',
-    cruiseLine: trip.cruiseLine||'',
-    shipName: trip.shipName||'',
+    cruiseLine: cru.cruiseLine||trip.cruiseLine||'',
+    shipName: cru.shipName||trip.shipName||'',
+    flightSegments: flightSegments,
+    flightConfirmationNumber: air.confirmationNumber||'',
+    hotelEntries: hotelEntries,
+    cruiseConfirmationNumber: cru.confirmationNumber||'',
+    cruiseSailingDate: cru.sailingDate?fmtDate(cru.sailingDate):'',
+    cruiseNights: cru.nights?(cru.nights+(cru.nights===1?' night':' nights')):'',
+    cruiseDeparturePort: cru.departurePort||'',
+    cruiseLoyaltyNumber: cru.loyaltyNumber||'',
+    cruiseCabins: cruiseCabins,
     carRentalCompany: car.company||'',
     carSize: car.carSize||'',
     carPickupLocation: car.pickupLocation||'',
