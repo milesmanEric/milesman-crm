@@ -6922,8 +6922,15 @@ function tripBookedPoints(t){
   total += sumPts(b.themePark && b.themePark.pts);
   total += sumPts(b.train && b.train.pts);
   total += sumPts(b.bus && b.bus.pts);
+  // A hotel entry's points moved from a single program/amount pair to a
+  // pts list (like every other section); an old, not-yet-resaved entry
+  // only has the amount field, so fall back to that when pts is absent.
   var hotels = Array.isArray(b.hotel) ? b.hotel : [];
-  total += hotels.reduce(function(a,h){return a+(Number(h&&h.amount)||0);},0);
+  total += hotels.reduce(function(a,h){
+    if(!h) return a;
+    if(Array.isArray(h.pts) && h.pts.length) return a + sumPts(h.pts);
+    return a + (Number(h.amount)||0);
+  },0);
   return total;
 }
 function renderDash(){
@@ -8143,6 +8150,13 @@ function readPointsEntriesFrom(containerEl){
     };
   }).filter(function(e){ return e.program||e.amount||e.cost; });
 }
+// Same row markup as pointsEntriesListHtml but with a class-marked (not
+// id-marked) empty placeholder, since this is used inside a per-hotel-entry
+// nested list — the hotel entries themselves are a dynamic list, so more
+// than one of these can exist on the page at once and can't share an id.
+function pointsEntriesListHtmlNoId(entries){
+  return (entries && entries.length) ? entries.map(pointsEntryRowHtml).join('') : '<div class="pts-entries-empty" style="color:#aaa;font-size:12px;padding:6px 0">No points/miles redemptions added yet</div>';
+}
 function pointsEntriesSectionHtml(entries, containerId, addBtnId){
   return '<div class="field full"><label>Points Used <span class="hint" style="text-transform:none;font-weight:400">(add one row per miles/points redemption)</span></label>'+
     '<div id="'+containerId+'">'+pointsEntriesListHtml(entries, containerId+'-empty')+'</div>'+
@@ -8192,9 +8206,11 @@ function hotelEntryRowInnerHtml(entry){
       '<div class="field"><label>Check-in Date</label><input class="hotel-entry-checkin" type="date" value="'+(entry.checkInDate||'')+'"></div>'+
       '<div class="field"><label>Nights</label><input class="hotel-entry-nights" type="number" value="'+(entry.nights||'')+'"></div>'+
       '<div class="field"><label>Price ($)</label><input class="hotel-entry-price" type="number" value="'+(entry.price||'')+'"></div>'+
-      '<div class="field"><label>Miles/Points Program</label><select class="hotel-entry-program">'+pointsProgramOptionsHtml(entry.program)+'</select></div>'+
-      '<div class="field"><label>Miles/Points Used</label><input class="hotel-entry-amount" type="number" value="'+(entry.amount||'')+'"></div>'+
       '<div class="field full"><label>Notes</label><textarea class="hotel-entry-notes">'+(entry.notes||'')+'</textarea></div>'+
+      '<div class="field full"><label>Points Used <span class="hint" style="text-transform:none;font-weight:400">(add one row per miles/points redemption)</span></label>'+
+        '<div class="hotel-pts-entries">'+pointsEntriesListHtmlNoId(entry.pts||[])+'</div>'+
+        '<button type="button" class="hotel-pts-add-btn" style="padding:5px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit">+ Add Points Used</button>'+
+      '</div>'+
     '</div>';
 }
 function hotelEntryRowHtml(entry){
@@ -8211,12 +8227,11 @@ function readHotelEntries(){
       checkInDate: (row.querySelector('.hotel-entry-checkin')||{}).value||'',
       nights: Number((row.querySelector('.hotel-entry-nights')||{}).value)||0,
       price: Number((row.querySelector('.hotel-entry-price')||{}).value)||0,
-      program: (row.querySelector('.hotel-entry-program')||{}).value||'',
-      amount: Number((row.querySelector('.hotel-entry-amount')||{}).value)||0,
+      pts: readPointsEntriesFrom(row.querySelector('.hotel-pts-entries')),
       notes: (row.querySelector('.hotel-entry-notes')||{}).value||''
     };
   }).filter(function(e){
-    return e.hotelBrand||e.confirmationNumber||e.checkInDate||e.nights||e.price||e.program||e.amount||e.notes;
+    return e.hotelBrand||e.confirmationNumber||e.checkInDate||e.nights||e.price||(e.pts&&e.pts.length)||e.notes;
   });
 }
 // Tour entries are the same dynamic add/remove pattern as hotel entries
@@ -8340,6 +8355,13 @@ function bookedTripDetailsHtml(bd){
   // wrapped into a one-entry list rather than losing that data.
   var hotelEntries = Array.isArray(bd.hotel) ? bd.hotel : (bd.hotel && Object.keys(bd.hotel).length ? [bd.hotel] : []);
   if(!hotelEntries.length) hotelEntries = [{}];
+  // Each hotel stay used to carry one program/amount pair directly; now it
+  // holds a full Points Used list like every other section, so an old
+  // entry's single program/amount still loads as a one-row pts list.
+  hotelEntries = hotelEntries.map(function(h){
+    if(!h.pts && (h.program||h.amount)) return Object.assign({}, h, {pts:[{program:h.program||'', amount:h.amount||0, cost:0}]});
+    return h;
+  });
   var tourEntries = Array.isArray(bd.tours) ? bd.tours : (bd.tours && Object.keys(bd.tours).length ? [bd.tours] : []);
   if(!tourEntries.length) tourEntries = [{}];
   // booked.cruise used to hold one cabinType/peopleInCabin pair directly —
@@ -8522,6 +8544,34 @@ function bindBookedTripDetailsListeners(){
       if(row) row.remove();
       if(!hotelEntriesEl.querySelector('.hotel-entry-row')){
         hotelEntriesEl.innerHTML = '<div id="tb-hotel-entries-empty" style="color:#aaa;font-size:12px;padding:6px 0">No hotels added yet</div>';
+      }
+    });
+    // Each hotel entry has its own nested Points Used list (unlike every
+    // other section's single, section-level list) — delegated here at the
+    // hotel-entries-container level so it works for both entries rendered
+    // at open time and ones added later via "+ Add Hotel".
+    hotelEntriesEl.addEventListener('click', function(e){
+      var addBtn = e.target.closest ? e.target.closest('.hotel-pts-add-btn') : null;
+      if(!addBtn) return;
+      var row = addBtn.closest('.hotel-entry-row');
+      var container = row && row.querySelector('.hotel-pts-entries');
+      if(!container) return;
+      var empty = container.querySelector('.pts-entries-empty');
+      if(empty) empty.remove();
+      var div = document.createElement('div');
+      div.className = 'points-entry-row';
+      div.style.cssText = 'border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin-bottom:10px;background:#fafafa';
+      div.innerHTML = pointsEntryRowInnerHtml({});
+      container.appendChild(div);
+    });
+    hotelEntriesEl.addEventListener('click', function(e){
+      var delBtn = e.target.closest ? e.target.closest('.del-points-entry-btn') : null;
+      if(!delBtn) return;
+      var container = delBtn.closest('.hotel-pts-entries');
+      var row = delBtn.closest('.points-entry-row');
+      if(row) row.remove();
+      if(container && !container.querySelector('.points-entry-row')){
+        container.innerHTML = '<div class="pts-entries-empty" style="color:#aaa;font-size:12px;padding:6px 0">No points/miles redemptions added yet</div>';
       }
     });
   }
