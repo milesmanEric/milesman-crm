@@ -680,7 +680,7 @@ function quoteTableStructure(cfg){
 const STATUSES = ['Planning','Confirmed','Completed','Cancelled'];
 const TYPES    = ['Leisure','Business','Honeymoon','Family','Adventure','Cruise'];
 const CLASSES  = ['Basic Economy','Economy','Premium Economy','Business','First'];
-const NOTE_TYPES = ['Email Sent','Email Received','Initial Call','Follow-up','General','Trip Import','Text Message Sent','Text Message Received','Lead','Mailchimp Email Sent','Facebook Message'];
+const NOTE_TYPES = ['Email Sent','Email Received','Initial Call','Follow-up','Post-Trip Follow-up','General','Trip Import','Text Message Sent','Text Message Received','Lead','Mailchimp Email Sent','Facebook Message'];
 const THEME_PARKS = ['Disney World','Disneyland California','Universal Studios Hollywood','Universal Studios Orlando'];
 const TRAIN_CLASSES = ['Coach','Business Class','First Class','Sleeper Car'];
 const CAR_SIZES = ['Economy','Compact','Midsize','Full-size','SUV','Minivan','Luxury','Convertible'];
@@ -3288,7 +3288,7 @@ function itineraryEmailBodyHtml(opts){
 '<tr>'+
 '<td style="padding:32px 32px 8px 32px;">'+
 '<p style="font-family:\'Times New Roman\',Times,serif; font-size:14px; color:#111111; margin:0 0 16px 0;">Hi '+escHtml(opts.clientFirstName||'there')+',</p>'+
-'<p style="font-family:\'Times New Roman\',Times,serif; font-size:14px; color:#333333; line-height:1.5; margin:0 0 16px 0;">Here\'s your itinerary'+(opts.destination?' for '+escHtml(opts.destination):'')+'! Let me know if anything needs to change.</p>'+
+'<p style="font-family:\'Times New Roman\',Times,serif; font-size:14px; color:#333333; line-height:1.5; margin:0 0 16px 0;">Here\'s your itinerary'+((opts.tripName||opts.destination)?' for '+escHtml(opts.tripName||opts.destination):'')+'! Let me know if anything needs to change.</p>'+
 '</td>'+
 '</tr>'+
 '<tr>'+
@@ -3371,6 +3371,7 @@ function tripToItineraryOpts(trip, client, extraNotes){
   return {
     clientFirstName: client?getFirstName(client.name):'',
     passengers: joinNames(passengerNames),
+    tripName: b.tripName||'',
     destination: trip.destination||'',
     origin: trip.origin||'',
     departDate: trip.departDate||'',
@@ -5251,7 +5252,7 @@ function render(){
 
 function renderReports(){
   var activeTab = window._rptActiveTab || 'activity';
-  var NOTE_TYPES_R = ['','Trips','Email Sent','Email Received','Initial Call','Follow-up','General','Text Message Sent','Text Message Received','Lead','Mailchimp Email Sent','Facebook Message'];
+  var NOTE_TYPES_R = ['','Trips','Email Sent','Email Received','Initial Call','Follow-up','Post-Trip Follow-up','General','Text Message Sent','Text Message Received','Lead','Mailchimp Email Sent','Facebook Message'];
   var typeOpts = NOTE_TYPES_R.map(function(t){return '<option value="'+t+'">'+(t||'All types')+'</option>';}).join('');
 
   $('main').innerHTML =
@@ -6615,7 +6616,7 @@ function openVendorForm(id){
               '<span class="note-ts" style="font-size:10px;color:#888;font-weight:600;letter-spacing:.03em">'+n.ts+'</span>'+
               '<select class="vnote-type-sel" data-idx="'+i+'" style="font-size:11px;padding:2px 6px;border-radius:5px;border:1px solid #d1d5db;background:#fff;color:#374151;cursor:pointer;margin-left:8px">'+
                 '<option value="">-- Type --</option>'+
-                ['Email Sent','Email Received','Initial Call','Follow-up','General','Trip Import','Text Message Sent','Text Message Received','Lead','Facebook Message'].map(function(t){return '<option value="'+t+'"'+(n.noteType===t?' selected':'')+'>'+t+'</option>';}).join('')+
+                ['Email Sent','Email Received','Initial Call','Follow-up','Post-Trip Follow-up','General','Trip Import','Text Message Sent','Text Message Received','Lead','Facebook Message'].map(function(t){return '<option value="'+t+'"'+(n.noteType===t?' selected':'')+'>'+t+'</option>';}).join('')+
               '</select>'+
               '<button class="del-vnote-btn" data-idx="'+i+'" title="Delete note" style="margin-left:auto;background:none;border:none;color:#dc2626;cursor:pointer;font-size:14px">&#128465;</button>'+
             '</div>'+
@@ -6627,7 +6628,7 @@ function openVendorForm(id){
             '<span style="font-size:10px;color:#888;font-weight:600">New Note</span>'+
             '<select class="vnote-type-sel" data-idx="new" style="font-size:11px;padding:2px 6px;border-radius:5px;border:1px solid #d1d5db;background:#fff;color:#374151;cursor:pointer;margin-left:8px">'+
               '<option value="">-- Type --</option>'+
-              ['Email Sent','Email Received','Initial Call','Follow-up','General','Trip Import','Text Message Sent','Text Message Received','Lead','Facebook Message'].map(function(t){return '<option value="'+t+'">'+t+'</option>';}).join('')+
+              ['Email Sent','Email Received','Initial Call','Follow-up','Post-Trip Follow-up','General','Trip Import','Text Message Sent','Text Message Received','Lead','Facebook Message'].map(function(t){return '<option value="'+t+'">'+t+'</option>';}).join('')+
             '</select>'+
           '</div>'+
           '<textarea class="vnote-txt" rows="2" placeholder="Add a note..." style="width:100%;padding:6px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;font-family:inherit;resize:vertical;box-sizing:border-box"></textarea>'+
@@ -7693,6 +7694,7 @@ function openClientForm(id){
           '<option value="Email Received"'+(n.noteType==='Email Received'?' selected':'')+'>Email Received</option>'+
           '<option value="Initial Call"'+(n.noteType==='Initial Call'?' selected':'')+'>Initial Call</option>'+
           '<option value="Follow-up"'+(n.noteType==='Follow-up'?' selected':'')+'>Follow-up</option>'+
+          '<option value="Post-Trip Follow-up"'+(n.noteType==='Post-Trip Follow-up'?' selected':'')+'>Post-Trip Follow-up</option>'+
           '<option value="General"'+(n.noteType==='General'?' selected':'')+'>General</option>'+
           '<option value="Trip Import"'+(n.noteType==='Trip Import'?' selected':'')+'>Trip Import</option>'+
           '<option value="Text Message Sent"'+(n.noteType==='Text Message Sent'?' selected':'')+'>Text Message Sent</option>'+
@@ -7851,6 +7853,7 @@ function openClientForm(id){
             '<option value="Email Received">Email Received</option>'+
             '<option value="Initial Call">Initial Call</option>'+
             '<option value="Follow-up">Follow-up</option>'+
+            '<option value="Post-Trip Follow-up">Post-Trip Follow-up</option>'+
             '<option value="General">General</option>'+
             '<option value="Trip Import">Trip Import</option>'+
             '<option value="Text Message Sent">Text Message Sent</option>'+'<option value="Text Message Received">Text Message Received</option>'+'<option value="Lead">Lead</option>'+
@@ -8104,6 +8107,7 @@ function addNoteEntry(){
         '<option value="Email Received">Email Received</option>'+
         '<option value="Initial Call">Initial Call</option>'+
         '<option value="Follow-up">Follow-up</option>'+
+        '<option value="Post-Trip Follow-up">Post-Trip Follow-up</option>'+
         '<option value="General">General</option>'+
         '<option value="Trip Import">Trip Import</option>'+
         '<option value="Text Message Sent">Text Message Sent</option>'+'<option value="Text Message Received">Text Message Received</option>'+'<option value="Lead">Lead</option>'+
@@ -8441,6 +8445,7 @@ function bookedTripDetailsHtml(bd){
   if(!flightEntries.length) flightEntries = [{}];
   return ''+
     '<div class="modal-section-title">Booked Trip Details</div>'+
+    fld('Trip Name',inp('tb-trip-name','text',bd.tripName,'e.g. Smith Family Alaska Cruise'))+
     '<div class="modal-section-title">Airline</div>'+
     fld('Confirmation Number',inp('tb-air-conf','text',air.confirmationNumber,'e.g. ABC123'))+
     fld('Non-Stop Flights Only',sel('tb-air-nonstop',['Yes','No'],air.nonStop))+
@@ -8666,6 +8671,7 @@ function bindBookedTripDetailsListeners(){
 }
 function readBookedTripDetails(){
   return {
+    tripName: gv('tb-trip-name'),
     airline: {
       confirmationNumber: gv('tb-air-conf'), nonStop: gv('tb-air-nonstop'), price: gn('tb-air-price'),
       notes: gv('tb-air-notes'), segments: readFlightEntries(), pts: readPointsEntriesFrom(document.getElementById('tb-air-pts-entries'))
@@ -9513,7 +9519,7 @@ function bindClick(id, handler){
 
 // ── Note expand ──────────────────────────────────────────────────────────────
 function noteTypeCls(t){
-  var map={'Email Sent':'nt-email-sent','Email Received':'nt-email-received','Initial Call':'nt-initial-call','Follow-up':'nt-follow-up','General':'nt-general','Trip Import':'nt-blue','Text Message Sent':'nt-text-message','Text Message Received':'nt-text-message','Lead':'nt-lead','Mailchimp Email Sent':'nt-mailchimp','Facebook Message':'nt-facebook'};
+  var map={'Email Sent':'nt-email-sent','Email Received':'nt-email-received','Initial Call':'nt-initial-call','Follow-up':'nt-follow-up','Post-Trip Follow-up':'nt-follow-up','General':'nt-general','Trip Import':'nt-blue','Text Message Sent':'nt-text-message','Text Message Received':'nt-text-message','Lead':'nt-lead','Mailchimp Email Sent':'nt-mailchimp','Facebook Message':'nt-facebook'};
   return map[t]||'nt-general';
 }
 function openNoteExpand(ts, text, noteType){
