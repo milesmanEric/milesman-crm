@@ -315,6 +315,25 @@ tr:last-child td{border-bottom:none}
     </div>
     <div id="debug-log"></div>
   </div>
+  <!-- Assistant chat widget — floating toggle + panel, available from every
+       page. Talks to the Claude API through the Vercel proxy (api/claude-
+       messages.js, holds the Anthropic key server-side) and executes a
+       fixed set of tools client-side against this app's own functions
+       (see runAssistantTool) rather than letting the model write arbitrary
+       code — every mutating tool snapshot()s first, so a bad action is
+       undoable the same way any other change in this app is. -->
+  <button id="assistant-toggle-btn" title="Assistant" style="position:fixed;bottom:20px;right:20px;width:52px;height:52px;border-radius:50%;background:#2563eb;color:#fff;border:none;cursor:pointer;font-size:22px;box-shadow:0 4px 14px rgba(0,0,0,.3);z-index:1500">&#128172;</button>
+  <div id="assistant-panel" style="display:none;position:fixed;bottom:84px;right:20px;width:340px;max-width:calc(100vw - 40px);height:460px;max-height:70vh;background:#fff;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.3);z-index:1500;flex-direction:column;overflow:hidden;border:1px solid #e5e7eb">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 14px;background:#2563eb;color:#fff;flex-shrink:0">
+      <strong style="font-size:13px">Assistant</strong>
+      <button id="assistant-close-btn" title="Close" style="background:none;border:none;color:#fff;cursor:pointer;font-size:18px;line-height:1">&#x2715;</button>
+    </div>
+    <div id="assistant-messages" style="flex:1;overflow-y:auto;padding:12px;font-size:13px;display:flex;flex-direction:column;gap:8px"></div>
+    <div style="border-top:1px solid #e5e7eb;padding:8px;display:flex;gap:6px;flex-shrink:0">
+      <input id="assistant-input" type="text" placeholder="Add a note, create a task, look up a trip..." style="flex:1;padding:8px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;font-family:inherit;min-width:0">
+      <button id="assistant-send-btn" style="padding:8px 14px;border-radius:8px;border:none;background:#2563eb;color:#fff;cursor:pointer;font-size:13px;font-family:inherit;flex-shrink:0">Send</button>
+    </div>
+  </div>
 <div id="import-match-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:3000;display:none;align-items:center;justify-content:center;padding:20px">
   <div id="import-match-box" style="background:#fff;border-radius:12px;padding:26px;width:520px;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.2)">
     <div style="font-size:17px;font-weight:700;color:#111;margin-bottom:6px">Unmatched Client</div>
@@ -9515,6 +9534,32 @@ function bindClick(id, handler){
   });
   bindClick('btn-change-password', changeAuthPassword);
   bindClick('btn-lock-app', lockApp);
+
+  // Assistant chat widget
+  var assistantToggle = document.getElementById('assistant-toggle-btn');
+  var assistantPanel = document.getElementById('assistant-panel');
+  var assistantClose = document.getElementById('assistant-close-btn');
+  var assistantSendBtn = document.getElementById('assistant-send-btn');
+  var assistantInputEl = document.getElementById('assistant-input');
+  function toggleAssistantPanel(forceOpen){
+    if(!assistantPanel) return;
+    var isOpen = assistantPanel.style.display === 'flex';
+    var open = forceOpen!==undefined ? forceOpen : !isOpen;
+    assistantPanel.style.display = open ? 'flex' : 'none';
+    if(open && assistantInputEl) assistantInputEl.focus();
+  }
+  if(assistantToggle) assistantToggle.addEventListener('click', function(){ toggleAssistantPanel(); });
+  if(assistantClose) assistantClose.addEventListener('click', function(){ toggleAssistantPanel(false); });
+  function submitAssistantInput(){
+    var text = assistantInputEl.value.trim();
+    if(!text) return;
+    assistantInputEl.value = '';
+    sendAssistantMessage(text);
+  }
+  if(assistantSendBtn) assistantSendBtn.addEventListener('click', submitAssistantInput);
+  if(assistantInputEl) assistantInputEl.addEventListener('keydown', function(e){
+    if(e.key==='Enter'){ e.preventDefault(); submitAssistantInput(); }
+  });
 })();
 
 // ── Note expand ──────────────────────────────────────────────────────────────
@@ -9569,6 +9614,219 @@ async function runAutoDriveBackup(){
   debugLog('Running auto Drive backup...');
   try{ driveToken = token; await driveBackup(true); debugLog('Auto Drive backup finished'); } // silent=true suppresses button text change
   finally{ _autoBackupInFlight = false; }
+}
+
+// ── Assistant chat widget ────────────────────────────────────────────────
+// A small agentic loop against Claude: the browser never holds an API key
+// (that lives server-side in the Vercel proxy, api/claude-messages.js,
+// same pattern as Drive/Mailchimp) and the model never writes or runs
+// arbitrary code — it can only call this fixed set of tools, each of which
+// maps straight onto an existing CRM action. Every mutating tool calls
+// snapshot() first, so any assistant-made change is undoable with the same
+// Undo button as everything else in the app.
+const ASSISTANT_SYSTEM_PROMPT = 'You are the in-app assistant for a travel agency CRM. Help the user look up and update their own clients, trips, and follow-up tasks using only the provided tools. Always resolve a client by name to a clientId with find_clients before acting on them — if more than one client matches, ask which one rather than guessing. Be concise. After taking an action, briefly confirm what you did.';
+
+const ASSISTANT_TOOLS = [
+  {
+    name: 'find_clients',
+    description: 'Search clients by name or email substring (case-insensitive). Returns up to 10 matches with id, name, email, phone. Use this first to resolve which client the user means before adding a note, creating a task, or looking up trips for them.',
+    input_schema: {
+      type: 'object',
+      properties: { query: { type: 'string', description: 'Name or email substring to search for' } },
+      required: ['query']
+    }
+  },
+  {
+    name: 'find_trips',
+    description: 'Search/filter trips. All filters are optional and combine together (AND). Returns up to 15 matches with id, client name, destination, dates, status, total value.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        clientId: { type: 'string', description: 'Only trips linked to this client id (primary or additional)' },
+        destination: { type: 'string', description: 'Substring match against destination' },
+        status: { type: 'string', enum: ['Planning','Confirmed','Completed','Cancelled'] },
+        departAfter: { type: 'string', description: 'YYYY-MM-DD, inclusive' },
+        departBefore: { type: 'string', description: 'YYYY-MM-DD, inclusive' }
+      }
+    }
+  },
+  {
+    name: 'add_client_note',
+    description: 'Add a timestamped note to a client’s notes log.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        clientId: { type: 'string' },
+        text: { type: 'string' },
+        noteType: { type: 'string', enum: NOTE_TYPES }
+      },
+      required: ['clientId','text']
+    }
+  },
+  {
+    name: 'create_task',
+    description: 'Create a new Planner follow-up task, optionally linked to a client.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string' },
+        dueDate: { type: 'string', description: 'YYYY-MM-DD' },
+        clientId: { type: 'string' },
+        desc: { type: 'string' }
+      },
+      required: ['title']
+    }
+  },
+  {
+    name: 'create_client',
+    description: 'Create a brand-new client record.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string' },
+        email: { type: 'string' },
+        phone: { type: 'string' }
+      },
+      required: ['name','email']
+    }
+  }
+];
+
+// Executes one tool call against this app's own data/functions and returns a
+// plain-object result (sent back to Claude as the tool_result). Never lets
+// the model run its own code — this is the fixed, reviewable surface of
+// what the assistant is allowed to do.
+function runAssistantTool(name, input){
+  input = input || {};
+  if(name === 'find_clients'){
+    var q = (input.query||'').toLowerCase();
+    var matches = db.clients.filter(function(c){
+      return (c.name||'').toLowerCase().indexOf(q)!==-1 || (c.email||'').toLowerCase().indexOf(q)!==-1;
+    }).slice(0,10).map(function(c){ return {id:c.id, name:c.name, email:c.email, phone:c.phone}; });
+    return {clients: matches};
+  }
+  if(name === 'find_trips'){
+    var results = db.trips.filter(function(t){
+      if(input.clientId && t.clientId!==input.clientId && (t.clientIds||[]).indexOf(input.clientId)===-1) return false;
+      if(input.destination && (t.destination||'').toLowerCase().indexOf(input.destination.toLowerCase())===-1) return false;
+      if(input.status && t.status!==input.status) return false;
+      if(input.departAfter && !((t.departDate||'')>=input.departAfter)) return false;
+      if(input.departBefore && !((t.departDate||'')<=input.departBefore)) return false;
+      return true;
+    }).slice(0,15).map(function(t){
+      return {id:t.id, client:t.clientName, destination:t.destination, departDate:t.departDate, returnDate:t.returnDate, status:t.status, totalValue:t.totalValue};
+    });
+    return {trips: results};
+  }
+  if(name === 'add_client_note'){
+    var client = db.clients.find(function(c){return c.id===input.clientId;});
+    if(!client) return {error:'No client found with id '+input.clientId};
+    if(!input.text) return {error:'Note text is required'};
+    snapshot('Assistant: add note');
+    db.clients = db.clients.map(function(c){
+      if(c.id!==input.clientId) return c;
+      var nl = Array.isArray(c.notesLog)?c.notesLog.slice():[];
+      nl.push({ts:tsNow(), text:input.text, noteType:input.noteType||'General', source:'assistant'});
+      return Object.assign({},c,{notesLog:nl});
+    });
+    saveDB();
+    return {ok:true, message:'Note added to '+client.name};
+  }
+  if(name === 'create_task'){
+    if(!input.title) return {error:'Task title is required'};
+    snapshot('Assistant: create task');
+    var task = {
+      id:newId('PL',db.planner), title:input.title, dueDate:input.dueDate||'', done:false,
+      clientId:input.clientId||'', desc:input.desc||'', completionNoteType:'General', createdAt:today()
+    };
+    db.planner.push(task);
+    saveDB();
+    return {ok:true, message:'Task created: '+task.title, taskId:task.id};
+  }
+  if(name === 'create_client'){
+    if(!input.name || !input.email) return {error:'Both name and email are required'};
+    snapshot('Assistant: create client');
+    var newClient = {
+      id:newId('C',db.clients), name:input.name, email:input.email, phone:input.phone||'',
+      notesLog:[], mileageBalances:{}, hotelBalances:{}, creditCardBalances:{}
+    };
+    db.clients.push(newClient);
+    saveDB();
+    return {ok:true, message:'Client created: '+newClient.name, clientId:newClient.id};
+  }
+  return {error:'Unknown tool: '+name};
+}
+
+var assistantMessages = []; // in-memory only — resets on reload, not persisted to localStorage
+function assistantMsgBubble(kind, text){
+  var container = document.getElementById('assistant-messages');
+  if(!container) return;
+  var styles = {
+    user: 'align-self:flex-end;background:#2563eb;color:#fff;border-radius:12px 12px 2px 12px',
+    assistant: 'align-self:flex-start;background:#f3f4f6;color:#111;border-radius:12px 12px 12px 2px',
+    action: 'align-self:stretch;background:#ecfdf5;color:#065f46;border-radius:8px;font-size:11px',
+    error: 'align-self:stretch;background:#fef2f2;color:#991b1b;border-radius:8px;font-size:11px'
+  };
+  var div = document.createElement('div');
+  div.style.cssText = 'padding:8px 10px;max-width:85%;white-space:pre-wrap;word-break:break-word;'+(styles[kind]||styles.assistant);
+  div.textContent = text;
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+}
+function describeToolResult(name, input, result){
+  if(result && result.error) return '✗ '+result.error;
+  if(result && result.message) return '✓ '+result.message;
+  if(name==='find_clients') return 'Found '+((result.clients||[]).length)+' client(s) for "'+(input.query||'')+'"';
+  if(name==='find_trips') return 'Found '+((result.trips||[]).length)+' trip(s)';
+  return '✓ '+name+' done';
+}
+function setAssistantLoading(isLoading){
+  var sendBtn = document.getElementById('assistant-send-btn');
+  var input = document.getElementById('assistant-input');
+  if(sendBtn){ sendBtn.disabled = isLoading; sendBtn.textContent = isLoading ? '...' : 'Send'; }
+  if(input) input.disabled = isLoading;
+}
+async function callAssistantAPI(){
+  const r = await fetch(DRIVE_AUTH_SERVER+'/api/claude-messages', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({messages:assistantMessages, tools:ASSISTANT_TOOLS, system:ASSISTANT_SYSTEM_PROMPT})
+  });
+  const data = await r.json();
+  if(!r.ok) throw new Error((data && (data.error && data.error.message || data.error_description || data.error)) || 'Assistant request failed');
+  return data;
+}
+async function handleAssistantReply(reply){
+  assistantMessages.push({role:'assistant', content:reply.content});
+  var textParts = (reply.content||[]).filter(function(b){return b.type==='text';}).map(function(b){return b.text;});
+  if(textParts.length) assistantMsgBubble('assistant', textParts.join('\n'));
+
+  var toolUses = (reply.content||[]).filter(function(b){return b.type==='tool_use';});
+  if(!toolUses.length) return;
+
+  var toolResults = toolUses.map(function(tu){
+    var result;
+    try{ result = runAssistantTool(tu.name, tu.input); }
+    catch(e){ result = {error:e.message}; }
+    assistantMsgBubble('action', describeToolResult(tu.name, tu.input||{}, result));
+    return {type:'tool_result', tool_use_id:tu.id, content:JSON.stringify(result)};
+  });
+  render();
+  assistantMessages.push({role:'user', content:toolResults});
+  var nextReply = await callAssistantAPI();
+  await handleAssistantReply(nextReply);
+}
+async function sendAssistantMessage(userText){
+  assistantMsgBubble('user', userText);
+  assistantMessages.push({role:'user', content:userText});
+  setAssistantLoading(true);
+  try{
+    var reply = await callAssistantAPI();
+    await handleAssistantReply(reply);
+  }catch(e){
+    assistantMsgBubble('error', 'Something went wrong: '+e.message);
+  }
+  setAssistantLoading(false);
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────

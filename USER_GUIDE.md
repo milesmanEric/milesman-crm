@@ -134,6 +134,14 @@ All three work the same way at send time: the email gets copied to your clipboar
 
 ---
 
+## Assistant
+
+A chat bubble in the bottom-right corner, on every page. Click it to open a small chat panel and just type what you want — it can look things up ("find clients named Sarah," "show me trips to Cancun departing next month") or make changes for you ("add a note to Sarah's record that she called about upgrading her cabin," "create a follow-up task for tomorrow to confirm final payment").
+
+It can only do a fixed set of things: find clients, find trips, add a client note, create a Planner task, and create a new client. It can't edit your source code or do anything outside those actions. Every change it makes goes through the same **Undo** button in the sidebar as anything else you do by hand — if it gets something wrong, just hit Undo. The conversation itself isn't saved anywhere; closing the tab or refreshing starts a fresh chat.
+
+---
+
 ## Connecting Outlook
 
 Email menu → **Sync Outlook Emails**. This is a one-time login (until you sign out or the token expires) that unlocks:
