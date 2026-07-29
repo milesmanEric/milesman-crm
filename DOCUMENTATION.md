@@ -76,11 +76,14 @@ Follow-up tasks: `title`, `dueDate`, `done`, `clientId`, `clientIds`, `vendorId`
 
 `email` autofills from every linked client's email, comma-joined (`linkedClientEmailsStr()`) — comma is the mailto: multi-recipient separator, so the "Email in Outlook" link reaches all of them at once with no extra work. It re-derives every time the Linked Client dropdown or an Additional Clients checkbox changes, and is still a plain editable text field if you need to override it by hand.
 
+### `db.bookmarks` (`BM001`, ...)
+Saved links to travel-related websites: `name`, `url`, `category` (one of `BOOKMARK_CATEGORIES` — Airline, Hotel, Cruise Line, Car Rental, Visa/Documentation, Currency/Weather, Tool, Other — optional), `notes`. `saveBookmark()` prepends `https://` onto whatever's typed if it doesn't already start with `http://`/`https://`, since a bare domain like `united.com` would otherwise be treated as a relative link and just reload the CRM itself instead of navigating out.
+
 ---
 
 ## 3. Navigation / Features
 
-The left nav has 7 sections (`view` state: `dashboard`, `clients`, `trips`, `vendors`, `planner`, `reports`, `calendar`, `email`).
+The left nav has 8 sections (`view` state: `dashboard`, `clients`, `trips`, `vendors`, `planner`, `reports`, `calendar`, `email`, `bookmarks`).
 
 ### Dashboard
 Summary stats (client count, total trips, upcoming, **Total Revenue**, points deployed), a recent-trips table, a top-clients-by-revenue list, and a Planner tasks card.
@@ -161,6 +164,9 @@ There are two **separate**, more elaborate modals reached from header buttons in
   - **PDF saved to Drive**: same fire-and-forget pattern as Email Quote's (`generateQuotePdfBlob()`), but into its own **"Miles Man Itineraries"** Drive folder (`DRIVE_ITINERARIES_FOLDER_NAME`/`getOrCreateDriveItinerariesFolder()`/`saveItineraryPdfToDrive()`) rather than "Miles Man Quotes" — an itinerary is a confirmed-booking recap, not a pricing quote, so the two document types don't mix in one folder. Named `<client name>.<destination>.<depart date>.pdf` (falls back to `Itinerary` for a missing client/destination, or today's date for a missing depart date). Silently skipped (with a toast) if Google Drive isn't connected — never forces a login redirect mid-send.
 
 Both share the same send mechanics: the rendered HTML is copied to the clipboard (`copyHtmlToClipboard()` — `mailto:` bodies are plain-text only) and `mailto:` is opened to the client's address for pasting into Outlook, then an `Email Sent` note is logged on the client record.
+
+### Bookmarks
+A simple saved-links list — see §2's `db.bookmarks` for the schema. Sortable-by-name table (Name/Category/URL), each name a real `<a target="_blank">` link that opens the site in a new tab; edit/delete icons per row, same pattern as every other simple list page in the app (`renderBookmarks()`/`openBookmarkForm()`/`saveBookmark()`/`deleteBookmark()`).
 
 ---
 

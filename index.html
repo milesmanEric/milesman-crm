@@ -241,6 +241,7 @@ tr:last-child td{border-bottom:none}
       <button class="nb" id="nb-reports">&#128202; Reports</button>
       <button class="nb" id="nb-calendar">&#128197; Calendar</button>
       <button class="nb" id="nb-email">&#9993;&#65039; Email</button>
+      <button class="nb" id="nb-bookmarks">&#128278; Bookmarks</button>
     </nav>
     <div class="sb-footer">
       <button class="sync-btn" id="btn-undo" disabled style="color:#7c3aed;border-color:#c4b5fd;opacity:.4" title="Nothing to undo">&#8630; Undo</button>
@@ -705,8 +706,9 @@ const THEME_PARKS = ['Disney World','Disneyland California','Universal Studios H
 const TRAIN_CLASSES = ['Coach','Business Class','First Class','Sleeper Car'];
 const CAR_SIZES = ['Economy','Compact','Midsize','Full-size','SUV','Minivan','Luxury','Convertible'];
 const ROOM_TYPES = ['Room','Suite'];
+const BOOKMARK_CATEGORIES = ['Airline','Hotel','Cruise Line','Car Rental','Visa/Documentation','Currency/Weather','Tool','Other'];
 
-let db = {clients:[],trips:[],vendors:[],planner:[]};
+let db = {clients:[],trips:[],vendors:[],planner:[],bookmarks:[]};
 const UNDO_STACK = [];
 const MAX_UNDO = 20;
 function snapshot(label){
@@ -942,6 +944,7 @@ function loadDB(){
     db.trips=Array.isArray(d.trips)?d.trips:[];
     db.vendors=Array.isArray(d.vendors)?d.vendors:[];
     db.planner=Array.isArray(d.planner)?d.planner:[];
+    db.bookmarks=Array.isArray(d.bookmarks)?d.bookmarks:[];
     // Always normalize client names to 'Last, First' format on every load
     // (safe to run repeatedly since it skips names that already have a comma)
     var migrated=0;
@@ -5250,7 +5253,7 @@ function go(v,cid){
   view=v;
   selCid=(v==='trips'&&cid)?cid:null;
   fSearch='';fStatus='';
-  ['dashboard','clients','trips','reports','calendar','email','vendors','planner'].forEach(function(x){var el=$('nb-'+x);if(el)el.classList.toggle('active',x===v);});
+  ['dashboard','clients','trips','reports','calendar','email','vendors','planner','bookmarks'].forEach(function(x){var el=$('nb-'+x);if(el)el.classList.toggle('active',x===v);});
   render();
 }
 
@@ -5268,6 +5271,7 @@ function render(){
   else if(view==='email') renderEmail();
   else if(view==='vendors') renderVendors();
   else if(view==='planner') renderPlanner();
+  else if(view==='bookmarks') renderBookmarks();
 }
 
 function renderReports(){
@@ -9085,6 +9089,80 @@ function renderPlanner(){
   });
 }
 
+// ── Bookmarks ─────────────────────────────────────────────────────────────
+function renderBookmarks(){
+  var bookmarks = [...db.bookmarks].sort(function(a,b){return (a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase());});
+  $('main').innerHTML =
+    '<div class="page-hdr"><div class="page-title">Bookmarks</div><button class="add-btn" id="btn-add-bookmark">+ Add Bookmark</button></div>'+
+    (bookmarks.length ? '<div class="tbl-wrap"><table class="tbl-planner"><thead><tr>'+
+      '<th>Name</th><th>Category</th><th>URL</th><th></th>'+
+    '</tr></thead><tbody>'+bookmarks.map(function(b){
+      return '<tr>'+
+        '<td><a href="'+escHtml(b.url||'#')+'" target="_blank" rel="noopener noreferrer" style="color:#2563eb;font-weight:600;text-decoration:underline">'+escHtml(b.name||'(untitled)')+'</a>'+
+          (b.notes?'<div style="margin-top:2px;font-size:11px;color:#888">'+escHtml(b.notes)+'</div>':'')+
+        '</td>'+
+        '<td>'+(b.category?'<span class="badge b-blue">'+escHtml(b.category)+'</span>':'<span style="color:#aaa">—</span>')+'</td>'+
+        '<td style="font-size:12px;color:#888;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escHtml(b.url||'')+'</td>'+
+        '<td style="white-space:nowrap">'+
+          '<button class="icon-btn edit-bookmark" data-id="'+b.id+'" title="Edit">&#9998;&#65039;</button>'+
+          '<button class="icon-btn del-bookmark" data-id="'+b.id+'" style="color:#dc2626" title="Delete">&#128465;&#65039;</button>'+
+        '</td>'+
+      '</tr>';
+    }).join('')+'</tbody></table></div>' : '<div class="empty">No bookmarks yet — save links to airline sites, visa/documentation portals, or other travel tools you use often</div>');
+
+  $('btn-add-bookmark').addEventListener('click', function(){openBookmarkForm();});
+  document.querySelectorAll('.edit-bookmark').forEach(function(btn){
+    btn.addEventListener('click', function(){openBookmarkForm(this.dataset.id);});
+  });
+  document.querySelectorAll('.del-bookmark').forEach(function(btn){
+    btn.addEventListener('click', function(){deleteBookmark(this.dataset.id);});
+  });
+}
+function openBookmarkForm(id){
+  var d = id ? (db.bookmarks.find(function(b){return b.id===id;})||{}) : {};
+  $('modal').innerHTML=
+    '<div class="modal-hdr"><div class="modal-title">'+(id?'Edit Bookmark':'Add Bookmark')+'</div><button class="close-btn" id="modal-close">&#x2715;</button></div>'+
+    '<div class="fg">'+
+      fld('Name', inp('bm-name','text',d.name,'e.g. United Airlines'), true)+
+      fld('URL', inp('bm-url','text',d.url,'e.g. www.united.com'), true)+
+      fld('Category', '<select id="bm-category"><option value="">-- Select --</option>'+selOpts(BOOKMARK_CATEGORIES,d.category)+'</select>')+
+      fld('Notes', '<textarea id="bm-notes">'+(d.notes||'')+'</textarea>', true)+
+    '</div>'+
+    '<div class="form-actions">'+
+      '<button class="cancel-btn" id="modal-cancel">Cancel</button>'+
+      '<button class="save-btn" id="modal-save-bookmark" data-id="'+(id||'')+'">Save Bookmark</button>'+
+    '</div>';
+  $('overlay').classList.add('open');
+  $('modal-close').addEventListener('click', closeModal);
+  $('modal-cancel').addEventListener('click', closeModal);
+  $('modal-save-bookmark').addEventListener('click', function(){saveBookmark(this.dataset.id);});
+}
+function saveBookmark(id){
+  var name = gv('bm-name'), url = gv('bm-url');
+  if(!name || !url){toast('Name and URL are required','err');return;}
+  // A bare domain (e.g. "united.com") would otherwise be treated as a
+  // relative link and just reload the CRM itself instead of navigating out.
+  if(!/^https?:\/\//i.test(url)) url = 'https://'+url;
+  snapshot(id?'Edit bookmark':'Add bookmark');
+  var data = {name:name, url:url, category:gv('bm-category'), notes:gv('bm-notes')};
+  if(id){
+    db.bookmarks = db.bookmarks.map(function(b){return b.id===id?Object.assign({},b,data):b;});
+    toast('Bookmark updated');
+  } else {
+    data.id = newId('BM', db.bookmarks);
+    db.bookmarks.push(data);
+    toast('Bookmark added');
+  }
+  saveDB();closeModal();render();
+}
+function deleteBookmark(id){
+  if(!confirm('Delete this bookmark?')) return;
+  snapshot('Delete bookmark');
+  db.bookmarks = db.bookmarks.filter(function(b){return b.id!==id;});
+  saveDB();render();
+  toast('Bookmark deleted');
+}
+
 // Every linked client's email (primary + additional), comma-joined — comma
 // is the mailto: multi-recipient separator, so this string can be dropped
 // straight into an "Email in Outlook" link with no further work.
@@ -9451,6 +9529,7 @@ function bindClick(id, handler){
   bindClick('nb-email', function(){go('email');closeMobileNav();});
   bindClick('nb-vendors', function(){go('vendors');closeMobileNav();});
   bindClick('nb-planner', function(){go('planner');closeMobileNav();});
+  bindClick('nb-bookmarks', function(){go('bookmarks');closeMobileNav();});
   bindClick('outlook-btn', syncOutlook);
   bindClick('drive-btn', driveBackup);
   bindClick('drive-restore-btn', driveRestore);

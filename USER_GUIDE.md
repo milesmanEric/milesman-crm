@@ -142,6 +142,12 @@ It can only do a fixed set of things: find clients, find trips, add a client not
 
 ---
 
+## Bookmarks
+
+A place to save links to sites you use often — airline sites, hotel booking tools, visa/documentation portals, currency or weather lookups, whatever. **+ Add Bookmark**, give it a name and a URL (you can skip the `https://` — it's added automatically), and optionally a category and a note. Click the name to open the link in a new tab; the pencil/trash icons edit or delete it.
+
+---
+
 ## Connecting Outlook
 
 Email menu → **Sync Outlook Emails**. This is a one-time login (until you sign out or the token expires) that unlocks:
