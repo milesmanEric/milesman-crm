@@ -304,15 +304,16 @@ tr:last-child td{border-bottom:none}
 
 
   <div id="debug-panel" style="display:none;position:fixed;bottom:0;left:0;right:0;height:200px;background:#1a1a2e;color:#00ff88;font-family:monospace;font-size:11px;padding:10px;overflow-y:auto;z-index:2000;border-top:2px solid #00ff88">
-    <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+    <!-- Floating (position:fixed, not part of the panel's own scroll flow) so
+         Close stays reachable no matter how far down a long log is scrolled —
+         previously there were two Close buttons (top and bottom) as a
+         workaround for the top one scrolling out of view. -->
+    <button id="debug-close" title="Close" style="position:fixed;bottom:172px;right:16px;background:#1a1a2e;border:1px solid #ff4444;color:#ff4444;cursor:pointer;font-size:10px;padding:3px 10px;border-radius:4px;z-index:2001;box-shadow:0 2px 6px rgba(0,0,0,.4)">Close</button>
+    <div style="display:flex;justify-content:space-between;margin-bottom:6px;padding-right:64px">
       <strong>Debug Log</strong>
       <button id="debug-clear" style="background:none;border:1px solid #00ff88;color:#00ff88;cursor:pointer;font-size:10px;padding:2px 8px;border-radius:4px">Clear</button>
-      <button id="debug-close" style="background:none;border:1px solid #ff4444;color:#ff4444;cursor:pointer;font-size:10px;padding:2px 8px;border-radius:4px">Close</button>
     </div>
     <div id="debug-log"></div>
-    <div style="text-align:center;margin-top:8px">
-      <button id="debug-close-bottom" style="background:none;border:1px solid #ff4444;color:#ff4444;cursor:pointer;font-size:10px;padding:2px 8px;border-radius:4px">Close</button>
-    </div>
   </div>
 <div id="import-match-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:3000;display:none;align-items:center;justify-content:center;padding:20px">
   <div id="import-match-box" style="background:#fff;border-radius:12px;padding:26px;width:520px;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.2)">
@@ -9489,7 +9490,6 @@ function bindClick(id, handler){
     p.style.display=p.style.display==='none'?'block':'none';
   });
   bindClick('debug-close', function(){$('debug-panel').style.display='none';});
-  bindClick('debug-close-bottom', function(){$('debug-panel').style.display='none';});
   bindClick('btn-test-connectivity', function(){
     $('debug-panel').style.display='block';
     debugLog('=== Connectivity Test Started ===');
