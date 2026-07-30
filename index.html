@@ -287,6 +287,8 @@ tr:last-child td{border-bottom:none}
         <button class="sync-btn" id="btn-clear-trips" style="color:#dc2626;border-color:#fca5a5">&#128465; Clear All Trips</button>
       </div>
 
+      <button class="sync-btn" id="btn-user-guide" style="color:#888;border-color:#ddd;font-size:11px">&#128214; User Guide</button>
+      <button class="sync-btn" id="btn-documentation" style="color:#888;border-color:#ddd;font-size:11px">&#128220; Documentation</button>
       <button class="sync-btn" id="btn-debug-toggle" style="color:#888;border-color:#ddd;font-size:11px">&#128030; Debug Panel</button>
       <button class="sync-btn" id="btn-test-connectivity" style="color:#888;border-color:#ddd;font-size:11px">&#128225; Test Connectivity</button>
       <button class="sync-btn" id="btn-change-password" style="color:#888;border-color:#ddd;font-size:11px">&#128273; Change Password</button>
@@ -9962,6 +9964,8 @@ function bindClick(id, handler){
     toast('Outlook login reset - click Sync to reconnect','ok');
     debugLog('MS tokens cleared');
   });
+  bindClick('btn-user-guide', function(){ window.open('user-guide.html', '_blank', 'noopener,noreferrer'); });
+  bindClick('btn-documentation', function(){ window.open('documentation.html', '_blank', 'noopener,noreferrer'); });
   bindClick('btn-debug-toggle', function(){
     const p=$('debug-panel');
     p.style.display=p.style.display==='none'?'block':'none';
