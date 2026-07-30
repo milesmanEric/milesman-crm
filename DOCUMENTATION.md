@@ -79,7 +79,9 @@ Follow-up tasks: `title`, `dueDate`, `done`, `clientId`, `clientIds`, `vendorId`
 `email` autofills from every linked client's email, comma-joined (`linkedClientEmailsStr()`) — comma is the mailto: multi-recipient separator, so the "Email in Outlook" link reaches all of them at once with no extra work. It re-derives every time the Linked Client dropdown or an Additional Clients checkbox changes, and is still a plain editable text field if you need to override it by hand.
 
 ### `db.bookmarks` (`BM001`, ...)
-Saved links to travel-related websites: `name`, `url`, `category` (one of `BOOKMARK_CATEGORIES` — Airline, Hotel, Cruise Line, Car Rental, Visa/Documentation, Currency/Weather, Tool, Other — optional), `notes`. `saveBookmark()` prepends `https://` onto whatever's typed if it doesn't already start with `http://`/`https://`, since a bare domain like `united.com` would otherwise be treated as a relative link and just reload the CRM itself instead of navigating out.
+Saved links to travel-related websites: `name`, `url`, `category` (one of `BOOKMARK_CATEGORIES` — Airline, Hotel, Cruise Line, Car Rental, Tour/Activity, Theme Park, Travel Advisor Login, Visa/Documentation, Currency/Weather, Tool, Other — optional), `notes`. `saveBookmark()` prepends `https://` onto whatever's typed if it doesn't already start with `http://`/`https://`, since a bare domain like `united.com` would otherwise be treated as a relative link and just reload the CRM itself instead of navigating out.
+
+`DEFAULT_BOOKMARKS` is a hardcoded starter pack (~110 entries) of consumer booking-site URLs and travel-advisor/agent-portal login URLs for the airlines/hotels/car-rental companies/cruise lines/tour vendors/theme parks in the app's existing constant lists — added on demand via the Bookmarks page's "+ Load Starter Bookmarks" button (`seedDefaultBookmarks()`), not seeded automatically. It skips any entry whose `name`+`category` already exists in `db.bookmarks`, so the button is safe to click repeatedly (e.g. after adding new vendors to the starter list in a future update). A handful of entries carry a `notes` value flagging them as unverified (e.g. "verify before relying on this link") where the underlying research could not fully confirm the exact portal URL; a few known vendors (Southwest/Frontier agent portals, Hyatt/Wyndham/Avis/Budget agent portals) were omitted entirely rather than guessed, since no distinct branded portal could be confirmed to exist for them.
 
 ---
 
@@ -169,7 +171,7 @@ There are two **separate**, more elaborate modals reached from header buttons in
 Both share the same send mechanics: the rendered HTML is copied to the clipboard (`copyHtmlToClipboard()` — `mailto:` bodies are plain-text only) and `mailto:` is opened to the client's address for pasting into Outlook, then an `Email Sent` note is logged on the client record.
 
 ### Bookmarks
-A simple saved-links list — see §2's `db.bookmarks` for the schema. Sortable-by-name table (Name/Category/URL), each name a real `<a target="_blank">` link that opens the site in a new tab; edit/delete icons per row, same pattern as every other simple list page in the app (`renderBookmarks()`/`openBookmarkForm()`/`saveBookmark()`/`deleteBookmark()`).
+A simple saved-links list — see §2's `db.bookmarks` for the schema. Sortable-by-name table (Name/Category/URL), each name a link that opens the site in a new tab (an explicit `window.open()` click handler backs up the `target="_blank"` attribute, since that alone isn't always honored for links clicked from a `file://` page); edit/delete icons per row, same pattern as every other simple list page in the app (`renderBookmarks()`/`openBookmarkForm()`/`saveBookmark()`/`deleteBookmark()`). A "+ Load Starter Bookmarks" button seeds the list with `DEFAULT_BOOKMARKS`, a curated starter pack of consumer + travel-advisor-portal links for known vendors (see §2).
 
 ---
 
