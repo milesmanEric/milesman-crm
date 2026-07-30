@@ -5285,6 +5285,7 @@ function renderReports(){
       '<button class="rpt-tab-btn'+(activeTab==='activity'?' active':'')+'" data-tab="activity">Activity Report</button>'+
       '<button class="rpt-tab-btn'+(activeTab==='invoice'?' active':'')+'" data-tab="invoice">By Invoice #</button>'+
       '<button class="rpt-tab-btn'+(activeTab==='certs'?' active':'')+'" data-tab="certs">Unused Certificates</button>'+
+      '<button class="rpt-tab-btn'+(activeTab==='points'?' active':'')+'" data-tab="points">Combined Points</button>'+
     '</div>'+
     (activeTab==='activity' ?
       ('<div class="report-filter">'+
@@ -5320,7 +5321,7 @@ function renderReports(){
         '</div>'+
       '</div>'+
       '<div id="rpt-inv-results"><div class="empty" style="padding:40px">Set filters above and click Run Report</div></div>')
-    :
+    : activeTab==='certs' ?
       ('<div class="report-filter">'+
         '<div><label>Client</label><select id="rpt-cert-client"><option value="">All clients</option>'+
           [...db.clients].sort(function(a,b){return (a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase());}).map(function(c){return '<option value="'+c.id+'">'+c.name+'</option>';}).join('')+
@@ -5331,6 +5332,23 @@ function renderReports(){
         '</div>'+
       '</div>'+
       '<div id="rpt-cert-results"><div class="empty" style="padding:40px">Click Run Report to list every unredeemed referral certificate</div></div>')
+    :
+      ('<div class="field full" style="margin-bottom:14px">'+
+        '<label>Travelers <span class="hint" style="text-transform:none;font-weight:400">(pick every traveler whose points you want combined)</span></label>'+
+        '<div style="border:1px solid #e5e7eb;border-radius:8px;padding:10px;max-height:200px;overflow-y:auto;background:#fafafa">'+
+          ([...db.clients].sort(function(a,b){return (a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase());}).map(function(c){
+            return '<label style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:13px;cursor:pointer">'+
+              '<input type="checkbox" class="rpt-pts-client-cb" value="'+c.id+'" style="width:14px;height:14px">'+
+              '<span>'+c.name+'</span>'+
+            '</label>';
+          }).join('') || '<div style="color:#aaa;font-size:12px">No clients yet</div>')+
+        '</div>'+
+      '</div>'+
+      '<div style="display:flex;gap:8px;margin-bottom:16px">'+
+        '<button class="report-run-btn" id="rpt-pts-run">Run Report</button>'+
+        '<button class="report-export-btn" id="rpt-pts-export">Export CSV</button>'+
+      '</div>'+
+      '<div id="rpt-pts-results"><div class="empty" style="padding:40px">Select at least one traveler above and click Run Report</div></div>')
     );
 
   document.querySelectorAll('.rpt-tab-btn').forEach(function(btn){
@@ -5366,7 +5384,7 @@ function renderReports(){
       }, 50);
     });
     document.getElementById('rpt-inv-export').addEventListener('click', exportInvoiceReport);
-  } else {
+  } else if(activeTab==='certs'){
     document.getElementById('rpt-cert-run').addEventListener('click', function(){
       runCertificatesReport();
       setTimeout(function(){
@@ -5378,6 +5396,9 @@ function renderReports(){
       }, 50);
     });
     document.getElementById('rpt-cert-export').addEventListener('click', exportCertificatesReport);
+  } else {
+    document.getElementById('rpt-pts-run').addEventListener('click', runPointsReport);
+    document.getElementById('rpt-pts-export').addEventListener('click', exportPointsReport);
   }
 }
 
@@ -5535,6 +5556,90 @@ function exportCertificatesReport(){
   var csv = [headers].concat(csvRows).map(function(r){return r.map(esc).join(',');}).join('\n');
   var b = new Blob([csv],{type:'text/csv'});
   var a = document.createElement('a'); a.href=URL.createObjectURL(b); a.download='milesman-unused-certificates-report.csv'; a.click();
+  toast('Report exported ✓');
+}
+
+// Builds one section per loyalty category (Airline/Hotel/Cruise/Car Rental/
+// Credit Card), each a program-by-traveler grid with a Combined Total column
+// — the actual point of this report is seeing whether pooling everyone
+// selected's balance for the same program clears a redemption threshold.
+// Only programs with a nonzero combined total show up, so a couple with a
+// dozen empty airline programs between them doesn't get an all-zero table.
+function getCombinedPointsReportData(clientIds){
+  var travelers = clientIds.map(function(id){return db.clients.find(function(c){return c.id===id;});}).filter(Boolean);
+  function buildSection(title, programs, field, hasStatus){
+    var rows = programs.map(function(program){
+      var perTraveler = travelers.map(function(t){
+        var bal = (t[field]||{})[program];
+        if(hasStatus) return {balance:(bal&&bal.balance)||0, status:(bal&&bal.status)||''};
+        return {balance:bal||0, status:''};
+      });
+      var total = perTraveler.reduce(function(a,p){return a+(Number(p.balance)||0);},0);
+      return {program:program, perTraveler:perTraveler, total:total};
+    }).filter(function(r){return r.total>0;});
+    return {title:title, rows:rows};
+  }
+  var groups = [
+    buildSection('Airline Miles', AIRLINES, 'mileageBalances', true),
+    buildSection('Hotel Points', HOTELS, 'hotelBalances', true),
+    buildSection('Cruise Line Loyalty', CRUISE_LINES, 'cruiseBalances', true),
+    buildSection('Car Rental Loyalty', CAR_RENTALS, 'carRentalBalances', true),
+    buildSection('Credit Card Points', CREDIT_CARDS, 'creditCardBalances', false)
+  ];
+  return {travelers:travelers, groups:groups};
+}
+function runPointsReport(){
+  var container = document.getElementById('rpt-pts-results');
+  if(!container) return;
+  var clientIds = Array.from(document.querySelectorAll('.rpt-pts-client-cb:checked')).map(function(cb){return cb.value;});
+  if(!clientIds.length){
+    container.innerHTML = '<div class="empty" style="padding:40px">Select at least one traveler above and click Run Report</div>';
+    window._pointsReportData = null;
+    return;
+  }
+  var data = getCombinedPointsReportData(clientIds);
+  window._pointsReportData = data;
+  var travelers = data.travelers, groups = data.groups;
+  var anyRows = groups.some(function(g){return g.rows.length;});
+  if(!anyRows){
+    container.innerHTML = '<div class="empty" style="padding:40px">No points balances found for the selected traveler(s)</div>';
+    return;
+  }
+  container.innerHTML = groups.map(function(g){
+    if(!g.rows.length) return '';
+    return '<div style="margin-bottom:24px">'+
+      '<div style="font-size:14px;font-weight:700;color:#111;margin-bottom:8px">'+g.title+'</div>'+
+      '<div class="tbl-wrap"><table class="report-table"><thead><tr>'+
+        '<th>Program</th>'+
+        travelers.map(function(t){return '<th style="text-align:right">'+escHtml(t.name)+'</th>';}).join('')+
+        '<th style="text-align:right">Combined Total</th>'+
+      '</tr></thead><tbody>'+
+      g.rows.map(function(r){
+        return '<tr><td>'+escHtml(r.program)+'</td>'+
+          r.perTraveler.map(function(p){
+            return '<td style="text-align:right">'+fmt(p.balance)+(p.status?' <span style="color:#888;font-size:11px">('+escHtml(p.status)+')</span>':'')+'</td>';
+          }).join('')+
+          '<td style="text-align:right;font-weight:700">'+fmt(r.total)+'</td>'+
+        '</tr>';
+      }).join('')+
+      '</tbody></table></div>'+
+    '</div>';
+  }).join('');
+}
+function exportPointsReport(){
+  var data = window._pointsReportData;
+  if(!data || !data.groups.some(function(g){return g.rows.length;})){ toast('No data to export','err'); return; }
+  var esc = function(v){ var s=String(v==null?'':v); return s.includes(',')||s.includes('"')||s.includes('\n')?'"'+s.replace(/"/g,'""')+'"':s; };
+  var headers = ['Category','Program'].concat(data.travelers.map(function(t){return t.name;})).concat(['Combined Total']);
+  var csvRows = [];
+  data.groups.forEach(function(g){
+    g.rows.forEach(function(r){
+      csvRows.push([g.title, r.program].concat(r.perTraveler.map(function(p){return p.balance;})).concat([r.total]));
+    });
+  });
+  var csv = [headers].concat(csvRows).map(function(r){return r.map(esc).join(',');}).join('\n');
+  var b = new Blob([csv],{type:'text/csv'});
+  var a = document.createElement('a'); a.href=URL.createObjectURL(b); a.download='milesman-combined-points-report.csv'; a.click();
   toast('Report exported ✓');
 }
 
