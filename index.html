@@ -3023,6 +3023,49 @@ async function generateQuotePdfBlob(bodyHtml){
     document.body.removeChild(container);
   }
 }
+// Same html2canvas-into-jsPDF approach as generateQuotePdfBlob, but wider
+// and landscape — report tables can run to 5-10+ columns (combined points
+// across several travelers, invoice line items), which a 650px portrait
+// page would just clip.
+async function generateReportPdfBlob(bodyHtml){
+  var html2pdfLib = await loadHtml2PdfLib();
+  var container = document.createElement('div');
+  container.style.cssText='position:fixed;top:0;left:0;width:1000px;background:#fff;z-index:-1';
+  container.innerHTML = bodyHtml;
+  document.body.appendChild(container);
+  void container.offsetHeight;
+  var w = container.scrollWidth, h = container.scrollHeight;
+  try{
+    return await html2pdfLib().set({
+      margin:20, image:{type:'jpeg',quality:0.95},
+      html2canvas:{scale:2, width:w, height:h, windowWidth:w, windowHeight:h},
+      jsPDF:{unit:'pt', format:'letter', orientation:'landscape'}
+    }).from(container).outputPdf('blob');
+  } finally {
+    document.body.removeChild(container);
+  }
+}
+function reportPdfHtml(title, subtitle, bodyHtml){
+  return '<div style="font-family:Arial,sans-serif;color:#111;padding:10px 24px 24px">'+
+    '<div style="display:flex;justify-content:space-between;align-items:baseline;border-bottom:2px solid #1a1aff;padding-bottom:10px;margin-bottom:14px">'+
+      '<div style="font-size:22px;font-weight:700">'+escHtml(title)+'</div>'+
+      '<div style="font-size:11px;color:#888">Miles Man CRM &middot; Generated '+new Date().toLocaleString()+'</div>'+
+    '</div>'+
+    (subtitle ? '<div style="font-size:13px;color:#555;margin-bottom:14px">'+subtitle+'</div>' : '')+
+    '<style>table{border-collapse:collapse;width:100%} th,td{border:1px solid #ddd;padding:6px 10px;font-size:12px;text-align:left;vertical-align:top} th{background:#f3f4f6}</style>'+
+    bodyHtml+
+  '</div>';
+}
+async function downloadReportAsPdf(title, subtitle, bodyHtml, filename){
+  try{
+    var blob = await generateReportPdfBlob(reportPdfHtml(title, subtitle, bodyHtml));
+    downloadPdfBlob(blob, filename);
+    toast('PDF exported ✓');
+  }catch(e){
+    debugLog('Report PDF generation failed: '+e.message);
+    toast('PDF export failed: '+e.message,'err');
+  }
+}
 const DRIVE_QUOTES_FOLDER_NAME = 'Miles Man Quotes';
 let _driveQuotesFolderId = null;
 async function getOrCreateDriveQuotesFolder(token){
@@ -5505,6 +5548,7 @@ function renderReports(){
         '<div style="display:flex;gap:8px;align-self:flex-end">'+
           '<button class="report-run-btn" id="rpt-run">Run Report</button>'+
           '<button class="report-export-btn" id="rpt-export">Export CSV</button>'+
+          '<button class="report-export-btn" id="rpt-export-pdf">Export PDF</button>'+
         '</div>'+
       '</div>'+
       '<div id="rpt-results"><div class="empty" style="padding:40px">Set filters above and click Run Report</div></div>')
@@ -5525,6 +5569,7 @@ function renderReports(){
         '<div style="display:flex;gap:8px;align-self:flex-end">'+
           '<button class="report-run-btn" id="rpt-inv-run">Run Report</button>'+
           '<button class="report-export-btn" id="rpt-inv-export">Export CSV</button>'+
+          '<button class="report-export-btn" id="rpt-inv-export-pdf">Export PDF</button>'+
         '</div>'+
       '</div>'+
       '<div id="rpt-inv-results"><div class="empty" style="padding:40px">Set filters above and click Run Report</div></div>')
@@ -5536,6 +5581,7 @@ function renderReports(){
         '<div style="display:flex;gap:8px;align-self:flex-end">'+
           '<button class="report-run-btn" id="rpt-cert-run">Run Report</button>'+
           '<button class="report-export-btn" id="rpt-cert-export">Export CSV</button>'+
+          '<button class="report-export-btn" id="rpt-cert-export-pdf">Export PDF</button>'+
         '</div>'+
       '</div>'+
       '<div id="rpt-cert-results"><div class="empty" style="padding:40px">Click Run Report to list every unredeemed referral certificate</div></div>')
@@ -5554,6 +5600,7 @@ function renderReports(){
       '<div style="display:flex;gap:8px;margin-bottom:16px">'+
         '<button class="report-run-btn" id="rpt-pts-run">Run Report</button>'+
         '<button class="report-export-btn" id="rpt-pts-export">Export CSV</button>'+
+        '<button class="report-export-btn" id="rpt-pts-export-pdf">Export PDF</button>'+
       '</div>'+
       '<div id="rpt-pts-results"><div class="empty" style="padding:40px">Select at least one traveler above and click Run Report</div></div>')
     );
@@ -5579,6 +5626,7 @@ function renderReports(){
       }, 50);
     });
     document.getElementById('rpt-export').addEventListener('click', exportReport);
+    document.getElementById('rpt-export-pdf').addEventListener('click', exportReportPdf);
   } else if(activeTab==='invoice'){
     document.getElementById('rpt-inv-run').addEventListener('click', function(){
       runInvoiceReport();
@@ -5591,6 +5639,7 @@ function renderReports(){
       }, 50);
     });
     document.getElementById('rpt-inv-export').addEventListener('click', exportInvoiceReport);
+    document.getElementById('rpt-inv-export-pdf').addEventListener('click', exportInvoiceReportPdf);
   } else if(activeTab==='certs'){
     document.getElementById('rpt-cert-run').addEventListener('click', function(){
       runCertificatesReport();
@@ -5603,9 +5652,11 @@ function renderReports(){
       }, 50);
     });
     document.getElementById('rpt-cert-export').addEventListener('click', exportCertificatesReport);
+    document.getElementById('rpt-cert-export-pdf').addEventListener('click', exportCertificatesReportPdf);
   } else {
     document.getElementById('rpt-pts-run').addEventListener('click', runPointsReport);
     document.getElementById('rpt-pts-export').addEventListener('click', exportPointsReport);
+    document.getElementById('rpt-pts-export-pdf').addEventListener('click', exportPointsReportPdf);
   }
 }
 
@@ -5701,6 +5752,32 @@ function exportInvoiceReport(){
   var a = document.createElement('a'); a.href=URL.createObjectURL(b); a.download='milesman-invoice-report.csv'; a.click();
   toast('Report exported ✓');
 }
+function invoiceReportPdfTable(groups){
+  var rowsHtml = '', grandTotal = 0;
+  groups.forEach(function(g){
+    g.trips.forEach(function(t, ti){
+      rowsHtml += '<tr>'+
+        (ti===0 ? '<td rowspan="'+g.trips.length+'" style="font-weight:700">'+escHtml(String(g.invoiceNum))+'</td>' : '')+
+        '<td>'+escHtml(t.clientName||'')+'</td>'+
+        '<td>'+escHtml(t.destination||'')+'</td>'+
+        '<td>'+escHtml(t.departDate||'')+'</td>'+
+        '<td>'+escHtml(t.invoiceDate||'—')+'</td>'+
+        '<td>'+escHtml(t.supplierName||'—')+'</td>'+
+        '<td style="text-align:right">$'+money(t.totalValue||0)+'</td>'+
+      '</tr>';
+    });
+    rowsHtml += '<tr style="background:#f9fafb"><td colspan="6" style="text-align:right;font-weight:700">Invoice '+escHtml(String(g.invoiceNum))+' Total:</td><td style="text-align:right;font-weight:700">$'+money(g.totalValue)+'</td></tr>';
+    grandTotal += g.totalValue;
+  });
+  return '<table><thead><tr><th>Invoice #</th><th>Client</th><th>Destination</th><th>Travel Date</th><th>Invoice Date</th><th>Supplier</th><th style="text-align:right">Value</th></tr></thead><tbody>'+rowsHtml+'</tbody></table>'+
+    '<div style="text-align:right;margin-top:10px;font-weight:700;font-size:13px">Grand Total: $'+money(grandTotal)+'</div>';
+}
+async function exportInvoiceReportPdf(){
+  var groups = getInvoiceReportData();
+  if(!groups.length){ toast('No data to export','err'); return; }
+  var subtitle = groups.length+' invoice'+(groups.length!==1?'s':'');
+  await downloadReportAsPdf('Invoice Report', subtitle, invoiceReportPdfTable(groups), 'milesman-invoice-report.pdf');
+}
 
 // A certificate can have a referralCredits row on more than one client's
 // record (every referrer named on it gets one — see addReferralCreditEntries
@@ -5764,6 +5841,24 @@ function exportCertificatesReport(){
   var b = new Blob([csv],{type:'text/csv'});
   var a = document.createElement('a'); a.href=URL.createObjectURL(b); a.download='milesman-unused-certificates-report.csv'; a.click();
   toast('Report exported ✓');
+}
+function certificatesReportPdfTable(rows){
+  var rowsHtml = rows.map(function(g){
+    return '<tr><td>#'+String(g.certNumber).padStart(6,'0')+'</td>'+
+      '<td>'+escHtml(g.referrerNames.join(', '))+'</td>'+
+      '<td>'+escHtml(g.referredNames.join(', '))+'</td>'+
+      '<td>'+escHtml(g.date||'—')+'</td>'+
+      '<td style="text-align:right">$'+money(g.amount||0)+'</td></tr>';
+  }).join('');
+  var grandTotal = rows.reduce(function(a,g){return a+(g.amount||0);},0);
+  return '<table><thead><tr><th>Certificate #</th><th>Referrer(s)</th><th>Referred</th><th>Date Issued</th><th style="text-align:right">Amount</th></tr></thead><tbody>'+rowsHtml+'</tbody></table>'+
+    '<div style="text-align:right;margin-top:10px;font-weight:700;font-size:13px">Total: $'+money(grandTotal)+'</div>';
+}
+async function exportCertificatesReportPdf(){
+  var rows = getUnusedCertificatesReportData();
+  if(!rows.length){ toast('No data to export','err'); return; }
+  var subtitle = rows.length+' unused certificate'+(rows.length!==1?'s':'');
+  await downloadReportAsPdf('Unused Certificates Report', subtitle, certificatesReportPdfTable(rows), 'milesman-unused-certificates-report.pdf');
 }
 
 // Builds one section per loyalty category (Airline/Hotel/Cruise/Car Rental/
@@ -5848,6 +5943,28 @@ function exportPointsReport(){
   var b = new Blob([csv],{type:'text/csv'});
   var a = document.createElement('a'); a.href=URL.createObjectURL(b); a.download='milesman-combined-points-report.csv'; a.click();
   toast('Report exported ✓');
+}
+function pointsReportPdfTable(data){
+  return data.groups.map(function(g){
+    if(!g.rows.length) return '';
+    return '<div style="font-size:14px;font-weight:700;margin:16px 0 6px">'+escHtml(g.title)+'</div>'+
+      '<table><thead><tr><th>Program</th>'+
+        data.travelers.map(function(t){return '<th style="text-align:right">'+escHtml(t.name)+'</th>';}).join('')+
+        '<th style="text-align:right">Combined Total</th>'+
+      '</tr></thead><tbody>'+
+      g.rows.map(function(r){
+        return '<tr><td>'+escHtml(r.program)+'</td>'+
+          r.perTraveler.map(function(p){return '<td style="text-align:right">'+fmt(p.balance)+(p.status?' ('+escHtml(p.status)+')':'')+'</td>';}).join('')+
+          '<td style="text-align:right;font-weight:700">'+fmt(r.total)+'</td></tr>';
+      }).join('')+
+      '</tbody></table>';
+  }).join('');
+}
+async function exportPointsReportPdf(){
+  var data = window._pointsReportData;
+  if(!data || !data.groups.some(function(g){return g.rows.length;})){ toast('No data to export','err'); return; }
+  var subtitle = 'Travelers: '+escHtml(data.travelers.map(function(t){return t.name;}).join(', '));
+  await downloadReportAsPdf('Combined Points Report', subtitle, pointsReportPdfTable(data), 'milesman-combined-points-report.pdf');
 }
 
 function getReportData(){
@@ -5945,6 +6062,22 @@ function exportReport(){
   var b = new Blob([csv],{type:'text/csv'});
   var a = document.createElement('a'); a.href=URL.createObjectURL(b); a.download='milesman-notes-report.csv'; a.click();
   toast('Report exported ✓');
+}
+function activityReportPdfTable(rows){
+  return '<table><thead><tr><th>Client</th><th>Timestamp</th><th>Type</th><th>Note</th></tr></thead><tbody>'+
+    rows.map(function(r){
+      return '<tr><td>'+escHtml(r.client)+(r.email?'<br><span style="font-size:10px;color:#888">'+escHtml(r.email)+'</span>':'')+'</td>'+
+        '<td style="white-space:nowrap">'+escHtml(r.ts)+'</td>'+
+        '<td>'+escHtml(r.type||'—')+'</td>'+
+        '<td>'+escHtml(r.text)+'</td></tr>';
+    }).join('')+
+  '</tbody></table>';
+}
+async function exportReportPdf(){
+  var rows = getReportData();
+  if(!rows.length){ toast('No data to export','err'); return; }
+  var subtitle = rows.length+' note'+(rows.length!==1?'s':'')+' found';
+  await downloadReportAsPdf('Activity Report', subtitle, activityReportPdfTable(rows), 'milesman-notes-report.pdf');
 }
 
 // ── Email Templates ───────────────────────────────────────────────────────

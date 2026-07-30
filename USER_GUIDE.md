@@ -110,15 +110,17 @@ A month view with every trip painted across its travel dates. Click into a day t
 
 ## Reports
 
-Four tabs:
-- **Activity Report** — every note logged across every client, filterable by date range, note type, and client. Export to CSV.
-- **By Invoice #** — trips grouped by booking/invoice reference, filterable by date range, supplier, and client. Export to CSV. (This avoids double-counting revenue when a booking has multiple line items sharing the same reference.)
+Four tabs, each exportable to **CSV** or **PDF**:
+- **Activity Report** — every note logged across every client, filterable by date range, note type, and client.
+- **By Invoice #** — trips grouped by booking/invoice reference, filterable by date range, supplier, and client. (This avoids double-counting revenue when a booking has multiple line items sharing the same reference.)
 
   The date range has a **Filter By** choice: **Travel Date** or **Invoice Date**. These can be genuinely different dates — a trip might get booked in June for August travel — so if a trip you're expecting isn't showing up for a date range, try switching which date you're filtering by before assuming something's wrong. Invoice Date only gets filled in automatically for revenue-imported trips; you can also set it by hand on any trip's Invoice Date field.
 
   **Trips imported before this feature existed have no Invoice Date at all** — filtering those by Invoice Date will show nothing for them until you fix that. Re-run the exact same "Clean & Import Revenue File" / "Import Revenue CSV" import on the same source file: it recognizes the trips it already created and fills in the missing Invoice Date on them (and links a supplier too, if one's since been added) instead of creating duplicates.
-- **Unused Certificates** — every referral bonus certificate that hasn't been marked "Used" yet, across every client, with its certificate number, all the referrers it names, who they referred, the date it was issued, and the $100 amount. Optionally filter down to one referrer. Export to CSV. Click a row to jump to the first referrer's client record. This is the place to check before a certificate slips through the cracks — once you mark it Used on any of its referrers' records, it drops off this list (see [Clients](#clients)).
-- **Combined Points** — check off any number of clients traveling together, hit Run Report, and it lays out every airline, hotel, cruise line, car rental, and credit card program at least one of them has a balance in — one column per traveler, plus a **Combined Total** column adding them all up. This is the "do we have enough between us" report: pick the travelers on a trip, and see right away whether their combined Delta miles or Marriott points actually clear what's needed, instead of checking each person's record separately and adding it up by hand. Only programs where the combined total is above zero show up. Export to CSV.
+- **Unused Certificates** — every referral bonus certificate that hasn't been marked "Used" yet, across every client, with its certificate number, all the referrers it names, who they referred, the date it was issued, and the $100 amount. Optionally filter down to one referrer. Click a row to jump to the first referrer's client record. This is the place to check before a certificate slips through the cracks — once you mark it Used on any of its referrers' records, it drops off this list (see [Clients](#clients)).
+- **Combined Points** — check off any number of clients traveling together, hit Run Report, and it lays out every airline, hotel, cruise line, car rental, and credit card program at least one of them has a balance in — one column per traveler, plus a **Combined Total** column adding them all up. This is the "do we have enough between us" report: pick the travelers on a trip, and see right away whether their combined Delta miles or Marriott points actually clear what's needed, instead of checking each person's record separately and adding it up by hand. Only programs where the combined total is above zero show up.
+
+**Export PDF** builds a clean, printable version of whatever the report currently shows (same filters, same rows) and downloads it as a PDF — handy for emailing a report to someone or keeping an offline copy, versus **Export CSV** for pulling the data into a spreadsheet.
 
 ---
 
