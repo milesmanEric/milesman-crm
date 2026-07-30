@@ -46,7 +46,9 @@ Any popup window (Edit Client, Edit Task, Add Trip, etc.) stays open if you clic
 
 ## Clients
 
-**Adding a client**: Clients page → **+ Add Client**. Name and email are required. Everything else — phone, address, birthdate, citizenship/birth country, how they were referred, preferred airline/hotel/cruise line, and mileage/points balances for every airline, hotel, cruise line, car rental, and credit card program — is optional and can be filled in over time.
+**Adding a client**: Clients page → **+ Add Client**. Name and email are required. Everything else — phone, address, birthdate, citizenship/birth country, how they were referred, preferred airline/hotel/cruise line, mileage/points balances for every airline, hotel, cruise line, car rental, and credit card program, and which airline- and hotel-branded credit cards they hold — is optional and can be filled in over time.
+
+**Airline/Hotel Credit Cards**: two checklists on the client record — check off any co-branded cards the client actually holds (e.g. United Explorer Card, Delta SkyMiles Reserve, Marriott Bonvoy Boundless, Hilton Honors Aspire), grouped by airline/hotel. This is separate from the Credit Card Point Balances section above it — that one's for general travel rewards cards (Chase Sapphire, Amex Platinum, etc.) with a points balance; this is just a plain "do they have this specific airline/hotel card, yes or no." The same two checklists also show up on the trip form, alongside the client's other loyalty balances, so you can check them without leaving the trip you're working on.
 
 **Notes**: every client has a running note timeline. Add a note and tag it with a type (Email Sent, Email Received, Initial Call, Follow-up, Post-Trip Follow-up, General, Text Message Sent/Received, **Lead**, Mailchimp Email Sent, Facebook Message) so the Activity Report can filter on it later.
 

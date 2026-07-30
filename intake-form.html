@@ -33,6 +33,11 @@
   .balance-row input[type="number"]{width:88px;padding:6px 8px;font-size:12px;flex:none}
   .balance-row select{width:96px;padding:6px 8px;font-size:12px;flex:none}
   .balance-row input.balance-status-other{width:110px;padding:6px 8px;font-size:12px;flex:none}
+  .cc-checklist{border:1px solid #e5e7eb;border-radius:8px;padding:10px;background:#fafafa;max-height:260px;overflow-y:auto}
+  .cc-checklist .cc-group-label{font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.03em;margin:8px 0 3px}
+  .cc-checklist .cc-group-label:first-child{margin-top:0}
+  .cc-checklist label{display:flex;align-items:center;gap:8px;padding:2px 0;font-size:13px;font-weight:400;color:#333;cursor:pointer}
+  .cc-checklist input[type="checkbox"]{width:14px;height:14px}
   .submit-row{margin-top:24px}
   button[type="submit"]{width:100%;padding:13px;border-radius:9px;border:none;background:#2563eb;color:#fff;font-size:15px;font-weight:600;font-family:inherit;cursor:pointer}
   button[type="submit"]:hover{background:#1d4ed8}
@@ -188,6 +193,14 @@
       <div class="field full">
         <label>Credit Card Points Balances <span class="hint">(optional — card name only, no account numbers)</span></label>
         <div class="balance-grid" id="cc-balances-grid"></div>
+      </div>
+      <div class="field full">
+        <label>Airline Credit Cards <span class="hint">(check any that apply)</span></label>
+        <div class="cc-checklist" id="airline-cc-checklist"></div>
+      </div>
+      <div class="field full">
+        <label>Hotel Credit Cards <span class="hint">(check any that apply)</span></label>
+        <div class="cc-checklist" id="hotel-cc-checklist"></div>
       </div>
     </div>
 
@@ -586,6 +599,29 @@
   var AIRLINES = ['American','United','Delta','Southwest','JetBlue','Qatar Airways','ANA','Emirates','Lufthansa','British Airways','Air France','Virgin Atlantic','Qantas','Etihad','JAL','Air Canada','Frontier','Alaska/Hawaiian Air'];
   var HOTELS = ['Marriott','Hilton','Hyatt','IHG','Wyndham','Four Seasons','Ritz-Carlton','W Hotels','Kimpton','Conrad'];
   var CREDIT_CARDS = ['Chase Sapphire Preferred','Chase Sapphire Reserve','Chase Ink Business Preferred','Amex Platinum','Amex Gold','Amex Business Platinum','Amex Business Gold','Capital One Venture X','Citi Premier','Citi Prestige','Bilt Mastercard'];
+  // Mirrors AIRLINE_CREDIT_CARDS in the CRM's index.html — keep in sync by
+  // hand. A plain has/doesn't-have checklist, unrelated to the balance
+  // grids above (no balance/status per card, just presence).
+  var AIRLINE_CREDIT_CARDS = {
+    'American': ['Citi / AAdvantage Platinum Select','CitiBusiness / AAdvantage Platinum Select','Barclays AAdvantage Aviator Red','Barclays Aviator Business'],
+    'United': ['United Gateway Card','United Explorer Card','United Quest Card','United Club Infinite Card','United Business Card','United Club Business Card'],
+    'Delta': ['Delta SkyMiles Blue','Delta SkyMiles Gold','Delta SkyMiles Platinum','Delta SkyMiles Reserve','Delta SkyMiles Gold Business','Delta SkyMiles Platinum Business','Delta SkyMiles Reserve Business'],
+    'Southwest': ['Southwest Rapid Rewards Plus','Southwest Rapid Rewards Premier','Southwest Rapid Rewards Priority','Southwest Rapid Rewards Performance Business'],
+    'JetBlue': ['JetBlue Plus Card','JetBlue Business Card'],
+    'British Airways': ['British Airways Visa Signature'],
+    'Frontier': ['Frontier Airlines World Mastercard'],
+    'Alaska/Hawaiian Air': ['Alaska Airlines Visa Signature','Alaska Airlines Business Card','Hawaiian Airlines World Elite Mastercard']
+  };
+  // Mirrors HOTEL_CREDIT_CARDS in the CRM's index.html — keyed by parent
+  // loyalty program, not every HOTELS brand (Four Seasons has no co-branded
+  // card; Ritz-Carlton/W Hotels/Kimpton/Conrad share their parent's program).
+  var HOTEL_CREDIT_CARDS = {
+    'Marriott': ['Marriott Bonvoy Boundless','Marriott Bonvoy Bold','Marriott Bonvoy Brilliant','Marriott Bonvoy Business'],
+    'Hilton': ['Hilton Honors Card','Hilton Honors Surpass','Hilton Honors Aspire','Hilton Honors Business'],
+    'Hyatt': ['World of Hyatt Credit Card','World of Hyatt Business Credit Card'],
+    'IHG': ['IHG One Rewards Traveler','IHG One Rewards Select','IHG One Rewards Premier','IHG One Rewards Premier Business'],
+    'Wyndham': ['Wyndham Rewards Earner','Wyndham Rewards Earner Plus','Wyndham Rewards Earner Business']
+  };
   var CRUISE_LINES = ['Virgin Voyages','Royal Caribbean','Carnival','Norwegian','Princess','Celebrity','Disney Cruise Line','Holland America','MSC Cruises','Viking','Explora Journeys','Seabourn','Ritz Carlton Yachts','Windstar'];
   // Mirrors SHIPS_BY_CRUISE_LINE in the CRM's index.html so the ship list
   // for each cruise line stays in sync between the public form and the CRM.
@@ -732,11 +768,27 @@
   function buildBalanceGrid(containerId, list, prefix, statusMap){
     document.getElementById(containerId).innerHTML = balanceGridHtml(list, prefix, statusMap);
   }
+  // Plain has/doesn't-have checkboxes, grouped by brand — no number/status
+  // per card, so this is its own small builder rather than balanceGridHtml.
+  // Shared by both the airline- and hotel-branded card checklists.
+  function brandedCcChecklistHtml(cardsByBrand, prefix){
+    return Object.keys(cardsByBrand).map(function(brand){
+      return '<div class="cc-group-label">'+brand+'</div>'+
+        cardsByBrand[brand].map(function(card){
+          return '<label><input type="checkbox" name="'+prefix+' - '+card+'" value="Yes"><span>'+card+'</span></label>';
+        }).join('');
+    }).join('');
+  }
+  function buildBrandedCcChecklist(containerId, cardsByBrand, prefix){
+    document.getElementById(containerId).innerHTML = brandedCcChecklistHtml(cardsByBrand, prefix);
+  }
   buildBalanceGrid('airline-balances-grid', AIRLINES, 'Airline', AIRLINE_STATUS);
   buildBalanceGrid('hotel-balances-grid', HOTELS, 'Hotel', HOTEL_STATUS);
   buildBalanceGrid('cruise-balances-grid', CRUISE_LINES, 'Cruise', CRUISE_STATUS);
   buildBalanceGrid('car-rental-balances-grid', CAR_RENTALS, 'Car Rental', CAR_RENTAL_STATUS);
   buildBalanceGrid('cc-balances-grid', CREDIT_CARDS, 'Credit Card', null);
+  buildBrandedCcChecklist('airline-cc-checklist', AIRLINE_CREDIT_CARDS, 'Airline Credit Card');
+  buildBrandedCcChecklist('hotel-cc-checklist', HOTEL_CREDIT_CARDS, 'Hotel Credit Card');
 
   // Additional travelers get the same personal-info + balance fields as
   // Traveler 1, minus the contact/lead-source fields (Email, Phone,
@@ -764,6 +816,8 @@
         '<div class="field full"><label>Cruise Line Loyalty <span class="hint">(optional)</span></label><div class="balance-grid">'+balanceGridHtml(CRUISE_LINES,p+' Cruise',CRUISE_STATUS)+'</div></div>'+
         '<div class="field full"><label>Car Rental Loyalty <span class="hint">(optional)</span></label><div class="balance-grid">'+balanceGridHtml(CAR_RENTALS,p+' Car Rental',CAR_RENTAL_STATUS)+'</div></div>'+
         '<div class="field full"><label>Credit Card Points Balances <span class="hint">(optional)</span></label><div class="balance-grid">'+balanceGridHtml(CREDIT_CARDS,p+' Credit Card',null)+'</div></div>'+
+        '<div class="field full"><label>Airline Credit Cards <span class="hint">(check any that apply)</span></label><div class="cc-checklist">'+brandedCcChecklistHtml(AIRLINE_CREDIT_CARDS,p+' Airline Credit Card')+'</div></div>'+
+        '<div class="field full"><label>Hotel Credit Cards <span class="hint">(check any that apply)</span></label><div class="cc-checklist">'+brandedCcChecklistHtml(HOTEL_CREDIT_CARDS,p+' Hotel Credit Card')+'</div></div>'+
       '</div>'
     );
   }
