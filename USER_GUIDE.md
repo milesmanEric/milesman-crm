@@ -70,6 +70,8 @@ Each mileage/points section (Mileage Balances, Hotel Point Balances, Cruise Line
 
 **Adding a trip**: Trips page → **+ Add Trip**, or open a client and add a trip from there. Client and Destination are the only required fields.
 
+**Linked Trips**: if a trip is really one leg of a bigger multi-city vacation booked as separate trip records (say, a NYC leg and a Paris leg), check the other leg(s) off in the **Linked Trips** list. Linking works both ways automatically — check "Paris Leg" from the NYC trip's form, and the Paris trip's own Linked Trips list picks up the NYC trip too, no need to set it from both sides. Unchecking removes the link from both as well.
+
 The trip form has two parts:
 
 1. **The basics** — origin/destination, dates, status (Planning/Confirmed/Completed/Cancelled), trip type, airline, hotel, cruise line, points used, cash paid, total value, Invoice Number, and a free-text Notes box. This is what shows up in the Trips list and on the Calendar.
@@ -84,7 +86,7 @@ The trip form has two parts:
 
 None of this is required — fill in whatever you actually have confirmed. Leave a category blank if it doesn't apply to that trip.
 
-At the very bottom, a **Summary** section totals everything up live as you fill the form in: every points/miles redemption across every category, added up by program, and a **Total Cash Paid** figure (every Price field plus every points redemption's cash cost, all added together). Nothing to click — it just stays current as you type.
+At the very bottom, a **Summary** section totals everything up live as you fill the form in: every points/miles redemption across every category, added up by program, and a **Total Cash Paid** figure (every Price field plus every points redemption's cash cost, all added together). Nothing to click — it just stays current as you type. If the trip has no Supplier linked, the Summary also shows the Invoice Number — once a Supplier is picked, the invoice is assumed to have gone to them instead, so it drops off this client-facing summary.
 
 ---
 

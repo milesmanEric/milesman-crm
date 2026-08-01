@@ -56,6 +56,7 @@
 <hr>
 <h2>Trips</h2>
 <p><strong>Adding a trip</strong>: Trips page → <strong>+ Add Trip</strong>, or open a client and add a trip from there. Client and Destination are the only required fields.</p>
+<p><strong>Linked Trips</strong>: if a trip is really one leg of a bigger multi-city vacation booked as separate trip records (say, a NYC leg and a Paris leg), check the other leg(s) off in the <strong>Linked Trips</strong> list. Linking works both ways automatically — check &quot;Paris Leg&quot; from the NYC trip&#39;s form, and the Paris trip&#39;s own Linked Trips list picks up the NYC trip too, no need to set it from both sides. Unchecking removes the link from both as well.</p>
 <p>The trip form has two parts:</p>
 <ol>
 <li><p><strong>The basics</strong> — origin/destination, dates, status (Planning/Confirmed/Completed/Cancelled), trip type, airline, hotel, cruise line, points used, cash paid, total value, Invoice Number, and a free-text Notes box. This is what shows up in the Trips list and on the Calendar.</p>
@@ -72,7 +73,7 @@
 </li>
 </ol>
 <p>None of this is required — fill in whatever you actually have confirmed. Leave a category blank if it doesn&#39;t apply to that trip.</p>
-<p>At the very bottom, a <strong>Summary</strong> section totals everything up live as you fill the form in: every points/miles redemption across every category, added up by program, and a <strong>Total Cash Paid</strong> figure (every Price field plus every points redemption&#39;s cash cost, all added together). Nothing to click — it just stays current as you type.</p>
+<p>At the very bottom, a <strong>Summary</strong> section totals everything up live as you fill the form in: every points/miles redemption across every category, added up by program, and a <strong>Total Cash Paid</strong> figure (every Price field plus every points redemption&#39;s cash cost, all added together). Nothing to click — it just stays current as you type. If the trip has no Supplier linked, the Summary also shows the Invoice Number — once a Supplier is picked, the invoice is assumed to have gone to them instead, so it drops off this client-facing summary.</p>
 <hr>
 <h2>Suppliers</h2>
 <p>The Suppliers page (labeled &quot;Suppliers&quot; in the nav, called <code>vendors</code> internally) is your directory of airlines, hotels, cruise lines, car rental companies, and referral partners. Each supplier card shows how many trips and clients are linked to it and how much revenue has flowed through it, computed automatically from your trip records — you don&#39;t update these numbers by hand.</p>

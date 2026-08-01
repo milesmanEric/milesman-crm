@@ -8801,8 +8801,14 @@ function computeBookedTripSummary(bd){
     + (bd.bus.price||0);
   return {rows:rows, totalCash: totalPrice + totalPtsCost};
 }
-function bookedTripSummaryHtml(summary){
-  return (summary.rows.length ?
+// Invoice Number only shows here when the trip has no Supplier linked — a
+// linked Supplier means the invoice went to that supplier, not the client,
+// so surfacing "the" invoice number on this client-facing summary would be
+// misleading (there could be a separate supplier-side invoice entirely).
+function bookedTripSummaryHtml(summary, invoicedToClient, invoiceNumber){
+  var invoiceLine = (invoicedToClient && invoiceNumber) ?
+    '<div style="font-size:13px;color:#374151;margin-bottom:10px">Invoice Number: <strong>'+escHtml(invoiceNumber)+'</strong></div>' : '';
+  return invoiceLine + (summary.rows.length ?
     '<div class="tbl-wrap"><table class="report-table"><thead><tr><th>Program</th><th style="text-align:right">Points/Miles Used</th></tr></thead><tbody>'+
     summary.rows.map(function(r){
       return '<tr><td>'+escHtml(r.program)+'</td><td style="text-align:right">'+fmt(r.points)+'</td></tr>';
@@ -8817,7 +8823,8 @@ function bookedTripSummaryHtml(summary){
 function refreshBookedTripSummary(){
   var el = document.getElementById('tb-booked-summary');
   if(!el) return;
-  el.innerHTML = bookedTripSummaryHtml(computeBookedTripSummary(readBookedTripDetails()));
+  var invoicedToClient = !gv('tsup'); // no supplier linked => invoiced to the client, not a supplier
+  el.innerHTML = bookedTripSummaryHtml(computeBookedTripSummary(readBookedTripDetails()), invoicedToClient, gv('tbr'));
 }
 function bindPointsEntriesListeners(containerId, addBtnId){
   var containerEl = document.getElementById(containerId);
@@ -9368,6 +9375,19 @@ function openTripForm(id){
       '<span>'+c.name+'</span>'+
     '</label>';
   }).join('');
+  // Every OTHER trip, for grouping separate trip records that are really one
+  // bigger multi-city vacation (e.g. a NYC leg + a Paris leg) — linking is
+  // kept in sync on both sides by saveTrip(), so checking a trip here also
+  // adds this trip to *its* Linked Trips list, and unchecking removes it
+  // from both.
+  const linkedTripChecks=[...db.trips].filter(function(t){return t.id!==id;}).sort(function(a,b){return (b.departDate||'').localeCompare(a.departDate||'');}).map(function(t){
+    var checked=(d.linkedTripIds||[]).includes(t.id)?'checked':'';
+    var label=[t.destination||'(no destination)',t.departDate||'',t.clientName||''].filter(Boolean).join(' — ');
+    return '<label style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:13px;cursor:pointer">'+
+      '<input type="checkbox" class="trip-link-cb" value="'+t.id+'" '+checked+' style="width:14px;height:14px">'+
+      '<span>'+escHtml(label)+'</span>'+
+    '</label>';
+  }).join('');
   $('modal').innerHTML=
     '<div class="modal-hdr"><div class="modal-title">'+(id?'Edit Trip':'Add Trip')+'</div><button class="close-btn" id="modal-close">&#x2715;</button></div>'+
     '<div class="fg">'+
@@ -9376,6 +9396,11 @@ function openTripForm(id){
       '<div class="field full"><label>Additional Clients <span class="hint" style="text-transform:none;font-weight:400">(if more than one client is on this trip)</span></label>'+
         '<div style="border:1px solid #e5e7eb;border-radius:8px;padding:10px;max-height:180px;overflow-y:auto;background:#fafafa">'+
           (additionalClientChecks || '<div style="color:#aaa;font-size:12px">No clients yet</div>')+
+        '</div>'+
+      '</div>'+
+      '<div class="field full"><label>Linked Trips <span class="hint" style="text-transform:none;font-weight:400">(other trip records that are part of the same overall vacation, e.g. a multi-city itinerary)</span></label>'+
+        '<div style="border:1px solid #e5e7eb;border-radius:8px;padding:10px;max-height:180px;overflow-y:auto;background:#fafafa">'+
+          (linkedTripChecks || '<div style="color:#aaa;font-size:12px">No other trips yet</div>')+
         '</div>'+
       '</div>'+
       fld('Origin',inp('tor','text',d.origin,'e.g. JFK'))+fld('Destination',inp('tde','text',d.destination,'e.g. Tokyo, Japan'))+
@@ -9482,7 +9507,11 @@ function saveTrip(id){
   // and invoice-dedup logic all key off this) — clientIds is purely additional
   // travelers linked to the same trip so it also shows on their own records.
   const additionalClientIds=Array.from(document.querySelectorAll('.trip-client-cb:checked')).map(function(cb){return cb.value;}).filter(function(cid){return cid!==clientId;});
-  const data={clientId:clientId,clientName:client?client.name:'',clientIds:additionalClientIds,supplierId:supplierId,supplierName:supplier?supplier.name:'',origin:gv('tor'),destination:dest,departDate:gv('tdd'),returnDate:gv('trd'),status:gv('tst')||'Planning',type:gv('tty')||'Leisure',airline:gv('tai'),flightClass:gv('tcl')||'Economy',hotel:gv('tho'),hotelNights:gn('thn'),cruiseLine:gv('tcr'),shipName:gv('tship'),pointsUsed:gn('tpu'),cashPaid:gn('tcp'),totalValue:gn('tva'),bookingRef:gv('tbr'),invoiceDate:gv('tinv'),product:gv('tpr'),notes:gv('tno'),booked:readBookedTripDetails()};
+  const linkedTripIds=Array.from(document.querySelectorAll('.trip-link-cb:checked')).map(function(cb){return cb.value;});
+  // Captured before db.trips gets overwritten below — this is the sync diff's
+  // "before" state for the linkedTripIds two-way sync at the end of this function.
+  const oldLinkedTripIds=id?((db.trips.find(function(t){return t.id===id;})||{}).linkedTripIds||[]):[];
+  const data={clientId:clientId,clientName:client?client.name:'',clientIds:additionalClientIds,linkedTripIds:linkedTripIds,supplierId:supplierId,supplierName:supplier?supplier.name:'',origin:gv('tor'),destination:dest,departDate:gv('tdd'),returnDate:gv('trd'),status:gv('tst')||'Planning',type:gv('tty')||'Leisure',airline:gv('tai'),flightClass:gv('tcl')||'Economy',hotel:gv('tho'),hotelNights:gn('thn'),cruiseLine:gv('tcr'),shipName:gv('tship'),pointsUsed:gn('tpu'),cashPaid:gn('tcp'),totalValue:gn('tva'),bookingRef:gv('tbr'),invoiceDate:gv('tinv'),product:gv('tpr'),notes:gv('tno'),booked:readBookedTripDetails()};
   if(client){
     client.mileageBalances=readBalanceGrid('mb',AIRLINES,AIRLINE_STATUS);
     client.hotelBalances=readBalanceGrid('hb',HOTELS,HOTEL_STATUS);
@@ -9503,6 +9532,22 @@ function saveTrip(id){
     if(client) client.totalTrips=(client.totalTrips||0)+1;
     toast('Trip added');
   }
+  // Keep Linked Trips symmetric: checking a trip here also adds this trip to
+  // *its* list, and unchecking removes this trip from it — otherwise the
+  // link would only be visible from the side it was set on.
+  const finalTripId=id||data.id;
+  const linksToAdd=linkedTripIds.filter(function(tid){return oldLinkedTripIds.indexOf(tid)===-1;});
+  const linksToRemove=oldLinkedTripIds.filter(function(tid){return linkedTripIds.indexOf(tid)===-1;});
+  db.trips.forEach(function(t){
+    if(t.id===finalTripId) return;
+    if(linksToAdd.indexOf(t.id)!==-1){
+      t.linkedTripIds=t.linkedTripIds||[];
+      if(t.linkedTripIds.indexOf(finalTripId)===-1) t.linkedTripIds.push(finalTripId);
+    }
+    if(linksToRemove.indexOf(t.id)!==-1){
+      t.linkedTripIds=(t.linkedTripIds||[]).filter(function(x){return x!==finalTripId;});
+    }
+  });
   saveDB();closeModal();render();
 }
 
