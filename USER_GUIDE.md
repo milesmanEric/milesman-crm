@@ -149,9 +149,11 @@ It can only do a fixed set of things: find clients, find trips, add a client not
 
 ## Bookmarks
 
-A place to save links to sites you use often — airline sites, hotel booking tools, visa/documentation portals, currency or weather lookups, whatever. **+ Add Bookmark**, give it a name and a URL (you can skip the `https://` — it's added automatically), and optionally a category and a note. Click the name to open the link in a new tab; the pencil/trash icons edit or delete it.
+A place to save links to sites you use often — airline sites, hotel booking tools, visa/documentation portals, currency or weather lookups, whatever. Bookmarks are grouped into two sections, **Travel Agent** and **Consumer**, and within each, by category (Airline, Hotel, Cruise Line, Car Rental, etc.) — so agent-portal logins and regular booking sites don't get mixed together, and everything's easy to scan by type.
 
-Click **+ Load Starter Bookmarks** to add a pre-built set of consumer booking-site links and travel-advisor/agent-portal login links for common airlines, hotels, car rental companies, cruise lines, tour operators, and theme parks — sorted under the appropriate category, with agent-portal logins grouped under "Travel Advisor Login." It won't add duplicates if you click it again later. A few entries are noted as unverified where the exact portal URL couldn't be confirmed — double-check those before relying on them.
+**+ Add Bookmark**, give it a name and a URL (you can skip the `https://` — it's added automatically), and optionally a category, an audience (Consumer or Travel Agent — defaults to Consumer if you skip it), and a note. Click the name to open the link in a new tab; the pencil/trash icons edit or delete it.
+
+Click **+ Load Starter Bookmarks** to add a pre-built set of consumer booking-site links and travel-advisor/agent-portal login links for common airlines, hotels, car rental companies, cruise lines, tour operators, and theme parks — each one already tagged with the right category and audience. It won't add duplicates if you click it again later. A few entries are noted as unverified where the exact portal URL couldn't be confirmed — double-check those before relying on them.
 
 ---
 

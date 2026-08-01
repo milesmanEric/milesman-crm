@@ -735,7 +735,11 @@ const THEME_PARKS = ['Disney World','Disneyland California','Universal Studios H
 const TRAIN_CLASSES = ['Coach','Business Class','First Class','Sleeper Car'];
 const CAR_SIZES = ['Economy','Compact','Midsize','Full-size','SUV','Minivan','Luxury','Convertible'];
 const ROOM_TYPES = ['Room','Suite'];
-const BOOKMARK_CATEGORIES = ['Airline','Hotel','Cruise Line','Car Rental','Tour/Activity','Theme Park','Travel Advisor Login','Visa/Documentation','Currency/Weather','Tool','Other'];
+const BOOKMARK_CATEGORIES = ['Airline','Hotel','Cruise Line','Car Rental','Tour/Activity','Theme Park','Visa/Documentation','Currency/Weather','Tool','Other'];
+// Separate from category (the business type — Airline/Hotel/etc.): which
+// audience the link is for. A bookmark missing this field is treated as
+// Consumer (see renderBookmarks) so older saved bookmarks default sensibly.
+const BOOKMARK_AUDIENCES = ['Consumer','Travel Agent'];
 // Starter pack of well-known consumer booking sites + travel-advisor/agent
 // portal logins, seeded on demand via "+ Load Starter Bookmarks" rather than
 // baked into every db by default. URLs were verified via live web research,
@@ -763,22 +767,22 @@ const DEFAULT_BOOKMARKS = [
   {name:'Frontier Airlines', url:'https://www.flyfrontier.com', category:'Airline'},
   {name:'Alaska/Hawaiian Airlines', url:'https://www.alaskaair.com', category:'Airline'},
   // Airlines — travel advisor login (Southwest and Frontier have no distinct agent portal — GDS/ARC only)
-  {name:'American Airlines — Agent Login', url:'https://www.saleslink.aa.com', category:'Travel Advisor Login'},
-  {name:'United Airlines — Agent Login', url:'https://www.united.com/en/US/partner-login', category:'Travel Advisor Login'},
-  {name:'Delta Air Lines — Agent Login', url:'https://pro.delta.com', category:'Travel Advisor Login'},
-  {name:'JetBlue — Agent Login', url:'https://jetblue.agentworld.com', category:'Travel Advisor Login'},
-  {name:'Qatar Airways — Agent Login', url:'https://www.qatarairways.com/tradeportal', category:'Travel Advisor Login'},
-  {name:'ANA — Agent Login', url:'https://atpa.fly-ana.com', category:'Travel Advisor Login'},
-  {name:'Emirates — Agent Login', url:'https://www.emirates.partners', category:'Travel Advisor Login'},
-  {name:'Lufthansa — Agent Login', url:'https://business.lufthansagroup.com', category:'Travel Advisor Login', notes:'verify before relying on this link'},
-  {name:'British Airways — Agent Login', url:'https://www.britishairways.com/travel-partner-connect', category:'Travel Advisor Login'},
-  {name:'Air France/KLM — Agent Login', url:'https://www.agentconnect.biz', category:'Travel Advisor Login'},
-  {name:'Virgin Atlantic — Agent Login', url:'https://flywith.virginatlantic.com', category:'Travel Advisor Login'},
-  {name:'Qantas — Agent Login', url:'https://agencyconnect.qantas.com', category:'Travel Advisor Login'},
-  {name:'Etihad Airways — Agent Login', url:'https://www.etihadhub.com', category:'Travel Advisor Login'},
-  {name:'JAL — Agent Login', url:'https://jal.jalagency.com', category:'Travel Advisor Login', notes:'verify before relying on this link — regional sub-portals may apply'},
-  {name:'Air Canada — Agent Login', url:'https://www.aircanada.com/ca/en/ado/drs/agents.html', category:'Travel Advisor Login'},
-  {name:'Alaska Airlines — Agent Login', url:'https://www.alaskaair.com/travel-agent/logon', category:'Travel Advisor Login'},
+  {name:'American Airlines — Agent Login', url:'https://www.saleslink.aa.com', category:'Airline', audience:'Travel Agent'},
+  {name:'United Airlines — Agent Login', url:'https://www.united.com/en/US/partner-login', category:'Airline', audience:'Travel Agent'},
+  {name:'Delta Air Lines — Agent Login', url:'https://pro.delta.com', category:'Airline', audience:'Travel Agent'},
+  {name:'JetBlue — Agent Login', url:'https://jetblue.agentworld.com', category:'Airline', audience:'Travel Agent'},
+  {name:'Qatar Airways — Agent Login', url:'https://www.qatarairways.com/tradeportal', category:'Airline', audience:'Travel Agent'},
+  {name:'ANA — Agent Login', url:'https://atpa.fly-ana.com', category:'Airline', audience:'Travel Agent'},
+  {name:'Emirates — Agent Login', url:'https://www.emirates.partners', category:'Airline', audience:'Travel Agent'},
+  {name:'Lufthansa — Agent Login', url:'https://business.lufthansagroup.com', category:'Airline', audience:'Travel Agent', notes:'verify before relying on this link'},
+  {name:'British Airways — Agent Login', url:'https://www.britishairways.com/travel-partner-connect', category:'Airline', audience:'Travel Agent'},
+  {name:'Air France/KLM — Agent Login', url:'https://www.agentconnect.biz', category:'Airline', audience:'Travel Agent'},
+  {name:'Virgin Atlantic — Agent Login', url:'https://flywith.virginatlantic.com', category:'Airline', audience:'Travel Agent'},
+  {name:'Qantas — Agent Login', url:'https://agencyconnect.qantas.com', category:'Airline', audience:'Travel Agent'},
+  {name:'Etihad Airways — Agent Login', url:'https://www.etihadhub.com', category:'Airline', audience:'Travel Agent'},
+  {name:'JAL — Agent Login', url:'https://jal.jalagency.com', category:'Airline', audience:'Travel Agent', notes:'verify before relying on this link — regional sub-portals may apply'},
+  {name:'Air Canada — Agent Login', url:'https://www.aircanada.com/ca/en/ado/drs/agents.html', category:'Airline', audience:'Travel Agent'},
+  {name:'Alaska Airlines — Agent Login', url:'https://www.alaskaair.com/travel-agent/logon', category:'Airline', audience:'Travel Agent'},
   // Hotels — consumer
   {name:'Marriott', url:'https://www.marriott.com', category:'Hotel'},
   {name:'Hilton', url:'https://www.hilton.com', category:'Hotel'},
@@ -791,14 +795,14 @@ const DEFAULT_BOOKMARKS = [
   {name:'Kimpton Hotels', url:'https://www.kimptonhotels.com', category:'Hotel'},
   {name:'Conrad Hotels', url:'https://conradhotels3.hilton.com', category:'Hotel'},
   // Hotels — travel advisor login (Hyatt/Wyndham book direct via GDS chain code / IATA number, no distinct portal found)
-  {name:'Marriott — Agent Login', url:'https://travelagents.marriott.com', category:'Travel Advisor Login'},
-  {name:'Hilton — Agent Login', url:'https://travelagents.hilton.com', category:'Travel Advisor Login'},
-  {name:'IHG — Agent Login', url:'https://www.ihg.com/agent-portal', category:'Travel Advisor Login', notes:'verify before relying on this link — exact URL variant unconfirmed'},
-  {name:'Four Seasons — Agent Login', url:'https://preferredpartners.fourseasons.com', category:'Travel Advisor Login', notes:'invitation-only'},
-  {name:'Ritz-Carlton — Agent Login', url:'https://travelagents.marriott.com', category:'Travel Advisor Login', notes:'shared Marriott portal'},
-  {name:'W Hotels — Agent Login', url:'https://travelagents.marriott.com', category:'Travel Advisor Login', notes:'shared Marriott portal'},
-  {name:'Kimpton — Agent Login', url:'https://www.ihg.com/agent-portal', category:'Travel Advisor Login', notes:'shared IHG portal — verify before relying on this link'},
-  {name:'Conrad — Agent Login', url:'https://travelagents.hilton.com', category:'Travel Advisor Login', notes:'shared Hilton portal'},
+  {name:'Marriott — Agent Login', url:'https://travelagents.marriott.com', category:'Hotel', audience:'Travel Agent'},
+  {name:'Hilton — Agent Login', url:'https://travelagents.hilton.com', category:'Hotel', audience:'Travel Agent'},
+  {name:'IHG — Agent Login', url:'https://www.ihg.com/agent-portal', category:'Hotel', audience:'Travel Agent', notes:'verify before relying on this link — exact URL variant unconfirmed'},
+  {name:'Four Seasons — Agent Login', url:'https://preferredpartners.fourseasons.com', category:'Hotel', audience:'Travel Agent', notes:'invitation-only'},
+  {name:'Ritz-Carlton — Agent Login', url:'https://travelagents.marriott.com', category:'Hotel', audience:'Travel Agent', notes:'shared Marriott portal'},
+  {name:'W Hotels — Agent Login', url:'https://travelagents.marriott.com', category:'Hotel', audience:'Travel Agent', notes:'shared Marriott portal'},
+  {name:'Kimpton — Agent Login', url:'https://www.ihg.com/agent-portal', category:'Hotel', audience:'Travel Agent', notes:'shared IHG portal — verify before relying on this link'},
+  {name:'Conrad — Agent Login', url:'https://travelagents.hilton.com', category:'Hotel', audience:'Travel Agent', notes:'shared Hilton portal'},
   // Car Rentals — consumer (Avis and Budget have no distinct agent portal found — IATA/GDS only)
   {name:'Hertz', url:'https://www.hertz.com', category:'Car Rental'},
   {name:'Avis', url:'https://www.avis.com', category:'Car Rental'},
@@ -811,14 +815,14 @@ const DEFAULT_BOOKMARKS = [
   {name:'Thrifty', url:'https://www.thrifty.com', category:'Car Rental'},
   {name:'Dollar', url:'https://www.dollar.com', category:'Car Rental'},
   // Car Rentals — travel advisor login
-  {name:'Hertz — Agent Login', url:'https://www.hertz.com/rentacar/emember/travelAgent/login/index.jsp?targetPage=travelAgentLoginView.jsp', category:'Travel Advisor Login'},
-  {name:'Enterprise — Agent Login', url:'https://ta.alamo.com/en_US/travelAgent.html', category:'Travel Advisor Login', notes:'shared Tri-Branded portal (Enterprise/National/Alamo)'},
-  {name:'National — Agent Login', url:'https://ta.alamo.com/en_US/travelAgent.html', category:'Travel Advisor Login', notes:'shared Tri-Branded portal (Enterprise/National/Alamo)'},
-  {name:'Alamo — Agent Login', url:'https://ta.alamo.com/en_US/travelAgent.html', category:'Travel Advisor Login', notes:'shared Tri-Branded portal (Enterprise/National/Alamo)'},
-  {name:'Sixt — Agent Login', url:'https://www.sixt.com/php/reservation/loginstart?logintype=agent', category:'Travel Advisor Login', notes:'verify before relying on this link — other login URLs seen for Sixt agents'},
-  {name:'Europcar — Agent Info (Click4Wheels)', url:'https://www.europcar.com/en-us/p/business/services/click4wheels', category:'Travel Advisor Login', notes:'verify before relying on this link — exact login URL unconfirmed'},
-  {name:'Thrifty — Agent Login', url:'https://www.thrifty.com/travelcenter/travelagents/signin.aspx', category:'Travel Advisor Login'},
-  {name:'Dollar — Agent Login', url:'https://www.dollar.com/travelcenter/travelagents.aspx', category:'Travel Advisor Login'},
+  {name:'Hertz — Agent Login', url:'https://www.hertz.com/rentacar/emember/travelAgent/login/index.jsp?targetPage=travelAgentLoginView.jsp', category:'Car Rental', audience:'Travel Agent'},
+  {name:'Enterprise — Agent Login', url:'https://ta.alamo.com/en_US/travelAgent.html', category:'Car Rental', audience:'Travel Agent', notes:'shared Tri-Branded portal (Enterprise/National/Alamo)'},
+  {name:'National — Agent Login', url:'https://ta.alamo.com/en_US/travelAgent.html', category:'Car Rental', audience:'Travel Agent', notes:'shared Tri-Branded portal (Enterprise/National/Alamo)'},
+  {name:'Alamo — Agent Login', url:'https://ta.alamo.com/en_US/travelAgent.html', category:'Car Rental', audience:'Travel Agent', notes:'shared Tri-Branded portal (Enterprise/National/Alamo)'},
+  {name:'Sixt — Agent Login', url:'https://www.sixt.com/php/reservation/loginstart?logintype=agent', category:'Car Rental', audience:'Travel Agent', notes:'verify before relying on this link — other login URLs seen for Sixt agents'},
+  {name:'Europcar — Agent Info (Click4Wheels)', url:'https://www.europcar.com/en-us/p/business/services/click4wheels', category:'Car Rental', audience:'Travel Agent', notes:'verify before relying on this link — exact login URL unconfirmed'},
+  {name:'Thrifty — Agent Login', url:'https://www.thrifty.com/travelcenter/travelagents/signin.aspx', category:'Car Rental', audience:'Travel Agent'},
+  {name:'Dollar — Agent Login', url:'https://www.dollar.com/travelcenter/travelagents.aspx', category:'Car Rental', audience:'Travel Agent'},
   // Cruise Lines — consumer
   {name:'Virgin Voyages', url:'https://www.virginvoyages.com', category:'Cruise Line'},
   {name:'Royal Caribbean', url:'https://www.royalcaribbean.com', category:'Cruise Line'},
@@ -835,38 +839,38 @@ const DEFAULT_BOOKMARKS = [
   {name:'Ritz-Carlton Yacht Collection', url:'https://www.ritzcarltonyachtcollection.com', category:'Cruise Line'},
   {name:'Windstar Cruises', url:'https://www.windstarcruises.com', category:'Cruise Line'},
   // Cruise Lines — travel advisor login
-  {name:'Virgin Voyages — Agent Login', url:'https://www.firstmates.com', category:'Travel Advisor Login'},
-  {name:'Royal Caribbean — Agent Login', url:'https://secure.cruisingpower.com/login', category:'Travel Advisor Login', notes:'shared portal, also used by Celebrity & Silversea'},
-  {name:'Carnival — Agent Login', url:'https://www.goccl.com', category:'Travel Advisor Login'},
-  {name:'Norwegian — Agent Login', url:'https://norwegiancentral.ncl.com', category:'Travel Advisor Login'},
-  {name:'Princess — Agent Login', url:'https://www.onesourcecruises.com', category:'Travel Advisor Login', notes:'shared portal, also used by Holland America, Seabourn & Cunard'},
-  {name:'Celebrity — Agent Login', url:'https://secure.cruisingpower.com/login', category:'Travel Advisor Login', notes:'shared Royal Caribbean Group portal'},
-  {name:'Disney Cruise Line — Agent Login', url:'https://disneycruise.disney.go.com/travel-agent-login/', category:'Travel Advisor Login'},
-  {name:'Holland America — Agent Login', url:'https://www.onesourcecruises.com', category:'Travel Advisor Login', notes:'shared portal, also used by Princess, Seabourn & Cunard'},
-  {name:'MSC Cruises — Agent Login', url:'https://www.mscbook.com', category:'Travel Advisor Login'},
-  {name:'Viking — Agent Login', url:'https://www.viking.com/travel-advisor', category:'Travel Advisor Login'},
-  {name:'Explora Journeys — Agent Login', url:'https://explorajourneys.com/int/en/travel-advisors/login', category:'Travel Advisor Login'},
-  {name:'Seabourn — Agent Login', url:'https://www.onesourcecruises.com', category:'Travel Advisor Login', notes:'shared portal, also used by Princess, Holland America & Cunard'},
-  {name:'Ritz-Carlton Yacht Collection — Agent Login', url:'https://www.ritzcarltonyachtcollection.com/reservation-agent/login', category:'Travel Advisor Login', notes:'verify before relying on this link'},
-  {name:'Windstar — Agent Login', url:'https://advisorhub.windstarcruises.com/login', category:'Travel Advisor Login', notes:'verify before relying on this link'},
+  {name:'Virgin Voyages — Agent Login', url:'https://www.firstmates.com', category:'Cruise Line', audience:'Travel Agent'},
+  {name:'Royal Caribbean — Agent Login', url:'https://secure.cruisingpower.com/login', category:'Cruise Line', audience:'Travel Agent', notes:'shared portal, also used by Celebrity & Silversea'},
+  {name:'Carnival — Agent Login', url:'https://www.goccl.com', category:'Cruise Line', audience:'Travel Agent'},
+  {name:'Norwegian — Agent Login', url:'https://norwegiancentral.ncl.com', category:'Cruise Line', audience:'Travel Agent'},
+  {name:'Princess — Agent Login', url:'https://www.onesourcecruises.com', category:'Cruise Line', audience:'Travel Agent', notes:'shared portal, also used by Holland America, Seabourn & Cunard'},
+  {name:'Celebrity — Agent Login', url:'https://secure.cruisingpower.com/login', category:'Cruise Line', audience:'Travel Agent', notes:'shared Royal Caribbean Group portal'},
+  {name:'Disney Cruise Line — Agent Login', url:'https://disneycruise.disney.go.com/travel-agent-login/', category:'Cruise Line', audience:'Travel Agent'},
+  {name:'Holland America — Agent Login', url:'https://www.onesourcecruises.com', category:'Cruise Line', audience:'Travel Agent', notes:'shared portal, also used by Princess, Seabourn & Cunard'},
+  {name:'MSC Cruises — Agent Login', url:'https://www.mscbook.com', category:'Cruise Line', audience:'Travel Agent'},
+  {name:'Viking — Agent Login', url:'https://www.viking.com/travel-advisor', category:'Cruise Line', audience:'Travel Agent'},
+  {name:'Explora Journeys — Agent Login', url:'https://explorajourneys.com/int/en/travel-advisors/login', category:'Cruise Line', audience:'Travel Agent'},
+  {name:'Seabourn — Agent Login', url:'https://www.onesourcecruises.com', category:'Cruise Line', audience:'Travel Agent', notes:'shared portal, also used by Princess, Holland America & Cunard'},
+  {name:'Ritz-Carlton Yacht Collection — Agent Login', url:'https://www.ritzcarltonyachtcollection.com/reservation-agent/login', category:'Cruise Line', audience:'Travel Agent', notes:'verify before relying on this link'},
+  {name:'Windstar — Agent Login', url:'https://advisorhub.windstarcruises.com/login', category:'Cruise Line', audience:'Travel Agent', notes:'verify before relying on this link'},
   // Tours/Activities — consumer
   {name:'Tauck', url:'https://www.tauck.com', category:'Tour/Activity'},
   {name:'Viator', url:'https://www.viator.com', category:'Tour/Activity'},
   {name:'Get Your Guide', url:'https://www.getyourguide.com', category:'Tour/Activity'},
   // Tours/Activities — travel advisor login
-  {name:'Tauck — Agent Login', url:'https://www.tauck.com/login', category:'Travel Advisor Login', notes:'dual-purpose consumer + agent login on one portal'},
-  {name:'Viator — Agent Login', url:'https://travelagents.viator.com', category:'Travel Advisor Login', notes:'must book here (not viator.com) to earn commission'},
-  {name:'Get Your Guide — Agent Login', url:'https://partner.getyourguide.com/en-us/login', category:'Travel Advisor Login'},
+  {name:'Tauck — Agent Login', url:'https://www.tauck.com/login', category:'Tour/Activity', audience:'Travel Agent', notes:'dual-purpose consumer + agent login on one portal'},
+  {name:'Viator — Agent Login', url:'https://travelagents.viator.com', category:'Tour/Activity', audience:'Travel Agent', notes:'must book here (not viator.com) to earn commission'},
+  {name:'Get Your Guide — Agent Login', url:'https://partner.getyourguide.com/en-us/login', category:'Tour/Activity', audience:'Travel Agent'},
   // Theme Parks — consumer
   {name:'Walt Disney World', url:'https://disneyworld.disney.go.com', category:'Theme Park'},
   {name:'Disneyland (California)', url:'https://disneyland.disney.go.com', category:'Theme Park'},
   {name:'Universal Studios Hollywood', url:'https://www.universalstudioshollywood.com', category:'Theme Park'},
   {name:'Universal Orlando Resort', url:'https://www.universalorlando.com', category:'Theme Park'},
   // Theme Parks — travel advisor login
-  {name:'Walt Disney World — Agent Login', url:'https://www.disneytravelagents.com', category:'Travel Advisor Login', notes:'shared portal — also covers Disneyland, Disney Cruise Line, Aulani & Adventures by Disney'},
-  {name:'Disneyland — Agent Login', url:'https://www.disneytravelagents.com', category:'Travel Advisor Login', notes:'shared Disney portal'},
-  {name:'Universal Studios Hollywood — Agent Login', url:'https://www.vaxvacationaccess.com', category:'Travel Advisor Login', notes:'shared VAX-powered portal w/ Universal Orlando'},
-  {name:'Universal Orlando — Agent Login', url:'https://www.vaxvacationaccess.com', category:'Travel Advisor Login', notes:'shared VAX-powered portal w/ Universal Studios Hollywood'}
+  {name:'Walt Disney World — Agent Login', url:'https://www.disneytravelagents.com', category:'Theme Park', audience:'Travel Agent', notes:'shared portal — also covers Disneyland, Disney Cruise Line, Aulani & Adventures by Disney'},
+  {name:'Disneyland — Agent Login', url:'https://www.disneytravelagents.com', category:'Theme Park', audience:'Travel Agent', notes:'shared Disney portal'},
+  {name:'Universal Studios Hollywood — Agent Login', url:'https://www.vaxvacationaccess.com', category:'Theme Park', audience:'Travel Agent', notes:'shared VAX-powered portal w/ Universal Orlando'},
+  {name:'Universal Orlando — Agent Login', url:'https://www.vaxvacationaccess.com', category:'Theme Park', audience:'Travel Agent', notes:'shared VAX-powered portal w/ Universal Studios Hollywood'}
 ];
 
 let db = {clients:[],trips:[],vendors:[],planner:[],bookmarks:[]};
@@ -9576,6 +9580,46 @@ function renderPlanner(){
 }
 
 // ── Bookmarks ─────────────────────────────────────────────────────────────
+function bookmarkTableHtml(items){
+  return '<div class="tbl-wrap"><table class="tbl-planner"><thead><tr>'+
+      '<th>Name</th><th>URL</th><th></th>'+
+    '</tr></thead><tbody>'+items.map(function(b){
+      return '<tr>'+
+        '<td><a href="'+escHtml(b.url||'#')+'" class="bookmark-link" target="_blank" rel="noopener noreferrer" style="color:#2563eb;font-weight:600;text-decoration:underline">'+escHtml(b.name||'(untitled)')+'</a>'+
+          (b.notes?'<div style="margin-top:2px;font-size:11px;color:#888">'+escHtml(b.notes)+'</div>':'')+
+        '</td>'+
+        '<td style="font-size:12px;color:#888;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escHtml(b.url||'')+'</td>'+
+        '<td style="white-space:nowrap">'+
+          '<button class="icon-btn edit-bookmark" data-id="'+b.id+'" title="Edit">&#9998;&#65039;</button>'+
+          '<button class="icon-btn del-bookmark" data-id="'+b.id+'" style="color:#dc2626" title="Delete">&#128465;&#65039;</button>'+
+        '</td>'+
+      '</tr>';
+    }).join('')+'</tbody></table></div>';
+}
+// Two-level grouping: audience (Travel Agent / Consumer) first, then
+// category (Airline/Hotel/etc.) within each — a bookmark missing `audience`
+// is treated as Consumer so bookmarks saved before this field existed still
+// show up sensibly rather than vanishing from both sections.
+function bookmarkSectionHtml(audience, bookmarks){
+  var items = bookmarks.filter(function(b){ return (b.audience||'Consumer')===audience; });
+  if(!items.length) return '';
+  var byCat = {};
+  items.forEach(function(b){
+    var cat = b.category || 'Other';
+    (byCat[cat] = byCat[cat] || []).push(b);
+  });
+  var cats = BOOKMARK_CATEGORIES.filter(function(c){ return byCat[c]; });
+  Object.keys(byCat).forEach(function(c){ if(cats.indexOf(c)===-1) cats.push(c); });
+  return '<div style="margin-bottom:28px">'+
+    '<div style="font-size:16px;font-weight:700;color:#111;margin-bottom:12px;padding-bottom:6px;border-bottom:2px solid #2563eb">'+escHtml(audience)+'</div>'+
+    cats.map(function(cat){
+      return '<div style="margin-bottom:16px">'+
+        '<div style="font-size:12px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">'+escHtml(cat)+'</div>'+
+        bookmarkTableHtml(byCat[cat])+
+      '</div>';
+    }).join('')+
+  '</div>';
+}
 function renderBookmarks(){
   var bookmarks = [...db.bookmarks].sort(function(a,b){return (a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase());});
   $('main').innerHTML =
@@ -9583,21 +9627,9 @@ function renderBookmarks(){
       '<button class="cancel-btn" id="btn-seed-bookmarks">+ Load Starter Bookmarks</button>'+
       '<button class="add-btn" id="btn-add-bookmark">+ Add Bookmark</button>'+
     '</div></div>'+
-    (bookmarks.length ? '<div class="tbl-wrap"><table class="tbl-planner"><thead><tr>'+
-      '<th>Name</th><th>Category</th><th>URL</th><th></th>'+
-    '</tr></thead><tbody>'+bookmarks.map(function(b){
-      return '<tr>'+
-        '<td><a href="'+escHtml(b.url||'#')+'" class="bookmark-link" target="_blank" rel="noopener noreferrer" style="color:#2563eb;font-weight:600;text-decoration:underline">'+escHtml(b.name||'(untitled)')+'</a>'+
-          (b.notes?'<div style="margin-top:2px;font-size:11px;color:#888">'+escHtml(b.notes)+'</div>':'')+
-        '</td>'+
-        '<td>'+(b.category?'<span class="badge b-blue">'+escHtml(b.category)+'</span>':'<span style="color:#aaa">—</span>')+'</td>'+
-        '<td style="font-size:12px;color:#888;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escHtml(b.url||'')+'</td>'+
-        '<td style="white-space:nowrap">'+
-          '<button class="icon-btn edit-bookmark" data-id="'+b.id+'" title="Edit">&#9998;&#65039;</button>'+
-          '<button class="icon-btn del-bookmark" data-id="'+b.id+'" style="color:#dc2626" title="Delete">&#128465;&#65039;</button>'+
-        '</td>'+
-      '</tr>';
-    }).join('')+'</tbody></table></div>' : '<div class="empty">No bookmarks yet — save links to airline sites, visa/documentation portals, or other travel tools you use often</div>');
+    (bookmarks.length ?
+      bookmarkSectionHtml('Travel Agent', bookmarks) + bookmarkSectionHtml('Consumer', bookmarks)
+      : '<div class="empty">No bookmarks yet — save links to airline sites, visa/documentation portals, or other travel tools you use often</div>');
 
   $('btn-add-bookmark').addEventListener('click', function(){openBookmarkForm();});
   $('btn-seed-bookmarks').addEventListener('click', seedDefaultBookmarks);
@@ -9625,6 +9657,7 @@ function openBookmarkForm(id){
       fld('Name', inp('bm-name','text',d.name,'e.g. United Airlines'), true)+
       fld('URL', inp('bm-url','text',d.url,'e.g. www.united.com'), true)+
       fld('Category', '<select id="bm-category"><option value="">-- Select --</option>'+selOpts(BOOKMARK_CATEGORIES,d.category)+'</select>')+
+      fld('Audience', '<select id="bm-audience">'+selOpts(BOOKMARK_AUDIENCES,d.audience||'Consumer')+'</select>')+
       fld('Notes', '<textarea id="bm-notes">'+(d.notes||'')+'</textarea>', true)+
     '</div>'+
     '<div class="form-actions">'+
@@ -9643,7 +9676,7 @@ function saveBookmark(id){
   // relative link and just reload the CRM itself instead of navigating out.
   if(!/^https?:\/\//i.test(url)) url = 'https://'+url;
   snapshot(id?'Edit bookmark':'Add bookmark');
-  var data = {name:name, url:url, category:gv('bm-category'), notes:gv('bm-notes')};
+  var data = {name:name, url:url, category:gv('bm-category'), audience:gv('bm-audience')||'Consumer', notes:gv('bm-notes')};
   if(id){
     db.bookmarks = db.bookmarks.map(function(b){return b.id===id?Object.assign({},b,data):b;});
     toast('Bookmark updated');
@@ -9661,12 +9694,12 @@ function deleteBookmark(id){
   saveDB();render();
   toast('Bookmark deleted');
 }
-// Adds the DEFAULT_BOOKMARKS starter pack, skipping any name+category pair
-// that's already present so this is safe to click more than once.
+// Adds the DEFAULT_BOOKMARKS starter pack, skipping any name+category+
+// audience combo that's already present so this is safe to click more than once.
 function seedDefaultBookmarks(){
   var existing = {};
-  db.bookmarks.forEach(function(b){ existing[(b.name||'')+'|'+(b.category||'')] = true; });
-  var toAdd = DEFAULT_BOOKMARKS.filter(function(b){ return !existing[b.name+'|'+b.category]; });
+  db.bookmarks.forEach(function(b){ existing[(b.name||'')+'|'+(b.category||'')+'|'+(b.audience||'Consumer')] = true; });
+  var toAdd = DEFAULT_BOOKMARKS.filter(function(b){ return !existing[b.name+'|'+b.category+'|'+(b.audience||'Consumer')]; });
   if(!toAdd.length){ toast('Starter bookmarks are already loaded'); return; }
   if(!confirm('Add '+toAdd.length+' starter bookmarks (airline/hotel/car-rental/cruise/tour/theme-park consumer sites plus travel advisor login pages)? This can be undone.')) return;
   snapshot('Load starter bookmarks');
