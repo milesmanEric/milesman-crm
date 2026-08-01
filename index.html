@@ -3443,19 +3443,30 @@ function itineraryEmailBodyHtml(opts){
   // simpler top-level basic fields when Booked Trip Details was never
   // filled in for that category at all, so the itinerary reflects
   // whatever's actually completed there instead of a stale/blank summary.
-  var flightSegments = opts.flightSegments || [];
+  var airlineRecords = opts.airlineRecords || [];
   var flightBoxesHtml;
-  if(flightSegments.length){
-    flightBoxesHtml = flightSegments.map(function(f, i){
-      var rows = itineraryDetailRow('Airline', f.airline) +
-        itineraryDetailRow('Flight Number', f.flightNumber) +
-        itineraryDetailRow('Route', f.origin&&f.destination ? (f.origin+' → '+f.destination) : '') +
-        itineraryDetailRow('Depart Date', f.departDate?fmtDate(f.departDate):'') +
-        itineraryDetailRow('Depart Time', f.departTime) +
-        itineraryDetailRow('Arrival Time', f.arrivalTime) +
-        itineraryDetailRow('Class of Service', f.classOfService) +
-        itineraryDetailRow('Confirmation Number', opts.flightConfirmationNumber);
-      return itineraryDetailBox(flightSegments.length>1 ? 'Flight '+(i+1)+' Details' : 'Flight Details', rows, AIRLINE_LOGOS[f.airline]);
+  if(airlineRecords.length){
+    // One box per Airline Record — Record Number and Passengers up top
+    // (since a trip can have more than one record, each covering different
+    // passengers/fare types), then that record's own flight segment(s)
+    // below, each segment's rows prefixed "Flight N:" only when the record
+    // actually has more than one segment.
+    flightBoxesHtml = airlineRecords.map(function(rec, ri){
+      var boxTitle = airlineRecords.length>1 ? 'Airline Record '+(ri+1) : 'Airline Record';
+      var headRows = itineraryDetailRow('Record Number', rec.recordNumber) + itineraryDetailRow('Passengers', rec.passengers);
+      var segs = rec.segments||[];
+      var segRows = segs.map(function(f, i){
+        var p = segs.length>1 ? ('Flight '+(i+1)+': ') : '';
+        return itineraryDetailRow(p+'Airline', f.airline) +
+          itineraryDetailRow(p+'Flight Number', f.flightNumber) +
+          itineraryDetailRow(p+'Route', f.origin&&f.destination ? (f.origin+' → '+f.destination) : '') +
+          itineraryDetailRow(p+'Depart Date', f.departDate?fmtDate(f.departDate):'') +
+          itineraryDetailRow(p+'Depart Time', f.departTime) +
+          itineraryDetailRow(p+'Arrival Time', f.arrivalTime) +
+          itineraryDetailRow(p+'Class of Service', f.classOfService);
+      }).join('');
+      var primaryAirline = segs[0] && segs[0].airline;
+      return itineraryDetailBox(boxTitle, headRows+segRows, AIRLINE_LOGOS[primaryAirline]);
     }).join('');
   } else {
     // flightClass defaults to 'Economy' at save time even when a trip has
@@ -3617,7 +3628,16 @@ function tripToItineraryOpts(trip, client, extraNotes){
   // "basics" tab) never reflect. Those top-level fields stay as the
   // fallback for a trip that only ever used the basic form and never
   // touched Booked Trip Details for that category at all.
-  var flightSegments = Array.isArray(air.segments) ? air.segments : [];
+  // A trip can have more than one Airline Record (see saveTrip()/
+  // readAirlineRecords()) — each with its own Record Number, its own
+  // subset of passengers, and its own flight segments.
+  var airlineRecords = (Array.isArray(air.records) ? air.records : []).map(function(r){
+    var recPassengerNames = (r.passengerClientIds||[]).map(function(cid){
+      var c = db.clients.find(function(x){return x.id===cid;});
+      return c ? (toFirstLast(c.name)||c.name||'') : '';
+    }).filter(Boolean);
+    return {recordNumber: r.recordNumber||'', passengers: joinNames(recPassengerNames), segments: Array.isArray(r.segments) ? r.segments : []};
+  });
   var hotelEntries = Array.isArray(b.hotel) ? b.hotel : (b.hotel && Object.keys(b.hotel).length ? [b.hotel] : []);
   var cruiseCabins = Array.isArray(cru.cabins) ? cru.cabins : ((cru.cabinType||cru.peopleInCabin) ? [{cabinType:cru.cabinType||'', peopleInCabin:cru.peopleInCabin||0}] : []);
   // clientId is the primary/billing contact, clientIds is every additional
@@ -3647,8 +3667,7 @@ function tripToItineraryOpts(trip, client, extraNotes){
     hotelNights: trip.hotelNights?(trip.hotelNights+(trip.hotelNights===1?' night':' nights')):'',
     cruiseLine: cru.cruiseLine||trip.cruiseLine||'',
     shipName: cru.shipName||trip.shipName||'',
-    flightSegments: flightSegments,
-    flightConfirmationNumber: air.confirmationNumber||'',
+    airlineRecords: airlineRecords,
     hotelEntries: hotelEntries,
     cruiseConfirmationNumber: cru.confirmationNumber||'',
     cruiseSailingDate: cru.sailingDate?fmtDate(cru.sailingDate):'',
@@ -8829,8 +8848,9 @@ function pointsEntriesSectionHtml(entries, containerId, addBtnId){
 // live off the current form state (see refreshBookedTripSummary()), not a
 // static snapshot, so it stays accurate while the form is being filled in.
 function computeBookedTripSummary(bd){
+  var airlineRecords = (bd.airline && bd.airline.records) || [];
   var allPts = []
-    .concat(bd.airline.pts||[])
+    .concat([].concat.apply([], airlineRecords.map(function(r){return r.pts||[];})))
     .concat([].concat.apply([], (bd.hotel||[]).map(function(h){return h.pts||[];})))
     .concat(bd.cruise.pts||[])
     .concat(bd.carRental.pts||[])
@@ -8847,7 +8867,7 @@ function computeBookedTripSummary(bd){
   });
   var rows = Object.keys(byProgram).map(function(k){return byProgram[k];}).sort(function(a,b){return b.points-a.points;});
   var totalPtsCost = allPts.reduce(function(a,p){return a+(Number(p.cost)||0);},0);
-  var totalPrice = (bd.airline.price||0)
+  var totalPrice = airlineRecords.reduce(function(a,r){return a+(r.price||0);},0)
     + (bd.hotel||[]).reduce(function(a,h){return a+(h.price||0);},0)
     + (bd.cruise.price||0)
     + (bd.carRental.price||0)
@@ -9049,8 +9069,12 @@ function flightEntryRowInnerHtml(entry){
 function flightEntryRowHtml(entry){
   return '<div class="flight-entry-row" style="border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin-bottom:10px;background:#fafafa">'+flightEntryRowInnerHtml(entry)+'</div>';
 }
-function flightEntriesListHtml(entries){
-  return entries.length ? entries.map(flightEntryRowHtml).join('') : '<div id="tb-flight-entries-empty" style="color:#aaa;font-size:12px;padding:6px 0">No flights added yet</div>';
+// Class-marked (not id-marked) empty placeholder, same reason as
+// pointsEntriesListHtmlNoId — flight entries now live nested inside each
+// Airline Record (see airlineRecordRowInnerHtml()), so more than one of
+// these lists can exist on the page at once and can't share an id.
+function flightEntriesListHtmlNoId(entries){
+  return (entries && entries.length) ? entries.map(flightEntryRowHtml).join('') : '<div class="flight-entries-empty" style="color:#aaa;font-size:12px;padding:6px 0">No flights added yet</div>';
 }
 function airPaxNumOptionsHtml(selected){
   var opts = '<option value="">-- Select --</option>';
@@ -9065,23 +9089,13 @@ function airPaxClientOptionsHtml(selectedIds){
     return '<option value="'+c.id+'"'+(selectedIds.indexOf(c.id)!==-1?' selected':'')+'>'+escHtml(c.name)+'</option>';
   }).join('');
 }
-// Live feedback only — the actual save-blocking check lives in saveTrip().
-function updateAirPaxWarning(){
-  var numSel = document.getElementById('tb-air-num-pax');
-  var paxSel = document.getElementById('tb-air-passengers');
-  var warn = document.getElementById('tb-air-pax-warning');
-  if(!numSel || !paxSel || !warn) return;
-  var num = Number(numSel.value)||0;
-  var selectedCount = paxSel.selectedOptions.length;
-  if(num && selectedCount !== num){
-    warn.textContent = selectedCount+' passenger'+(selectedCount!==1?'s':'')+' selected — expected '+num+'.';
-    warn.style.display = 'block';
-  } else {
-    warn.style.display = 'none';
-  }
-}
-function readFlightEntries(){
-  return Array.from(document.querySelectorAll('#tb-flight-entries .flight-entry-row')).map(function(row){
+// Takes the container element directly (not an id), same reason as
+// readPointsEntriesFrom() — flight entries now live nested inside each
+// Airline Record, so this needs to work scoped to one record's own
+// .record-flight-entries container rather than a single page-level id.
+function readFlightEntriesFrom(containerEl){
+  if(!containerEl) return [];
+  return Array.from(containerEl.querySelectorAll('.flight-entry-row')).map(function(row){
     return {
       airline: (row.querySelector('.flight-entry-airline')||{}).value||'',
       flightNumber: (row.querySelector('.flight-entry-num')||{}).value||'',
@@ -9095,6 +9109,78 @@ function readFlightEntries(){
   }).filter(function(e){
     return e.airline||e.flightNumber||e.origin||e.destination||e.departDate||e.departTime||e.arrivalTime||e.classOfService;
   });
+}
+// An Airline Record is one PNR/confirmation — a trip can have more than one
+// (e.g. two passengers on an award-ticket record, two more on a separate
+// revenue-fare record for the same trip), each with its own Record Number,
+// its own subset of passengers, and its own flight segments and points
+// redemptions. This replaces the old single-record-per-trip Airline shape;
+// see the migration in bookedTripDetailsHtml() for how an old trip's flat
+// confirmationNumber/segments/pts/etc. become a one-record list.
+function airlineRecordRowInnerHtml(record){
+  record = record || {};
+  var flightEntries = Array.isArray(record.segments) && record.segments.length ? record.segments : [{}];
+  return '<div style="display:flex;justify-content:flex-end;margin-bottom:4px">'+
+      '<button type="button" class="del-airline-record-btn" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:12px">&#128465;&#65039; Remove Record</button>'+
+    '</div>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
+      '<div class="field"><label>Record Number</label><input class="airline-record-num" type="text" value="'+(record.recordNumber||'').toString().replace(/"/g,'&quot;')+'" placeholder="e.g. ABC123"></div>'+
+      '<div class="field"><label>Number of Passengers</label><select class="airline-record-numpax">'+airPaxNumOptionsHtml(record.numPassengers)+'</select></div>'+
+      '<div class="field"><label>Non-Stop Flights Only</label><select class="airline-record-nonstop"><option value="">-- Select --</option>'+selOpts(['Yes','No'],record.nonStop)+'</select></div>'+
+      '<div class="field"><label>Price ($)</label><input class="airline-record-price" type="number" value="'+(record.price||'')+'"></div>'+
+    '</div>'+
+    '<div class="field full"><label>Passengers <span class="hint" style="text-transform:none;font-weight:400">(select every client on this record — hold Ctrl/Cmd to select more than one, must match Number of Passengers)</span></label>'+
+      '<select class="airline-record-passengers" multiple size="4" style="width:100%">'+airPaxClientOptionsHtml(record.passengerClientIds)+'</select>'+
+      '<div class="airline-record-pax-warning" style="font-size:12px;color:#dc2626;margin-top:4px;display:none"></div>'+
+    '</div>'+
+    '<div class="field full"><label>Notes</label><textarea class="airline-record-notes">'+(record.notes||'')+'</textarea></div>'+
+    '<div class="field full"><label>Flights <span class="hint" style="text-transform:none;font-weight:400">(add one entry per flight segment on this record)</span></label>'+
+      '<div class="record-flight-entries">'+flightEntriesListHtmlNoId(flightEntries)+'</div>'+
+      '<button type="button" class="record-flight-add-btn" style="padding:5px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit">+ Add Flight</button>'+
+    '</div>'+
+    '<div class="field full"><label>Points Used <span class="hint" style="text-transform:none;font-weight:400">(add one row per miles/points redemption on this record)</span></label>'+
+      '<div class="record-pts-entries">'+pointsEntriesListHtmlNoId(record.pts||[])+'</div>'+
+      '<button type="button" class="record-pts-add-btn" style="padding:5px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit">+ Add Points Used</button>'+
+    '</div>';
+}
+function airlineRecordRowHtml(record){
+  return '<div class="airline-record-row" style="border:2px solid #c7d2fe;border-radius:8px;padding:14px;margin-bottom:14px;background:#f5f6ff">'+airlineRecordRowInnerHtml(record)+'</div>';
+}
+function airlineRecordsListHtml(records){
+  return records.length ? records.map(airlineRecordRowHtml).join('') : '<div id="tb-airline-records-empty" style="color:#aaa;font-size:12px;padding:6px 0">No records added yet</div>';
+}
+function readAirlineRecords(){
+  return Array.from(document.querySelectorAll('#tb-airline-records .airline-record-row')).map(function(row){
+    var paxSel = row.querySelector('.airline-record-passengers');
+    return {
+      recordNumber: (row.querySelector('.airline-record-num')||{}).value||'',
+      numPassengers: Number((row.querySelector('.airline-record-numpax')||{}).value)||0,
+      nonStop: (row.querySelector('.airline-record-nonstop')||{}).value||'',
+      price: Number((row.querySelector('.airline-record-price')||{}).value)||0,
+      passengerClientIds: paxSel ? Array.from(paxSel.selectedOptions).map(function(o){return o.value;}) : [],
+      notes: (row.querySelector('.airline-record-notes')||{}).value||'',
+      segments: readFlightEntriesFrom(row.querySelector('.record-flight-entries')),
+      pts: readPointsEntriesFrom(row.querySelector('.record-pts-entries'))
+    };
+  }).filter(function(r){
+    return r.recordNumber||r.numPassengers||r.nonStop||r.price||r.passengerClientIds.length||r.notes||r.segments.length||r.pts.length;
+  });
+}
+// Live feedback only — the actual save-blocking check lives in saveTrip(),
+// which checks every record independently (see there for why).
+function updateAirlineRecordPaxWarning(recordRow){
+  var numSel = recordRow.querySelector('.airline-record-numpax');
+  var paxSel = recordRow.querySelector('.airline-record-passengers');
+  var warn = recordRow.querySelector('.airline-record-pax-warning');
+  if(!numSel || !paxSel || !warn) return;
+  var num = Number(numSel.value)||0;
+  var selectedCount = paxSel.selectedOptions.length;
+  if(num && selectedCount !== num){
+    warn.textContent = selectedCount+' passenger'+(selectedCount!==1?'s':'')+' selected — expected '+num+'.';
+    warn.style.display = 'block';
+  } else {
+    warn.style.display = 'none';
+  }
 }
 function bookedTripDetailsHtml(bd){
   bd = bd || {};
@@ -9120,38 +9206,38 @@ function bookedTripDetailsHtml(bd){
   // loads fine as a one-entry list.
   var cabinEntries = Array.isArray(cru.cabins) ? cru.cabins : ((cru.cabinType||cru.peopleInCabin) ? [{cabinType:cru.cabinType||'', peopleInCabin:cru.peopleInCabin||0}] : []);
   if(!cabinEntries.length) cabinEntries = [{}];
-  // booked.airline used to hold one flight's airline/class/origin/
-  // destination/departDate directly, plus a single returnDate for the trip
-  // back — now those live per-entry in booked.airline.segments so a
-  // connecting or round-trip itinerary can have any number of legs. An old
-  // trip's single-flight shape (and its returnDate, as a second leg with
-  // origin/destination swapped) still loads fine as a 1-2 entry list.
-  var flightEntries = Array.isArray(air.segments) ? air.segments : [];
-  if(!flightEntries.length && (air.airline||air.origin||air.destination||air.departDate||air.classOfService)){
-    flightEntries.push({airline:air.airline||'', flightNumber:'', origin:air.origin||'', destination:air.destination||'', departDate:air.departDate||'', departTime:'', arrivalTime:'', classOfService:air.classOfService||''});
-    if(air.returnDate){
-      flightEntries.push({airline:air.airline||'', flightNumber:'', origin:air.destination||'', destination:air.origin||'', departDate:air.returnDate||'', departTime:'', arrivalTime:'', classOfService:air.classOfService||''});
+  // booked.airline used to be one flat record (single confirmationNumber/
+  // numPassengers/passengerClientIds/segments/pts covering the whole
+  // booking) — now a trip can have more than one Airline Record (see
+  // airlineRecordRowInnerHtml()), e.g. two passengers on an award-ticket
+  // record and two more on a separate revenue-fare record. An old trip's
+  // flat shape still loads fine, wrapped into a single-entry records list.
+  var airlineRecords = Array.isArray(air.records) ? air.records : [];
+  if(!airlineRecords.length){
+    var oldSegments = Array.isArray(air.segments) ? air.segments : [];
+    if(!oldSegments.length && (air.airline||air.origin||air.destination||air.departDate||air.classOfService)){
+      oldSegments.push({airline:air.airline||'', flightNumber:'', origin:air.origin||'', destination:air.destination||'', departDate:air.departDate||'', departTime:'', arrivalTime:'', classOfService:air.classOfService||''});
+      if(air.returnDate){
+        oldSegments.push({airline:air.airline||'', flightNumber:'', origin:air.destination||'', destination:air.origin||'', departDate:air.returnDate||'', departTime:'', arrivalTime:'', classOfService:air.classOfService||''});
+      }
+    }
+    if(air.confirmationNumber||air.price||air.numPassengers||(air.passengerClientIds&&air.passengerClientIds.length)||air.notes||air.nonStop||oldSegments.length||(air.pts&&air.pts.length)){
+      airlineRecords = [{
+        recordNumber: air.confirmationNumber||'', nonStop: air.nonStop||'', price: air.price||0,
+        numPassengers: air.numPassengers||0, passengerClientIds: air.passengerClientIds||[],
+        notes: air.notes||'', segments: oldSegments, pts: air.pts||[]
+      }];
     }
   }
-  if(!flightEntries.length) flightEntries = [{}];
+  if(!airlineRecords.length) airlineRecords = [{}];
   return ''+
     '<div class="modal-section-title">Booked Trip Details</div>'+
     fld('Trip Name',inp('tb-trip-name','text',bd.tripName,'e.g. Smith Family Alaska Cruise'))+
     '<div class="modal-section-title">Airline</div>'+
-    fld('Confirmation Number',inp('tb-air-conf','text',air.confirmationNumber,'e.g. ABC123'))+
-    fld('Number of Passengers','<select id="tb-air-num-pax">'+airPaxNumOptionsHtml(air.numPassengers)+'</select>')+
-    fld('Non-Stop Flights Only',sel('tb-air-nonstop',['Yes','No'],air.nonStop))+
-    fld('Price ($)',inp('tb-air-price','number',air.price))+
-    '<div class="field full"><label>Passengers <span class="hint" style="text-transform:none;font-weight:400">(select every client flying on this booking — hold Ctrl/Cmd to select more than one, must match Number of Passengers)</span></label>'+
-      '<select id="tb-air-passengers" multiple size="5" style="width:100%">'+airPaxClientOptionsHtml(air.passengerClientIds)+'</select>'+
-      '<div id="tb-air-pax-warning" style="font-size:12px;color:#dc2626;margin-top:4px;display:none"></div>'+
+    '<div class="field full"><label>Records <span class="hint" style="text-transform:none;font-weight:400">(one per confirmation/PNR — e.g. separate records for different fare types or when not everyone is ticketed together)</span></label>'+
+      '<div id="tb-airline-records">'+airlineRecordsListHtml(airlineRecords)+'</div>'+
+      '<button type="button" id="tb-airline-record-add-btn" style="padding:5px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit">+ Add Record</button>'+
     '</div>'+
-    fld('Notes','<textarea id="tb-air-notes">'+(air.notes||'')+'</textarea>',true)+
-    '<div class="field full"><label>Flights <span class="hint" style="text-transform:none;font-weight:400">(add one entry per flight segment)</span></label>'+
-      '<div id="tb-flight-entries">'+flightEntriesListHtml(flightEntries)+'</div>'+
-      '<button type="button" id="tb-flight-add-btn" style="padding:5px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit">+ Add Flight</button>'+
-    '</div>'+
-    pointsEntriesSectionHtml(air.pts||[], 'tb-air-pts-entries', 'tb-air-pts-add-btn')+
     '<div class="modal-section-title">Hotel</div>'+
     '<div class="field full"><label>Hotels <span class="hint" style="text-transform:none;font-weight:400">(add one entry per hotel stay on this trip)</span></label>'+
       '<div id="tb-hotel-entries">'+hotelEntriesListHtml(hotelEntries)+'</div>'+
@@ -9261,29 +9347,90 @@ function bindBookedTripDetailsListeners(){
       }
     });
   }
-  var flightEntriesEl = document.getElementById('tb-flight-entries');
-  var flightAddBtn = document.getElementById('tb-flight-add-btn');
-  if(flightAddBtn && flightEntriesEl){
-    flightAddBtn.addEventListener('click', function(){
-      var empty = document.getElementById('tb-flight-entries-empty');
+  var airlineRecordsEl = document.getElementById('tb-airline-records');
+  var airlineRecordAddBtn = document.getElementById('tb-airline-record-add-btn');
+  if(airlineRecordAddBtn && airlineRecordsEl){
+    airlineRecordAddBtn.addEventListener('click', function(){
+      var empty = document.getElementById('tb-airline-records-empty');
       if(empty) empty.remove();
       var div = document.createElement('div');
-      div.className = 'flight-entry-row';
-      div.style.cssText = 'border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin-bottom:10px;background:#fafafa';
-      div.innerHTML = flightEntryRowInnerHtml({});
-      flightEntriesEl.appendChild(div);
+      div.className = 'airline-record-row';
+      div.style.cssText = 'border:2px solid #c7d2fe;border-radius:8px;padding:14px;margin-bottom:14px;background:#f5f6ff';
+      div.innerHTML = airlineRecordRowInnerHtml({});
+      airlineRecordsEl.appendChild(div);
     });
   }
-  if(flightEntriesEl){
-    flightEntriesEl.addEventListener('click', function(e){
-      var btn = e.target.closest ? e.target.closest('.del-flight-entry-btn') : null;
-      if(!btn) return;
-      var row = btn.closest('.flight-entry-row');
-      if(row) row.remove();
-      if(!flightEntriesEl.querySelector('.flight-entry-row')){
-        flightEntriesEl.innerHTML = '<div id="tb-flight-entries-empty" style="color:#aaa;font-size:12px;padding:6px 0">No flights added yet</div>';
+  if(airlineRecordsEl){
+    // One delegated listener handles Remove Record plus every nested
+    // Flights/Points Used add-remove action across every record, since
+    // records themselves are a dynamic list (new records, and the nested
+    // lists inside them, all get added/removed as real DOM nodes after
+    // the initial render).
+    airlineRecordsEl.addEventListener('click', function(e){
+      var delRecBtn = e.target.closest ? e.target.closest('.del-airline-record-btn') : null;
+      if(delRecBtn){
+        var recRow = delRecBtn.closest('.airline-record-row');
+        if(recRow) recRow.remove();
+        if(!airlineRecordsEl.querySelector('.airline-record-row')){
+          airlineRecordsEl.innerHTML = '<div id="tb-airline-records-empty" style="color:#aaa;font-size:12px;padding:6px 0">No records added yet</div>';
+        }
+        return;
+      }
+      var addFlightBtn = e.target.closest ? e.target.closest('.record-flight-add-btn') : null;
+      if(addFlightBtn){
+        var container = addFlightBtn.closest('.airline-record-row').querySelector('.record-flight-entries');
+        var emptyF = container.querySelector('.flight-entries-empty');
+        if(emptyF) emptyF.remove();
+        var fdiv = document.createElement('div');
+        fdiv.className = 'flight-entry-row';
+        fdiv.style.cssText = 'border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin-bottom:10px;background:#fafafa';
+        fdiv.innerHTML = flightEntryRowInnerHtml({});
+        container.appendChild(fdiv);
+        return;
+      }
+      var delFlightBtn = e.target.closest ? e.target.closest('.del-flight-entry-btn') : null;
+      if(delFlightBtn){
+        var flightContainer = delFlightBtn.closest('.record-flight-entries');
+        var frow = delFlightBtn.closest('.flight-entry-row');
+        if(frow) frow.remove();
+        if(flightContainer && !flightContainer.querySelector('.flight-entry-row')){
+          flightContainer.innerHTML = '<div class="flight-entries-empty" style="color:#aaa;font-size:12px;padding:6px 0">No flights added yet</div>';
+        }
+        return;
+      }
+      var addPtsBtn = e.target.closest ? e.target.closest('.record-pts-add-btn') : null;
+      if(addPtsBtn){
+        var ptsContainer = addPtsBtn.closest('.airline-record-row').querySelector('.record-pts-entries');
+        var emptyP = ptsContainer.querySelector('.pts-entries-empty');
+        if(emptyP) emptyP.remove();
+        var pdiv = document.createElement('div');
+        pdiv.className = 'points-entry-row';
+        pdiv.style.cssText = 'border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin-bottom:10px;background:#fafafa';
+        pdiv.innerHTML = pointsEntryRowInnerHtml({});
+        ptsContainer.appendChild(pdiv);
+        return;
+      }
+      var delPtsBtn = e.target.closest ? e.target.closest('.del-points-entry-btn') : null;
+      if(delPtsBtn){
+        var ptsContainer2 = delPtsBtn.closest('.record-pts-entries');
+        var prow = delPtsBtn.closest('.points-entry-row');
+        if(prow) prow.remove();
+        if(ptsContainer2 && !ptsContainer2.querySelector('.points-entry-row')){
+          ptsContainer2.innerHTML = '<div class="pts-entries-empty" style="color:#aaa;font-size:12px;padding:6px 0">No points/miles redemptions added yet</div>';
+        }
+        return;
       }
     });
+    airlineRecordsEl.addEventListener('change', function(e){
+      if(e.target.classList.contains('airline-record-numpax') || e.target.classList.contains('airline-record-passengers')){
+        var recRow = e.target.closest('.airline-record-row');
+        if(recRow) updateAirlineRecordPaxWarning(recRow);
+      }
+    });
+    // Show the live mismatch warning immediately for any record loaded with
+    // existing data (e.g. re-opening a trip with a stale/edited passenger
+    // list), not just after the next change event.
+    airlineRecordsEl.querySelectorAll('.airline-record-row').forEach(updateAirlineRecordPaxWarning);
   }
   var hotelEntriesEl = document.getElementById('tb-hotel-entries');
   var hotelAddBtn = document.getElementById('tb-hotel-add-btn');
@@ -9361,18 +9508,12 @@ function bindBookedTripDetailsListeners(){
       }
     });
   }
-  bindPointsEntriesListeners('tb-air-pts-entries', 'tb-air-pts-add-btn');
   bindPointsEntriesListeners('tb-cruise-pts-entries', 'tb-cruise-pts-add-btn');
   bindPointsEntriesListeners('tb-car-pts-entries', 'tb-car-pts-add-btn');
   bindPointsEntriesListeners('tb-tours-pts-entries', 'tb-tours-pts-add-btn');
   bindPointsEntriesListeners('tb-tp-pts-entries', 'tb-tp-pts-add-btn');
   bindPointsEntriesListeners('tb-train-pts-entries', 'tb-train-pts-add-btn');
   bindPointsEntriesListeners('tb-bus-pts-entries', 'tb-bus-pts-add-btn');
-  var airNumPaxSel = document.getElementById('tb-air-num-pax');
-  var airPaxSel = document.getElementById('tb-air-passengers');
-  if(airNumPaxSel) airNumPaxSel.addEventListener('change', updateAirPaxWarning);
-  if(airPaxSel) airPaxSel.addEventListener('change', updateAirPaxWarning);
-  updateAirPaxWarning();
   // Delegated rather than bound per-field, since Price/Points Used rows are
   // added and removed dynamically throughout Booked Trip Details.
   $('modal').addEventListener('input', refreshBookedTripSummary);
@@ -9383,10 +9524,7 @@ function readBookedTripDetails(){
   return {
     tripName: gv('tb-trip-name'),
     airline: {
-      confirmationNumber: gv('tb-air-conf'), nonStop: gv('tb-air-nonstop'), price: gn('tb-air-price'),
-      numPassengers: Number(gv('tb-air-num-pax'))||0,
-      passengerClientIds: (function(){ var el=document.getElementById('tb-air-passengers'); return el ? Array.from(el.selectedOptions).map(function(o){return o.value;}) : []; })(),
-      notes: gv('tb-air-notes'), segments: readFlightEntries(), pts: readPointsEntriesFrom(document.getElementById('tb-air-pts-entries'))
+      records: readAirlineRecords()
     },
     hotel: readHotelEntries(),
     cruise: {
@@ -9551,12 +9689,20 @@ function saveClient(id){
 function saveTrip(id){
   const clientId=gv('tc'),dest=gv('tde');
   if(!clientId||!dest){toast('Client and destination are required','err');return;}
-  const airNumPax=Number(gv('tb-air-num-pax'))||0;
-  const airPaxSelEl=document.getElementById('tb-air-passengers');
-  const airPaxCount=airPaxSelEl?airPaxSelEl.selectedOptions.length:0;
-  if(airNumPax && airPaxCount!==airNumPax){
-    toast('Airline: '+airPaxCount+' passenger'+(airPaxCount!==1?'s':'')+' selected but Number of Passengers is '+airNumPax+' — they must match','err');
-    return;
+  // Each Airline Record validates independently — a mismatch on any one of
+  // them blocks the save, since there's no single shared passenger count
+  // anymore once a trip can have more than one record.
+  var airlineRecordRows = document.querySelectorAll('#tb-airline-records .airline-record-row');
+  for(var ari=0; ari<airlineRecordRows.length; ari++){
+    var arRow = airlineRecordRows[ari];
+    var arNum = Number((arRow.querySelector('.airline-record-numpax')||{}).value)||0;
+    var arPaxSel = arRow.querySelector('.airline-record-passengers');
+    var arCount = arPaxSel ? arPaxSel.selectedOptions.length : 0;
+    if(arNum && arCount!==arNum){
+      var arLabel = airlineRecordRows.length>1 ? ('Airline Record '+(ari+1)) : 'Airline';
+      toast(arLabel+': '+arCount+' passenger'+(arCount!==1?'s':'')+' selected but Number of Passengers is '+arNum+' — they must match','err');
+      return;
+    }
   }
   snapshot(id?'Edit trip':'Add trip');
   const client=db.clients.find(function(c){return c.id===clientId;});
