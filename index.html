@@ -8088,9 +8088,24 @@ function statusOptionsFor(statusList,name){
   if(!statusList) return [];
   return Array.isArray(statusList)?statusList:(statusList[name]||[]);
 }
+// Collapsed by default unless the client/trip already has a balance set
+// somewhere in this grid — existing data should never be hidden by
+// default, only the common case of an all-empty section. See
+// bindBalanceGridToggles() for the click handler (delegated on the
+// containing modal, since this grid is re-rendered in more than one form).
 function balanceGrid(label,idPrefix,list,data,statusList){
-  return '<div class="field full"><label>'+label+'</label>'+
-    '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax('+(statusList?'300px':'220px')+',1fr));gap:8px;border:1px solid #e5e7eb;border-radius:8px;padding:10px;background:#fafafa">'+
+  var hasData = !!data && Object.keys(data).some(function(k){
+    var v = data[k];
+    if(v==null || v==='') return false;
+    return statusList ? !!(v.balance||v.status) : true;
+  });
+  var gridId = idPrefix+'-grid';
+  return '<div class="field full">'+
+    '<label class="balance-grid-toggle" data-target="'+gridId+'" style="cursor:pointer;user-select:none;display:flex;align-items:center;gap:6px">'+
+      '<span class="balance-grid-arrow" style="display:inline-block;font-size:10px;transition:transform .15s;transform:rotate('+(hasData?'90':'0')+'deg)">&#9656;</span>'+
+      label+
+    '</label>'+
+    '<div id="'+gridId+'" style="display:'+(hasData?'grid':'none')+';grid-template-columns:repeat(auto-fill,minmax('+(statusList?'300px':'220px')+',1fr));gap:8px;border:1px solid #e5e7eb;border-radius:8px;padding:10px;background:#fafafa">'+
       list.map(function(name,i){
         var entry=(data&&data[name])||{};
         var bal=statusList?(entry.balance||''):((data&&data[name])||'');
@@ -8110,6 +8125,25 @@ function balanceGrid(label,idPrefix,list,data,statusList){
       }).join('')+
     '</div>'+
   '</div>';
+}
+// Delegated on the modal (rather than bound per-toggle) since balanceGrid()
+// output gets replaced wholesale when the trip form's Client dropdown
+// changes — a delegated listener on the stable modal container keeps
+// working across that re-render without needing to be re-bound. Called
+// once per form open (openClientForm/openTripForm); harmless if it stacks
+// across repeated opens in the same session, same as the other delegated
+// modal-level listeners in this file (e.g. refreshBookedTripSummary).
+function bindBalanceGridToggles(){
+  $('modal').addEventListener('click', function(e){
+    var toggle = e.target.closest ? e.target.closest('.balance-grid-toggle') : null;
+    if(!toggle) return;
+    var target = document.getElementById(toggle.dataset.target);
+    if(!target) return;
+    var arrow = toggle.querySelector('.balance-grid-arrow');
+    var isOpen = target.style.display !== 'none';
+    target.style.display = isOpen ? 'none' : 'grid';
+    if(arrow) arrow.style.transform = 'rotate('+(isOpen?'0':'90')+'deg)';
+  });
 }
 // A plain has/doesn't-have checklist — unlike balanceGrid above, there's no
 // balance number or status per card, just presence. checkedList is an array
@@ -8412,6 +8446,7 @@ function openClientForm(id){
       numEl.value = digits ? Number(digits).toLocaleString() : '';
     });
   });
+  bindBalanceGridToggles();
 
   document.querySelectorAll('.balance-status-sel').forEach(function(selEl){
     selEl.addEventListener('change',function(){
@@ -8649,6 +8684,7 @@ function bindTripBalanceListeners(){
       numEl.value = digits ? Number(digits).toLocaleString() : '';
     });
   });
+  bindBalanceGridToggles();
   document.querySelectorAll('.balance-status-sel').forEach(function(selEl){
     selEl.addEventListener('change',function(){
       var customInput=document.getElementById(selEl.dataset.customId);
