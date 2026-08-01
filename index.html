@@ -8729,6 +8729,59 @@ function pointsEntriesSectionHtml(entries, containerId, addBtnId){
     '<button type="button" id="'+addBtnId+'" style="padding:5px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit">+ Add Points Used</button>'+
   '</div>';
 }
+// Aggregates every Points Used entry across every Booked Trip Details
+// section (Airline/Hotel/Cruise/Car Rental/Tours/Theme Park/Train/Bus) by
+// program, plus every section's Price($) field and every points entry's own
+// Cost($) — both represent real cash spent — into one rollup. Recomputed
+// live off the current form state (see refreshBookedTripSummary()), not a
+// static snapshot, so it stays accurate while the form is being filled in.
+function computeBookedTripSummary(bd){
+  var allPts = []
+    .concat(bd.airline.pts||[])
+    .concat([].concat.apply([], (bd.hotel||[]).map(function(h){return h.pts||[];})))
+    .concat(bd.cruise.pts||[])
+    .concat(bd.carRental.pts||[])
+    .concat(bd.toursPts||[])
+    .concat(bd.themePark.pts||[])
+    .concat(bd.train.pts||[])
+    .concat(bd.bus.pts||[]);
+  var byProgram = {};
+  allPts.forEach(function(p){
+    if(!p.program && !p.amount && !p.cost) return;
+    var key = p.program || '(no program selected)';
+    if(!byProgram[key]) byProgram[key] = {program:key, points:0};
+    byProgram[key].points += Number(p.amount)||0;
+  });
+  var rows = Object.keys(byProgram).map(function(k){return byProgram[k];}).sort(function(a,b){return b.points-a.points;});
+  var totalPtsCost = allPts.reduce(function(a,p){return a+(Number(p.cost)||0);},0);
+  var totalPrice = (bd.airline.price||0)
+    + (bd.hotel||[]).reduce(function(a,h){return a+(h.price||0);},0)
+    + (bd.cruise.price||0)
+    + (bd.carRental.price||0)
+    + (bd.tours||[]).reduce(function(a,t){return a+(t.price||0);},0)
+    + (bd.themePark.price||0)
+    + (bd.train.price||0)
+    + (bd.bus.price||0);
+  return {rows:rows, totalCash: totalPrice + totalPtsCost};
+}
+function bookedTripSummaryHtml(summary){
+  return (summary.rows.length ?
+    '<div class="tbl-wrap"><table class="report-table"><thead><tr><th>Program</th><th style="text-align:right">Points/Miles Used</th></tr></thead><tbody>'+
+    summary.rows.map(function(r){
+      return '<tr><td>'+escHtml(r.program)+'</td><td style="text-align:right">'+fmt(r.points)+'</td></tr>';
+    }).join('')+
+    '</tbody></table></div>'
+    : '<div style="color:#aaa;font-size:12px;padding:6px 0">No points/miles redemptions added yet</div>')+
+    '<div style="margin-top:10px;font-size:14px;font-weight:700;color:#111">Total Cash Paid: $'+money(summary.totalCash)+'</div>';
+}
+// Bound to every input/change event inside the modal (see
+// bindBookedTripDetailsListeners) rather than to each individual field,
+// since new Price/Points Used rows get added and removed dynamically.
+function refreshBookedTripSummary(){
+  var el = document.getElementById('tb-booked-summary');
+  if(!el) return;
+  el.innerHTML = bookedTripSummaryHtml(computeBookedTripSummary(readBookedTripDetails()));
+}
 function bindPointsEntriesListeners(containerId, addBtnId){
   var containerEl = document.getElementById(containerId);
   var addBtn = document.getElementById(addBtnId);
@@ -8899,6 +8952,34 @@ function flightEntryRowHtml(entry){
 function flightEntriesListHtml(entries){
   return entries.length ? entries.map(flightEntryRowHtml).join('') : '<div id="tb-flight-entries-empty" style="color:#aaa;font-size:12px;padding:6px 0">No flights added yet</div>';
 }
+function airPaxNumOptionsHtml(selected){
+  var opts = '<option value="">-- Select --</option>';
+  for(var i=1;i<=9;i++){
+    opts += '<option value="'+i+'"'+(String(selected)===String(i)?' selected':'')+'>'+i+'</option>';
+  }
+  return opts;
+}
+function airPaxClientOptionsHtml(selectedIds){
+  selectedIds = selectedIds || [];
+  return [...db.clients].sort(function(a,b){return (a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase());}).map(function(c){
+    return '<option value="'+c.id+'"'+(selectedIds.indexOf(c.id)!==-1?' selected':'')+'>'+escHtml(c.name)+'</option>';
+  }).join('');
+}
+// Live feedback only — the actual save-blocking check lives in saveTrip().
+function updateAirPaxWarning(){
+  var numSel = document.getElementById('tb-air-num-pax');
+  var paxSel = document.getElementById('tb-air-passengers');
+  var warn = document.getElementById('tb-air-pax-warning');
+  if(!numSel || !paxSel || !warn) return;
+  var num = Number(numSel.value)||0;
+  var selectedCount = paxSel.selectedOptions.length;
+  if(num && selectedCount !== num){
+    warn.textContent = selectedCount+' passenger'+(selectedCount!==1?'s':'')+' selected — expected '+num+'.';
+    warn.style.display = 'block';
+  } else {
+    warn.style.display = 'none';
+  }
+}
 function readFlightEntries(){
   return Array.from(document.querySelectorAll('#tb-flight-entries .flight-entry-row')).map(function(row){
     return {
@@ -8958,8 +9039,13 @@ function bookedTripDetailsHtml(bd){
     fld('Trip Name',inp('tb-trip-name','text',bd.tripName,'e.g. Smith Family Alaska Cruise'))+
     '<div class="modal-section-title">Airline</div>'+
     fld('Confirmation Number',inp('tb-air-conf','text',air.confirmationNumber,'e.g. ABC123'))+
+    fld('Number of Passengers','<select id="tb-air-num-pax">'+airPaxNumOptionsHtml(air.numPassengers)+'</select>')+
     fld('Non-Stop Flights Only',sel('tb-air-nonstop',['Yes','No'],air.nonStop))+
     fld('Price ($)',inp('tb-air-price','number',air.price))+
+    '<div class="field full"><label>Passengers <span class="hint" style="text-transform:none;font-weight:400">(select every client flying on this booking — hold Ctrl/Cmd to select more than one, must match Number of Passengers)</span></label>'+
+      '<select id="tb-air-passengers" multiple size="5" style="width:100%">'+airPaxClientOptionsHtml(air.passengerClientIds)+'</select>'+
+      '<div id="tb-air-pax-warning" style="font-size:12px;color:#dc2626;margin-top:4px;display:none"></div>'+
+    '</div>'+
     fld('Notes','<textarea id="tb-air-notes">'+(air.notes||'')+'</textarea>',true)+
     '<div class="field full"><label>Flights <span class="hint" style="text-transform:none;font-weight:400">(add one entry per flight segment)</span></label>'+
       '<div id="tb-flight-entries">'+flightEntriesListHtml(flightEntries)+'</div>'+
@@ -9033,7 +9119,9 @@ function bookedTripDetailsHtml(bd){
     fld('Class of Service',sel('tb-bus-class',TRAIN_CLASSES,bus.classOfService))+
     fld('Price ($)',inp('tb-bus-price','number',bus.price))+
     fld('Notes','<textarea id="tb-bus-notes">'+(bus.notes||'')+'</textarea>',true)+
-    pointsEntriesSectionHtml(bus.pts||[], 'tb-bus-pts-entries', 'tb-bus-pts-add-btn');
+    pointsEntriesSectionHtml(bus.pts||[], 'tb-bus-pts-entries', 'tb-bus-pts-add-btn')+
+    '<div class="modal-section-title">Summary</div>'+
+    '<div id="tb-booked-summary"></div>';
 }
 function bindBookedTripDetailsListeners(){
   var cruiseLineSel = document.getElementById('tb-cruise-line');
@@ -9178,12 +9266,24 @@ function bindBookedTripDetailsListeners(){
   bindPointsEntriesListeners('tb-tp-pts-entries', 'tb-tp-pts-add-btn');
   bindPointsEntriesListeners('tb-train-pts-entries', 'tb-train-pts-add-btn');
   bindPointsEntriesListeners('tb-bus-pts-entries', 'tb-bus-pts-add-btn');
+  var airNumPaxSel = document.getElementById('tb-air-num-pax');
+  var airPaxSel = document.getElementById('tb-air-passengers');
+  if(airNumPaxSel) airNumPaxSel.addEventListener('change', updateAirPaxWarning);
+  if(airPaxSel) airPaxSel.addEventListener('change', updateAirPaxWarning);
+  updateAirPaxWarning();
+  // Delegated rather than bound per-field, since Price/Points Used rows are
+  // added and removed dynamically throughout Booked Trip Details.
+  $('modal').addEventListener('input', refreshBookedTripSummary);
+  $('modal').addEventListener('change', refreshBookedTripSummary);
+  refreshBookedTripSummary();
 }
 function readBookedTripDetails(){
   return {
     tripName: gv('tb-trip-name'),
     airline: {
       confirmationNumber: gv('tb-air-conf'), nonStop: gv('tb-air-nonstop'), price: gn('tb-air-price'),
+      numPassengers: Number(gv('tb-air-num-pax'))||0,
+      passengerClientIds: (function(){ var el=document.getElementById('tb-air-passengers'); return el ? Array.from(el.selectedOptions).map(function(o){return o.value;}) : []; })(),
       notes: gv('tb-air-notes'), segments: readFlightEntries(), pts: readPointsEntriesFrom(document.getElementById('tb-air-pts-entries'))
     },
     hotel: readHotelEntries(),
@@ -9330,6 +9430,13 @@ function saveClient(id){
 function saveTrip(id){
   const clientId=gv('tc'),dest=gv('tde');
   if(!clientId||!dest){toast('Client and destination are required','err');return;}
+  const airNumPax=Number(gv('tb-air-num-pax'))||0;
+  const airPaxSelEl=document.getElementById('tb-air-passengers');
+  const airPaxCount=airPaxSelEl?airPaxSelEl.selectedOptions.length:0;
+  if(airNumPax && airPaxCount!==airNumPax){
+    toast('Airline: '+airPaxCount+' passenger'+(airPaxCount!==1?'s':'')+' selected but Number of Passengers is '+airNumPax+' — they must match','err');
+    return;
+  }
   snapshot(id?'Edit trip':'Add trip');
   const client=db.clients.find(function(c){return c.id===clientId;});
   const supplierId=gv('tsup');
