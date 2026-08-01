@@ -241,11 +241,6 @@ tr:last-child td{border-bottom:none}
       <button class="nb" id="nb-reports">&#128202; Reports</button>
       <button class="nb" id="nb-calendar">&#128197; Calendar</button>
       <button class="nb" id="nb-email">&#9993;&#65039; Email</button>
-      <div style="padding-left:20px;margin-bottom:2px">
-        <button class="sync-btn" id="btn-mass-email" style="color:#7c3aed;border-color:#c4b5fd">&#128231; Email Clients</button>
-        <button class="sync-btn" id="btn-email-quote" style="color:#7c3aed;border-color:#c4b5fd">&#128176; Email Quote</button>
-        <button class="sync-btn" id="btn-email-itinerary" style="color:#7c3aed;border-color:#c4b5fd">&#128196; Email Itinerary</button>
-      </div>
       <button class="nb" id="nb-bookmarks">&#128278; Bookmarks</button>
     </nav>
     <div class="sb-footer">
@@ -6575,7 +6570,11 @@ function renderEmail(){
   var checklistBoxStyle = 'border:1px solid #e5e7eb;border-radius:8px;padding:10px;max-height:200px;overflow-y:auto;background:#fafafa';
 
   $('main').innerHTML =
-    '<div class="page-hdr"><div class="page-title">Email</div></div>'+
+    '<div class="page-hdr"><div class="page-title">Email</div><div style="display:flex;gap:8px">'+
+      '<button class="cancel-btn" id="btn-mass-email" style="color:#7c3aed;border-color:#c4b5fd">&#128231; Email Clients</button>'+
+      '<button class="cancel-btn" id="btn-email-quote" style="color:#7c3aed;border-color:#c4b5fd">&#128176; Email Quote</button>'+
+      '<button class="cancel-btn" id="btn-email-itinerary" style="color:#7c3aed;border-color:#c4b5fd">&#128196; Email Itinerary</button>'+
+    '</div></div>'+
     '<div class="email-two-col">'+
       '<div>'+
         '<div id="email-client-label" style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">1. Select Client</div>'+
@@ -6601,6 +6600,10 @@ function renderEmail(){
         '</div>'+
       '</div>'+
     '</div>';
+
+  $('btn-mass-email').addEventListener('click', openMassEmailModal);
+  $('btn-email-quote').addEventListener('click', openEmailQuoteModal);
+  $('btn-email-itinerary').addEventListener('click', openEmailItineraryModal);
 
   var selClient = null;
   var selTemplate = null;
@@ -10596,9 +10599,6 @@ function bindClick(id, handler){
   bindClick('btn-trips-csv', function(){exportCSV('trips');});
   bindClick('btn-backup', exportJSON);
   bindClick('btn-restore', importJSON);
-  bindClick('btn-mass-email', openMassEmailModal);
-  bindClick('btn-email-quote', openEmailQuoteModal);
-  bindClick('btn-email-itinerary', openEmailItineraryModal);
   bindClick('btn-log-mailchimp', openLogMailchimpModal);
   bindClick('btn-sync-mailchimp', syncMailchimpEmails);
   bindClick('btn-import-csv', importCSV);
