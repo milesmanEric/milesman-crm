@@ -3410,6 +3410,14 @@ function itineraryEmailBodyHtml(opts){
   var overviewRows = itineraryDetailRow('Destination', opts.destination) +
     itineraryDetailRow('Travel Dates', datesLine) +
     itineraryDetailRow('Passengers', opts.passengers);
+  // Other trip records linked via Linked Trips (same overall multi-city
+  // vacation, see saveTrip()) — each rendered as one row, tripName if it has
+  // one, destination otherwise, with its own date range as the value.
+  var linkedTripsRows = (opts.linkedTrips||[]).map(function(lt){
+    var label = lt.tripName || lt.destination || 'Linked trip';
+    var ltDatesLine = (lt.departDate?fmtDate(lt.departDate):'') + (lt.departDate&&lt.returnDate?' – ':'') + (lt.returnDate?fmtDate(lt.returnDate):'');
+    return itineraryDetailRow(label, ltDatesLine || lt.destination || '');
+  }).join('');
   // Flight/Hotel/Cruise prefer the actual Booked Trip Details entries
   // (real flight segments, hotel stays, cruise cabins) whenever that
   // section has anything recorded — only falling back to the trip's
@@ -3530,6 +3538,7 @@ function itineraryEmailBodyHtml(opts){
 '</table>'+
 '</td>'+
 '</tr>'+
+itineraryDetailBox('Also Part of This Vacation', linkedTripsRows)+
 flightBoxesHtml+
 hotelBoxesHtml+
 itineraryDetailBox('Cruise Details', cruiseRows)+
@@ -3600,9 +3609,14 @@ function tripToItineraryOpts(trip, client, extraNotes){
     var c = db.clients.find(function(x){return x.id===cid;});
     return c ? (toFirstLast(c.name)||c.name||'') : '';
   }).filter(Boolean);
+  var linkedTrips = (trip.linkedTripIds||[]).map(function(tid){
+    var t = db.trips.find(function(x){return x.id===tid;});
+    return t ? {destination:t.destination||'', departDate:t.departDate||'', returnDate:t.returnDate||'', tripName:(t.booked&&t.booked.tripName)||''} : null;
+  }).filter(Boolean);
   return {
     clientFirstName: client?getFirstName(client.name):'',
     passengers: joinNames(passengerNames),
+    linkedTrips: linkedTrips,
     tripName: b.tripName||'',
     destination: trip.destination||'',
     origin: trip.origin||'',
