@@ -9385,7 +9385,7 @@ function openTripForm(id){
       fld('Hotel Brand',sel('tho',HOTELS,d.hotel))+fld('Hotel Nights',inp('thn','number',d.hotelNights||0))+
       fld('Cruise Line',sel('tcr',CRUISE_LINES,d.cruiseLine))+fld('Ship Name','<select id="tship">'+shipOptionsHtml(d.cruiseLine,d.shipName)+'</select>')+
       fld('Points Used',inp('tpu','number',d.pointsUsed||0))+fld('Cash Paid ($)',inp('tcp','number',d.cashPaid||0))+
-      fld('Total Value ($)',inp('tva','number',d.totalValue||0))+fld('Booking Reference',inp('tbr','text',d.bookingRef,'e.g. UA-44129LHR'))+
+      fld('Total Value ($)',inp('tva','number',d.totalValue||0))+fld('Invoice Number',inp('tbr','text',d.bookingRef,'e.g. INV-10234'))+
       fld('Invoice Date',inp('tinv','date',d.invoiceDate))+
       fld('Product',inp('tpr','text',d.product,'e.g. Airline Booking:Roundtrip Intl Business'))+
       '<div id="trip-balance-sections">'+tripBalanceSectionsHtml(initCid)+'</div>'+
