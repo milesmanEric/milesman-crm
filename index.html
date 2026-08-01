@@ -5402,28 +5402,38 @@ function extractCreditCardBalances(text){
   });
   return Object.keys(out).length?out:null;
 }
-// Adds any newly-found balances without touching an entry that already has
-// a recorded balance on the client. Shared by mileageBalances/hotelBalances
+// A fresh Book a Trip form submission (or re-submission) wins over whatever
+// balance is already on file for a program — a client's points/miles change
+// constantly, so the newest self-reported number is the one worth trusting.
+// The one exception: a blank/zero balance in the new submission is treated
+// as "didn't answer this one" rather than "this is now zero", so it leaves
+// the existing entry (balance and status both) completely untouched instead
+// of wiping out a real number the client just didn't re-enter. Shared by
+// mileageBalances/hotelBalances/cruiseBalances/carRentalBalances
 // ({balance,status} objects).
 function mergeBalanceObjects(existingBalances,newBalances){
   const merged=Object.assign({},existingBalances||{});
   const added=[];
   Object.keys(newBalances||{}).forEach(function(name){
-    if(!merged[name]||!merged[name].balance){
-      merged[name]=newBalances[name];
+    var incoming=newBalances[name];
+    if(incoming&&incoming.balance){
+      merged[name]=incoming;
       added.push(name);
     }
   });
   return {merged:merged,added:added};
 }
-// Same, but for creditCardBalances, which stores plain numbers rather than
-// {balance,status} objects.
+// Same overwrite-unless-blank/zero rule, for creditCardBalances, which
+// stores plain numbers rather than {balance,status} objects. In practice
+// extractBalances() never even includes a zero-balance credit card in
+// newBalances to begin with, so the truthy check here is mostly defensive.
 function mergeCreditCardBalances(existingBalances,newBalances){
   const merged=Object.assign({},existingBalances||{});
   const added=[];
   Object.keys(newBalances||{}).forEach(function(card){
-    if(!merged[card]){
-      merged[card]=newBalances[card];
+    var incoming=newBalances[card];
+    if(incoming){
+      merged[card]=incoming;
       added.push(card);
     }
   });
