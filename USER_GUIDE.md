@@ -18,7 +18,9 @@ Both are checked automatically every 5 minutes as long as the CRM tab is open an
 
 ## Signing in
 
-The first time you open the CRM on a new device/browser, you'll be asked to set a password for that device — it's stored only in that browser, never sent anywhere, and can't be recovered if you forget it (use **Forgot password?** on the login screen to reset it, which only resets the login itself, never your client data). After that, you'll stay signed in on that device until you click **Lock** (sidebar, near the bottom) or clear your browser data.
+The first time you open the CRM on a new device/browser, you'll be asked to set a password for that device — it's stored only in that browser, never sent anywhere, and can't be recovered if you forget it (use **Forgot password?** on the login screen to reset it, which only resets the login itself, never your client data). After that, you'll stay signed in on that device until you click **Lock** or **Close** (sidebar, near the bottom) or clear your browser data.
+
+**Close** does everything **Lock** does (ends the session, asks for your password again next time), plus explicitly saves everything first — your local data, and a quiet backup to Google Drive if it's connected — before locking. Use it when you're wrapping up for the day and want to be sure everything's saved; use **Lock** for a quick "step away from the desk" that doesn't need the extra save.
 
 Worth knowing: this password screen keeps a casual visitor who stumbles on the CRM's web address from seeing your data at a glance, but it isn't real security — anyone who deliberately went looking could get around it. **Secure Sync** (see [Backing up your data](#backing-up-your-data)) is the one feature with actual server-verified access control.
 

@@ -293,6 +293,7 @@ tr:last-child td{border-bottom:none}
       <button class="sync-btn" id="btn-test-connectivity" style="color:#888;border-color:#ddd;font-size:11px">&#128225; Test Connectivity</button>
       <button class="sync-btn" id="btn-change-password" style="color:#888;border-color:#ddd;font-size:11px">&#128273; Change Password</button>
       <button class="sync-btn" id="btn-lock-app" style="color:#888;border-color:#ddd;font-size:11px">&#128274; Lock</button>
+      <button class="sync-btn" id="btn-close-app" style="color:#888;border-color:#ddd;font-size:11px" title="Saves everything, then ends the session (same as Lock, plus an explicit save first)">&#128682; Close</button>
       <button class="sync-btn" id="btn-copy-drive-refresh" style="color:#888;border-color:#ddd;font-size:11px" title="One-time Secure Sync server setup — copies this device's Drive refresh token for pasting into Vercel">&#128203; Copy Drive Refresh Token</button>
       <div class="footer-txt">(908) 419-7700 &middot; themilesman.com</div>
     </div>
@@ -10269,6 +10270,7 @@ function bindClick(id, handler){
   });
   bindClick('btn-change-password', changeAuthPassword);
   bindClick('btn-lock-app', lockApp);
+  bindClick('btn-close-app', closeApp);
 
   // Assistant chat widget
   var assistantToggle = document.getElementById('assistant-toggle-btn');
@@ -10349,6 +10351,19 @@ async function runAutoDriveBackup(){
   debugLog('Running auto Drive backup...');
   try{ driveToken = token; await driveBackup(true); debugLog('Auto Drive backup finished'); } // silent=true suppresses button text change
   finally{ _autoBackupInFlight = false; }
+}
+// Same as Lock (lockApp(), defined at the top level outside bootApp), but
+// explicitly saves first — a defensive localStorage save (everything's
+// already saved after each edit, but this covers any gap) plus a
+// best-effort, silent Google Drive backup (same silent/non-redirecting
+// path as the auto-backup-on-tab-hide behavior, so it never hijacks the
+// screen with a Google login prompt) before ending the session. Must live
+// in here (bootApp's scope), not alongside lockApp, since it calls saveDB/
+// runAutoDriveBackup/debugLog — all local to this scope.
+async function closeApp(){
+  saveDB();
+  try{ await runAutoDriveBackup(); }catch(e){ debugLog('Close: Drive backup skipped — '+e.message); }
+  lockApp();
 }
 
 // ── Assistant chat widget ────────────────────────────────────────────────
