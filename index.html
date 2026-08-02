@@ -132,8 +132,8 @@ nav{padding:10px 8px}
 .cal-day-num.today-num{background:#2563eb;color:#fff;border-radius:50%;width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:10px}
 .cal-trip{font-size:10px;padding:2px 5px;border-radius:3px;margin-bottom:2px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:500}
 .cal-trip-start{background:#dbeafe;color:#1e40af;border-left:3px solid #2563eb}
-.template-card,.tool-card{border:1px solid #e5e7eb;border-radius:8px;padding:12px 16px;cursor:pointer;margin-bottom:8px;transition:border-color .15s}
-.template-card:hover,.template-card.selected,.tool-card:hover{border-color:#2563eb;background:#eff6ff}
+.template-card{border:1px solid #e5e7eb;border-radius:8px;padding:12px 16px;cursor:pointer;margin-bottom:8px;transition:border-color .15s}
+.template-card:hover,.template-card.selected{border-color:#2563eb;background:#eff6ff}
 .template-card-name{font-size:13px;font-weight:600;color:#111}
 .template-card-desc{font-size:11px;color:#888;margin-top:2px}
 .email-preview{border:1px solid #e5e7eb;border-radius:8px;padding:16px;background:#fafafa;font-size:13px;line-height:1.7;white-space:pre-wrap;min-height:120px;color:#111}
@@ -6298,7 +6298,14 @@ var TEMPLATES = [
     // renderReferralCreditPreview/referralCreditEmailBodyHtml) since the
     // certificate embeds the Miles Man logo, which a plain mailto: body
     // can't carry.
-  }
+  },
+  // These three aren't mail-merge templates like the rest (no shared
+  // Select Client/Preview & Send flow \u2014 each opens its own dedicated
+  // modal with its own client/trip picker), but they render as the same
+  // template-card so the Email page shows one consistent list.
+  {id:'mass-email', name:'Email Clients', description:'Send a one-off email to multiple clients at once', opensModal:openMassEmailModal},
+  {id:'email-quote', name:'Email Quote', description:'Build a styled cruise pricing quote for a client', opensModal:openEmailQuoteModal},
+  {id:'email-itinerary', name:'Email Itinerary', description:'Generate a full itinerary recap from a booked trip', opensModal:openEmailItineraryModal}
 ];
 
 // "Smith, John Michael" -> "John Smith" (drops any middle name/initial —
@@ -6559,18 +6566,6 @@ function renderEmail(){
     '</div>';
   }).join('');
 
-  var EMAIL_TOOLS = [
-    {id:'mass-email', name:'&#128231; Email Clients', description:'Send a one-off email to multiple clients at once', handler:openMassEmailModal},
-    {id:'email-quote', name:'&#128176; Email Quote', description:'Build a styled cruise pricing quote for a client', handler:openEmailQuoteModal},
-    {id:'email-itinerary', name:'&#128196; Email Itinerary', description:'Generate a full itinerary recap from a booked trip', handler:openEmailItineraryModal}
-  ];
-  var toolCards = EMAIL_TOOLS.map(function(t){
-    return '<div class="tool-card" data-tool-id="'+t.id+'">'+
-      '<div class="template-card-name">'+t.name+'</div>'+
-      '<div class="template-card-desc">'+t.description+'</div>'+
-    '</div>';
-  }).join('');
-
   function clientChecklistHtml(cbClass){
     return sortedClients.map(function(c){
       return '<label style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:13px;cursor:pointer">'+
@@ -6596,7 +6591,6 @@ function renderEmail(){
         '</div>'+
         '<div style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">2. Select Template</div>'+
         templateCards+
-        toolCards+
         '<div id="email-referred-wrap" style="display:none;margin-top:14px">'+
           '<div style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Referred Client(s)</div>'+
           '<div id="email-referred-list" style="'+checklistBoxStyle+'">'+clientChecklistHtml('email-referred-cb')+'</div>'+
@@ -6609,13 +6603,6 @@ function renderEmail(){
         '</div>'+
       '</div>'+
     '</div>';
-
-  document.querySelectorAll('.tool-card').forEach(function(card){
-    card.addEventListener('click', function(){
-      var tool = EMAIL_TOOLS.find(function(t){return t.id===card.dataset.toolId;});
-      if(tool) tool.handler();
-    });
-  });
 
   var selClient = null;
   var selTemplate = null;
@@ -6765,9 +6752,11 @@ function renderEmail(){
 
   document.querySelectorAll('.template-card').forEach(function(card){
     card.addEventListener('click',function(){
+      var clicked=TEMPLATES.find(function(t){return t.id===card.dataset.templateId;})||null;
+      if(clicked && clicked.opensModal){ clicked.opensModal(); return; }
       document.querySelectorAll('.template-card').forEach(function(c){c.classList.remove('selected');});
       card.classList.add('selected');
-      selTemplate=TEMPLATES.find(function(t){return t.id===card.dataset.templateId;})||null;
+      selTemplate=clicked;
       var referredWrap = document.getElementById('email-referred-wrap');
       var referrersWrap = document.getElementById('email-referrers-wrap');
       var clientSel = document.getElementById('email-client-sel');
