@@ -6585,9 +6585,7 @@ function renderEmail(){
     '<div class="page-hdr"><div class="page-title">Email</div></div>'+
     '<div class="email-two-col">'+
       '<div>'+
-        '<div style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Tools</div>'+
-        toolCards+
-        '<div id="email-client-label" style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;margin:16px 0 8px">1. Select Client</div>'+
+        '<div id="email-client-label" style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">1. Select Client</div>'+
         '<div style="display:flex;gap:14px;margin-bottom:8px">'+
           '<label style="display:flex;align-items:center;gap:5px;font-size:12px;color:#374151;cursor:pointer"><input type="checkbox" id="email-filter-paying" style="width:13px;height:13px"> Paying clients only</label>'+
           '<label style="display:flex;align-items:center;gap:5px;font-size:12px;color:#374151;cursor:pointer"><input type="checkbox" id="email-filter-subscriber" style="width:13px;height:13px"> Subscribers only</label>'+
@@ -6598,6 +6596,7 @@ function renderEmail(){
         '</div>'+
         '<div style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">2. Select Template</div>'+
         templateCards+
+        toolCards+
         '<div id="email-referred-wrap" style="display:none;margin-top:14px">'+
           '<div style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Referred Client(s)</div>'+
           '<div id="email-referred-list" style="'+checklistBoxStyle+'">'+clientChecklistHtml('email-referred-cb')+'</div>'+
