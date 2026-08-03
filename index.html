@@ -8062,6 +8062,111 @@ function openInvoiceDetail(invoiceNum){
   });
 }
 
+// Connected components over trip.linkedTripIds (symmetric — see saveTrip()'s
+// two-way sync) computed across ALL db.trips, not just the currently
+// filtered/sorted list, so a group's identity doesn't shift depending on
+// what search/status filter happens to be active. Returns tripId -> an
+// array of every trip (full objects) in that trip's component, including
+// itself; a trip with no links just gets a single-element array back.
+function tripLinkGroups(){
+  var byId = {};
+  db.trips.forEach(function(t){ byId[t.id] = t; });
+  var groupOf = {}; // tripId -> group array (shared reference across members)
+  db.trips.forEach(function(t){
+    if(groupOf[t.id]) return;
+    var group = [];
+    var seen = {};
+    var queue = [t.id];
+    while(queue.length){
+      var tid = queue.shift();
+      if(seen[tid]) continue;
+      seen[tid] = true;
+      var trip = byId[tid];
+      if(!trip) continue;
+      group.push(trip);
+      (trip.linkedTripIds||[]).forEach(function(otherId){ if(!seen[otherId]) queue.push(otherId); });
+    }
+    group.forEach(function(member){ groupOf[member.id] = group; });
+  });
+  return groupOf;
+}
+// One row's markup — shared between standalone trips and subtrip rows
+// inside a linked-trip group (isSub adds a visual inset on the Client cell
+// so the nesting under the group heading is obvious at a glance).
+function tripRowHtml(t, isSub){
+  var indent = isSub ? '<span style="color:#c7d2fe;margin-right:4px">&#8618;</span>' : '';
+  return '<tr class="trip-list-row" data-trip-id="'+t.id+'" style="cursor:pointer'+(isSub?';background:#fafbff':'')+'">'+
+    '<td style="width:32px"><input type="checkbox" class="trip-row-cb" data-id="'+t.id+'" style="width:14px;height:14px"></td>'+
+    '<td style="'+(isSub?'padding-left:22px':'')+'">'+indent+'<span><span class="open-client" data-id="'+t.clientId+'" style="font-weight:600;color:#2563eb;cursor:pointer;text-decoration:underline">'+(t.clientName||'')+'</span></span><div style="font-size:10px;color:#aaa">'+t.id+'</div></td>'+
+    '<td><div style="font-weight:600;color:#111">'+(t.destination||'')+'</div><div style="font-size:11px;color:#888">from '+(t.origin||'')+'</div></td>'+
+    '<td><div>'+(t.departDate||'')+'</div><div style="font-size:11px;color:#888">&rarr; '+(t.returnDate||'')+'</div></td>'+
+    '<td><div>'+(t.airline||'')+'</div><div style="font-size:11px">'+badge(t.flightClass||'Economy')+'</div></td>'+
+    '<td>'+badge(displayStatus(t))+'</td>'+
+    '<td>'+(t.pointsUsed?fmt(t.pointsUsed):'&mdash;')+'</td>'+
+    '<td>$'+money(t.totalValue)+'</td>'+
+    '<td style="font-size:11px;color:#555">'+( t.product||'—')+'</td>'+
+    (function(){
+      var sup = t.supplierId ? db.vendors.find(function(v){return v.id===t.supplierId;}) : null;
+      var supName = sup ? sup.name : (t.supplierName||'');
+      var supId = sup ? sup.id : (t.supplierId||'');
+      return supName ? '<td style="font-size:11px;color:#2563eb;font-weight:500;cursor:pointer;text-decoration:underline" class="trip-sup-link" data-vendor-id="'+supId+'">'+supName+'</td>' : '<td style="font-size:11px;color:#aaa">—</td>';
+    })()+
+    (function(){
+      var invVal = t.invoiceNum||t.bookingRef||'';
+      return invVal ? '<td style="font-size:11px;color:#2563eb;font-weight:500;cursor:pointer;text-decoration:underline" class="trip-invoice-link" data-invoice="'+invVal+'">'+invVal+'</td>' : '<td style="font-size:11px;color:#aaa">—</td>';
+    })()+
+    '<td style="white-space:nowrap"><button class="icon-btn edit-trip" data-id="'+t.id+'" style="color:#2563eb">&#9999;&#65039;</button><button class="icon-btn del-trip" data-id="'+t.id+'" style="color:#dc2626">&#128465;&#65039;</button></td>'+
+  '</tr>';
+}
+// Full-width heading row introducing a group of 2+ linked trips (from the
+// same overall vacation, see trip.linkedTripIds) — client name, every
+// member's destination in chronological order, and the date range spanning
+// all of them, so the group reads like one summary line before its subtrips.
+function tripGroupHeaderHtml(members){
+  var sorted = members.slice().sort(function(a,b){ return (a.departDate||'').localeCompare(b.departDate||''); });
+  var clientNames = sorted.map(function(t){return t.clientName||'';}).filter(Boolean);
+  var uniqClientNames = clientNames.filter(function(n,i){return clientNames.indexOf(n)===i;});
+  var destinations = sorted.map(function(t){return t.destination||'';}).filter(Boolean).join(' → ');
+  var departDates = sorted.map(function(t){return t.departDate;}).filter(Boolean).sort();
+  var returnDates = sorted.map(function(t){return t.returnDate;}).filter(Boolean).sort();
+  var minDepart = departDates[0];
+  var maxReturn = returnDates.length ? returnDates[returnDates.length-1] : departDates[departDates.length-1];
+  var dateRange = minDepart ? (fmtDate(minDepart)+(maxReturn&&maxReturn!==minDepart?' – '+fmtDate(maxReturn):'')) : '';
+  var label = [uniqClientNames.join(', '), destinations].filter(Boolean).join(' — ');
+  return '<tr class="trip-group-hdr" style="background:#eff6ff"><td colspan="12" style="padding:8px 12px;font-size:12px;color:#1e40af;font-weight:600">'+
+    '&#128279; '+escHtml(label)+(dateRange?' &middot; '+dateRange:'')+' &middot; '+sorted.length+' trips'+
+  '</td></tr>';
+}
+// Groups consecutive rendering by linked-trip membership without disturbing
+// the active sort/filter: walks `list` in its already-sorted order, and the
+// first time a member of a 2+-trip group is reached, renders the group
+// header followed by every member of that group present in `list`
+// (chronologically), then skips the rest of that group's members later in
+// the loop. A trip whose link-partners were filtered out of `list` (or that
+// has no links at all) just renders as a normal standalone row.
+function tripTableBodyHtml(list){
+  if(!list.length) return '<tr><td colspan="12"><div class="empty">No trips found</div></td></tr>';
+  var groupOf = tripLinkGroups();
+  var listIds = {};
+  list.forEach(function(t){ listIds[t.id] = true; });
+  var rendered = {};
+  var html = '';
+  list.forEach(function(t){
+    if(rendered[t.id]) return;
+    var group = groupOf[t.id] || [t];
+    var membersInList = group.filter(function(m){ return listIds[m.id]; });
+    if(membersInList.length > 1){
+      html += tripGroupHeaderHtml(membersInList);
+      membersInList.slice().sort(function(a,b){ return (a.departDate||'').localeCompare(b.departDate||''); })
+        .forEach(function(m){ html += tripRowHtml(m, true); rendered[m.id] = true; });
+    } else {
+      html += tripRowHtml(t, false);
+      rendered[t.id] = true;
+    }
+  });
+  return html;
+}
+
 function renderTrips(){
   var tripSortCol = window._tripSortCol || 'id';
   var tripSortDir = window._tripSortDir || 'desc';
@@ -8131,28 +8236,7 @@ function renderTrips(){
       '<th class="sort-th" data-sort="invoiceNum" style="cursor:pointer">Invoice #'+sortArrow('invoiceNum')+'</th>'+
       '<th></th>'+
     '</tr></thead><tbody>'+
-    (list.length?list.map(function(t){return '<tr class="trip-list-row" data-trip-id="'+t.id+'" style="cursor:pointer">'+
-      '<td style="width:32px"><input type="checkbox" class="trip-row-cb" data-id="'+t.id+'" style="width:14px;height:14px"></td>'+
-      '<td><div><span class="open-client" data-id="'+t.clientId+'" style="font-weight:600;color:#2563eb;cursor:pointer;text-decoration:underline">'+(t.clientName||'')+'</span></div><div style="font-size:10px;color:#aaa">'+t.id+'</div></td>'+
-      '<td><div style="font-weight:600;color:#111">'+(t.destination||'')+'</div><div style="font-size:11px;color:#888">from '+(t.origin||'')+'</div></td>'+
-      '<td><div>'+(t.departDate||'')+'</div><div style="font-size:11px;color:#888">&rarr; '+(t.returnDate||'')+'</div></td>'+
-      '<td><div>'+(t.airline||'')+'</div><div style="font-size:11px">'+badge(t.flightClass||'Economy')+'</div></td>'+
-      '<td>'+badge(displayStatus(t))+'</td>'+
-      '<td>'+(t.pointsUsed?fmt(t.pointsUsed):'&mdash;')+'</td>'+
-      '<td>$'+money(t.totalValue)+'</td>'+
-      '<td style="font-size:11px;color:#555">'+( t.product||'—')+'</td>'+
-      (function(){
-        var sup = t.supplierId ? db.vendors.find(function(v){return v.id===t.supplierId;}) : null;
-        var supName = sup ? sup.name : (t.supplierName||'');
-        var supId = sup ? sup.id : (t.supplierId||'');
-        return supName ? '<td style="font-size:11px;color:#2563eb;font-weight:500;cursor:pointer;text-decoration:underline" class="trip-sup-link" data-vendor-id="'+supId+'">'+supName+'</td>' : '<td style="font-size:11px;color:#aaa">—</td>';
-      })()+
-      (function(){
-        var invVal = t.invoiceNum||t.bookingRef||'';
-        return invVal ? '<td style="font-size:11px;color:#2563eb;font-weight:500;cursor:pointer;text-decoration:underline" class="trip-invoice-link" data-invoice="'+invVal+'">'+invVal+'</td>' : '<td style="font-size:11px;color:#aaa">—</td>';
-      })()+
-      '<td style="white-space:nowrap"><button class="icon-btn edit-trip" data-id="'+t.id+'" style="color:#2563eb">&#9999;&#65039;</button><button class="icon-btn del-trip" data-id="'+t.id+'" style="color:#dc2626">&#128465;&#65039;</button></td>'+
-    '</tr>';}).join(''):'<tr><td colspan="11"><div class="empty">No trips found</div></td></tr>')+
+    tripTableBodyHtml(list)+
     '</tbody></table></div>';
 
   $('btn-add-trip').addEventListener('click',function(){openTripForm();});
