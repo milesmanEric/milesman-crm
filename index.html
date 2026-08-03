@@ -3645,7 +3645,13 @@ function itineraryEmailBodyHtml(opts){
     itineraryDetailRow('Return Date', opts.busReturnDate) +
     itineraryDetailRow('Class of Service', opts.busClassOfService) +
     itineraryDetailRow('Confirmation Number', opts.busConfirmationNumber);
-  var bookingRows = itineraryDetailRow('Confirmation / Booking Ref', opts.bookingRef) +
+  // Booking Ref (the trip's Invoice Number) only shows when there's no
+  // Supplier linked — a linked Supplier means the invoice went to that
+  // supplier, not the client, so surfacing "the" invoice number on this
+  // client-facing itinerary would be misleading (there could be a separate
+  // supplier-side invoice entirely). Same rule as bookedTripSummaryHtml's
+  // invoicedToClient check.
+  var bookingRows = (opts.supplierName ? '' : itineraryDetailRow('Confirmation / Booking Ref', opts.bookingRef)) +
     itineraryDetailRow('Supplier', opts.supplierName) +
     itineraryDetailRow('Points Used', opts.pointsUsed) +
     itineraryDetailRow('Total Trip Value', opts.totalValue);
