@@ -5237,14 +5237,24 @@ async function extractRevenueTableFromPdf(arrayBuffer, password){
   var pdfjsLib = await loadPdfJs();
   var pdf = await pdfjsLib.getDocument({data:arrayBuffer, password:password}).promise;
 
-  var finishedRows = [];
-  var batchRows = null; // rows for the batch currently being accumulated
+  // Longer reports repeat the column headers on every page they spill onto —
+  // both for the primary Date/Num/Memo/Name/Ship Date/Item columns AND,
+  // separately, for the Class/Qty/Sales Price/Amount columns once THOSE spill
+  // onto their own second page (this report is printed as two side-by-side
+  // column groups, each paginated independently: e.g. a 2-page primary
+  // section followed by its own 2-page Amount-column section). So a primary
+  // page doesn't mark the start of a brand-new report — every primary page
+  // in this file gets its own batch (primaryBatches), and each continuation
+  // (non-primary) page merges into the Nth primary batch in sequence — the
+  // 1st continuation page pairs with the 1st primary page, the 2nd with the
+  // 2nd, and so on — rather than always merging into whichever batch happens
+  // to be most recently open (which silently orphaned every row from an
+  // earlier primary page whenever a later primary page appeared before its
+  // matching continuation page, leaving those rows with a blank Amount that
+  // then got dropped entirely by extractRevenueRow()'s amt===0 check).
+  var primaryBatches = [];
+  var nextSecondaryTarget = 0;
   var sawAnyHeader = false;
-
-  function flushBatch(){
-    if(batchRows) finishedRows = finishedRows.concat(batchRows);
-    batchRows = null;
-  }
 
   for(var p=1; p<=pdf.numPages; p++){
     var page = await pdf.getPage(p);
@@ -5264,11 +5274,14 @@ async function extractRevenueTableFromPdf(arrayBuffer, password){
 
     sawAnyHeader = true;
     var isPrimary = pageColumns.some(function(c){return c.name==='Date';});
+    var targetBatchRows;
     if(isPrimary){
-      flushBatch(); // start a new row batch, finalizing whatever was pending
-      batchRows = [];
-    } else if(!batchRows){
-      continue; // continuation page with no open batch to merge into
+      targetBatchRows = [];
+      primaryBatches.push(targetBatchRows);
+    } else {
+      if(nextSecondaryTarget >= primaryBatches.length) continue; // no matching primary batch yet — nothing to merge into
+      targetBatchRows = primaryBatches[nextSecondaryTarget];
+      nextSecondaryTarget++;
     }
 
     var headerY = headerRowRef.y;
@@ -5276,14 +5289,14 @@ async function extractRevenueTableFromPdf(arrayBuffer, password){
       if(row===headerRowRef) return;
       if(row.y >= headerY) return; // report title/date-range lines sit above the header — skip
       var pageCells = classifyRowCells(row, pageColumns);
-      var batchRow = findOrCreateBatchRow(batchRows, row.y);
+      var batchRow = findOrCreateBatchRow(targetBatchRows, row.y);
       Object.keys(pageCells).forEach(function(k){ batchRow.cells[k]=pageCells[k]; });
     });
   }
-  flushBatch();
 
   if(!sawAnyHeader) throw new Error('Could not find the report\'s column headers (Num/Memo/Name/Amount) in the PDF — is this a "Sales by Customer Detail" report?');
 
+  var finishedRows = [].concat.apply([], primaryBatches);
   var dataRows = finishedRows
     .filter(function(r){ return /^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test((r.cells['Date']||'').trim()); })
     .map(function(r){ return REVENUE_PDF_COLUMNS.map(function(h){ return r.cells[h]||''; }); });
