@@ -74,7 +74,7 @@ Each mileage/points section (Mileage Balances, Hotel Point Balances, Cruise Line
 
 **Linked Trips**: if a trip is really one leg of a bigger multi-city vacation booked as separate trip records (say, a NYC leg and a Paris leg), check the other leg(s) off in the **Linked Trips** list. Linking works both ways automatically — check "Paris Leg" from the NYC trip's form, and the Paris trip's own Linked Trips list picks up the NYC trip too, no need to set it from both sides. Unchecking removes the link from both as well.
 
-Once linked, the Trips page always shows those legs grouped together under one heading (client name, every leg's destination in order, and the overall date range) with the individual legs listed underneath as subtrips, instead of scattered among all your other unrelated trips. Search, status filter, and column sorting all still work as usual — a group just moves as a unit to wherever its first leg lands under the current sort.
+Once linked, the Trips page always shows those legs grouped together under one heading (client name, every leg's destination in order, and the overall date range) with the individual legs listed underneath as subtrips, instead of scattered among all your other unrelated trips. Search, status filter, and column sorting all still work as usual — a group just moves as a unit to wherever its first leg lands under the current sort. **Click the heading row** to collapse its legs out of view (handy once you've got a lot of multi-city trips) — click it again to expand; the ▾/▸ arrow on the left shows which state it's in.
 
 The trip form has two parts:
 

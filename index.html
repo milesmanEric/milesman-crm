@@ -8131,11 +8131,20 @@ function tripRowHtml(t, isSub){
     '<td style="white-space:nowrap"><button class="icon-btn edit-trip" data-id="'+t.id+'" style="color:#2563eb">&#9999;&#65039;</button><button class="icon-btn del-trip" data-id="'+t.id+'" style="color:#dc2626">&#128465;&#65039;</button></td>'+
   '</tr>';
 }
+// Stable key for a group of trips regardless of iteration/sort order —
+// used both to remember which groups are collapsed (window._tripGroupsCollapsed,
+// persisted across re-renders the same way window._tripSortCol is) and as the
+// click target's data attribute tying a header row back to its group.
+function tripGroupKey(members){
+  return members.map(function(m){return m.id;}).sort().join(',');
+}
 // Full-width heading row introducing a group of 2+ linked trips (from the
 // same overall vacation, see trip.linkedTripIds) — client name, every
 // member's destination in chronological order, and the date range spanning
 // all of them, so the group reads like one summary line before its subtrips.
-function tripGroupHeaderHtml(members){
+// Clicking it toggles the group collapsed/expanded (see bindClick on
+// .trip-group-hdr in renderTrips()).
+function tripGroupHeaderHtml(members, collapsed){
   var sorted = members.slice().sort(function(a,b){ return (a.departDate||'').localeCompare(b.departDate||''); });
   var clientNames = sorted.map(function(t){return t.clientName||'';}).filter(Boolean);
   var uniqClientNames = clientNames.filter(function(n,i){return clientNames.indexOf(n)===i;});
@@ -8146,7 +8155,9 @@ function tripGroupHeaderHtml(members){
   var maxReturn = returnDates.length ? returnDates[returnDates.length-1] : departDates[departDates.length-1];
   var dateRange = minDepart ? (fmtDate(minDepart)+(maxReturn&&maxReturn!==minDepart?' – '+fmtDate(maxReturn):'')) : '';
   var label = [uniqClientNames.join(', '), destinations].filter(Boolean).join(' — ');
-  return '<tr class="trip-group-hdr" style="background:#eff6ff"><td colspan="12" style="padding:8px 12px;font-size:12px;color:#1e40af;font-weight:600">'+
+  return '<tr class="trip-group-hdr" data-group-key="'+tripGroupKey(sorted)+'" style="background:#eff6ff;cursor:pointer">'+
+    '<td colspan="12" style="padding:8px 12px;font-size:12px;color:#1e40af;font-weight:600">'+
+    '<span style="display:inline-block;width:12px">'+(collapsed?'&#9656;':'&#9662;')+'</span>'+
     '&#128279; '+escHtml(label)+(dateRange?' &middot; '+dateRange:'')+' &middot; '+sorted.length+' trips'+
   '</td></tr>';
 }
@@ -8154,12 +8165,14 @@ function tripGroupHeaderHtml(members){
 // the active sort/filter: walks `list` in its already-sorted order, and the
 // first time a member of a 2+-trip group is reached, renders the group
 // header followed by every member of that group present in `list`
-// (chronologically), then skips the rest of that group's members later in
-// the loop. A trip whose link-partners were filtered out of `list` (or that
-// has no links at all) just renders as a normal standalone row.
+// (chronologically, and only if the group isn't collapsed — see
+// window._tripGroupsCollapsed), then skips the rest of that group's members
+// later in the loop. A trip whose link-partners were filtered out of `list`
+// (or that has no links at all) just renders as a normal standalone row.
 function tripTableBodyHtml(list){
   if(!list.length) return '<tr><td colspan="12"><div class="empty">No trips found</div></td></tr>';
   var groupOf = tripLinkGroups();
+  var collapsedGroups = window._tripGroupsCollapsed || {};
   var listIds = {};
   list.forEach(function(t){ listIds[t.id] = true; });
   var rendered = {};
@@ -8169,9 +8182,14 @@ function tripTableBodyHtml(list){
     var group = groupOf[t.id] || [t];
     var membersInList = group.filter(function(m){ return listIds[m.id]; });
     if(membersInList.length > 1){
-      html += tripGroupHeaderHtml(membersInList);
-      membersInList.slice().sort(function(a,b){ return (a.departDate||'').localeCompare(b.departDate||''); })
-        .forEach(function(m){ html += tripRowHtml(m, true); rendered[m.id] = true; });
+      var key = tripGroupKey(membersInList);
+      var isCollapsed = !!collapsedGroups[key];
+      html += tripGroupHeaderHtml(membersInList, isCollapsed);
+      if(!isCollapsed){
+        membersInList.slice().sort(function(a,b){ return (a.departDate||'').localeCompare(b.departDate||''); })
+          .forEach(function(m){ html += tripRowHtml(m, true); });
+      }
+      membersInList.forEach(function(m){ rendered[m.id] = true; });
     } else {
       html += tripRowHtml(t, false);
       rendered[t.id] = true;
@@ -8285,6 +8303,14 @@ function renderTrips(){
   });
   $('trip-status-filter').addEventListener('change',function(){fStatus=this.value;renderTrips();});
   if($('btn-back')) $('btn-back').addEventListener('click',function(){selCid=null;render();});
+  document.querySelectorAll('.trip-group-hdr').forEach(function(row){
+    row.addEventListener('click', function(){
+      var key = row.dataset.groupKey;
+      window._tripGroupsCollapsed = window._tripGroupsCollapsed || {};
+      window._tripGroupsCollapsed[key] = !window._tripGroupsCollapsed[key];
+      renderTrips();
+    });
+  });
   document.querySelectorAll('.trip-sup-link').forEach(function(el){
     el.addEventListener('click', function(e){
       e.stopPropagation();
