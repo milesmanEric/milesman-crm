@@ -210,6 +210,14 @@ tr:last-child td{border-bottom:none}
 .field label{font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em}
 .field input,.field select,.field textarea{padding:8px 11px;border-radius:7px;border:1px solid #d1d5db;font-size:13px;font-family:inherit;color:#111;background:#fafafa}
 .field textarea{resize:vertical;min-height:58px}
+.searchable-select{position:relative}
+.searchable-select select{display:none}
+.searchable-select-input{width:100%;box-sizing:border-box}
+.searchable-select-dropdown{display:none;position:absolute;top:100%;left:0;right:0;max-height:220px;overflow-y:auto;background:#fff;border:1px solid #d1d5db;border-radius:7px;margin-top:2px;z-index:40;box-shadow:0 4px 12px rgba(0,0,0,.15)}
+.searchable-select-dropdown.open{display:block}
+.ss-option{padding:7px 11px;font-size:13px;color:#111;cursor:pointer}
+.ss-option:hover,.ss-option.ss-active{background:#eff6ff}
+.ss-option-empty{padding:7px 11px;font-size:12px;color:#999;font-style:italic}
 .modal-section-title{grid-column:1/-1;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#2563eb;margin:14px 0 2px;padding-top:14px;border-top:1px solid #f0f0f0}
 .modal-section-title:first-of-type{margin-top:0;padding-top:0;border-top:none}
 .form-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:18px}
@@ -3307,7 +3315,7 @@ function openEmailQuoteModal(){
   $('modal').innerHTML =
     '<div class="modal-hdr"><div class="modal-title">Email Quote</div><button class="close-btn" id="modal-close">&#x2715;</button></div>'+
     '<div class="fg">'+
-      fld('Client (optional)','<select id="eq-client"><option value="">-- No client selected --</option>'+clientOpts+'</select>',true)+
+      fld('Client (optional)',searchableSelectWrap('<select id="eq-client"><option value="">-- No client selected --</option>'+clientOpts+'</select>','Search clients...'),true)+
       fld('Cruise Line',sel('eq-cruise-line',CRUISE_LINES,''))+
       fld('Ship','<select id="eq-ship"><option value="">-- Select cruise line first --</option></select>')+
       fld('Depart / Sailing Date',inp('eq-sailing-date','date',''))+
@@ -3837,8 +3845,8 @@ function openEmailItineraryModal(){
   $('modal').innerHTML =
     '<div class="modal-hdr"><div class="modal-title">Email Itinerary</div><button class="close-btn" id="modal-close">&#x2715;</button></div>'+
     '<div class="fg">'+
-      fld('Client','<select id="ei-client"><option value="">-- Select client --</option>'+clientOpts+'</select>',true)+
-      fld('Trip','<select id="ei-trip"><option value="">-- Select client first --</option></select>',true)+
+      fld('Client',searchableSelectWrap('<select id="ei-client"><option value="">-- Select client --</option>'+clientOpts+'</select>','Search clients...'),true)+
+      fld('Trip',searchableSelectWrap('<select id="ei-trip"><option value="">-- Select client first --</option></select>','Search trips...'),true)+
       '<div class="field full"><label>Additional Note <span class="hint" style="text-transform:none;font-weight:400">(optional — appended after the trip details)</span></label><textarea id="ei-notes" rows="3" placeholder="Optional personal note to include"></textarea></div>'+
       '<div class="field full" id="ei-preview-wrap" style="display:none">'+
         '<label>Preview</label>'+
@@ -3857,6 +3865,7 @@ function openEmailItineraryModal(){
     document.getElementById('ei-preview-wrap').style.display = 'none';
     if(!clientId){
       tripSel.innerHTML = '<option value="">-- Select client first --</option>';
+      resetSearchableSelectInput('ei-trip');
       return;
     }
     var clientTrips = db.trips.filter(function(t){return t.clientId===clientId || (t.clientIds||[]).includes(clientId);})
@@ -3867,6 +3876,7 @@ function openEmailItineraryModal(){
           return '<option value="'+t.id+'">'+escHtml(label)+'</option>';
         }).join('')
       : '<option value="">-- No trips for this client --</option>';
+    resetSearchableSelectInput('ei-trip');
   });
 
   function collectItineraryData(){
@@ -5740,9 +5750,9 @@ function renderReports(){
         '<div><label>From Date</label><input type="date" id="rpt-from"/></div>'+
         '<div><label>To Date</label><input type="date" id="rpt-to"/></div>'+
         '<div><label>Note Type</label><select id="rpt-type">'+typeOpts+'</select></div>'+
-        '<div><label>Client</label><select id="rpt-client"><option value="">All clients</option>'+
+        '<div><label>Client</label>'+searchableSelectWrap('<select id="rpt-client"><option value="">All clients</option>'+
           [...db.clients].sort(function(a,b){return (a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase());}).map(function(c){return '<option value="'+c.id+'">'+c.name+'</option>';}).join('')+
-        '</select></div>'+
+        '</select>','Search clients...')+'</div>'+
         '<div style="display:flex;gap:8px;align-self:flex-end">'+
           '<button class="report-run-btn" id="rpt-run">Run Report</button>'+
           '<button class="report-export-btn" id="rpt-export">Export CSV</button>'+
@@ -5761,9 +5771,9 @@ function renderReports(){
         '<div><label>Supplier</label><select id="rpt-inv-supplier"><option value="">All suppliers</option>'+
           [...db.vendors].sort(function(a,b){return (a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase());}).map(function(v){return '<option value="'+v.id+'">'+v.name+'</option>';}).join('')+
         '</select></div>'+
-        '<div><label>Client</label><select id="rpt-inv-client"><option value="">All clients</option>'+
+        '<div><label>Client</label>'+searchableSelectWrap('<select id="rpt-inv-client"><option value="">All clients</option>'+
           [...db.clients].sort(function(a,b){return (a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase());}).map(function(c){return '<option value="'+c.id+'">'+c.name+'</option>';}).join('')+
-        '</select></div>'+
+        '</select>','Search clients...')+'</div>'+
         '<div style="display:flex;gap:8px;align-self:flex-end">'+
           '<button class="report-run-btn" id="rpt-inv-run">Run Report</button>'+
           '<button class="report-export-btn" id="rpt-inv-export">Export CSV</button>'+
@@ -5773,9 +5783,9 @@ function renderReports(){
       '<div id="rpt-inv-results"><div class="empty" style="padding:40px">Set filters above and click Run Report</div></div>')
     : activeTab==='certs' ?
       ('<div class="report-filter">'+
-        '<div><label>Client</label><select id="rpt-cert-client"><option value="">All clients</option>'+
+        '<div><label>Client</label>'+searchableSelectWrap('<select id="rpt-cert-client"><option value="">All clients</option>'+
           [...db.clients].sort(function(a,b){return (a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase());}).map(function(c){return '<option value="'+c.id+'">'+c.name+'</option>';}).join('')+
-        '</select></div>'+
+        '</select>','Search clients...')+'</div>'+
         '<div style="display:flex;gap:8px;align-self:flex-end">'+
           '<button class="report-run-btn" id="rpt-cert-run">Run Report</button>'+
           '<button class="report-export-btn" id="rpt-cert-export">Export CSV</button>'+
@@ -6607,7 +6617,7 @@ function renderEmail(){
           '<label style="display:flex;align-items:center;gap:5px;font-size:12px;color:#374151;cursor:pointer"><input type="checkbox" id="email-filter-paying" style="width:13px;height:13px"> Paying clients only</label>'+
           '<label style="display:flex;align-items:center;gap:5px;font-size:12px;color:#374151;cursor:pointer"><input type="checkbox" id="email-filter-subscriber" style="width:13px;height:13px"> Subscribers only</label>'+
         '</div>'+
-        '<select id="email-client-sel" style="width:100%;padding:8px 11px;border-radius:7px;border:1px solid #d1d5db;font-size:13px;font-family:inherit;color:#111;background:#fafafa;margin-bottom:16px">'+clientOpts+'</select>'+
+        '<div style="margin-bottom:16px">'+searchableSelectWrap('<select id="email-client-sel">'+clientOpts+'</select>','Search clients...')+'</div>'+
         '<div id="email-referrers-wrap" style="display:none;margin-bottom:16px">'+
           '<div id="email-referrers-list" style="'+checklistBoxStyle+'">'+clientChecklistHtml('email-referrer-cb')+'</div>'+
         '</div>'+
@@ -6763,6 +6773,7 @@ function renderEmail(){
     // Restore selection if still valid
     if(filtered.some(function(c){return c.id===prevVal;})) sel.value = prevVal;
     else { selClient=null; updatePreview(); }
+    resetSearchableSelectInput('email-client-sel');
 
     document.getElementById('email-referrers-list').innerHTML = clientChecklistHtml('email-referrer-cb');
     document.getElementById('email-referred-list').innerHTML = clientChecklistHtml('email-referred-cb');
@@ -8442,6 +8453,112 @@ function selOpts(opts,val){return opts.map(function(o){return '<option value="'+
 function fld(label,html,full){return '<div class="field'+(full?' full':'')+'"><label>'+label+'</label>'+html+'</div>';}
 function inp(id,type,val,ph){return '<input id="'+id+'" type="'+(type||'text')+'" value="'+(val||'').toString().replace(/"/g,'&quot;')+'" placeholder="'+(ph||'')+'">';}
 function sel(id,opts,val){return '<select id="'+id+'"><option value="">Select...</option>'+selOpts(opts,val)+'</select>';}
+// Wraps an already-built `<select id="...">...</select>` string (any of
+// this file's many client/trip pickers — each builds its own option labels,
+// e.g. "Smith, Jane <jane@x.com>" or a trip's destination + date) with a
+// type-to-filter text input, so a long list doesn't have to be scrolled by
+// hand. The underlying <select> stays in the DOM (just hidden) and stays
+// the single source of truth for every gv()/getElementById(id).value read
+// and 'change' listener already written elsewhere — this only changes how
+// the field is presented, never how its value is read or written. See
+// bindSearchableSelects() for the one delegated listener (bound once at
+// boot, in the spirit of bindClick()) that drives every instance of this,
+// present or future, without needing a per-render init call.
+function searchableSelectWrap(selectHtml, placeholder){
+  // Pull the pre-selected option's own (already-HTML-escaped) label straight
+  // out of the markup being wrapped, rather than escaping it again here —
+  // every option-building call site in this file consistently emits
+  // value="..." immediately followed by an optional " selected".
+  var m = selectHtml.match(/<option value="[^"]+"\s+selected>([^<]*)<\/option>/);
+  var initialText = m ? m[1] : '';
+  return '<div class="searchable-select">'+
+    selectHtml+
+    '<input type="text" class="searchable-select-input" value="'+initialText+'" placeholder="'+(placeholder||'Type to search...')+'" autocomplete="off">'+
+    '<div class="searchable-select-dropdown"></div>'+
+  '</div>';
+}
+// Re-syncs a searchable select's visible text to its real <select>'s
+// current value — call this after any code programmatically rebuilds that
+// select's innerHTML (e.g. a trip list that depends on which client is
+// picked), since that bypasses searchableSelectWrap() entirely and would
+// otherwise leave stale text showing over a freshly-reset selection.
+function resetSearchableSelectInput(selectId){
+  var selectEl = document.getElementById(selectId);
+  var wrap = selectEl && selectEl.closest('.searchable-select');
+  if(wrap) ssSyncInputToSelect(wrap);
+}
+function ssSyncInputToSelect(wrap){
+  var selectEl = wrap.querySelector('select');
+  var input = wrap.querySelector('.searchable-select-input');
+  var opt = selectEl.options[selectEl.selectedIndex];
+  input.value = (opt && opt.value) ? opt.textContent : '';
+}
+function ssRenderDropdown(wrap, query){
+  var selectEl = wrap.querySelector('select');
+  var dropdown = wrap.querySelector('.searchable-select-dropdown');
+  var q = (query||'').toLowerCase().trim();
+  var opts = Array.from(selectEl.options).filter(function(o){return o.value!=='';});
+  var matches = q ? opts.filter(function(o){return o.textContent.toLowerCase().indexOf(q)!==-1;}) : opts;
+  dropdown.innerHTML = matches.length
+    ? matches.slice(0,200).map(function(o,i){return '<div class="ss-option'+(i===0?' ss-active':'')+'" data-value="'+o.value.toString().replace(/"/g,'&quot;')+'">'+escHtml(o.textContent)+'</div>';}).join('')
+    : '<div class="ss-option-empty">No matches</div>';
+  dropdown.classList.add('open');
+}
+function ssCloseDropdown(wrap){
+  var dropdown = wrap.querySelector('.searchable-select-dropdown');
+  if(dropdown) dropdown.classList.remove('open');
+}
+function ssSelectOption(wrap, value){
+  var selectEl = wrap.querySelector('select');
+  selectEl.value = value;
+  selectEl.dispatchEvent(new Event('change', {bubbles:true}));
+  ssSyncInputToSelect(wrap);
+  ssCloseDropdown(wrap);
+}
+// One delegated listener set, bound once at boot — works for every
+// .searchable-select on the page, including ones injected later by a modal
+// opening or a select's own options being rebuilt, since delegation reads
+// the live DOM at event time rather than needing a per-render init call.
+function bindSearchableSelects(){
+  document.addEventListener('focusin', function(e){
+    var input = e.target.closest && e.target.closest('.searchable-select-input');
+    if(!input) return;
+    var wrap = input.closest('.searchable-select');
+    input.select();
+    ssRenderDropdown(wrap, '');
+  });
+  document.addEventListener('input', function(e){
+    if(!e.target.matches || !e.target.matches('.searchable-select-input')) return;
+    var wrap = e.target.closest('.searchable-select');
+    ssRenderDropdown(wrap, e.target.value);
+  });
+  // mousedown (not click) + preventDefault keeps focus on the text input
+  // through the selection, so the focusout handler below doesn't fire (and
+  // revert the just-made selection) before this handler gets to run.
+  document.addEventListener('mousedown', function(e){
+    var opt = e.target.closest && e.target.closest('.ss-option');
+    if(!opt) return;
+    e.preventDefault();
+    ssSelectOption(opt.closest('.searchable-select'), opt.dataset.value);
+  });
+  document.addEventListener('focusout', function(e){
+    var input = e.target.closest && e.target.closest('.searchable-select-input');
+    if(!input) return;
+    var wrap = input.closest('.searchable-select');
+    setTimeout(function(){ ssCloseDropdown(wrap); ssSyncInputToSelect(wrap); }, 150);
+  });
+  document.addEventListener('keydown', function(e){
+    var input = e.target.closest && e.target.closest('.searchable-select-input');
+    if(!input) return;
+    var wrap = input.closest('.searchable-select');
+    if(e.key==='Escape'){ ssCloseDropdown(wrap); ssSyncInputToSelect(wrap); input.blur(); return; }
+    if(e.key==='Enter'){
+      e.preventDefault();
+      var first = wrap.querySelector('.ss-option');
+      if(first){ ssSelectOption(wrap, first.dataset.value); input.blur(); }
+    }
+  });
+}
 // statusList can be a flat array (same options for every row) or an object
 // keyed by brand name (each row gets that brand's real status tier names).
 function statusOptionsFor(statusList,name){
@@ -9898,7 +10015,7 @@ function openTripForm(id){
   // kept in sync on both sides by saveTrip(), so checking a trip here also
   // adds this trip to *its* Linked Trips list, and unchecking removes it
   // from both.
-  const linkedTripChecks=[...db.trips].filter(function(t){return t.id!==id;}).sort(function(a,b){return (b.departDate||'').localeCompare(a.departDate||'');}).map(function(t){
+  const linkedTripChecks=[...db.trips].filter(function(t){return t.id!==id;}).sort(function(a,b){return (a.clientName||'').toLowerCase().localeCompare((b.clientName||'').toLowerCase());}).map(function(t){
     var checked=(d.linkedTripIds||[]).includes(t.id)?'checked':'';
     var label=[t.destination||'(no destination)',t.departDate||'',t.clientName||''].filter(Boolean).join(' — ');
     return '<label style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:13px;cursor:pointer">'+
@@ -9909,7 +10026,7 @@ function openTripForm(id){
   $('modal').innerHTML=
     '<div class="modal-hdr"><div class="modal-title">'+(id?'Edit Trip':'Add Trip')+'</div><button class="close-btn" id="modal-close">&#x2715;</button></div>'+
     '<div class="fg">'+
-      fld('Client','<select id="tc"><option value="">Select client...</option>'+copts+'</select>',true)+
+      fld('Client',searchableSelectWrap('<select id="tc"><option value="">Select client...</option>'+copts+'</select>','Search clients...'),true)+
       fld('Supplier','<select id="tsup"><option value="">None</option>'+vopts+'</select>')+
       '<div class="field full"><label>Additional Clients <span class="hint" style="text-transform:none;font-weight:400">(if more than one client is on this trip)</span></label>'+
         '<div style="border:1px solid #e5e7eb;border-radius:8px;padding:10px;max-height:180px;overflow-y:auto;background:#fafafa">'+
@@ -10501,14 +10618,14 @@ function openTaskForm(id){
       fld('Time', inp('tk-time','time',d.dueTime))+
       fld('Status','<select id="tk-done"><option value="0"'+(!d.done?' selected':'')+'>Open</option><option value="1"'+(d.done?' selected':'')+'>Done</option></select>')+
       fld('Completion Note Type', sel('tk-note-type', NOTE_TYPES, d.completionNoteType||'General'))+
-      fld('Linked Client','<select id="tk-client"><option value="">None</option>'+clientOpts+'</select>')+
+      fld('Linked Client',searchableSelectWrap('<select id="tk-client"><option value="">None</option>'+clientOpts+'</select>','Search clients...'))+
       '<div class="field full"><label>Additional Clients <span class="hint" style="text-transform:none;font-weight:400">(if more than one client is tied to this task)</span></label>'+
         '<div style="border:1px solid #e5e7eb;border-radius:8px;padding:10px;max-height:180px;overflow-y:auto;background:#fafafa">'+
           (additionalClientChecks || '<div style="color:#aaa;font-size:12px">No clients yet</div>')+
         '</div>'+
       '</div>'+
       fld('Linked Supplier','<select id="tk-vendor"><option value="">None</option>'+vendorOpts+'</select>')+
-      fld('Linked Trip','<select id="tk-trip"><option value="">None</option>'+tripOpts+'</select>')+
+      fld('Linked Trip',searchableSelectWrap('<select id="tk-trip"><option value="">None</option>'+tripOpts+'</select>','Search trips...'))+
       fld('Description', '<textarea id="tk-desc" rows="3">'+(d.desc||'')+'</textarea>', true)+
     '</div>'+
     '<div class="form-actions">'+
@@ -10806,6 +10923,7 @@ function bindClick(id, handler){
     }catch(e){ debugLog('menu-toggle-btn bind failed: '+e.message); }
   });
 
+  bindSearchableSelects();
   bindClick('nb-dashboard', function(){go('dashboard');closeMobileNav();});
   bindClick('nb-clients', function(){go('clients');closeMobileNav();});
   bindClick('nb-trips', function(){go('trips');closeMobileNav();});

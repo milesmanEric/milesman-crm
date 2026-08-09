@@ -14,6 +14,8 @@ Two things feed it automatically, with no action needed from you:
 
 Both are checked automatically every 5 minutes as long as the CRM tab is open and Outlook is connected (see [Connecting Outlook](#connecting-outlook) below).
 
+**Picking a client or trip from a dropdown**: anywhere you pick a client or trip by name (adding/editing a trip, Email Quote, Email Itinerary, a task's Linked Client/Linked Trip, the Reports filters), just start typing — the list filters as you go instead of making you scroll through everyone. Click a match, or press Enter to pick the top one.
+
 ---
 
 ## Signing in
