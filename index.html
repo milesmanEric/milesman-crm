@@ -1045,7 +1045,10 @@ const CRUISE_LOGOS = {
   'Ritz Carlton Yachts': RITZ_CARLTON_YACHTS_LOGO_DATA_URI,
   'Windstar': WINDSTAR_LOGO_DATA_URI
 };
-let view = 'dashboard', selCid = null, fStatus = '', fSearch = '';
+// fStatus: array of selected trip statuses for the Trips page filter — default
+// is everything except Cancelled, since a cancelled trip is rarely what
+// you're looking for when just browsing the list.
+let view = 'dashboard', selCid = null, fStatus = STATUSES.filter(function(s){return s!=='Cancelled';}), fSearch = '';
 let driveToken = null;
 
 const $ = id => document.getElementById(id);
@@ -5697,7 +5700,7 @@ async function importTripFormPDF(){
 function go(v,cid){
   view=v;
   selCid=(v==='trips'&&cid)?cid:null;
-  fSearch='';fStatus='';
+  fSearch='';fStatus=STATUSES.filter(function(s){return s!=='Cancelled';});
   ['dashboard','clients','trips','reports','calendar','email','vendors','planner','bookmarks'].forEach(function(x){var el=$('nb-'+x);if(el)el.classList.toggle('active',x===v);});
   render();
 }
@@ -8138,14 +8141,18 @@ function tripRowHtml(t, isSub){
 function tripGroupKey(members){
   return members.map(function(m){return m.id;}).sort().join(',');
 }
-// Full-width heading row introducing a group of 2+ linked trips (from the
-// same overall vacation, see trip.linkedTripIds) — client name, every
-// member's destination in chronological order, and the date range spanning
-// all of them, so the group reads like one summary line before its subtrips.
-// Clicking it toggles the group collapsed/expanded (see bindClick on
-// .trip-group-hdr in renderTrips()).
-function tripGroupHeaderHtml(members, collapsed){
+// Every trip on this page — whether it's linked to others or entirely on
+// its own — renders as one collapsible "unit": a full-width summary line,
+// collapsed by default, that expands on click to reveal its underlying full
+// row(s). For a 2+-trip linked group (see trip.linkedTripIds) that's client
+// name(s), every member's destination in chronological order, the date
+// range spanning all of them, a link icon, and a trip count. For a lone
+// trip it's the same layout minus the link icon/count, since there's
+// nothing to distinguish it from a "group of one". Clicking it toggles
+// collapsed/expanded (see bindClick on .trip-group-hdr in renderTrips()).
+function tripSummaryLineHtml(members, collapsed){
   var sorted = members.slice().sort(function(a,b){ return (a.departDate||'').localeCompare(b.departDate||''); });
+  var isGroup = sorted.length > 1;
   var clientNames = sorted.map(function(t){return t.clientName||'';}).filter(Boolean);
   var uniqClientNames = clientNames.filter(function(n,i){return clientNames.indexOf(n)===i;});
   var destinations = sorted.map(function(t){return t.destination||'';}).filter(Boolean).join(' → ');
@@ -8155,20 +8162,19 @@ function tripGroupHeaderHtml(members, collapsed){
   var maxReturn = returnDates.length ? returnDates[returnDates.length-1] : departDates[departDates.length-1];
   var dateRange = minDepart ? (fmtDate(minDepart)+(maxReturn&&maxReturn!==minDepart?' – '+fmtDate(maxReturn):'')) : '';
   var label = [uniqClientNames.join(', '), destinations].filter(Boolean).join(' — ');
-  return '<tr class="trip-group-hdr" data-group-key="'+tripGroupKey(sorted)+'" style="background:#eff6ff;cursor:pointer">'+
-    '<td colspan="12" style="padding:8px 12px;font-size:12px;color:#1e40af;font-weight:600">'+
+  return '<tr class="trip-group-hdr" data-group-key="'+tripGroupKey(sorted)+'" style="background:'+(isGroup?'#eff6ff':'#fafafa')+';cursor:pointer">'+
+    '<td colspan="12" style="padding:8px 12px;font-size:12px;color:'+(isGroup?'#1e40af':'#374151')+';font-weight:600">'+
     '<span style="display:inline-block;width:12px">'+(collapsed?'&#9656;':'&#9662;')+'</span>'+
-    '&#128279; '+escHtml(label)+(dateRange?' &middot; '+dateRange:'')+' &middot; '+sorted.length+' trips'+
+    (isGroup?'&#128279; ':'')+escHtml(label)+(dateRange?' &middot; '+dateRange:'')+(isGroup?' &middot; '+sorted.length+' trips':'')+
   '</td></tr>';
 }
 // Groups consecutive rendering by linked-trip membership without disturbing
 // the active sort/filter: walks `list` in its already-sorted order, and the
-// first time a member of a 2+-trip group is reached, renders the group
-// header followed by every member of that group present in `list`
-// (chronologically, and only if the group isn't collapsed — see
-// window._tripGroupsCollapsed), then skips the rest of that group's members
-// later in the loop. A trip whose link-partners were filtered out of `list`
-// (or that has no links at all) just renders as a normal standalone row.
+// first time a member of a group (linked or solo) is reached, renders its
+// summary line — collapsed by default (window._tripGroupsCollapsed[key]!==false,
+// so an explicit expand is what gets remembered, not the other way round) —
+// followed by every member present in `list` (chronologically) if expanded,
+// then skips the rest of that group's members later in the loop.
 function tripTableBodyHtml(list){
   if(!list.length) return '<tr><td colspan="12"><div class="empty">No trips found</div></td></tr>';
   var groupOf = tripLinkGroups();
@@ -8181,21 +8187,36 @@ function tripTableBodyHtml(list){
     if(rendered[t.id]) return;
     var group = groupOf[t.id] || [t];
     var membersInList = group.filter(function(m){ return listIds[m.id]; });
-    if(membersInList.length > 1){
-      var key = tripGroupKey(membersInList);
-      var isCollapsed = !!collapsedGroups[key];
-      html += tripGroupHeaderHtml(membersInList, isCollapsed);
-      if(!isCollapsed){
-        membersInList.slice().sort(function(a,b){ return (a.departDate||'').localeCompare(b.departDate||''); })
-          .forEach(function(m){ html += tripRowHtml(m, true); });
-      }
-      membersInList.forEach(function(m){ rendered[m.id] = true; });
-    } else {
-      html += tripRowHtml(t, false);
-      rendered[t.id] = true;
+    var key = tripGroupKey(membersInList);
+    var isCollapsed = collapsedGroups[key] !== false;
+    html += tripSummaryLineHtml(membersInList, isCollapsed);
+    if(!isCollapsed){
+      membersInList.slice().sort(function(a,b){ return (a.departDate||'').localeCompare(b.departDate||''); })
+        .forEach(function(m){ html += tripRowHtml(m, membersInList.length>1); });
     }
+    membersInList.forEach(function(m){ rendered[m.id] = true; });
   });
   return html;
+}
+// Number of summary lines tripTableBodyHtml() will render for this list —
+// one per linked-trip group plus one per standalone trip, regardless of
+// each one's current collapsed/expanded state (collapsing doesn't change
+// how many "things" are on the page, just how much of each is visible).
+// Drives the Trips page's headline count instead of a raw trip-record
+// count, so it always matches what's actually enumerable on screen.
+function countTripSummaryLines(list){
+  var groupOf = tripLinkGroups();
+  var listIds = {};
+  list.forEach(function(t){ listIds[t.id] = true; });
+  var seenKeys = {};
+  var count = 0;
+  list.forEach(function(t){
+    var group = groupOf[t.id] || [t];
+    var membersInList = group.filter(function(m){ return listIds[m.id]; });
+    var key = tripGroupKey(membersInList);
+    if(!seenKeys[key]){ seenKeys[key] = true; count++; }
+  });
+  return count;
 }
 
 function renderTrips(){
@@ -8205,7 +8226,7 @@ function renderTrips(){
   const q=fSearch.toLowerCase();
   let list=db.trips.filter(function(t){
     const ms=!q||(t.clientName||'').toLowerCase().includes(q)||(t.destination||'').toLowerCase().includes(q)||(t.bookingRef||'').toLowerCase().includes(q);
-    return ms&&(!fStatus||t.status===fStatus)&&(!selCid||t.clientId===selCid);
+    return ms&&fStatus.indexOf(t.status)!==-1&&(!selCid||t.clientId===selCid);
   });
   // Sort
   list = list.slice().sort(function(a,b){
@@ -8230,7 +8251,23 @@ function renderTrips(){
     if(av>bv) return tripSortDir==='asc'?1:-1;
     return 0;
   });
-  const sopts=STATUSES.map(function(s){return '<option value="'+s+'"'+(s===fStatus?' selected':'')+'>'+s+'</option>';}).join('');
+  function statusFilterSummary(selected){
+    var nonCancelled = STATUSES.filter(function(s){return s!=='Cancelled';});
+    if(selected.length===STATUSES.length) return 'All statuses';
+    if(selected.length===0) return 'No statuses';
+    if(selected.length===nonCancelled.length && nonCancelled.every(function(s){return selected.indexOf(s)!==-1;})) return 'All except Cancelled';
+    if(selected.length===1) return selected[0];
+    return selected.length+' statuses';
+  }
+  var statusFilterHtml =
+    '<div style="position:relative">'+
+      '<button type="button" id="trip-status-filter-btn" style="padding:7px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#555;cursor:pointer;font-size:12px;font-family:inherit;white-space:nowrap">'+escHtml(statusFilterSummary(fStatus))+' &#9662;</button>'+
+      '<div id="trip-status-filter-panel" style="display:'+(window._tripStatusPanelOpen?'block':'none')+';position:absolute;top:100%;left:0;margin-top:4px;background:#fff;border:1px solid #d1d5db;border-radius:7px;padding:8px 12px;z-index:20;box-shadow:0 2px 8px rgba(0,0,0,.12);white-space:nowrap">'+
+        STATUSES.map(function(s){
+          return '<label style="display:flex;align-items:center;gap:6px;padding:3px 0;font-size:12px;cursor:pointer"><input type="checkbox" class="trip-status-cb" value="'+s+'"'+(fStatus.indexOf(s)!==-1?' checked':'')+'> '+s+'</label>';
+        }).join('')+
+      '</div>'+
+    '</div>';
   $('main').innerHTML=
     '<div class="page-hdr">'+
       '<div>'+
@@ -8241,15 +8278,18 @@ function renderTrips(){
     '</div>'+
     (function(){
       var totalCash  = list.reduce(function(a,t){return a+(t.cashPaid||0);},0);
-      var invoiceCount = selC ? countDistinctTrips(selC.id) : countDistinctInvoicesIn(list);
+      // Counts summary lines (one per linked-trip group, one per standalone
+      // trip) rather than raw trip records or distinct invoices, so this
+      // number always matches what's actually enumerable in the table below.
+      var summaryLineCount = countTripSummaryLines(list);
       return '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:16px">'+
-        '<div class="stat" id="stat-trips-count"><div class="stat-lbl">Trips (Distinct Invoices)</div><div class="stat-val">'+invoiceCount+'</div></div>'+
+        '<div class="stat" id="stat-trips-count"><div class="stat-lbl">Trips</div><div class="stat-val">'+summaryLineCount+'</div></div>'+
         '<div class="stat" id="stat-trips-cash"><div class="stat-lbl">Total Revenue</div><div class="stat-val">$'+money(totalCash)+'</div></div>'+
       '</div>';
     })()+
     '<div class="search-row">'+
       '<input id="trip-search" placeholder="Search trips..." value="'+fSearch+'"/>'+
-      '<select id="trip-status-filter"><option value="">All statuses</option>'+sopts+'</select>'+
+      statusFilterHtml+
       '<button id="btn-select-all-trips" style="padding:7px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#555;cursor:pointer;font-size:12px;font-family:inherit">Select All</button>'+
       '<button id="btn-delete-checked-trips" style="display:none;padding:7px 14px;border-radius:7px;border:none;background:#dc2626;color:#fff;cursor:pointer;font-size:12px;font-family:inherit">&#128465; Delete Selected</button>'+
     '</div>'+
@@ -8301,13 +8341,24 @@ function renderTrips(){
     var el=$('trip-search');
     if(el){el.focus();try{el.setSelectionRange(pos,pos);}catch(e){}}
   });
-  $('trip-status-filter').addEventListener('change',function(){fStatus=this.value;renderTrips();});
+  $('trip-status-filter-btn').addEventListener('click', function(e){
+    e.stopPropagation();
+    window._tripStatusPanelOpen = !window._tripStatusPanelOpen;
+    renderTrips();
+  });
+  document.querySelectorAll('.trip-status-cb').forEach(function(cb){
+    cb.addEventListener('change', function(){
+      fStatus = Array.from(document.querySelectorAll('.trip-status-cb:checked')).map(function(c){return c.value;});
+      renderTrips();
+    });
+  });
   if($('btn-back')) $('btn-back').addEventListener('click',function(){selCid=null;render();});
   document.querySelectorAll('.trip-group-hdr').forEach(function(row){
     row.addEventListener('click', function(){
       var key = row.dataset.groupKey;
       window._tripGroupsCollapsed = window._tripGroupsCollapsed || {};
-      window._tripGroupsCollapsed[key] = !window._tripGroupsCollapsed[key];
+      var currentlyCollapsed = window._tripGroupsCollapsed[key] !== false;
+      window._tripGroupsCollapsed[key] = !currentlyCollapsed;
       renderTrips();
     });
   });

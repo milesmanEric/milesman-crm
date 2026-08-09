@@ -72,9 +72,13 @@ Each mileage/points section (Mileage Balances, Hotel Point Balances, Cruise Line
 
 **Adding a trip**: Trips page → **+ Add Trip**, or open a client and add a trip from there. Client and Destination are the only required fields.
 
+**Every trip on the Trips page starts collapsed** as a one-line summary (client, destination, dates) — click it to expand and see the full row (flight, status, points, value, product, supplier, invoice #, edit/delete). Click it again to collapse it back. The ▾/▸ arrow on the left shows which state it's in. The **Trips** stat above the table counts these summary lines, not raw trip records — so it won't go up just because one trip happens to have several linked legs.
+
+**Status filter** now lets you check off any combination of statuses instead of picking just one — click the status button to open the checklist. It defaults to everything except **Cancelled**, so cancelled trips stay out of view until you specifically ask to see them.
+
 **Linked Trips**: if a trip is really one leg of a bigger multi-city vacation booked as separate trip records (say, a NYC leg and a Paris leg), check the other leg(s) off in the **Linked Trips** list. Linking works both ways automatically — check "Paris Leg" from the NYC trip's form, and the Paris trip's own Linked Trips list picks up the NYC trip too, no need to set it from both sides. Unchecking removes the link from both as well.
 
-Once linked, the Trips page always shows those legs grouped together under one heading (client name, every leg's destination in order, and the overall date range) with the individual legs listed underneath as subtrips, instead of scattered among all your other unrelated trips. Search, status filter, and column sorting all still work as usual — a group just moves as a unit to wherever its first leg lands under the current sort. **Click the heading row** to collapse its legs out of view (handy once you've got a lot of multi-city trips) — click it again to expand; the ▾/▸ arrow on the left shows which state it's in.
+Once linked, the Trips page shows those legs grouped together under one summary line (client name, every leg's destination in order, the overall date range, and a trip count) instead of scattered among all your other unrelated trips — expanding it reveals each leg as its own indented row rather than just the one trip's own row. Search, status filter, and column sorting all still work as usual — a group just moves as a unit to wherever its first leg lands under the current sort.
 
 The trip form has two parts:
 
