@@ -76,6 +76,8 @@ Each mileage/points section (Mileage Balances, Hotel Point Balances, Cruise Line
 
 **Every trip on the Trips page starts collapsed** as a one-line summary (client, destination, dates) — click it to expand and see the full row (flight, status, points, value, product, supplier, invoice #, edit/delete). Click it again to collapse it back. The ▾/▸ arrow on the left shows which state it's in. The **Trips** stat above the table counts these summary lines, not raw trip records — so it won't go up just because one trip happens to have several linked legs.
 
+By default the summary lines are sorted **soonest-upcoming trip first** (click any column header to sort by that instead), and each one is color-coded so you can scan the page at a glance: **yellow** = upcoming, **green** = happening right now, **orange** = already happened, **red** = cancelled, **blue** = still in Planning status regardless of its dates.
+
 **Status filter** now lets you check off any combination of statuses instead of picking just one — click the status button to open the checklist. It defaults to everything except **Cancelled**, so cancelled trips stay out of view until you specifically ask to see them.
 
 **Linked Trips**: if a trip is really one leg of a bigger multi-city vacation booked as separate trip records (say, a NYC leg and a Paris leg), check the other leg(s) off in the **Linked Trips** list. Linking works both ways automatically — check "Paris Leg" from the NYC trip's form, and the Paris trip's own Linked Trips list picks up the NYC trip too, no need to set it from both sides. Unchecking removes the link from both as well.
@@ -129,7 +131,7 @@ A month view with every trip painted across its travel dates. Click into a day t
 
 ## Reports
 
-Four tabs, each exportable to **CSV** or **PDF**:
+Five tabs (the first four exportable to **CSV** or **PDF**; AI Report exports to CSV):
 - **Activity Report** — every note logged across every client, filterable by date range, note type, and client.
 - **By Invoice #** — trips grouped by booking/invoice reference, filterable by date range, supplier, and client. (This avoids double-counting revenue when a booking has multiple line items sharing the same reference.)
 
@@ -138,6 +140,7 @@ Four tabs, each exportable to **CSV** or **PDF**:
   **Trips imported before this feature existed have no Invoice Date at all** — filtering those by Invoice Date will show nothing for them until you fix that. Re-run the exact same "Clean & Import Revenue File" / "Import Revenue CSV" import on the same source file: it recognizes the trips it already created and fills in the missing Invoice Date on them (and links a supplier too, if one's since been added) instead of creating duplicates.
 - **Unused Certificates** — every referral bonus certificate that hasn't been marked "Used" yet, across every client, with its certificate number, all the referrers it names, who they referred, the date it was issued, and the $100 amount. Optionally filter down to one referrer. Click a row to jump to the first referrer's client record. This is the place to check before a certificate slips through the cracks — once you mark it Used on any of its referrers' records, it drops off this list (see [Clients](#clients)).
 - **Combined Points** — check off any number of clients traveling together, hit Run Report, and it lays out every airline, hotel, cruise line, car rental, and credit card program at least one of them has a balance in — one column per traveler, plus a **Combined Total** column adding them all up. This is the "do we have enough between us" report: pick the travelers on a trip, and see right away whether their combined Delta miles or Marriott points actually clear what's needed, instead of checking each person's record separately and adding it up by hand. Only programs where the combined total is above zero show up.
+- **AI Report** — type exactly what you want in plain English (e.g. "Trips over $3,000 booked with Delta in the last year, sorted by value") and click **Generate Report**. The AI only decides what to filter/sort/show — the actual numbers always come straight from your real trip records, never from the AI itself, so you can trust the figures the same as any other report here. Click a row to open that trip. Happy with a report? Click **Save This Report** and give it a name — it shows up under **Saved Report Styles** below, where **▶️ Run** re-generates it instantly against your current data (no need to describe it again or wait on the AI) and 🗑️ removes it. *Requires the Anthropic API key to be configured on the server side — if you see an error saying the AI request failed, that key still needs to be added.*
 
 **Export PDF** builds a clean, printable version of whatever the report currently shows (same filters, same rows) and downloads it as a PDF — handy for emailing a report to someone or keeping an offline copy, versus **Export CSV** for pulling the data into a spreadsheet.
 

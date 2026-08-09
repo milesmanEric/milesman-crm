@@ -879,7 +879,7 @@ const DEFAULT_BOOKMARKS = [
   {name:'Universal Orlando — Agent Login', url:'https://www.vaxvacationaccess.com', category:'Theme Park', audience:'Travel Agent', notes:'shared VAX-powered portal w/ Universal Studios Hollywood'}
 ];
 
-let db = {clients:[],trips:[],vendors:[],planner:[],bookmarks:[]};
+let db = {clients:[],trips:[],vendors:[],planner:[],bookmarks:[],savedReports:[]};
 const UNDO_STACK = [];
 const MAX_UNDO = 20;
 function snapshot(label){
@@ -1240,6 +1240,7 @@ function loadDB(){
     db.vendors=Array.isArray(d.vendors)?d.vendors:[];
     db.planner=Array.isArray(d.planner)?d.planner:[];
     db.bookmarks=Array.isArray(d.bookmarks)?d.bookmarks:[];
+    db.savedReports=Array.isArray(d.savedReports)?d.savedReports:[];
     // Always normalize client names to 'Last, First' format on every load
     // (safe to run repeatedly since it skips names that already have a comma)
     var migrated=0;
@@ -5744,6 +5745,7 @@ function renderReports(){
       '<button class="rpt-tab-btn'+(activeTab==='invoice'?' active':'')+'" data-tab="invoice">By Invoice #</button>'+
       '<button class="rpt-tab-btn'+(activeTab==='certs'?' active':'')+'" data-tab="certs">Unused Certificates</button>'+
       '<button class="rpt-tab-btn'+(activeTab==='points'?' active':'')+'" data-tab="points">Combined Points</button>'+
+      '<button class="rpt-tab-btn'+(activeTab==='ai'?' active':'')+'" data-tab="ai">AI Report</button>'+
     '</div>'+
     (activeTab==='activity' ?
       ('<div class="report-filter">'+
@@ -5793,7 +5795,7 @@ function renderReports(){
         '</div>'+
       '</div>'+
       '<div id="rpt-cert-results"><div class="empty" style="padding:40px">Click Run Report to list every unredeemed referral certificate</div></div>')
-    :
+    : activeTab==='points' ?
       ('<div class="field full" style="margin-bottom:14px">'+
         '<label>Travelers <span class="hint" style="text-transform:none;font-weight:400">(pick every traveler whose points you want combined)</span></label>'+
         '<div style="border:1px solid #e5e7eb;border-radius:8px;padding:10px;max-height:200px;overflow-y:auto;background:#fafafa">'+
@@ -5811,6 +5813,20 @@ function renderReports(){
         '<button class="report-export-btn" id="rpt-pts-export-pdf">Export PDF</button>'+
       '</div>'+
       '<div id="rpt-pts-results"><div class="empty" style="padding:40px">Select at least one traveler above and click Run Report</div></div>')
+    :
+      ('<div class="field full" style="margin-bottom:14px">'+
+        '<label>Describe the report you want <span class="hint" style="text-transform:none;font-weight:400">(e.g. "Trips over $3,000 booked with Delta in the last year, sorted by value")</span></label>'+
+        '<textarea id="rpt-ai-prompt" rows="3" placeholder="Type exactly what you want to see..."></textarea>'+
+      '</div>'+
+      '<div style="display:flex;gap:8px;margin-bottom:16px">'+
+        '<button class="report-run-btn" id="rpt-ai-generate">Generate Report</button>'+
+      '</div>'+
+      '<div id="rpt-ai-status"></div>'+
+      '<div id="rpt-ai-results"><div class="empty" style="padding:40px">Describe a report above and click Generate Report</div></div>'+
+      '<div style="margin-top:28px">'+
+        '<div style="font-size:13px;font-weight:700;color:#111;margin-bottom:10px">Saved Report Styles</div>'+
+        '<div id="rpt-ai-saved-list">'+savedReportsListHtml()+'</div>'+
+      '</div>')
     );
 
   document.querySelectorAll('.rpt-tab-btn').forEach(function(btn){
@@ -5861,11 +5877,237 @@ function renderReports(){
     });
     document.getElementById('rpt-cert-export').addEventListener('click', exportCertificatesReport);
     document.getElementById('rpt-cert-export-pdf').addEventListener('click', exportCertificatesReportPdf);
-  } else {
+  } else if(activeTab==='points'){
     document.getElementById('rpt-pts-run').addEventListener('click', runPointsReport);
     document.getElementById('rpt-pts-export').addEventListener('click', exportPointsReport);
     document.getElementById('rpt-pts-export-pdf').addEventListener('click', exportPointsReportPdf);
+  } else {
+    document.getElementById('rpt-ai-generate').addEventListener('click', runAiReportGenerate);
+    bindSavedReportButtons();
   }
+}
+
+// ── AI Report (Reports page's 5th tab) ──────────────────────────────────────
+// Deliberately never lets the AI compute or state a figure itself — it only
+// picks WHAT to show (a filter/sort/column spec), then this app's own
+// deterministic code runs that spec against the real db.trips and renders
+// the actual numbers. Same "model picks, app executes" split as the
+// Assistant widget's tool-calling pattern, just producing a report spec
+// instead of taking an action.
+const REPORT_COLUMNS = {
+  clientName:   {label:'Client', get:function(t){return t.clientName||'';}},
+  destination:  {label:'Destination', get:function(t){return t.destination||'';}},
+  origin:       {label:'Origin', get:function(t){return t.origin||'';}},
+  departDate:   {label:'Depart Date', get:function(t){return t.departDate||'';}},
+  returnDate:   {label:'Return Date', get:function(t){return t.returnDate||'';}},
+  status:       {label:'Status', get:function(t){return displayStatus(t);}},
+  type:         {label:'Trip Type', get:function(t){return t.type||'';}},
+  airline:      {label:'Airline', get:function(t){return t.airline||'';}},
+  flightClass:  {label:'Class of Service', get:function(t){return t.flightClass||'';}},
+  hotel:        {label:'Hotel', get:function(t){return t.hotel||'';}},
+  cruiseLine:   {label:'Cruise Line', get:function(t){return t.cruiseLine||'';}},
+  shipName:     {label:'Ship', get:function(t){return t.shipName||'';}},
+  pointsUsed:   {label:'Points Used', get:function(t){return t.pointsUsed||0;}, numeric:true},
+  cashPaid:     {label:'Cash Paid', get:function(t){return t.cashPaid||0;}, numeric:true, money:true},
+  totalValue:   {label:'Total Value', get:function(t){return t.totalValue||0;}, numeric:true, money:true},
+  supplierName: {label:'Supplier', get:function(t){var sup=t.supplierId?db.vendors.find(function(v){return v.id===t.supplierId;}):null; return sup?sup.name:(t.supplierName||'');}},
+  invoiceNum:   {label:'Invoice #', get:function(t){return t.invoiceNum||t.bookingRef||'';}},
+  product:      {label:'Product', get:function(t){return t.product||'';}},
+  notes:        {label:'Notes', get:function(t){return t.notes||'';}}
+};
+const REPORT_DEFAULT_COLUMNS = ['clientName','destination','departDate','status','totalValue'];
+// Runs a report spec {title, filters, sortBy, sortDir, columns} against the
+// live db.trips (never cached/stale — a saved report re-run always reflects
+// current data, only its filter/sort/column CHOICES are what's saved).
+function runReportSpec(spec){
+  spec = spec || {};
+  var f = spec.filters || {};
+  var dateField = (f.dateField==='returnDate') ? 'returnDate' : 'departDate';
+  var rows = db.trips.filter(function(t){
+    if(f.dateFrom && !((t[dateField]||'')>=f.dateFrom)) return false;
+    if(f.dateTo && !((t[dateField]||'')<=f.dateTo)) return false;
+    if(f.status && t.status!==f.status) return false;
+    if(f.clientNameContains && (t.clientName||'').toLowerCase().indexOf(f.clientNameContains.toLowerCase())===-1) return false;
+    if(f.destinationContains && (t.destination||'').toLowerCase().indexOf(f.destinationContains.toLowerCase())===-1) return false;
+    if(f.airlineContains && (t.airline||'').toLowerCase().indexOf(f.airlineContains.toLowerCase())===-1) return false;
+    if(f.hotelContains && (t.hotel||'').toLowerCase().indexOf(f.hotelContains.toLowerCase())===-1) return false;
+    if(f.cruiseLineContains && (t.cruiseLine||'').toLowerCase().indexOf(f.cruiseLineContains.toLowerCase())===-1) return false;
+    if(f.supplierNameContains){
+      var supName = (REPORT_COLUMNS.supplierName.get(t)||'').toLowerCase();
+      if(supName.indexOf(f.supplierNameContains.toLowerCase())===-1) return false;
+    }
+    if(typeof f.minValue==='number' && (t.totalValue||0)<f.minValue) return false;
+    if(typeof f.maxValue==='number' && (t.totalValue||0)>f.maxValue) return false;
+    if(typeof f.minPoints==='number' && (t.pointsUsed||0)<f.minPoints) return false;
+    return true;
+  });
+  var sortBy = (spec.sortBy && REPORT_COLUMNS[spec.sortBy]) ? spec.sortBy : 'departDate';
+  var sortDir = spec.sortDir==='asc' ? 'asc' : 'desc';
+  var sortCol = REPORT_COLUMNS[sortBy];
+  rows = rows.slice().sort(function(a,b){
+    var av=sortCol.get(a), bv=sortCol.get(b);
+    if(sortCol.numeric){ av=Number(av)||0; bv=Number(bv)||0; }
+    else { av=(av||'').toString().toLowerCase(); bv=(bv||'').toString().toLowerCase(); }
+    if(av<bv) return sortDir==='asc'?-1:1;
+    if(av>bv) return sortDir==='asc'?1:-1;
+    return 0;
+  });
+  var columns = (Array.isArray(spec.columns) && spec.columns.length ? spec.columns : REPORT_DEFAULT_COLUMNS).filter(function(c){return REPORT_COLUMNS[c];});
+  if(!columns.length) columns = REPORT_DEFAULT_COLUMNS;
+  return {rows:rows, columns:columns};
+}
+const REPORT_SPEC_TOOL = {
+  name: 'generate_report',
+  description: 'Produce a report specification against the travel agency\'s trip records, based on the user\'s natural-language request. Always call this tool — never reply with plain text.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      title: {type:'string', description:'Short human-readable title for this report'},
+      filters: {
+        type: 'object',
+        properties: {
+          dateField: {type:'string', enum:['departDate','returnDate'], description:'Which date the from/to range applies to (default departDate)'},
+          dateFrom: {type:'string', description:'YYYY-MM-DD, inclusive'},
+          dateTo: {type:'string', description:'YYYY-MM-DD, inclusive'},
+          status: {type:'string', enum:['Planning','Confirmed','Completed','Cancelled']},
+          clientNameContains: {type:'string', description:'Substring match against the client\'s name'},
+          destinationContains: {type:'string'},
+          airlineContains: {type:'string'},
+          hotelContains: {type:'string'},
+          cruiseLineContains: {type:'string'},
+          supplierNameContains: {type:'string'},
+          minValue: {type:'number', description:'Minimum totalValue in dollars'},
+          maxValue: {type:'number', description:'Maximum totalValue in dollars'},
+          minPoints: {type:'number', description:'Minimum pointsUsed'}
+        }
+      },
+      sortBy: {type:'string', enum:Object.keys(REPORT_COLUMNS)},
+      sortDir: {type:'string', enum:['asc','desc']},
+      columns: {type:'array', items:{type:'string', enum:Object.keys(REPORT_COLUMNS)}, description:'Which columns to show, in order — pick columns relevant to what the user asked for; Client/Destination/Depart Date/Status/Total Value are safe defaults if nothing more specific applies'}
+    },
+    required: ['title','columns']
+  }
+};
+async function generateReportSpec(promptText){
+  var systemPrompt = 'You generate report specifications for a travel agency CRM\'s trip records by calling the generate_report tool exactly once per request. Never respond with plain text. Pick sensible filters/sort/columns based on what the user describes. All dates are YYYY-MM-DD. Today is '+today()+'.';
+  const r = await fetch(DRIVE_AUTH_SERVER+'/api/claude-messages', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({messages:[{role:'user', content:promptText}], tools:[REPORT_SPEC_TOOL], system:systemPrompt})
+  });
+  const data = await r.json();
+  if(!r.ok) throw new Error((data && (data.error && data.error.message || data.error_description || data.error)) || 'AI report request failed');
+  var toolUse = (data.content||[]).find(function(b){return b.type==='tool_use' && b.name==='generate_report';});
+  if(!toolUse) throw new Error('AI did not return a report specification — try rephrasing your request');
+  return toolUse.input;
+}
+async function runAiReportGenerate(){
+  var promptEl = document.getElementById('rpt-ai-prompt');
+  var promptText = (promptEl.value||'').trim();
+  if(!promptText){ toast('Describe the report you want first','err'); return; }
+  var statusEl = document.getElementById('rpt-ai-status');
+  var btn = document.getElementById('rpt-ai-generate');
+  btn.disabled = true; btn.textContent = 'Generating...';
+  statusEl.innerHTML = '';
+  try{
+    var spec = await generateReportSpec(promptText);
+    window._lastAiReportPrompt = promptText;
+    renderAiReportResults(spec);
+  }catch(e){
+    statusEl.innerHTML = '<div style="color:#dc2626;font-size:13px;padding:10px 12px;background:#fef2f2;border-radius:8px;margin-bottom:14px">'+escHtml(e.message)+'</div>';
+    debugLog('AI report generation failed: '+e.message);
+  }finally{
+    btn.disabled = false; btn.textContent = 'Generate Report';
+  }
+}
+function renderAiReportResults(spec){
+  var resultsEl = document.getElementById('rpt-ai-results');
+  var result = runReportSpec(spec);
+  window._lastAiReportSpec = spec;
+  window._lastAiReportTripIds = result.rows.map(function(t){return t.id;});
+  var headerLabels = result.columns.map(function(c){return REPORT_COLUMNS[c].label;});
+  resultsEl.innerHTML =
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">'+
+      '<div style="font-size:15px;font-weight:700;color:#111">'+escHtml(spec.title||'Report')+' <span style="font-weight:400;color:#888;font-size:12px">('+result.rows.length+' trip'+(result.rows.length!==1?'s':'')+')</span></div>'+
+      '<div style="display:flex;gap:8px">'+
+        '<button class="report-export-btn" id="rpt-ai-export">Export CSV</button>'+
+        '<button class="report-export-btn" id="rpt-ai-save">Save This Report</button>'+
+      '</div>'+
+    '</div>'+
+    (result.rows.length ?
+      '<div class="tbl-wrap"><table class="report-table"><thead><tr>'+headerLabels.map(function(h){return '<th>'+escHtml(h)+'</th>';}).join('')+'</tr></thead><tbody>'+
+        result.rows.map(function(t,i){
+          return '<tr class="rpt-ai-row" data-idx="'+i+'" style="cursor:pointer">'+result.columns.map(function(c){
+            var col = REPORT_COLUMNS[c];
+            var v = col.get(t);
+            var display = col.money ? ('$'+money(v)) : (col.numeric ? fmt(v) : escHtml(v||'—'));
+            return '<td>'+display+'</td>';
+          }).join('')+'</tr>';
+        }).join('')+
+      '</tbody></table></div>'
+      : '<div class="empty" style="padding:30px">No trips match this report</div>');
+  document.getElementById('rpt-ai-export').addEventListener('click', function(){
+    var csv = rowsToCSV(headerLabels, result.rows.map(function(t){
+      return result.columns.map(function(c){ return REPORT_COLUMNS[c].get(t); });
+    }));
+    var b = new Blob([csv],{type:'text/csv'});
+    var a = document.createElement('a'); a.href=URL.createObjectURL(b); a.download='milesman-ai-report.csv'; a.click();
+    toast('Report exported ✓');
+  });
+  document.getElementById('rpt-ai-save').addEventListener('click', function(){
+    var name = prompt('Name this report style:', spec.title||'');
+    if(!name) return;
+    snapshot('Save AI report style');
+    db.savedReports.push({id:newId('RPT', db.savedReports), name:name, prompt:window._lastAiReportPrompt||'', spec:spec, createdAt:tsNow()});
+    saveDB();
+    document.getElementById('rpt-ai-saved-list').innerHTML = savedReportsListHtml();
+    bindSavedReportButtons();
+    toast('Report style saved');
+  });
+  document.querySelectorAll('.rpt-ai-row').forEach(function(row){
+    row.addEventListener('click', function(){
+      var tid = window._lastAiReportTripIds[parseInt(row.dataset.idx,10)];
+      if(tid) openTripForm(tid);
+    });
+  });
+}
+function savedReportsListHtml(){
+  if(!db.savedReports.length) return '<div style="color:#aaa;font-size:12px">No saved reports yet — generate one above, then click "Save This Report".</div>';
+  return '<div class="tbl-wrap"><table class="tbl-planner"><thead><tr><th>Name</th><th>Prompt</th><th></th></tr></thead><tbody>'+
+    db.savedReports.map(function(r){
+      return '<tr>'+
+        '<td style="font-weight:600">'+escHtml(r.name)+'</td>'+
+        '<td style="font-size:12px;color:#888;max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escHtml(r.prompt||'')+'</td>'+
+        '<td style="white-space:nowrap">'+
+          '<button class="icon-btn run-saved-report" data-id="'+r.id+'" title="Run">&#9654;&#65039;</button>'+
+          '<button class="icon-btn del-saved-report" data-id="'+r.id+'" style="color:#dc2626" title="Delete">&#128465;&#65039;</button>'+
+        '</td>'+
+      '</tr>';
+    }).join('')+
+  '</tbody></table></div>';
+}
+function bindSavedReportButtons(){
+  document.querySelectorAll('.run-saved-report').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var r = db.savedReports.find(function(x){return x.id===btn.dataset.id;});
+      if(!r) return;
+      var promptEl = document.getElementById('rpt-ai-prompt');
+      if(promptEl) promptEl.value = r.prompt||'';
+      window._lastAiReportPrompt = r.prompt||'';
+      renderAiReportResults(r.spec);
+      document.getElementById('rpt-ai-results').scrollIntoView({behavior:'smooth', block:'start'});
+    });
+  });
+  document.querySelectorAll('.del-saved-report').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      if(!confirm('Delete this saved report style?')) return;
+      snapshot('Delete saved report style');
+      db.savedReports = db.savedReports.filter(function(x){return x.id!==btn.dataset.id;});
+      saveDB();
+      document.getElementById('rpt-ai-saved-list').innerHTML = savedReportsListHtml();
+      bindSavedReportButtons();
+    });
+  });
 }
 
 function getInvoiceReportData(){
@@ -8152,6 +8394,26 @@ function tripRowHtml(t, isSub){
 function tripGroupKey(members){
   return members.map(function(m){return m.id;}).sort().join(',');
 }
+// Categorizes a trip for the Trips page's summary-line color-coding (and
+// the default "upcoming first" sort's rank) — status (Cancelled/Planning)
+// takes precedence over dates, since those are explicit choices the user
+// made; everything else is derived from today vs. depart/return date.
+function tripLifecycleCategory(t){
+  var st = t.status||'Planning';
+  if(st==='Cancelled') return 'cancelled';
+  if(st==='Planning') return 'planning';
+  var t0 = today();
+  if(t.departDate && t.departDate<=t0 && (!t.returnDate || t.returnDate>=t0)) return 'inTrip';
+  if(t.departDate && t.departDate>t0) return 'upcoming';
+  return 'past';
+}
+const TRIP_LIFECYCLE_COLORS = {
+  upcoming: {bg:'#fef9c3', text:'#854d0e'},
+  inTrip:   {bg:'#dcfce7', text:'#166534'},
+  past:     {bg:'#ffedd5', text:'#9a3412'},
+  cancelled:{bg:'#fee2e2', text:'#991b1b'},
+  planning: {bg:'#dbeafe', text:'#1e40af'}
+};
 // Every trip on this page — whether it's linked to others or entirely on
 // its own — renders as one collapsible "unit": a full-width summary line,
 // collapsed by default, that expands on click to reveal its underlying full
@@ -8159,8 +8421,11 @@ function tripGroupKey(members){
 // name(s), every member's destination in chronological order, the date
 // range spanning all of them, a link icon, and a trip count. For a lone
 // trip it's the same layout minus the link icon/count, since there's
-// nothing to distinguish it from a "group of one". Clicking it toggles
-// collapsed/expanded (see bindClick on .trip-group-hdr in renderTrips()).
+// nothing to distinguish it from a "group of one". The line's color reflects
+// the earliest-departing member's lifecycle category (see
+// tripLifecycleCategory() — yellow upcoming, green in-progress, orange
+// past, red cancelled, blue planning). Clicking it toggles collapsed/
+// expanded (see bindClick on .trip-group-hdr in renderTrips()).
 function tripSummaryLineHtml(members, collapsed){
   var sorted = members.slice().sort(function(a,b){ return (a.departDate||'').localeCompare(b.departDate||''); });
   var isGroup = sorted.length > 1;
@@ -8173,8 +8438,9 @@ function tripSummaryLineHtml(members, collapsed){
   var maxReturn = returnDates.length ? returnDates[returnDates.length-1] : departDates[departDates.length-1];
   var dateRange = minDepart ? (fmtDate(minDepart)+(maxReturn&&maxReturn!==minDepart?' – '+fmtDate(maxReturn):'')) : '';
   var label = [uniqClientNames.join(', '), destinations].filter(Boolean).join(' — ');
-  return '<tr class="trip-group-hdr" data-group-key="'+tripGroupKey(sorted)+'" style="background:'+(isGroup?'#eff6ff':'#fafafa')+';cursor:pointer">'+
-    '<td colspan="12" style="padding:8px 12px;font-size:12px;color:'+(isGroup?'#1e40af':'#374151')+';font-weight:600">'+
+  var colors = TRIP_LIFECYCLE_COLORS[tripLifecycleCategory(sorted[0])];
+  return '<tr class="trip-group-hdr" data-group-key="'+tripGroupKey(sorted)+'" style="background:'+colors.bg+';cursor:pointer">'+
+    '<td colspan="12" style="padding:8px 12px;font-size:12px;color:'+colors.text+';font-weight:600">'+
     '<span style="display:inline-block;width:12px">'+(collapsed?'&#9656;':'&#9662;')+'</span>'+
     (isGroup?'&#128279; ':'')+escHtml(label)+(dateRange?' &middot; '+dateRange:'')+(isGroup?' &middot; '+sorted.length+' trips':'')+
   '</td></tr>';
@@ -8231,7 +8497,7 @@ function countTripSummaryLines(list){
 }
 
 function renderTrips(){
-  var tripSortCol = window._tripSortCol || 'id';
+  var tripSortCol = window._tripSortCol || 'upcoming';
   var tripSortDir = window._tripSortDir || 'desc';
   const selC=db.clients.find(function(c){return c.id===selCid;});
   const q=fSearch.toLowerCase();
@@ -8241,13 +8507,24 @@ function renderTrips(){
   });
   // Sort
   list = list.slice().sort(function(a,b){
+    // Default view — soonest-upcoming (or currently in-progress) trip date
+    // first, then most-recently-past, then no-date-at-all — not affected by
+    // tripSortDir, since "upcoming first" is a fixed direction, not a
+    // column a user flips between ascending/descending.
+    if(tripSortCol==='upcoming'){
+      var t0 = today();
+      function rank(t){ if(!t.departDate) return 2; return t.departDate>=t0 ? 0 : 1; }
+      var ar=rank(a), br=rank(b);
+      if(ar!==br) return ar-br;
+      if(ar===1) return (b.departDate||'').localeCompare(a.departDate||'');
+      return (a.departDate||'').localeCompare(b.departDate||'');
+    }
     var av, bv;
     if(tripSortCol==='status'){
       av=displayStatus(a); bv=displayStatus(b);
     } else if(tripSortCol==='id'){
-      // Default sort (newest added first) — compare the numeric part of
-      // the id (T1, T2, ...T10...) rather than the string, since string
-      // comparison would put "T10" before "T9".
+      // Compare the numeric part of the id (T1, T2, ...T10...) rather than
+      // the string, since string comparison would put "T10" before "T9".
       av=parseInt((a.id||'').replace(/\D/g,''),10)||0;
       bv=parseInt((b.id||'').replace(/\D/g,''),10)||0;
     } else {
