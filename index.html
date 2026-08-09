@@ -8448,24 +8448,20 @@ function statusOptionsFor(statusList,name){
   if(!statusList) return [];
   return Array.isArray(statusList)?statusList:(statusList[name]||[]);
 }
-// Collapsed by default unless the client/trip already has a balance set
-// somewhere in this grid — existing data should never be hidden by
-// default, only the common case of an all-empty section. See
-// bindBalanceGridToggles() for the click handler (delegated on the
-// containing modal, since this grid is re-rendered in more than one form).
+// Collapsed by default, regardless of whether the client/trip already has
+// balance data in this grid — applies uniformly on both the Client form and
+// the Trip form's balance sections (not the Booked Trip Details section,
+// which has no collapse mechanism at all). See bindBalanceGridToggles() for
+// the click handler (delegated on the containing modal, since this grid is
+// re-rendered in more than one form).
 function balanceGrid(label,idPrefix,list,data,statusList){
-  var hasData = !!data && Object.keys(data).some(function(k){
-    var v = data[k];
-    if(v==null || v==='') return false;
-    return statusList ? !!(v.balance||v.status) : true;
-  });
   var gridId = idPrefix+'-grid';
   return '<div class="field full">'+
     '<label class="balance-grid-toggle" data-target="'+gridId+'" style="cursor:pointer;user-select:none;display:flex;align-items:center;gap:6px">'+
-      '<span class="balance-grid-arrow" style="display:inline-block;font-size:10px;transition:transform .15s;transform:rotate('+(hasData?'90':'0')+'deg)">&#9656;</span>'+
+      '<span class="balance-grid-arrow" style="display:inline-block;font-size:10px;transition:transform .15s;transform:rotate(0deg)">&#9656;</span>'+
       label+
     '</label>'+
-    '<div id="'+gridId+'" style="display:'+(hasData?'grid':'none')+';grid-template-columns:repeat(auto-fill,minmax('+(statusList?'300px':'220px')+',1fr));gap:8px;border:1px solid #e5e7eb;border-radius:8px;padding:10px;background:#fafafa">'+
+    '<div id="'+gridId+'" style="display:none;grid-template-columns:repeat(auto-fill,minmax('+(statusList?'300px':'220px')+',1fr));gap:8px;border:1px solid #e5e7eb;border-radius:8px;padding:10px;background:#fafafa">'+
       list.map(function(name,i){
         var entry=(data&&data[name])||{};
         var bal=statusList?(entry.balance||''):((data&&data[name])||'');
@@ -9479,6 +9475,23 @@ function updateAirlineRecordPaxWarning(recordRow){
     warn.style.display = 'none';
   }
 }
+// Each Booked Trip Details category (Airline/Hotel/Cruise/Car Rental/Tours/
+// Theme Park/Train/Bus) collapses independently, collapsed by default —
+// window._bookedCatCollapsed[key] !== false means collapsed, same pattern
+// as the Trips page's window._tripGroupsCollapsed and the balance grids'
+// toggle. The body wrapper replicates .fg's own 2-column grid (rather than
+// letting the fields fall back to block layout) since it sits between the
+// grid-item .field/.modal-section-title children as an extra nesting level.
+function bookedCatSectionHtml(key, title, innerHtml){
+  var collapsedMap = window._bookedCatCollapsed || {};
+  var isCollapsed = collapsedMap[key] !== false;
+  var bodyId = 'tb-cat-body-'+key;
+  return '<div class="modal-section-title tb-cat-toggle" data-cat-key="'+key+'" data-target="'+bodyId+'" style="cursor:pointer;user-select:none;display:flex;align-items:center;gap:6px">'+
+      '<span class="tb-cat-arrow" style="display:inline-block;font-size:10px;transition:transform .15s;transform:rotate('+(isCollapsed?'0':'90')+'deg)">&#9656;</span>'+
+      title+
+    '</div>'+
+    '<div id="'+bodyId+'" style="display:'+(isCollapsed?'none':'grid')+';grid-column:1/-1;grid-template-columns:1fr 1fr;gap:12px">'+innerHtml+'</div>';
+}
 function bookedTripDetailsHtml(bd){
   bd = bd || {};
   var air = bd.airline||{}, cru = bd.cruise||{}, car = bd.carRental||{},
@@ -9530,85 +9543,97 @@ function bookedTripDetailsHtml(bd){
   return ''+
     '<div class="modal-section-title">Booked Trip Details</div>'+
     fld('Trip Name',inp('tb-trip-name','text',bd.tripName,'e.g. Smith Family Alaska Cruise'))+
-    '<div class="modal-section-title">Airline</div>'+
-    '<div class="field full"><label>Records <span class="hint" style="text-transform:none;font-weight:400">(one per confirmation/PNR — e.g. separate records for different fare types or when not everyone is ticketed together)</span></label>'+
-      '<div id="tb-airline-records">'+airlineRecordsListHtml(airlineRecords)+'</div>'+
-      '<button type="button" id="tb-airline-record-add-btn" style="padding:5px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit">+ Add Record</button>'+
-    '</div>'+
-    '<div class="modal-section-title">Hotel</div>'+
-    '<div class="field full"><label>Hotels <span class="hint" style="text-transform:none;font-weight:400">(add one entry per hotel stay on this trip)</span></label>'+
-      '<div id="tb-hotel-entries">'+hotelEntriesListHtml(hotelEntries)+'</div>'+
-      '<button type="button" id="tb-hotel-add-btn" style="padding:5px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit">+ Add Hotel</button>'+
-    '</div>'+
-    '<div class="modal-section-title">Cruise</div>'+
-    fld('Confirmation Number',inp('tb-cruise-conf','text',cru.confirmationNumber,'e.g. C-445566'))+
-    fld('Cruise Line',sel('tb-cruise-line',CRUISE_LINES,cru.cruiseLine))+
-    fld('Ship Name','<select id="tb-cruise-ship">'+shipOptionsHtml(cru.cruiseLine,cru.shipName)+'</select>')+
-    fld('Sailing Date',inp('tb-cruise-sailing','date',cru.sailingDate))+
-    fld('Return Date',inp('tb-cruise-return','date',cru.returnDate))+
-    fld('Nights',inp('tb-cruise-nights','number',cru.nights||''))+
-    fld('Departure Port',inp('tb-cruise-port','text',cru.departurePort,'e.g. Fort Lauderdale, FL'))+
-    fld('Return Port',inp('tb-cruise-return-port','text',cru.returnPort,'e.g. Fort Lauderdale, FL'))+
-    fld('Loyalty Number',inp('tb-cruise-loyalty','text',cru.loyaltyNumber))+
-    fld('Price ($)',inp('tb-cruise-price','number',cru.price))+
-    fld('Notes','<textarea id="tb-cruise-notes">'+(cru.notes||'')+'</textarea>',true)+
-    '<div class="field full"><label>Cabins <span class="hint" style="text-transform:none;font-weight:400">(add one entry per cabin booked on this sailing)</span></label>'+
-      '<div id="tb-cabin-entries">'+cabinEntriesListHtml(cabinEntries,cru.cruiseLine)+'</div>'+
-      '<button type="button" id="tb-cabin-add-btn" style="padding:5px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit">+ Add Cabin</button>'+
-    '</div>'+
-    pointsEntriesSectionHtml(cru.pts||[], 'tb-cruise-pts-entries', 'tb-cruise-pts-add-btn')+
-    '<div class="modal-section-title">Car Rental</div>'+
-    fld('Confirmation Number',inp('tb-car-conf','text',car.confirmationNumber,'e.g. CR-778899'))+
-    fld('Company',sel('tb-car-company',CAR_RENTALS,car.company))+
-    fld('Car Size',sel('tb-car-size',CAR_SIZES,car.carSize))+
-    fld('Pickup Location',inp('tb-car-pickuploc','text',car.pickupLocation,'e.g. Miami Airport (MIA)'))+
-    fld('Dropoff Location',inp('tb-car-dropoffloc','text',car.dropoffLocation,'e.g. Miami Airport (MIA)'))+
-    fld('Pickup Date',inp('tb-car-pickupdate','date',car.pickupDate))+
-    fld('Dropoff Date',inp('tb-car-dropoffdate','date',car.dropoffDate))+
-    fld('Pickup Time',inp('tb-car-pickuptime','time',car.pickupTime))+
-    fld('Dropoff Time',inp('tb-car-dropofftime','time',car.dropoffTime))+
-    fld('Price ($)',inp('tb-car-price','number',car.price))+
-    fld('Notes','<textarea id="tb-car-notes">'+(car.notes||'')+'</textarea>',true)+
-    pointsEntriesSectionHtml(car.pts||[], 'tb-car-pts-entries', 'tb-car-pts-add-btn')+
-    '<div class="modal-section-title">Tours</div>'+
-    '<div class="field full"><label>Tours <span class="hint" style="text-transform:none;font-weight:400">(add one entry per tour/activity booked on this trip)</span></label>'+
-      '<div id="tb-tours-entries">'+tourEntriesListHtml(tourEntries)+'</div>'+
-      '<button type="button" id="tb-tours-add-btn" style="padding:5px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit">+ Add Tour</button>'+
-    '</div>'+
-    pointsEntriesSectionHtml(bd.toursPts||[], 'tb-tours-pts-entries', 'tb-tours-pts-add-btn')+
-    '<div class="modal-section-title">Theme Park</div>'+
-    fld('Confirmation Number',inp('tb-tp-conf','text',tp.confirmationNumber,'e.g. TP-334455'))+
-    fld('Park',sel('tb-tp-park',THEME_PARKS,tp.park))+
-    fld('Ticket Type',inp('tb-tp-ticket','text',tp.ticketType,'e.g. Park Hopper'))+
-    fld('Price ($)',inp('tb-tp-price','number',tp.price))+
-    fld('Notes','<textarea id="tb-tp-notes">'+(tp.notes||'')+'</textarea>',true)+
-    pointsEntriesSectionHtml(tp.pts||[], 'tb-tp-pts-entries', 'tb-tp-pts-add-btn')+
-    '<div class="modal-section-title">Train</div>'+
-    fld('Confirmation Number',inp('tb-train-conf','text',tra.confirmationNumber,'e.g. AMTK-556677'))+
-    fld('Departure City',inp('tb-train-depcity','text',tra.departureCity,'e.g. New York, NY'))+
-    fld('Arrival City',inp('tb-train-arrcity','text',tra.arrivalCity,'e.g. Washington, DC'))+
-    fld('Departure Date',inp('tb-train-depdate','date',tra.departureDate))+
-    fld('Return Date',inp('tb-train-retdate','date',tra.returnDate))+
-    fld('Class of Service',sel('tb-train-class',TRAIN_CLASSES,tra.classOfService))+
-    fld('Price ($)',inp('tb-train-price','number',tra.price))+
-    fld('Logo URL',inp('tb-train-logo','text',tra.logoUrl,'optional — shown next to Train Details in Email Itinerary'))+
-    fld('Notes','<textarea id="tb-train-notes">'+(tra.notes||'')+'</textarea>',true)+
-    pointsEntriesSectionHtml(tra.pts||[], 'tb-train-pts-entries', 'tb-train-pts-add-btn')+
-    '<div class="modal-section-title">Bus</div>'+
-    fld('Confirmation Number',inp('tb-bus-conf','text',bus.confirmationNumber,'e.g. GRY-556677'))+
-    fld('Departure City',inp('tb-bus-depcity','text',bus.departureCity,'e.g. New York, NY'))+
-    fld('Arrival City',inp('tb-bus-arrcity','text',bus.arrivalCity,'e.g. Washington, DC'))+
-    fld('Departure Date',inp('tb-bus-depdate','date',bus.departureDate))+
-    fld('Return Date',inp('tb-bus-retdate','date',bus.returnDate))+
-    fld('Class of Service',sel('tb-bus-class',TRAIN_CLASSES,bus.classOfService))+
-    fld('Price ($)',inp('tb-bus-price','number',bus.price))+
-    fld('Logo URL',inp('tb-bus-logo','text',bus.logoUrl,'optional — shown next to Bus Details in Email Itinerary'))+
-    fld('Notes','<textarea id="tb-bus-notes">'+(bus.notes||'')+'</textarea>',true)+
-    pointsEntriesSectionHtml(bus.pts||[], 'tb-bus-pts-entries', 'tb-bus-pts-add-btn')+
+    bookedCatSectionHtml('airline','Airline',
+      '<div class="field full"><label>Records <span class="hint" style="text-transform:none;font-weight:400">(one per confirmation/PNR — e.g. separate records for different fare types or when not everyone is ticketed together)</span></label>'+
+        '<div id="tb-airline-records">'+airlineRecordsListHtml(airlineRecords)+'</div>'+
+        '<button type="button" id="tb-airline-record-add-btn" style="padding:5px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit">+ Add Record</button>'+
+      '</div>')+
+    bookedCatSectionHtml('hotel','Hotel',
+      '<div class="field full"><label>Hotels <span class="hint" style="text-transform:none;font-weight:400">(add one entry per hotel stay on this trip)</span></label>'+
+        '<div id="tb-hotel-entries">'+hotelEntriesListHtml(hotelEntries)+'</div>'+
+        '<button type="button" id="tb-hotel-add-btn" style="padding:5px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit">+ Add Hotel</button>'+
+      '</div>')+
+    bookedCatSectionHtml('cruise','Cruise',
+      fld('Confirmation Number',inp('tb-cruise-conf','text',cru.confirmationNumber,'e.g. C-445566'))+
+      fld('Cruise Line',sel('tb-cruise-line',CRUISE_LINES,cru.cruiseLine))+
+      fld('Ship Name','<select id="tb-cruise-ship">'+shipOptionsHtml(cru.cruiseLine,cru.shipName)+'</select>')+
+      fld('Sailing Date',inp('tb-cruise-sailing','date',cru.sailingDate))+
+      fld('Return Date',inp('tb-cruise-return','date',cru.returnDate))+
+      fld('Nights',inp('tb-cruise-nights','number',cru.nights||''))+
+      fld('Departure Port',inp('tb-cruise-port','text',cru.departurePort,'e.g. Fort Lauderdale, FL'))+
+      fld('Return Port',inp('tb-cruise-return-port','text',cru.returnPort,'e.g. Fort Lauderdale, FL'))+
+      fld('Loyalty Number',inp('tb-cruise-loyalty','text',cru.loyaltyNumber))+
+      fld('Price ($)',inp('tb-cruise-price','number',cru.price))+
+      fld('Notes','<textarea id="tb-cruise-notes">'+(cru.notes||'')+'</textarea>',true)+
+      '<div class="field full"><label>Cabins <span class="hint" style="text-transform:none;font-weight:400">(add one entry per cabin booked on this sailing)</span></label>'+
+        '<div id="tb-cabin-entries">'+cabinEntriesListHtml(cabinEntries,cru.cruiseLine)+'</div>'+
+        '<button type="button" id="tb-cabin-add-btn" style="padding:5px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit">+ Add Cabin</button>'+
+      '</div>'+
+      pointsEntriesSectionHtml(cru.pts||[], 'tb-cruise-pts-entries', 'tb-cruise-pts-add-btn'))+
+    bookedCatSectionHtml('car','Car Rental',
+      fld('Confirmation Number',inp('tb-car-conf','text',car.confirmationNumber,'e.g. CR-778899'))+
+      fld('Company',sel('tb-car-company',CAR_RENTALS,car.company))+
+      fld('Car Size',sel('tb-car-size',CAR_SIZES,car.carSize))+
+      fld('Pickup Location',inp('tb-car-pickuploc','text',car.pickupLocation,'e.g. Miami Airport (MIA)'))+
+      fld('Dropoff Location',inp('tb-car-dropoffloc','text',car.dropoffLocation,'e.g. Miami Airport (MIA)'))+
+      fld('Pickup Date',inp('tb-car-pickupdate','date',car.pickupDate))+
+      fld('Dropoff Date',inp('tb-car-dropoffdate','date',car.dropoffDate))+
+      fld('Pickup Time',inp('tb-car-pickuptime','time',car.pickupTime))+
+      fld('Dropoff Time',inp('tb-car-dropofftime','time',car.dropoffTime))+
+      fld('Price ($)',inp('tb-car-price','number',car.price))+
+      fld('Notes','<textarea id="tb-car-notes">'+(car.notes||'')+'</textarea>',true)+
+      pointsEntriesSectionHtml(car.pts||[], 'tb-car-pts-entries', 'tb-car-pts-add-btn'))+
+    bookedCatSectionHtml('tours','Tours',
+      '<div class="field full"><label>Tours <span class="hint" style="text-transform:none;font-weight:400">(add one entry per tour/activity booked on this trip)</span></label>'+
+        '<div id="tb-tours-entries">'+tourEntriesListHtml(tourEntries)+'</div>'+
+        '<button type="button" id="tb-tours-add-btn" style="padding:5px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit">+ Add Tour</button>'+
+      '</div>'+
+      pointsEntriesSectionHtml(bd.toursPts||[], 'tb-tours-pts-entries', 'tb-tours-pts-add-btn'))+
+    bookedCatSectionHtml('themepark','Theme Park',
+      fld('Confirmation Number',inp('tb-tp-conf','text',tp.confirmationNumber,'e.g. TP-334455'))+
+      fld('Park',sel('tb-tp-park',THEME_PARKS,tp.park))+
+      fld('Ticket Type',inp('tb-tp-ticket','text',tp.ticketType,'e.g. Park Hopper'))+
+      fld('Price ($)',inp('tb-tp-price','number',tp.price))+
+      fld('Notes','<textarea id="tb-tp-notes">'+(tp.notes||'')+'</textarea>',true)+
+      pointsEntriesSectionHtml(tp.pts||[], 'tb-tp-pts-entries', 'tb-tp-pts-add-btn'))+
+    bookedCatSectionHtml('train','Train',
+      fld('Confirmation Number',inp('tb-train-conf','text',tra.confirmationNumber,'e.g. AMTK-556677'))+
+      fld('Departure City',inp('tb-train-depcity','text',tra.departureCity,'e.g. New York, NY'))+
+      fld('Arrival City',inp('tb-train-arrcity','text',tra.arrivalCity,'e.g. Washington, DC'))+
+      fld('Departure Date',inp('tb-train-depdate','date',tra.departureDate))+
+      fld('Return Date',inp('tb-train-retdate','date',tra.returnDate))+
+      fld('Class of Service',sel('tb-train-class',TRAIN_CLASSES,tra.classOfService))+
+      fld('Price ($)',inp('tb-train-price','number',tra.price))+
+      fld('Logo URL',inp('tb-train-logo','text',tra.logoUrl,'optional — shown next to Train Details in Email Itinerary'))+
+      fld('Notes','<textarea id="tb-train-notes">'+(tra.notes||'')+'</textarea>',true)+
+      pointsEntriesSectionHtml(tra.pts||[], 'tb-train-pts-entries', 'tb-train-pts-add-btn'))+
+    bookedCatSectionHtml('bus','Bus',
+      fld('Confirmation Number',inp('tb-bus-conf','text',bus.confirmationNumber,'e.g. GRY-556677'))+
+      fld('Departure City',inp('tb-bus-depcity','text',bus.departureCity,'e.g. New York, NY'))+
+      fld('Arrival City',inp('tb-bus-arrcity','text',bus.arrivalCity,'e.g. Washington, DC'))+
+      fld('Departure Date',inp('tb-bus-depdate','date',bus.departureDate))+
+      fld('Return Date',inp('tb-bus-retdate','date',bus.returnDate))+
+      fld('Class of Service',sel('tb-bus-class',TRAIN_CLASSES,bus.classOfService))+
+      fld('Price ($)',inp('tb-bus-price','number',bus.price))+
+      fld('Logo URL',inp('tb-bus-logo','text',bus.logoUrl,'optional — shown next to Bus Details in Email Itinerary'))+
+      fld('Notes','<textarea id="tb-bus-notes">'+(bus.notes||'')+'</textarea>',true)+
+      pointsEntriesSectionHtml(bus.pts||[], 'tb-bus-pts-entries', 'tb-bus-pts-add-btn'))+
     '<div class="modal-section-title">Summary</div>'+
     '<div id="tb-booked-summary"></div>';
 }
 function bindBookedTripDetailsListeners(){
+  document.querySelectorAll('.tb-cat-toggle').forEach(function(hdr){
+    hdr.addEventListener('click', function(){
+      var key = hdr.dataset.catKey;
+      var target = document.getElementById(hdr.dataset.target);
+      var arrow = hdr.querySelector('.tb-cat-arrow');
+      var isOpen = target.style.display !== 'none';
+      target.style.display = isOpen ? 'none' : 'grid';
+      if(arrow) arrow.style.transform = 'rotate('+(isOpen?'0':'90')+'deg)';
+      window._bookedCatCollapsed = window._bookedCatCollapsed || {};
+      window._bookedCatCollapsed[key] = isOpen;
+    });
+  });
   var cruiseLineSel = document.getElementById('tb-cruise-line');
   if(cruiseLineSel){
     cruiseLineSel.addEventListener('change', function(){
@@ -10290,7 +10315,13 @@ function bookmarkTableHtml(items){
 // Two-level grouping: audience (Travel Agent / Consumer) first, then
 // category (Airline/Hotel/etc.) within each — a bookmark missing `audience`
 // is treated as Consumer so bookmarks saved before this field existed still
-// show up sensibly rather than vanishing from both sections.
+// show up sensibly rather than vanishing from both sections. Both audiences
+// use this same category grouping — Travel Agent isn't a separate flat list.
+// Each category is collapsed by default (window._bookmarkCategoriesCollapsed,
+// keyed by "audience|category" so Travel Agent's Airline group and
+// Consumer's Airline group toggle independently — !==false means collapsed,
+// so an explicit expand is what gets remembered, same pattern as the Trips
+// page's window._tripGroupsCollapsed) — click a category heading to expand it.
 function bookmarkSectionHtml(audience, bookmarks){
   var items = bookmarks.filter(function(b){ return (b.audience||'Consumer')===audience; });
   if(!items.length) return '';
@@ -10301,12 +10332,18 @@ function bookmarkSectionHtml(audience, bookmarks){
   });
   var cats = BOOKMARK_CATEGORIES.filter(function(c){ return byCat[c]; });
   Object.keys(byCat).forEach(function(c){ if(cats.indexOf(c)===-1) cats.push(c); });
+  var collapsedCats = window._bookmarkCategoriesCollapsed || {};
   return '<div style="margin-bottom:28px">'+
     '<div style="font-size:16px;font-weight:700;color:#111;margin-bottom:12px;padding-bottom:6px;border-bottom:2px solid #2563eb">'+escHtml(audience)+'</div>'+
     cats.map(function(cat){
+      var key = audience+'|'+cat;
+      var isCollapsed = collapsedCats[key] !== false;
       return '<div style="margin-bottom:16px">'+
-        '<div style="font-size:12px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">'+escHtml(cat)+'</div>'+
-        bookmarkTableHtml(byCat[cat])+
+        '<div class="bookmark-cat-hdr" data-cat-key="'+escHtml(key)+'" style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">'+
+          '<span style="display:inline-block;width:10px">'+(isCollapsed?'&#9656;':'&#9662;')+'</span>'+
+          escHtml(cat)+' ('+byCat[cat].length+')'+
+        '</div>'+
+        (isCollapsed?'':bookmarkTableHtml(byCat[cat]))+
       '</div>';
     }).join('')+
   '</div>';
@@ -10324,6 +10361,15 @@ function renderBookmarks(){
 
   $('btn-add-bookmark').addEventListener('click', function(){openBookmarkForm();});
   $('btn-seed-bookmarks').addEventListener('click', seedDefaultBookmarks);
+  document.querySelectorAll('.bookmark-cat-hdr').forEach(function(hdr){
+    hdr.addEventListener('click', function(){
+      var key = hdr.dataset.catKey;
+      window._bookmarkCategoriesCollapsed = window._bookmarkCategoriesCollapsed || {};
+      var currentlyCollapsed = window._bookmarkCategoriesCollapsed[key] !== false;
+      window._bookmarkCategoriesCollapsed[key] = !currentlyCollapsed;
+      renderBookmarks();
+    });
+  });
   document.querySelectorAll('.edit-bookmark').forEach(function(btn){
     btn.addEventListener('click', function(){openBookmarkForm(this.dataset.id);});
   });
