@@ -8519,10 +8519,21 @@ function renderTrips(){
       if(ar===1) return (b.departDate||'').localeCompare(a.departDate||'');
       return (a.departDate||'').localeCompare(b.departDate||'');
     }
-    var av, bv;
+    // "Status" column doubles as the color-coded sort: future (yellow)
+    // trips first, then current/in-progress (green), then past (orange),
+    // then Planning (blue) — Cancelled (red) last, since it's excluded from
+    // the default status filter too and is the least actionable group.
+    // tripSortDir still applies (asc = this order, desc = reversed); within
+    // a tied category, falls back to depart date ascending as a stable
+    // secondary sort.
     if(tripSortCol==='status'){
-      av=displayStatus(a); bv=displayStatus(b);
-    } else if(tripSortCol==='id'){
+      var LIFECYCLE_SORT_RANK = {upcoming:0, inTrip:1, past:2, planning:3, cancelled:4};
+      var ar=LIFECYCLE_SORT_RANK[tripLifecycleCategory(a)], br=LIFECYCLE_SORT_RANK[tripLifecycleCategory(b)];
+      if(ar!==br) return tripSortDir==='asc' ? ar-br : br-ar;
+      return (a.departDate||'').localeCompare(b.departDate||'');
+    }
+    var av, bv;
+    if(tripSortCol==='id'){
       // Compare the numeric part of the id (T1, T2, ...T10...) rather than
       // the string, since string comparison would put "T10" before "T9".
       av=parseInt((a.id||'').replace(/\D/g,''),10)||0;
@@ -8587,7 +8598,7 @@ function renderTrips(){
       '<th class="sort-th" data-sort="destination" style="cursor:pointer">Destination'+sortArrow('destination')+'</th>'+
       '<th class="sort-th" data-sort="departDate" style="cursor:pointer">Dates'+sortArrow('departDate')+'</th>'+
       '<th class="sort-th" data-sort="airline" style="cursor:pointer">Flight'+sortArrow('airline')+'</th>'+
-      '<th class="sort-th" data-sort="status" style="cursor:pointer">Status'+sortArrow('status')+'</th>'+
+      '<th class="sort-th" data-sort="status" style="cursor:pointer" title="Sorts by trip color: future, then current, then past, then planning, then cancelled">Status'+sortArrow('status')+'</th>'+
       '<th class="sort-th" data-sort="pointsUsed" style="cursor:pointer">Points'+sortArrow('pointsUsed')+'</th>'+
       '<th class="sort-th" data-sort="totalValue" style="cursor:pointer">Value'+sortArrow('totalValue')+'</th>'+
       '<th class="sort-th" data-sort="product" style="cursor:pointer">Product'+sortArrow('product')+'</th>'+

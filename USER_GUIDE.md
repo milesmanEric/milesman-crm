@@ -78,6 +78,8 @@ Each mileage/points section (Mileage Balances, Hotel Point Balances, Cruise Line
 
 By default the summary lines are sorted **soonest-upcoming trip first** (click any column header to sort by that instead), and each one is color-coded so you can scan the page at a glance: **yellow** = upcoming, **green** = happening right now, **orange** = already happened, **red** = cancelled, **blue** = still in Planning status regardless of its dates.
 
+**Click the Status column header to sort by that color** — future trips first, then trips happening now, then past trips, then Planning, then Cancelled last. Click it again to flip the order (Cancelled first, future last).
+
 **Status filter** now lets you check off any combination of statuses instead of picking just one — click the status button to open the checklist. It defaults to everything except **Cancelled**, so cancelled trips stay out of view until you specifically ask to see them.
 
 **Linked Trips**: if a trip is really one leg of a bigger multi-city vacation booked as separate trip records (say, a NYC leg and a Paris leg), check the other leg(s) off in the **Linked Trips** list — type in the search box above it to find one quickly if the list is long. Linking works both ways automatically — check "Paris Leg" from the NYC trip's form, and the Paris trip's own Linked Trips list picks up the NYC trip too, no need to set it from both sides. Unchecking removes the link from both as well.
