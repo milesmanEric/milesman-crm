@@ -733,7 +733,7 @@ function quoteTableStructure(cfg){
   });
   return structure;
 }
-const STATUSES = ['Planning','Confirmed','Completed','Cancelled'];
+const STATUSES = ['Planning','Confirmed','Upcoming','Completed','Cancelled'];
 const TYPES    = ['Leisure','Business','Honeymoon','Family','Adventure','Cruise'];
 const CLASSES  = ['Basic Economy','Economy','Premium Economy','Business','First'];
 const NOTE_TYPES = ['Email Sent','Email Received','Initial Call','Follow-up','Post-Trip Follow-up','General','Trip Import','Text Message Sent','Text Message Received','Lead','Mailchimp Email Sent','Facebook Message'];
@@ -5969,7 +5969,7 @@ const REPORT_SPEC_TOOL = {
           dateField: {type:'string', enum:['departDate','returnDate'], description:'Which date the from/to range applies to (default departDate)'},
           dateFrom: {type:'string', description:'YYYY-MM-DD, inclusive'},
           dateTo: {type:'string', description:'YYYY-MM-DD, inclusive'},
-          status: {type:'string', enum:['Planning','Confirmed','Completed','Cancelled']},
+          status: {type:'string', enum:STATUSES},
           clientNameContains: {type:'string', description:'Substring match against the client\'s name'},
           destinationContains: {type:'string'},
           airlineContains: {type:'string'},
@@ -8395,13 +8395,15 @@ function tripGroupKey(members){
   return members.map(function(m){return m.id;}).sort().join(',');
 }
 // Categorizes a trip for the Trips page's summary-line color-coding (and
-// the default "upcoming first" sort's rank) — status (Cancelled/Planning)
-// takes precedence over dates, since those are explicit choices the user
-// made; everything else is derived from today vs. depart/return date.
+// the default "upcoming first" sort's rank) — status (Cancelled/Planning/
+// Upcoming) takes precedence over dates, since those are explicit choices
+// the user made; everything else (Confirmed/Completed/blank) is derived
+// from today vs. depart/return date.
 function tripLifecycleCategory(t){
   var st = t.status||'Planning';
   if(st==='Cancelled') return 'cancelled';
   if(st==='Planning') return 'planning';
+  if(st==='Upcoming') return 'upcoming';
   var t0 = today();
   if(t.departDate && t.departDate<=t0 && (!t.returnDate || t.returnDate>=t0)) return 'inTrip';
   if(t.departDate && t.departDate>t0) return 'upcoming';
@@ -11437,7 +11439,7 @@ const ASSISTANT_TOOLS = [
       properties: {
         clientId: { type: 'string', description: 'Only trips linked to this client id (primary or additional)' },
         destination: { type: 'string', description: 'Substring match against destination' },
-        status: { type: 'string', enum: ['Planning','Confirmed','Completed','Cancelled'] },
+        status: { type: 'string', enum: STATUSES },
         departAfter: { type: 'string', description: 'YYYY-MM-DD, inclusive' },
         departBefore: { type: 'string', description: 'YYYY-MM-DD, inclusive' }
       }
