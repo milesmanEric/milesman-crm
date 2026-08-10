@@ -10295,7 +10295,7 @@ function openTripForm(id){
   const linkedTripChecks=[...db.trips].filter(function(t){return t.id!==id;}).sort(function(a,b){return (a.clientName||'').toLowerCase().localeCompare((b.clientName||'').toLowerCase());}).map(function(t){
     var checked=(d.linkedTripIds||[]).includes(t.id)?'checked':'';
     var label=[t.destination||'(no destination)',t.departDate||'',t.clientName||''].filter(Boolean).join(' — ');
-    return '<label style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:13px;cursor:pointer">'+
+    return '<label class="trip-link-row" data-search="'+escHtml(label.toLowerCase())+'" style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:13px;cursor:pointer">'+
       '<input type="checkbox" class="trip-link-cb" value="'+t.id+'" '+checked+' style="width:14px;height:14px">'+
       '<span>'+escHtml(label)+'</span>'+
     '</label>';
@@ -10311,7 +10311,8 @@ function openTripForm(id){
         '</div>'+
       '</div>'+
       '<div class="field full"><label>Linked Trips <span class="hint" style="text-transform:none;font-weight:400">(other trip records that are part of the same overall vacation, e.g. a multi-city itinerary)</span></label>'+
-        '<div style="border:1px solid #e5e7eb;border-radius:8px;padding:10px;max-height:180px;overflow-y:auto;background:#fafafa">'+
+        (linkedTripChecks ? '<input type="text" id="trip-link-search" placeholder="Search trips..." autocomplete="off" style="margin-bottom:6px">' : '')+
+        '<div id="trip-link-list" style="border:1px solid #e5e7eb;border-radius:8px;padding:10px;max-height:180px;overflow-y:auto;background:#fafafa">'+
           (linkedTripChecks || '<div style="color:#aaa;font-size:12px">No other trips yet</div>')+
         '</div>'+
       '</div>'+
@@ -10343,6 +10344,15 @@ function openTripForm(id){
   $('tcr').addEventListener('change',function(){
     document.getElementById('tship').innerHTML = shipOptionsHtml(this.value,'');
   });
+  var tripLinkSearch = document.getElementById('trip-link-search');
+  if(tripLinkSearch){
+    tripLinkSearch.addEventListener('input', function(){
+      var q = this.value.toLowerCase().trim();
+      document.querySelectorAll('.trip-link-row').forEach(function(row){
+        row.style.display = (!q || row.dataset.search.indexOf(q)!==-1) ? 'flex' : 'none';
+      });
+    });
+  }
   bindTripBalanceListeners();
   bindBookedTripDetailsListeners();
 }
