@@ -7948,8 +7948,14 @@ function tripBookedPriceTotal(t){
   return total;
 }
 function renderDash(){
+  // Same trip population the Trips page counts by default (non-travel
+  // income excluded always, Cancelled excluded to match its default status
+  // filter), grouped into summary lines the same way via
+  // countTripSummaryLines() so this number always matches what the Trips
+  // page shows fresh/unfiltered, rather than a raw per-record db.trips.length.
+  const dashTrips = db.trips.filter(function(t){ return !isNonTravelIncomeTrip(t) && t.status!=='Cancelled'; });
   const s={
-    clients:db.clients.length,trips:db.trips.length,
+    clients:db.clients.length,trips:countTripSummaryLines(dashTrips),
     value:db.trips.reduce(function(a,t){return a+(t.totalValue||0);},0),
     pts:db.trips.reduce(function(a,t){return a+tripBookedPoints(t);},0),
     upcoming:db.trips.filter(function(t){return (t.departDate||'')>=today();}).length,
@@ -8052,7 +8058,7 @@ function renderDash(){
     }));
   });
   var statDashTrips = $('stat-dash-trips');
-  if(statDashTrips) statDashTrips.addEventListener('click', function(){ openStatDrilldownModal('All Trips', tripHeaders, db.trips.map(tripRow)); });
+  if(statDashTrips) statDashTrips.addEventListener('click', function(){ openStatDrilldownModal('All Trips', tripHeaders, dashTrips.map(tripRow)); });
   var statDashUpcoming = $('stat-dash-upcoming');
   if(statDashUpcoming) statDashUpcoming.addEventListener('click', function(){
     var upcomingTrips = db.trips.filter(function(t){
