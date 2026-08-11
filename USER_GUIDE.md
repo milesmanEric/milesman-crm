@@ -139,7 +139,7 @@ If you've filled in a **Website** on a Supplier, it now shows on the card as a c
 
 ## Vendors
 
-A separate directory from Suppliers, for the non-travel businesses you deal with — a printer, a web host, an accountant, whoever isn't actually a travel booking partner. Each Vendor has a Name, a Category (Printing, Web/Hosting, Accounting, Legal, Marketing, Insurance, Office/Supplies, Software, Other), a Website, and Notes — no trip or revenue tracking, since these aren't bookings.
+A separate directory from Suppliers, for the non-travel businesses you deal with — a printer, a web host, an accountant, whoever isn't actually a travel booking partner. Each Vendor has a Name, a Category (Printing, Web/Hosting, Accounting, Legal, Marketing, Insurance, Office/Supplies, Software, Other), a Phone number, a Website, and Notes — no trip or revenue tracking, since these aren't bookings.
 
 **Contacts work exactly like Supplier Contacts** — open a Vendor and scroll to its own **Contacts** section: **+ Add Contact** opens that person's own record with a filterable Notes Log and a Tasks list with **+ Add Task**, same as everywhere else. Delete a contact with the trash icon on its row, no need to open it first.
 

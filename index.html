@@ -8180,7 +8180,10 @@ function renderBizVendors(){
           '</div>'+
           '<button class="icon-btn del-bizvendor" data-id="'+v.id+'" style="color:#dc2626">&#128465;&#65039;</button>'+
         '</div>'+
-        (v.website?'<div style="font-size:12px;margin-top:8px"><a href="'+(v.website.indexOf('http')===0?v.website:'https://'+v.website)+'" target="_blank" style="color:#2563eb;text-decoration:none">&#127760; '+escHtml(v.website)+'</a></div>':'')+
+        (v.website||v.phone?'<div style="font-size:12px;margin-top:8px">'+
+          (v.website?'<a href="'+(v.website.indexOf('http')===0?v.website:'https://'+v.website)+'" target="_blank" style="color:#2563eb;text-decoration:none;margin-right:12px">&#127760; '+escHtml(v.website)+'</a>':'')+
+          (v.phone?'<span style="color:#666">&#128222; '+escHtml(v.phone)+'</span>':'')+
+        '</div>':'')+
         (contacts.length?'<div style="font-size:12px;color:#666;margin-top:8px">&#128100; '+contacts.length+' contact'+(contacts.length!==1?'s':'')+': '+escHtml(contactPreview)+'</div>':'')+
         (v.notes?'<div style="font-size:12px;color:#666;margin-top:8px;border-top:1px solid #f0f0f0;padding-top:8px">'+escHtml(v.notes)+'</div>':'')+
       '</div>';
@@ -8222,6 +8225,7 @@ function openBizVendorForm(id){
     '<div class="fg">'+
       fld('Vendor Name', inp('bv-name','text',d.name,'e.g. Acme Printing Co.'), true)+
       fld('Category', '<select id="bv-category"><option value="">Select...</option>'+catOpts+'</select>')+
+      fld('Phone', inp('bv-phone','text',d.phone,'(xxx) xxx-xxxx'))+
       fld('Website', inp('bv-website','text',d.website,'https://'))+
       '<div class="field full"><label>Notes</label><textarea id="bv-notes" rows="2">'+(d.notes||'')+'</textarea></div>'+
     '</div>'+
@@ -8278,7 +8282,7 @@ function openBizVendorForm(id){
 function saveBizVendor(id){
   var name = gv('bv-name');
   if(!name){toast('Vendor name is required','err');return;}
-  var data = {name:name, category:gv('bv-category'), website:gv('bv-website'), notes:gv('bv-notes')};
+  var data = {name:name, category:gv('bv-category'), phone:gv('bv-phone'), website:gv('bv-website'), notes:gv('bv-notes')};
   var resultId = id||newId('BV', db.bizVendors);
   if(id){
     db.bizVendors = db.bizVendors.map(function(v){return v.id===id ? Object.assign({},v,data) : v;});
