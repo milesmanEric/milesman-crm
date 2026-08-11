@@ -8719,6 +8719,15 @@ function tripBookedPriceTotal(t){
   total += tours.reduce(function(a,x){return a+num(x&&x.price);},0);
   return total;
 }
+// Same type/color convention the Planner's Type column uses (b-blue
+// Client, b-green Supplier, b-amber Vendor) so a result's kind reads at a
+// glance without needing to open it first.
+function dashQuickSearchRowHtml(type, badgeCls, id, label, sub){
+  return '<div class="dash-search-row" data-type="'+type+'" data-id="'+id+'" style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-bottom:1px solid #f0f0f0;cursor:pointer">'+
+    '<div><span class="badge '+badgeCls+'" style="margin-right:8px">'+type+'</span><span style="font-size:13px;color:#111">'+escHtml(label)+'</span></div>'+
+    (sub?'<span style="font-size:11px;color:#888">'+escHtml(sub)+'</span>':'')+
+  '</div>';
+}
 function renderDash(){
   // Same trip population the Trips page counts by default (non-travel
   // income excluded always, Cancelled excluded to match its default status
@@ -8746,6 +8755,11 @@ function renderDash(){
   const top=[].concat(db.clients).sort(function(a,b){return clientLiveRevenue(b.id)-clientLiveRevenue(a.id);}).slice(0,5);
   $('main').innerHTML=
     '<div class="page-hdr"><div class="page-title">Dashboard</div><div style="font-size:12px;color:#888">'+new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'})+'</div></div>'+
+    '<div class="card" style="margin-bottom:16px">'+
+      '<div class="card-hdr"><span class="card-title">Quick Search</span></div>'+
+      '<input type="text" id="dash-quick-search" placeholder="Search clients, suppliers, or vendors..." autocomplete="off" style="width:100%;padding:9px 12px;border-radius:8px;border:1px solid #d1d5db;font-size:13px;font-family:inherit;box-sizing:border-box">'+
+      '<div id="dash-quick-search-results"></div>'+
+    '</div>'+
     '<div class="stats-grid">'+
       '<div class="stat" id="stat-dash-clients"><div class="stat-lbl">Clients</div><div class="stat-val">'+s.clients+'</div></div>'+
       '<div class="stat" id="stat-dash-trips"><div class="stat-lbl">Total trips</div><div class="stat-val">'+s.trips+'</div></div>'+
@@ -8819,6 +8833,39 @@ function renderDash(){
   document.querySelectorAll('.dash-section-rev').forEach(function(el){
     el.addEventListener('click',function(){ go(el.dataset.go); });
   });
+  var dashQuickSearchInput = $('dash-quick-search');
+  var dashQuickSearchResults = $('dash-quick-search-results');
+  if(dashQuickSearchInput){
+    dashQuickSearchInput.addEventListener('input', function(){
+      var q = this.value.trim().toLowerCase();
+      if(!q){ dashQuickSearchResults.innerHTML=''; return; }
+      var rows = [];
+      db.clients.forEach(function(c){
+        if((c.name||'').toLowerCase().indexOf(q)!==-1 || (c.email||'').toLowerCase().indexOf(q)!==-1){
+          rows.push(dashQuickSearchRowHtml('Client','b-blue',c.id,c.name,c.email));
+        }
+      });
+      db.vendors.forEach(function(v){
+        if((v.name||'').toLowerCase().indexOf(q)!==-1){
+          rows.push(dashQuickSearchRowHtml('Supplier','b-green',v.id,v.name,v.category||''));
+        }
+      });
+      db.bizVendors.forEach(function(v){
+        if((v.name||'').toLowerCase().indexOf(q)!==-1){
+          rows.push(dashQuickSearchRowHtml('Vendor','b-amber',v.id,v.name,v.category||''));
+        }
+      });
+      dashQuickSearchResults.innerHTML = rows.length ? rows.slice(0,15).join('') : '<div style="color:#aaa;font-size:12px;padding:8px 0">No matches</div>';
+      document.querySelectorAll('.dash-search-row').forEach(function(row){
+        row.addEventListener('click', function(){
+          var type = row.dataset.type, id = row.dataset.id;
+          if(type==='Client') openClientForm(id);
+          else if(type==='Supplier') openVendorForm(id);
+          else if(type==='Vendor') openBizVendorForm(id);
+        });
+      });
+    });
+  }
   function tripRow(t){
     return {cells:[t.clientName||'',t.destination||'',t.departDate||'—',displayStatus(t),'$'+money(t.totalValue)],onClick:function(){openTripForm(t.id);}};
   }

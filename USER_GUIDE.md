@@ -38,6 +38,8 @@ On the Dashboard specifically, the **Total Revenue** and **Upcoming** tiles' lis
 
 The Dashboard also has a **Revenue by Section** card that splits the headline Total Revenue figure into Trips, Credit Card Consulting, and Referrals and Promo — click any of the three to jump to that page.
 
+At the very top of the Dashboard, **Quick Search** lets you jump straight to a Client, Supplier, or Vendor by typing part of their name (or a client's email) — results show up live as you type, each labeled and color-coded by type (blue Client, green Supplier, amber Vendor), and clicking one opens that record right away.
+
 The Dashboard also has a **Planner tasks — today & overdue** card: your 10 most pressing open tasks (whatever's due today or already past due, most-overdue first), each showing its linked client(s) and due date. Click a task to open it, click a client name to open their record instead (a task linked to more than one client lists each of them separately), or hit **View all** to jump to the full Planner list filtered the same way.
 
 (On a Supplier's or Invoice's own detail screen, the numbers there instead scroll you down to the transaction table that's already shown below — no extra click needed to see the detail, it's already on the same screen.)

@@ -108,7 +108,9 @@ Each category heading is collapsed by default and shows a live count (e.g. "AIRL
 The left nav has 8 sections (`view` state: `dashboard`, `clients`, `trips`, `vendors`, `planner`, `reports`, `calendar`, `email`, `bookmarks`).
 
 ### Dashboard
-Summary stats (client count, total trips, upcoming, **Total Revenue**, points deployed), a **Revenue by Section** card, a recent-trips table, a top-clients-by-revenue list, and a Planner tasks card.
+A **Quick Search** box, summary stats (client count, total trips, upcoming, **Total Revenue**, points deployed), a **Revenue by Section** card, a recent-trips table, a top-clients-by-revenue list, and a Planner tasks card.
+
+**Quick Search** (`dashQuickSearchRowHtml()`, wired inside `renderDash()`) is a single text input searching `db.clients` (name or email), `db.vendors` (Suppliers, name only), and `db.bizVendors` (Vendors, name only) all at once, live as you type — no submit button. Results render as a flat list capped at 15, each tagged with a color-coded type badge matching the Planner Type column's convention (`b-blue` Client, `b-green` Supplier, `b-amber` Vendor) plus a subtitle (email for clients, category for Suppliers/Vendors); clicking a row opens that record directly (`openClientForm`/`openVendorForm`/`openBizVendorForm`). Trips aren't included — this is for jumping to a *record*, and the existing Trips-page search already covers trip lookups.
 
 **Revenue by Section** breaks the headline Total Revenue figure down into the three pages that hold trip-record revenue — Trips, Credit Card Consulting, Referrals and Promo — each a `totalValue` sum filtered by that page's own matcher (`!isNonTravelIncomeTrip(t)`, `isCreditCardConsultingTrip(t)`, `isReferralIncomeTrip(t)` respectively, see the Trips section below), so the three tiles always add up to Total Revenue. Clicking a tile navigates to that page.
 
