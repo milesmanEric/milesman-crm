@@ -7489,6 +7489,7 @@ function openVendorDetail(id){
     : '<div class="empty">No transactions found for this vendor</div>')+
     '<div class="form-actions form-actions-sticky">'+
       '<button class="cancel-btn" id="modal-close2">Close</button>'+
+      '<button class="cancel-btn" id="modal-balance-email" data-id="'+v.id+'" style="color:#2563eb;border-color:#2563eb">&#128184; Balance Due Email</button>'+
       '<button class="save-btn" id="modal-edit-vendor" data-id="'+v.id+'">&#9999;&#65039; Edit Supplier</button>'+
     '</div>';
 
@@ -7496,9 +7497,105 @@ function openVendorDetail(id){
   $('modal-close').addEventListener('click', closeModal);
   $('modal-close2').addEventListener('click', closeModal);
   $('modal-edit-vendor').addEventListener('click', function(){closeModal(); openVendorForm(this.dataset.id);});
+  $('modal-balance-email').addEventListener('click', function(){ openSupplierBalanceEmailModal(this.dataset.id); });
   ['stat-vendor-tx','stat-vendor-cash','stat-vendor-value'].forEach(function(id){
     var el = $(id);
     if(el) el.addEventListener('click', function(){ flashDrilldownTarget($('vendor-tx-table')); });
+  });
+}
+
+// Drafts a "balance due" email to a Supplier — reachable from their detail
+// modal above. There's no "amount owed to this supplier" field anywhere in
+// the data model (totalValue/cashPaid are client-facing figures, not a
+// supplier-payable one — see the trips/bookings checklist below, which is
+// only a reference calculator, not an automatic source of truth), so the
+// actual balance is always typed in by hand; the checklist just helps
+// total up which bookings it covers. The body textarea uses {{bookings}}/
+// {{amount}} tokens, substituted only at send time (not live-bound to the
+// checkboxes/amount field), so editing the message text never gets
+// silently overwritten by a later checkbox click.
+function openSupplierBalanceEmailModal(vendorId){
+  var v = db.vendors.find(function(x){return x.id===vendorId;});
+  if(!v) return;
+  var stats = getVendorStats(v);
+  var trips = stats.tripList.slice().sort(function(a,b){return (b.departDate||'').localeCompare(a.departDate||'');});
+
+  var recipients = [];
+  if(v.email) recipients.push({label:(v.contactName?v.contactName+' — ':'')+v.email, email:v.email});
+  (v.contacts||[]).forEach(function(c){
+    if(c.email) recipients.push({label:c.name+(c.title?' ('+c.title+')':'')+' — '+c.email, email:c.email});
+  });
+
+  var tripRowsHtml = trips.map(function(t){
+    var refNum = t.invoiceNum || t.bookingRef || t.id;
+    return '<label style="display:flex;align-items:center;gap:8px;padding:6px 8px;font-size:12px;border-bottom:1px solid #f3f4f6;cursor:pointer">'+
+      '<input type="checkbox" class="sbe-trip-cb" value="'+t.id+'" data-value="'+(t.totalValue||0)+'" style="width:14px;height:14px">'+
+      '<span style="flex:1">'+escHtml(t.clientName||'')+' — '+escHtml(t.destination||'')+(t.departDate?' ('+t.departDate+')':'')+'</span>'+
+      '<span style="color:#888">'+escHtml(String(refNum))+'</span>'+
+      '<span style="font-weight:600;white-space:nowrap">$'+money(t.totalValue||0)+'</span>'+
+    '</label>';
+  }).join('');
+
+  var defaultBody = "Hi,\n\nI'm reaching out to confirm the outstanding balance we have on file with "+v.name+":\n\n{{bookings}}\n\nTotal outstanding balance: {{amount}}\n\nPlease let me know if this matches your records, or if there's anything I should update.\n\nThanks,\nEric";
+
+  $('modal').innerHTML =
+    '<div class="modal-hdr"><div class="modal-title">Balance Due Email — '+escHtml(v.name)+'</div><button class="close-btn" id="modal-close">&#x2715;</button></div>'+
+    '<div class="fg">'+
+      fld('Send To', recipients.length ? ('<select id="sbe-recipient">'+recipients.map(function(r){return '<option value="'+escHtml(r.email)+'">'+escHtml(r.label)+'</option>';}).join('')+'</select>') : '<div style="color:#dc2626;font-size:12px;padding:8px 0">No email on file — add one on the Edit Supplier form or a Contact first.</div>', true)+
+      '<div class="field full"><label>Bookings to Include <span class="hint" style="text-transform:none;font-weight:400">(check the ones this balance covers — for reference only, doesn’t affect the amount below)</span></label>'+
+        (tripRowsHtml ?
+          '<div id="sbe-trip-list" style="border:1px solid #e5e7eb;border-radius:8px;max-height:220px;overflow-y:auto;background:#fafafa;margin-bottom:6px">'+tripRowsHtml+'</div>'+
+          '<div style="font-size:12px;color:#555">Selected total: <span id="sbe-selected-total" style="font-weight:600">$0.00</span></div>'
+        : '<div style="color:#aaa;font-size:12px;padding:8px 0">No bookings found for this supplier.</div>')+
+      '</div>'+
+      fld('Outstanding Balance ($)', inp('sbe-amount','number',''), true)+
+      fld('Subject', inp('sbe-subject','text','Outstanding Balance — '+v.name), true)+
+      '<div class="field full"><label>Message</label><textarea id="sbe-body" rows="10">'+defaultBody+'</textarea></div>'+
+    '</div>'+
+    '<div class="form-actions form-actions-sticky">'+
+      '<button class="cancel-btn" id="modal-cancel">Cancel</button>'+
+      '<button class="save-btn" id="sbe-send"'+(recipients.length?'':' disabled')+'>Open in Outlook</button>'+
+    '</div>';
+
+  $('overlay').classList.add('open');
+  $('modal-close').addEventListener('click', closeModal);
+  $('modal-cancel').addEventListener('click', closeModal);
+  function recomputeSelectedTotal(){
+    var sum = 0;
+    document.querySelectorAll('.sbe-trip-cb:checked').forEach(function(cb){ sum += Number(cb.dataset.value)||0; });
+    var el = $('sbe-selected-total');
+    if(el) el.textContent = '$'+money(sum);
+  }
+  document.querySelectorAll('.sbe-trip-cb').forEach(function(cb){
+    cb.addEventListener('change', recomputeSelectedTotal);
+  });
+  var sendBtn = $('sbe-send');
+  if(sendBtn) sendBtn.addEventListener('click', function(){
+    var recipientSel = $('sbe-recipient');
+    var recipientEmail = recipientSel ? recipientSel.value : '';
+    if(!recipientEmail) return;
+    var amount = Number(gv('sbe-amount'))||0;
+    var checkedTrips = Array.from(document.querySelectorAll('.sbe-trip-cb:checked')).map(function(cb){
+      return trips.find(function(t){return t.id===cb.value;});
+    }).filter(Boolean);
+    var bookingsText = checkedTrips.length ? checkedTrips.map(function(t){
+      var refNum = t.invoiceNum || t.bookingRef || t.id;
+      return '• '+(t.clientName||'')+' — '+(t.destination||'')+(t.departDate?' ('+t.departDate+')':'')+' — '+refNum+' — $'+money(t.totalValue||0);
+    }).join('\n') : '(no specific bookings selected)';
+    var subject = gv('sbe-subject');
+    var body = gv('sbe-body').replace(/{{bookings}}/g, bookingsText).replace(/{{amount}}/g, '$'+money(amount));
+    snapshot('Balance due email');
+    var noteText = 'Sent balance due email — Total: $'+money(amount)+(checkedTrips.length?(' ('+checkedTrips.length+' booking'+(checkedTrips.length!==1?'s':'')+')'):'');
+    db.vendors = db.vendors.map(function(x){
+      if(x.id!==vendorId) return x;
+      var notesLog = (x.notesLog||[]).concat([{ts:new Date().toLocaleString(), text:noteText, noteType:'General'}]);
+      return Object.assign({},x,{notesLog:notesLog});
+    });
+    saveDB();
+    window.location.href = 'mailto:'+mailtoAddr(recipientEmail)+'?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(body);
+    toast('Email opened in Outlook');
+    closeModal();
+    render();
   });
 }
 
@@ -7545,6 +7642,7 @@ function renderVendors(){
           '</div>'+
           '</div>'+
           '<div style="display:flex;gap:6px">'+
+              '<button class="icon-btn balance-email-vendor" data-id="'+v.id+'" title="Balance Due Email" style="color:#2563eb">&#128184;</button>'+
               '<button class="icon-btn del-vendor" data-id="'+v.id+'" style="color:#dc2626">&#128465;&#65039;</button>'+
           '</div>'+
         '</div>'+
@@ -7640,6 +7738,12 @@ function renderVendors(){
   });
   document.querySelectorAll('.del-vendor').forEach(function(btn){
     btn.addEventListener('click', function(){delVendor(btn.dataset.id);});
+  });
+  document.querySelectorAll('.balance-email-vendor').forEach(function(btn){
+    btn.addEventListener('click', function(e){
+      e.stopPropagation();
+      openSupplierBalanceEmailModal(btn.dataset.id);
+    });
   });
   document.querySelectorAll('.vendor-trip-row').forEach(function(row){
     row.addEventListener('click', function(){

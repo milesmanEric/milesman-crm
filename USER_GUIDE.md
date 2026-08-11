@@ -137,6 +137,8 @@ If you've filled in a **Website** on a Supplier, it now shows on the card as a c
 
 **Contacts** — each Supplier can hold any number of people you deal with there (an account rep, a group desk contact, whoever), each with their own Name, Title, Email, and Phone. Open a Supplier and scroll to the **Contacts** section: **+ Add Contact** (or clicking an existing one) opens that contact's own record, which works just like a client's — a Notes Log you can filter by type and add entries to, and a Tasks list with its own **+ Add Task** for follow-ups tied specifically to that person. Delete a contact with the trash icon on its row in the Supplier form (no need to open it first).
 
+**Balance Due Email** — click the 💵 icon on a Supplier's card to draft an email about an outstanding balance. Pick who it goes to (the Supplier's own email, or one of its Contacts), optionally check off which bookings the balance covers — a running "Selected total" shows underneath as you check boxes, just as a reference — then type in the actual **Outstanding Balance ($)** yourself (the CRM doesn't track what's actually been paid to a supplier, so this figure is always yours to enter). The message pre-fills with a list of whatever bookings you checked and the amount you typed; edit it however you like before sending. **Open in Outlook** hands it off the same way every other email in this app does, and logs a note on the supplier's record noting what was sent.
+
 ---
 
 ## Vendors
