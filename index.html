@@ -245,6 +245,7 @@ tr:last-child td{border-bottom:none}
       <button class="nb" id="nb-clients">&#128100; Clients <span class="nc" id="nc-clients">0</span></button>
       <button class="nb" id="nb-trips">&#9992;&#65039; Trips <span class="nc" id="nc-trips">0</span></button>
       <button class="nb" id="nb-ccconsulting">&#128179; Credit Card Consulting</button>
+      <button class="nb" id="nb-referrals">&#129309; Referrals</button>
       <button class="nb" id="nb-vendors">&#127981; Suppliers <span class="nc" id="nc-vendors">0</span></button>
       <button class="nb" id="nb-planner">&#128203; Planner <span class="nc" id="nc-planner">0</span></button>
       <button class="nb" id="nb-reports">&#128202; Reports</button>
@@ -1172,20 +1173,31 @@ function displayStatus(t){
   if(st==='Completed' && t.departDate && t.departDate>=today()) st='Upcoming';
   return st;
 }
-// A "trip" record created from non-travel revenue (credit card consulting
-// fees, non-cash bonuses, referral income) — identified by a case-insensitive
-// substring match against the Item/Class text the revenue importer stores
-// in trip.product. "referral" alone (not "referral fee") to also catch
-// "Referral Commission"/"Referral Bonus"/whatever else QuickBooks' actual
-// Item wording turns out to be — this only checks trip.product (a revenue-
-// import category name), never trip.notes or any client-referral field, so
-// it can't accidentally catch an unrelated "client was referred by..." note.
-// These aren't real bookings, so they're excluded from the Trips page and
-// shown on their own Credit Card Consulting page instead
-// (renderCreditCardConsulting()).
-function isNonTravelIncomeTrip(t){
+// Two "trip" record categories that are really non-travel revenue, each
+// identified by a case-insensitive substring match against the Item/Class
+// text the revenue importer stores in trip.product (never trip.notes or
+// any client-referral field, so a "client was referred by..." note can't
+// accidentally trigger either match) — split into two so each gets its own
+// sidebar page (Credit Card Consulting / Referrals) instead of one shared
+// page. A record can only land on one or the other: isReferralIncomeTrip()
+// is checked first everywhere below, so "Non-Cash Bonus:Referral Program"
+// (matching both patterns) ends up on Referrals, not Credit Card Consulting.
+function isCreditCardConsultingTrip(t){
+  if(isReferralIncomeTrip(t)) return false;
   var p = (t.product||'').toLowerCase();
-  return p.indexOf('credit card consulting')!==-1 || p.indexOf('non-cash bonus')!==-1 || p.indexOf('noncash bonus')!==-1 || p.indexOf('referral')!==-1;
+  return p.indexOf('credit card consulting')!==-1 || p.indexOf('non-cash bonus')!==-1 || p.indexOf('noncash bonus')!==-1;
+}
+// "referral" alone (not "referral fee") to also catch "Referral
+// Commission"/"Referral Bonus"/whatever else QuickBooks' actual Item
+// wording turns out to be.
+function isReferralIncomeTrip(t){
+  var p = (t.product||'').toLowerCase();
+  return p.indexOf('referral')!==-1;
+}
+// True if this trip record is non-travel income of either kind — used
+// wherever the Trips page needs to exclude both categories at once.
+function isNonTravelIncomeTrip(t){
+  return isReferralIncomeTrip(t) || isCreditCardConsultingTrip(t);
 }
 function tsNow(){
   const n=new Date();
@@ -5728,7 +5740,7 @@ function go(v,cid){
   view=v;
   selCid=(v==='trips'&&cid)?cid:null;
   fSearch='';fStatus=STATUSES.filter(function(s){return s!=='Cancelled';});
-  ['dashboard','clients','trips','reports','calendar','email','vendors','planner','bookmarks','ccconsulting'].forEach(function(x){var el=$('nb-'+x);if(el)el.classList.toggle('active',x===v);});
+  ['dashboard','clients','trips','reports','calendar','email','vendors','planner','bookmarks','ccconsulting','referrals'].forEach(function(x){var el=$('nb-'+x);if(el)el.classList.toggle('active',x===v);});
   render();
 }
 
@@ -5748,6 +5760,7 @@ function render(){
   else if(view==='planner') renderPlanner();
   else if(view==='bookmarks') renderBookmarks();
   else if(view==='ccconsulting') renderCreditCardConsulting();
+  else if(view==='referrals') renderReferrals();
 }
 
 function renderReports(){
@@ -7938,7 +7951,10 @@ function renderDash(){
     clients:db.clients.length,trips:db.trips.length,
     value:db.trips.reduce(function(a,t){return a+(t.totalValue||0);},0),
     pts:db.trips.reduce(function(a,t){return a+tripBookedPoints(t);},0),
-    upcoming:db.trips.filter(function(t){return (t.departDate||'')>=today();}).length
+    upcoming:db.trips.filter(function(t){return (t.departDate||'')>=today();}).length,
+    tripsRevenue:db.trips.filter(function(t){return !isNonTravelIncomeTrip(t);}).reduce(function(a,t){return a+(t.totalValue||0);},0),
+    ccRevenue:db.trips.filter(isCreditCardConsultingTrip).reduce(function(a,t){return a+(t.totalValue||0);},0),
+    referralRevenue:db.trips.filter(isReferralIncomeTrip).reduce(function(a,t){return a+(t.totalValue||0);},0)
   };
   const recent=[].concat(db.trips).sort(function(a,b){return (b.id||'').localeCompare(a.id||'');}).slice(0,6);
   // Same "Today & Overdue" definition Planner's own date filter uses
@@ -7957,6 +7973,14 @@ function renderDash(){
       '<div class="stat" id="stat-dash-upcoming"><div class="stat-lbl">Upcoming</div><div class="stat-val">'+s.upcoming+'</div></div>'+
       '<div class="stat" id="stat-dash-value"><div class="stat-lbl">Total Revenue</div><div class="stat-val">$'+money(s.value)+'</div></div>'+
       '<div class="stat" id="stat-dash-pts"><div class="stat-lbl">Points deployed</div><div class="stat-val">'+fmt(s.pts)+'</div></div>'+
+    '</div>'+
+    '<div class="card" style="margin-bottom:16px">'+
+      '<div class="card-hdr"><span class="card-title">Revenue by Section</span></div>'+
+      '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">'+
+        '<div class="stat dash-section-rev" data-go="trips" style="cursor:pointer"><div class="stat-lbl">Trips</div><div class="stat-val">$'+money(s.tripsRevenue)+'</div></div>'+
+        '<div class="stat dash-section-rev" data-go="ccconsulting" style="cursor:pointer"><div class="stat-lbl">Credit Card Consulting</div><div class="stat-val">$'+money(s.ccRevenue)+'</div></div>'+
+        '<div class="stat dash-section-rev" data-go="referrals" style="cursor:pointer"><div class="stat-lbl">Referrals</div><div class="stat-val">$'+money(s.referralRevenue)+'</div></div>'+
+      '</div>'+
     '</div>'+
     '<div class="two-col">'+
       '<div class="card">'+
@@ -8012,6 +8036,9 @@ function renderDash(){
       e.stopPropagation();
       openClientForm(el.dataset.id);
     });
+  });
+  document.querySelectorAll('.dash-section-rev').forEach(function(el){
+    el.addEventListener('click',function(){ go(el.dataset.go); });
   });
   function tripRow(t){
     return {cells:[t.clientName||'',t.destination||'',t.departDate||'—',displayStatus(t),'$'+money(t.totalValue)],onClick:function(){openTripForm(t.id);}};
@@ -10555,27 +10582,30 @@ function delTrip(id){
   saveDB();toast('Trip deleted');render();
 }
 
-// ── Credit Card Consulting ───────────────────────────────────────────────
-// Non-travel income records (credit card consulting fees, non-cash bonuses,
-// referral fees — see isNonTravelIncomeTrip()) are still stored as plain
-// trip records (they come in through the same revenue-import pipeline as
-// real bookings, §4 of DOCUMENTATION.md) and still edited through the same
-// Add/Edit Trip modal — this page is purely a different filtered view onto
-// db.trips, not a separate entity type, so no new CRUD logic is needed.
-function renderCreditCardConsulting(){
-  var q = (window._ccSearch||'').toLowerCase();
+// ── Non-travel income pages (Credit Card Consulting / Referrals) ─────────
+// Non-travel income records are still stored as plain trip records (they
+// come in through the same revenue-import pipeline as real bookings, §4 of
+// DOCUMENTATION.md) and still edited through the same Add/Edit Trip modal —
+// each page is purely a different filtered view onto db.trips, not a
+// separate entity type, so no new CRUD logic is needed. Both pages share
+// this one render function; since only one view is ever open at a time
+// (single #main), reusing the same #cc-search/.cc-row/etc. ids across
+// either page is safe — cfg.searchKey keeps their search boxes independent
+// (switching pages doesn't carry over the other page's search text).
+function renderNonTravelIncomePage(cfg){
+  var q = (window[cfg.searchKey]||'').toLowerCase();
   var list = db.trips.filter(function(t){
-    if(!isNonTravelIncomeTrip(t)) return false;
+    if(!cfg.matchFn(t)) return false;
     return !q || (t.clientName||'').toLowerCase().indexOf(q)!==-1 || (t.product||'').toLowerCase().indexOf(q)!==-1 || (t.notes||'').toLowerCase().indexOf(q)!==-1;
   }).sort(function(a,b){ return (b.departDate||b.invoiceDate||'').localeCompare(a.departDate||a.invoiceDate||''); });
   var totalValue = list.reduce(function(a,t){return a+(t.totalValue||0);},0);
   $('main').innerHTML =
-    '<div class="page-hdr"><div class="page-title">Credit Card Consulting</div><button class="add-btn" id="btn-add-cc">+ Add Record</button></div>'+
+    '<div class="page-hdr"><div class="page-title">'+escHtml(cfg.title)+'</div><button class="add-btn" id="btn-add-cc">+ Add Record</button></div>'+
     '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:16px">'+
       '<div class="stat"><div class="stat-lbl">Records</div><div class="stat-val">'+list.length+'</div></div>'+
       '<div class="stat"><div class="stat-lbl">Total Value</div><div class="stat-val">$'+money(totalValue)+'</div></div>'+
     '</div>'+
-    '<div class="search-row"><input id="cc-search" placeholder="Search..." value="'+escHtml(window._ccSearch||'')+'"/></div>'+
+    '<div class="search-row"><input id="cc-search" placeholder="Search..." value="'+escHtml(window[cfg.searchKey]||'')+'"/></div>'+
     '<div class="tbl-wrap"><table><thead><tr>'+
       '<th>Client</th><th>Item</th><th>Date</th><th>Points</th><th>Value</th><th>Notes</th><th></th>'+
     '</tr></thead><tbody>'+
@@ -10589,14 +10619,14 @@ function renderCreditCardConsulting(){
         '<td style="font-size:12px;color:#888;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escHtml(t.notes||'')+'</td>'+
         '<td style="white-space:nowrap"><button class="icon-btn edit-cc" data-id="'+t.id+'" style="color:#2563eb">&#9999;&#65039;</button><button class="icon-btn del-cc" data-id="'+t.id+'" style="color:#dc2626">&#128465;&#65039;</button></td>'+
       '</tr>';
-    }).join('') : '<tr><td colspan="7"><div class="empty">No credit card consulting, non-cash bonus, or referral fee records found</div></td></tr>')+
+    }).join('') : '<tr><td colspan="7"><div class="empty">'+escHtml(cfg.emptyMessage)+'</div></td></tr>')+
     '</tbody></table></div>';
 
   $('btn-add-cc').addEventListener('click', function(){ openTripForm(); });
   $('cc-search').addEventListener('input', function(){
     var pos=this.selectionStart;
-    window._ccSearch=this.value;
-    renderCreditCardConsulting();
+    window[cfg.searchKey]=this.value;
+    renderNonTravelIncomePage(cfg);
     var el=$('cc-search');
     if(el){el.focus();try{el.setSelectionRange(pos,pos);}catch(e){}}
   });
@@ -10614,6 +10644,22 @@ function renderCreditCardConsulting(){
       if(e.target.closest('button, .open-client')) return;
       openTripForm(row.dataset.id);
     });
+  });
+}
+function renderCreditCardConsulting(){
+  renderNonTravelIncomePage({
+    title: 'Credit Card Consulting',
+    matchFn: isCreditCardConsultingTrip,
+    emptyMessage: 'No credit card consulting or non-cash bonus records found',
+    searchKey: '_ccSearch'
+  });
+}
+function renderReferrals(){
+  renderNonTravelIncomePage({
+    title: 'Referrals',
+    matchFn: isReferralIncomeTrip,
+    emptyMessage: 'No referral income records found',
+    searchKey: '_referralSearch'
   });
 }
 
@@ -11339,6 +11385,7 @@ function bindClick(id, handler){
   bindClick('nb-planner', function(){go('planner');closeMobileNav();});
   bindClick('nb-bookmarks', function(){go('bookmarks');closeMobileNav();});
   bindClick('nb-ccconsulting', function(){go('ccconsulting');closeMobileNav();});
+  bindClick('nb-referrals', function(){go('referrals');closeMobileNav();});
   bindClick('outlook-btn', syncOutlook);
   bindClick('drive-btn', driveBackup);
   bindClick('drive-restore-btn', driveRestore);
