@@ -131,6 +131,8 @@ The Suppliers page (labeled "Suppliers" in the nav, called `vendors` internally)
 
 **Revenue imports create a missing Supplier for you.** When you import a revenue report (either the "Clean & Import Revenue File"/"Import Revenue CSV" buttons or the automatic Outlook sync) and a row names a supplier that isn't in your Suppliers list yet, the CRM adds it automatically — before creating the client and/or trip for that row — instead of leaving the trip with no supplier. If the exact same supplier name shows up on more than one row in the same import, only one Supplier record gets created and every row links to it. If you'd already imported a trip before its supplier existed, re-running that same import will retroactively link the supplier onto the existing trip rather than creating a duplicate.
 
+**Contacts** — each Supplier can hold any number of people you deal with there (an account rep, a group desk contact, whoever), each with their own Name, Title, Email, and Phone. Open a Supplier and scroll to the **Contacts** section: **+ Add Contact** (or clicking an existing one) opens that contact's own record, which works just like a client's — a Notes Log you can filter by type and add entries to, and a Tasks list with its own **+ Add Task** for follow-ups tied specifically to that person. Delete a contact with the trash icon on its row in the Supplier form (no need to open it first).
+
 ---
 
 ## Planner
@@ -138,6 +140,8 @@ The Suppliers page (labeled "Suppliers" in the nav, called `vendors` internally)
 Your follow-up task list, with the linked client's phone and email shown right in the table. Most tasks get created automatically — one per new trip request and one per new contact-form lead — but you can add your own anytime with **+ Add Task**.
 
 **A task can link to more than one client.** The task form's **Linked Client** dropdown is the primary contact; check any others under **Additional Clients** below it. The Client column then lists everyone linked, each one clickable to jump to their record, and the task shows up on every one of those clients' own task lists — not just the primary's. The Email field auto-fills with every linked client's email (comma-separated, so one click on the mail icon reaches all of them at once) — it re-fills whenever you change who's linked, and you can still type over it by hand if you need something different. Marking the task done logs a completion note on every linked client's record, not just the primary's.
+
+**A task can also link to a Supplier Contact** instead of (or alongside) a client — a separate **Supplier Contact** dropdown on the task form, searchable by name, lists every contact across every Supplier. Picking one automatically fills in **Linked Supplier** with that contact's own supplier and fills the Email field with their email. When a task has a Supplier Contact linked, the Planner table's Client/Phone/Email columns show *that contact's* name, phone, and email instead of any client's — so a task about, say, a cruise line's group desk contact shows their info front and center, not a client's that happens to also be tagged on it.
 
 Checking a task's box marks it done immediately, but the row stays put — checked, struck through — instead of vanishing right away, so you can still see what you just did and hit the trash icon on it if it was a mistake. It'll drop off the default (Open) view the next time you navigate away and back, or switch the filter to "Done" and back. The trash icon deletes a task outright, any time.
 
@@ -203,6 +207,7 @@ Click **+ Load Starter Bookmarks** to add a pre-built set of consumer booking-si
 
 Email menu → **Sync Outlook Emails**. This is a one-time login (until you sign out or the token expires) that unlocks:
 - Logging sent/received emails to each client's notes automatically.
+- Logging sent/received emails to each Supplier Contact's own notes automatically too, the same way — as long as that contact has an email address on file.
 - Automatically importing Book a Trip form submissions and Contact Form leads every 5 minutes.
 
 **This only runs while the CRM tab is open in your browser** — there's no server running these checks in the background, so if you close the tab, imports pause until you reopen it.

@@ -1604,8 +1604,10 @@ async function syncOutlook(){
 
     const clients=db.clients.filter(c=>c.email&&c.email.includes('@'));
     debugLog('Clients with email: '+clients.length+' ('+clients.map(c=>c.email).join(', ')+')');
-    if(!clients.length){
-      toast('Add clients with email addresses first','err');
+    const vendorContacts=allVendorContacts().filter(x=>x.contact.email&&x.contact.email.includes('@'));
+    debugLog('Supplier contacts with email: '+vendorContacts.length+' ('+vendorContacts.map(x=>x.contact.email).join(', ')+')');
+    if(!clients.length && !vendorContacts.length){
+      toast('Add clients or supplier contacts with email addresses first','err');
       btn.textContent=orig;btn.disabled=false;return;
     }
 
@@ -1641,6 +1643,32 @@ async function syncOutlook(){
         debugLog('ERROR for '+client.email+': '+e.message);
         console.error('Email match error for '+client.email,e);
         clientErrors.push(client.email+' ('+e.message+')');
+      }
+    }
+    // Same match/dedup/append logic as the client loop above, reusing the
+    // already-fetched mailbox — just writing into the contact's own
+    // notesLog, nested inside its parent vendor's `contacts` array, instead
+    // of a top-level db.clients record.
+    for(const vc of vendorContacts){
+      try{
+        const contactLower=vc.contact.email.toLowerCase();
+        const emails=matchInbox(mailbox.inbox,contactLower).concat(matchSent(mailbox.sent,contactLower));
+        debugLog('Emails matched for '+vc.contact.email+': '+emails.length);
+        if(!emails.length){continue;}
+
+        const existing=new Set((vc.contact.notesLog||[]).filter(n=>n.msgId).map(n=>n.msgId));
+        const newNotes=emails.filter(m=>!existing.has(m.id)&&!m.isDraft).map(emailToNote);
+        debugLog('New notes to add for '+vc.contact.email+': '+newNotes.length);
+
+        if(newNotes.length){
+          const notesLog=[...(vc.contact.notesLog||[]),...newNotes].sort((a,b)=>new Date(a.ts)-new Date(b.ts));
+          db.vendors=db.vendors.map(v=>v.id!==vc.vendor.id?v:Object.assign({},v,{contacts:(v.contacts||[]).map(c=>c.id===vc.contact.id?Object.assign({},c,{notesLog:notesLog}):c)}));
+          totalNew+=newNotes.length;
+        }
+      }catch(e){
+        debugLog('ERROR for '+vc.contact.email+': '+e.message);
+        console.error('Email match error for '+vc.contact.email,e);
+        clientErrors.push(vc.contact.email+' ('+e.message+')');
       }
     }
     if(mailbox.errors.length){
@@ -7234,6 +7262,27 @@ function importVendorsCSV(){
 const VENDOR_TYPES = ['Supplier','Referral Partner','DMC'];
 const VENDOR_CATS  = ['Airline','Hotel','Cruise Line','Car Rental','Tour Operator','Other'];
 
+// A supplier can have any number of contacts (id VC001, VC002... globally
+// unique across every vendor's contacts array, not just within one vendor —
+// needed so a Planner task's vendorContactId and the Outlook sync can look
+// one up without also knowing which vendor it belongs to).
+function allVendorContacts(){
+  var out = [];
+  db.vendors.forEach(function(v){
+    (v.contacts||[]).forEach(function(c){ out.push({contact:c, vendor:v}); });
+  });
+  return out;
+}
+function findVendorContact(contactId){
+  if(!contactId) return null;
+  for(var i=0;i<db.vendors.length;i++){
+    var v = db.vendors[i];
+    var c = (v.contacts||[]).find(function(x){return x.id===contactId;});
+    if(c) return {contact:c, vendor:v};
+  }
+  return null;
+}
+
 function getVendorStats(vendor){
   var stats = {trips:0, revenue:0, clients:[], tripList:[]};
 
@@ -7597,6 +7646,25 @@ function openVendorForm(id){
       })()+
     '</div>'+
     '<div style="margin-top:16px;border-top:1px solid #e5e7eb;padding-top:16px">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">'+
+        '<div style="font-size:13px;font-weight:600;color:#374151">Contacts</div>'+
+        '<button type="button" id="btn-add-vendor-contact" style="padding:3px 10px;border-radius:6px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:11px;font-family:inherit">+ Add Contact</button>'+
+      '</div>'+
+      (function(){
+        var contacts = d.contacts||[];
+        if(!contacts.length) return '<div style="color:#aaa;font-size:12px;padding:4px 0 8px">No contacts yet.</div>';
+        return contacts.map(function(c){
+          return '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:6px">'+
+            '<div class="vendor-contact-link" data-contact-id="'+c.id+'" style="cursor:pointer">'+
+              '<div style="font-size:13px;font-weight:600;color:#2563eb;text-decoration:underline">'+escHtml(c.name||'(no name)')+(c.title?' <span style="font-weight:400;color:#888">&mdash; '+escHtml(c.title)+'</span>':'')+'</div>'+
+              '<div style="font-size:11px;color:#888">'+([c.email,c.phone].filter(Boolean).map(escHtml).join(' &middot; ')||'&nbsp;')+'</div>'+
+            '</div>'+
+            '<button class="del-vendor-contact-btn" data-contact-id="'+c.id+'" title="Delete contact" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:14px">&#128465;&#65039;</button>'+
+          '</div>';
+        }).join('');
+      })()+
+    '</div>'+
+    '<div style="margin-top:16px;border-top:1px solid #e5e7eb;padding-top:16px">'+
       '<div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:10px">Clients with Bookings</div>'+
       (function(){
         var found = [];
@@ -7694,6 +7762,30 @@ function openVendorForm(id){
       if(el) el.remove();
     });
   });
+  $('btn-add-vendor-contact').addEventListener('click', function(){
+    var vid = id;
+    if(!vid){
+      vid = saveVendor(null);
+      if(!vid) return;
+    }
+    openVendorContactForm(vid, null);
+  });
+  document.querySelectorAll('.vendor-contact-link').forEach(function(el){
+    el.addEventListener('click', function(){ openVendorContactForm(id, el.dataset.contactId); });
+  });
+  document.querySelectorAll('.del-vendor-contact-btn').forEach(function(btn){
+    btn.addEventListener('click', function(e){
+      e.stopPropagation();
+      if(!confirm('Delete this contact?')) return;
+      snapshot('Delete supplier contact');
+      db.vendors = db.vendors.map(function(v){
+        if(v.id!==id) return v;
+        return Object.assign({},v,{contacts:(v.contacts||[]).filter(function(c){return c.id!==btn.dataset.contactId;})});
+      });
+      saveDB();
+      openVendorForm(id);
+    });
+  });
 }
 
 function saveVendor(id){
@@ -7726,6 +7818,207 @@ function saveVendor(id){
     toast('Vendor added');
   }
   saveDB(); closeModal(); render();
+  return id||data.id;
+}
+
+// A supplier contact's own record — same notes-timeline + task-list shape as
+// a client's own record (see openClientForm), just scoped to one contact
+// within a vendor's `contacts` array instead of a top-level db.clients entry.
+// Reuses the client form's exact #notes-log/.note-entry/.note-ts-link markup
+// and the global addNoteEntry()/openNoteExpand() helpers, which are already
+// generic (they don't hardcode anything client-specific) — only the note
+// filter/delete/expand wiring below is duplicated rather than shared with
+// openClientForm, since that wiring lives inline there rather than in a
+// reusable function, and touching that already-working code isn't worth the
+// risk for what's otherwise a straight copy.
+function openVendorContactForm(vendorId, contactId){
+  var vendor = db.vendors.find(function(v){return v.id===vendorId;});
+  if(!vendor){ toast('Supplier not found','err'); return; }
+  var d = contactId ? ((vendor.contacts||[]).find(function(c){return c.id===contactId;})||{}) : {};
+  // Sorted newest-first for display, and reused as-is (not the raw
+  // d.notesLog storage order) for the expand-click lookup below so the
+  // rendered index and the lookup index always agree.
+  var notesLogSorted = Array.isArray(d.notesLog) ? [...d.notesLog].sort(function(a,b){var ta=new Date(a.ts),tb=new Date(b.ts);return (isNaN(tb)?0:tb)-(isNaN(ta)?0:ta);}) : [];
+  var notesHTML = notesLogSorted.length ? notesLogSorted.map(function(n,i){
+    return '<div class="note-entry" id="note-entry-'+i+'">'+
+      '<div style="display:flex;align-items:center;margin-bottom:4px">'+
+        '<span class="note-ts-link" data-note-idx="'+i+'">'+n.ts+'</span>'+
+        '<select class="note-type-sel" id="note-type-'+i+'">'+
+          '<option value="">-- Type --</option>'+
+          NOTE_TYPES.map(function(t){return '<option value="'+t+'"'+(n.noteType===t?' selected':'')+'>'+t+'</option>';}).join('')+
+        '</select>'+
+        '<button class="del-note-btn" data-note-idx="'+i+'" title="Delete note" style="margin-left:auto;background:none;border:none;cursor:pointer;color:#dc2626;font-size:15px;padding:2px 6px;border-radius:4px;line-height:1">&#128465;&#65039;</button>'+
+      '</div>'+
+      '<textarea class="note-txt" id="note-txt-'+i+'" rows="2">'+n.text+'</textarea>'+
+    '</div>';
+  }).join('') : '<div id="notes-log-empty" style="color:#aaa;font-size:12px;padding:6px 0">No notes yet</div>';
+
+  var contactTasks = contactId ? db.planner.filter(function(t){return t.vendorContactId===contactId;}).sort(function(a,b){
+    if(!!a.done !== !!b.done) return a.done ? 1 : -1;
+    var ad=a.dueDate||'9999-99-99', bd=b.dueDate||'9999-99-99';
+    return ad.localeCompare(bd);
+  }) : [];
+  var taskAddBtn = '<button type="button" class="vendor-contact-add-task-btn" style="padding:3px 10px;border-radius:6px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:11px;font-family:inherit">+ Add Task</button>';
+  var tasksHtml;
+  if(!contactTasks.length){
+    tasksHtml = '<div class="field full" style="margin-bottom:12px">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center"><label>Tasks (0)</label>'+taskAddBtn+'</div>'+
+      '<div style="color:#aaa;font-size:12px;padding:8px 0">No tasks yet.</div>'+
+    '</div>';
+  } else {
+    var taskRows = contactTasks.map(function(t){
+      var overdue = t.dueDate && !t.done && t.dueDate<today();
+      return '<tr class="vendor-contact-task-row" data-task-id="'+t.id+'" style="cursor:pointer">'+
+        '<td style="font-size:12px;padding:8px 10px;color:'+(t.done?'#aaa':'#111')+';text-decoration:'+(t.done?'line-through':'none')+'">'+t.title+'</td>'+
+        '<td style="font-size:11px;padding:8px 10px;white-space:nowrap;color:'+(overdue?'#dc2626':'#555')+'">'+(t.dueDate||'—')+(overdue?' (overdue)':'')+'</td>'+
+        '<td style="padding:8px 10px">'+(t.done?'<span class="badge b-blue">Done</span>':'<span class="badge b-amber">Open</span>')+'</td>'+
+      '</tr>';
+    }).join('');
+    tasksHtml = '<div class="field full" style="margin-bottom:12px">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center"><label>Tasks ('+contactTasks.length+')</label>'+taskAddBtn+'</div>'+
+      '<div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;max-height:220px;overflow-y:auto">'+
+      '<table style="width:100%;border-collapse:collapse">'+
+      '<thead><tr style="background:#f3f4f6">'+
+        '<th style="text-align:left;padding:6px 10px;font-size:10px;font-weight:700;color:#888;text-transform:uppercase">Task</th>'+
+        '<th style="text-align:left;padding:6px 10px;font-size:10px;font-weight:700;color:#888;text-transform:uppercase">Due</th>'+
+        '<th style="text-align:left;padding:6px 10px;font-size:10px;font-weight:700;color:#888;text-transform:uppercase">Status</th>'+
+      '</tr></thead>'+
+      '<tbody>'+taskRows+'</tbody></table></div></div>';
+  }
+
+  $('modal').innerHTML=
+    '<div class="modal-hdr"><div class="modal-title">'+(contactId?'Edit Contact':'Add Contact')+' <span style="font-weight:400;color:#888;font-size:13px">&mdash; '+escHtml(vendor.name||'')+'</span></div><button class="close-btn" id="modal-close">&#x2715;</button></div>'+
+    '<div class="fg">'+
+      fld('Name', inp('vc-name','text',d.name,'e.g. Jane Smith'), true)+
+      fld('Title', inp('vc-title','text',d.title,'e.g. Account Manager'))+
+      fld('Email', inp('vc-email','email',d.email))+
+      fld('Phone', inp('vc-phone','text',d.phone,'(xxx) xxx-xxxx'))+
+      tasksHtml+
+      '<div class="field full"><label>Notes Log</label>'+
+        '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'+
+          '<select id="note-type-filter" style="padding:5px 10px;border-radius:6px;border:1px solid #d1d5db;font-size:12px;font-family:inherit;color:#555;background:#fff">'+
+            '<option value="">All types</option>'+
+            NOTE_TYPES.map(function(t){return '<option value="'+t+'">'+t+'</option>';}).join('')+
+          '</select>'+
+          '<span id="note-filter-count" style="font-size:11px;color:#888"></span>'+
+        '</div>'+
+        '<div id="notes-log" style="border:1px solid #e5e7eb;border-radius:8px;padding:10px;background:#fafafa;max-height:220px;overflow-y:auto;margin-bottom:6px">'+notesHTML+'</div>'+
+        '<button type="button" id="btn-add-note" style="align-self:flex-start;padding:5px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit">+ Add Note</button>'+
+      '</div>'+
+    '</div>'+
+    '<div class="form-actions form-actions-sticky"><button class="cancel-btn" id="modal-cancel">Cancel</button><button class="save-btn" id="modal-save-vendor-contact" data-vendor-id="'+vendorId+'" data-contact-id="'+(contactId||'')+'">Save Contact</button></div>';
+
+  $('overlay').classList.add('open');
+  $('modal-close').addEventListener('click', function(){ openVendorForm(vendorId); });
+  $('modal-cancel').addEventListener('click', function(){ openVendorForm(vendorId); });
+  $('btn-add-note').addEventListener('click', addNoteEntry);
+  $('modal-save-vendor-contact').addEventListener('click', function(){
+    saveVendorContact(this.dataset.vendorId, this.dataset.contactId||null);
+  });
+  document.querySelectorAll('.vendor-contact-task-row').forEach(function(row){
+    row.addEventListener('click', function(){ openTaskForm(row.dataset.taskId); });
+  });
+  document.querySelectorAll('.vendor-contact-add-task-btn').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      // Same "must save first" reasoning as the client form's own +Add Task —
+      // a brand-new contact needs a real id before a task can link to it.
+      var savedId = saveVendorContact(vendorId, contactId);
+      if(!savedId) return;
+      openTaskForm();
+      var vendorSel = document.getElementById('tk-vendor');
+      if(vendorSel) vendorSel.value = vendorId;
+      var contactSel = document.getElementById('tk-vendor-contact');
+      if(contactSel){ contactSel.value = savedId; refreshTaskEmailFromVendorContact(); }
+    });
+  });
+
+  // Note type filter
+  var noteFilterSel = document.getElementById('note-type-filter');
+  var noteFilterCount = document.getElementById('note-filter-count');
+  if(noteFilterSel){
+    function applyNoteFilter(){
+      var val = noteFilterSel.value;
+      var entries = document.querySelectorAll('#notes-log .note-entry');
+      var shown = 0;
+      entries.forEach(function(el){
+        if(!val){el.style.display='';shown++;}
+        else{
+          var sel = el.querySelector('.note-type-sel');
+          var type = sel ? sel.value : '';
+          if(type===val){el.style.display='';shown++;}
+          else{el.style.display='none';}
+        }
+      });
+      if(noteFilterCount) noteFilterCount.textContent = shown+' of '+entries.length+' notes';
+    }
+    noteFilterSel.addEventListener('change', applyNoteFilter);
+    applyNoteFilter();
+  }
+  var notesLogEl = $('notes-log');
+  if(notesLogEl){
+    notesLogEl.addEventListener('click', function(e){
+      var btn = e.target.closest ? e.target.closest('.del-note-btn') : null;
+      if(!btn && e.target.classList.contains('del-note-btn')) btn = e.target;
+      if(btn){
+        var entry = btn.closest('.note-entry');
+        if(entry && confirm('Delete this note?')){
+          entry.remove();
+          var entries = notesLogEl.querySelectorAll('.note-entry');
+          entries.forEach(function(el, newIdx){
+            el.id = 'note-entry-'+newIdx;
+            var tsLink = el.querySelector('.note-ts-link');
+            if(tsLink) tsLink.dataset.noteIdx = newIdx;
+            var sel = el.querySelector('.note-type-sel');
+            if(sel) sel.id = 'note-type-'+newIdx;
+            var ta = el.querySelector('.note-txt');
+            if(ta) ta.id = 'note-txt-'+newIdx;
+            var delBtn = el.querySelector('.del-note-btn');
+            if(delBtn) delBtn.dataset.noteIdx = newIdx;
+          });
+        }
+      }
+    });
+    notesLogEl.addEventListener('click', function(e){
+      var span = e.target.closest ? e.target.closest('.note-ts-link') : null;
+      if(!span && e.target.classList.contains('note-ts-link')) span = e.target;
+      if(span){
+        var idx = parseInt(span.dataset.noteIdx, 10);
+        var note = notesLogSorted[idx];
+        if(note) openNoteExpand(note.ts, note.text, note.noteType||'');
+      }
+    });
+  }
+}
+function saveVendorContact(vendorId, contactId){
+  var name = gv('vc-name');
+  if(!name){ toast('Contact name is required','err'); return null; }
+  var noteEntryEls = Array.from(document.querySelectorAll('.note-entry'));
+  var notesLog = noteEntryEls.map(function(el){
+    var tsEl = el.querySelector('.note-ts-link') || el.querySelector('.note-ts');
+    var ts = (tsEl||{}).textContent||'';
+    var text = (el.querySelector('.note-txt')||{}).value||'';
+    var typeEl = el.querySelector('.note-type-sel');
+    var noteType = (typeEl&&typeEl.value)||'';
+    return {ts:ts.trim(),text:text.trim(),noteType:noteType};
+  }).filter(function(n){return n.text;});
+  var data = {name:name, title:gv('vc-title'), email:gv('vc-email'), phone:gv('vc-phone'), notesLog:notesLog};
+  snapshot(contactId?'Edit supplier contact':'Add supplier contact');
+  var resultId = contactId;
+  db.vendors = db.vendors.map(function(v){
+    if(v.id!==vendorId) return v;
+    var contacts = v.contacts||[];
+    if(contactId){
+      contacts = contacts.map(function(c){return c.id===contactId?Object.assign({},c,data):c;});
+    } else {
+      resultId = newId('VC', allVendorContacts().map(function(x){return x.contact;}));
+      contacts = contacts.concat([Object.assign({},data,{id:resultId})]);
+    }
+    return Object.assign({},v,{contacts:contacts});
+  });
+  saveDB();
+  toast(contactId?'Contact updated':'Contact added');
+  openVendorForm(vendorId);
+  return resultId;
 }
 
 function delVendor(id){
@@ -10713,7 +11006,10 @@ function renderPlanner(){
   }
   function clientLinksHtml(t){
     var cs=taskClients(t);
-    return cs.length ? cs.map(function(c){return '<span class="planner-client-link" data-id="'+c.id+'" style="color:#2563eb;cursor:pointer;text-decoration:underline">'+c.name+'</span>';}).join(', ') : '<span style="color:#aaa">No client linked</span>';
+    if(cs.length) return cs.map(function(c){return '<span class="planner-client-link" data-id="'+c.id+'" style="color:#2563eb;cursor:pointer;text-decoration:underline">'+c.name+'</span>';}).join(', ');
+    var found = t.vendorContactId ? findVendorContact(t.vendorContactId) : null;
+    if(found) return '<span style="color:#555">'+escHtml(found.contact.name||'')+' <span style="font-size:10px;color:#888">('+escHtml(found.vendor.name||'')+')</span></span>';
+    return '<span style="color:#aaa">No client linked</span>';
   }
 
   function entityBadges(t){
@@ -10764,16 +11060,20 @@ function renderPlanner(){
       var badgesHtml = entityBadges(t);
       // Phone/Email columns reflect just the primary linked client — the
       // Client column itself lists every linked client (see clientLinksHtml).
+      // A linked Supplier Contact takes over both columns instead, since a
+      // task about a supplier contact should surface THEIR phone/email, not
+      // whatever client happens to also be on the task.
+      var vendorContact = t.vendorContactId ? findVendorContact(t.vendorContactId) : null;
       var cid = taskClientId(t);
       var linkedClient = cid ? db.clients.find(function(x){return x.id===cid;}) : null;
-      var cPhone = linkedClient ? linkedClient.phone : '';
+      var cPhone = vendorContact ? vendorContact.contact.phone : (linkedClient ? linkedClient.phone : '');
       // Tasks only ever get their own stored email once the task form is
       // saved with a client selected — plenty of existing tasks are linked
       // to a client but never had that trigger, so this list falls back to
       // every linked client's email too (same fallback openTaskForm uses,
       // comma-joined so the mailto link reaches all of them), rather than
       // showing blank for a task that's clearly linked.
-      var displayEmail = t.email || linkedClientEmailsStr(t.clientId, t.clientIds);
+      var displayEmail = (vendorContact && vendorContact.contact.email) ? vendorContact.contact.email : (t.email || linkedClientEmailsStr(t.clientId, t.clientIds));
       return '<tr data-task-id="'+t.id+'">'+
         '<td style="width:32px"><input type="checkbox" class="task-done-cb" data-id="'+t.id+'" '+(t.done?'checked':'')+' style="width:15px;height:15px"></td>'+
         '<td>'+clientLinksHtml(t)+'</td>'+
@@ -11049,6 +11349,10 @@ function openTaskForm(id){
 
   var clientOpts = sortedClients.map(function(c){return '<option value="'+c.id+'"'+(c.id===d.clientId?' selected':'')+'>'+c.name+'</option>';}).join('');
   var vendorOpts = sortedVendors.map(function(v){return '<option value="'+v.id+'"'+(v.id===d.vendorId?' selected':'')+'>'+v.name+'</option>';}).join('');
+  var sortedVendorContacts = allVendorContacts().sort(function(a,b){return (a.contact.name||'').toLowerCase().localeCompare((b.contact.name||'').toLowerCase());});
+  var vendorContactOpts = sortedVendorContacts.map(function(x){
+    return '<option value="'+x.contact.id+'"'+(x.contact.id===d.vendorContactId?' selected':'')+'>'+x.contact.name+' — '+x.vendor.name+'</option>';
+  }).join('');
   var tripOpts = sortedTrips.map(function(t){
     var c = db.clients.find(function(x){return x.id===t.clientId;});
     var label = (t.destination||'Trip')+(c?' — '+c.name:'')+(t.departDate?' ('+t.departDate+')':'');
@@ -11084,6 +11388,7 @@ function openTaskForm(id){
         '</div>'+
       '</div>'+
       fld('Linked Supplier','<select id="tk-vendor"><option value="">None</option>'+vendorOpts+'</select>')+
+      fld('Supplier Contact',searchableSelectWrap('<select id="tk-vendor-contact"><option value="">None</option>'+vendorContactOpts+'</select>','Search contacts...'))+
       fld('Linked Trip',searchableSelectWrap('<select id="tk-trip"><option value="">None</option>'+tripOpts+'</select>','Search trips...'))+
       fld('Description', '<textarea id="tk-desc" rows="3">'+(d.desc||'')+'</textarea>', true)+
     '</div>'+
@@ -11105,6 +11410,7 @@ function openTaskForm(id){
   document.querySelectorAll('.task-client-cb').forEach(function(cb){
     cb.addEventListener('change', refreshTaskEmailFromLinkedClients);
   });
+  $('tk-vendor-contact').addEventListener('change', refreshTaskEmailFromVendorContact);
 }
 // Linking clients on the task form also carries over their email(s) — the
 // primary Linked Client plus every checked Additional Client — so the
@@ -11125,6 +11431,27 @@ function refreshTaskEmailFromLinkedClients(){
     updateTaskEmailLinkDisplay();
   }
 }
+// Picking a Supplier Contact also carries over its own email (mirroring
+// refreshTaskEmailFromLinkedClients above) and auto-selects its parent
+// Supplier in Linked Supplier, so the two fields can't end up pointing at
+// different suppliers. Only overwrites the email if the contact actually
+// has one — an unset contact email shouldn't blank out whatever a linked
+// client already filled in.
+function refreshTaskEmailFromVendorContact(){
+  var contactSel = document.getElementById('tk-vendor-contact');
+  if(!contactSel) return;
+  var found = findVendorContact(contactSel.value);
+  if(!found) return;
+  var vendorSel = document.getElementById('tk-vendor');
+  if(vendorSel) vendorSel.value = found.vendor.id;
+  if(found.contact.email){
+    var emailInput = document.getElementById('tk-email');
+    if(emailInput){
+      emailInput.value = found.contact.email;
+      updateTaskEmailLinkDisplay();
+    }
+  }
+}
 function updateTaskEmailLinkDisplay(){
   var emailInput = document.getElementById('tk-email');
   var linkSpan = document.getElementById('tk-email-link');
@@ -11143,6 +11470,7 @@ function saveTaskAndNew(id){
   var clientId = gv('tk-client');
   var additionalClientIds = Array.from(document.querySelectorAll('.task-client-cb:checked')).map(function(cb){return cb.value;});
   var vendorId = gv('tk-vendor');
+  var vendorContactId = gv('tk-vendor-contact');
   var tripId = gv('tk-trip');
   var noteType = gv('tk-note-type');
   var desc = gv('tk-desc');
@@ -11155,6 +11483,7 @@ function saveTaskAndNew(id){
   var clientSel=document.getElementById('tk-client'); if(clientSel) clientSel.value=clientId;
   document.querySelectorAll('.task-client-cb').forEach(function(cb){ cb.checked = additionalClientIds.indexOf(cb.value)!==-1; });
   var vendorSel=document.getElementById('tk-vendor'); if(vendorSel) vendorSel.value=vendorId;
+  var vendorContactSel=document.getElementById('tk-vendor-contact'); if(vendorContactSel) vendorContactSel.value=vendorContactId;
   var tripSel=document.getElementById('tk-trip'); if(tripSel) tripSel.value=tripId;
   var noteTypeSel=document.getElementById('tk-note-type'); if(noteTypeSel) noteTypeSel.value=noteType;
   document.getElementById('tk-desc').value = 'Follow-up to: "'+title+'"'+(desc?'\n'+desc:'');
@@ -11185,6 +11514,7 @@ function saveTask(id){
     clientId: clientId,
     clientIds: additionalClientIds,
     vendorId: gv('tk-vendor'),
+    vendorContactId: gv('tk-vendor-contact'),
     tripId: gv('tk-trip'),
     desc: gv('tk-desc')
   };
