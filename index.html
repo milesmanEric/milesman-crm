@@ -253,6 +253,7 @@ tr:last-child td{border-bottom:none}
       <button class="nb" id="nb-reports">&#128202; Reports</button>
       <button class="nb" id="nb-calendar">&#128197; Calendar</button>
       <button class="nb" id="nb-email">&#9993;&#65039; Email</button>
+      <button class="nb" id="nb-marketing">&#128227; Marketing</button>
       <button class="nb" id="nb-bookmarks">&#128278; Bookmarks</button>
     </nav>
     <div class="sb-footer">
@@ -5851,7 +5852,7 @@ function go(v,cid){
   view=v;
   selCid=(v==='trips'&&cid)?cid:null;
   fSearch='';fStatus=STATUSES.filter(function(s){return s!=='Cancelled';});
-  ['dashboard','clients','trips','reports','calendar','email','vendors','bizvendors','planner','bookmarks','ccconsulting','referrals'].forEach(function(x){var el=$('nb-'+x);if(el)el.classList.toggle('active',x===v);});
+  ['dashboard','clients','trips','reports','calendar','email','vendors','bizvendors','planner','bookmarks','ccconsulting','referrals','marketing'].forEach(function(x){var el=$('nb-'+x);if(el)el.classList.toggle('active',x===v);});
   render();
 }
 
@@ -5871,6 +5872,7 @@ function render(){
   else if(view==='bizvendors') renderBizVendors();
   else if(view==='planner') renderPlanner();
   else if(view==='bookmarks') renderBookmarks();
+  else if(view==='marketing') renderMarketing();
   else if(view==='ccconsulting') renderCreditCardConsulting();
   else if(view==='referrals') renderReferrals();
 }
@@ -11693,6 +11695,15 @@ function bookmarkSectionHtml(audience, bookmarks){
     }).join('')+
   '</div>';
 }
+// Placeholder page — functionality intentionally not yet defined. Give it
+// its own render function/nav slot now so the sidebar has a fixed spot to
+// build into later, rather than bolting a new nav entry on afterward.
+function renderMarketing(){
+  $('main').innerHTML =
+    '<div class="page-hdr"><div class="page-title">Marketing</div></div>'+
+    '<div class="empty">Coming soon.</div>';
+}
+
 function renderBookmarks(){
   var bookmarks = [...db.bookmarks].sort(function(a,b){return (a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase());});
   $('main').innerHTML =
@@ -12215,6 +12226,7 @@ function bindClick(id, handler){
   bindClick('nb-bizvendors', function(){go('bizvendors');closeMobileNav();});
   bindClick('nb-planner', function(){go('planner');closeMobileNav();});
   bindClick('nb-bookmarks', function(){go('bookmarks');closeMobileNav();});
+  bindClick('nb-marketing', function(){go('marketing');closeMobileNav();});
   bindClick('nb-ccconsulting', function(){go('ccconsulting');closeMobileNav();});
   bindClick('nb-referrals', function(){go('referrals');closeMobileNav();});
   bindClick('outlook-btn', syncOutlook);
