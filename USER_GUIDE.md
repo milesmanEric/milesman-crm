@@ -119,7 +119,7 @@ A separate page for income that isn't really a travel booking — credit card co
 
 ## Referrals
 
-A separate page for referral income, right next to Credit Card Consulting in the nav. Works exactly the same way — added/edited through the same trip form, shows up here automatically whenever the **Product** field contains "referral" anywhere in it (any capitalization, any surrounding words — "Referral Commission," "Bonus Referral," etc. all count) — with its own search box and Records/Total Value stats, independent of Credit Card Consulting's.
+A separate page for referral and promo income, right next to Credit Card Consulting in the nav. Works exactly the same way — added/edited through the same trip form, shows up here automatically whenever the **Product** field contains "referral" or "promo" anywhere in it (any capitalization, any surrounding words — "Referral Commission," "Bonus Referral," "Summer Promo," etc. all count) — with its own search box and Records/Total Value stats, independent of Credit Card Consulting's.
 
 ---
 

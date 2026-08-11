@@ -1189,10 +1189,10 @@ function isCreditCardConsultingTrip(t){
 }
 // "referral" alone (not "referral fee") to also catch "Referral
 // Commission"/"Referral Bonus"/whatever else QuickBooks' actual Item
-// wording turns out to be.
+// wording turns out to be; "promo" catches promotional bonuses the same way.
 function isReferralIncomeTrip(t){
   var p = (t.product||'').toLowerCase();
-  return p.indexOf('referral')!==-1;
+  return p.indexOf('referral')!==-1 || p.indexOf('promo')!==-1;
 }
 // True if this trip record is non-travel income of either kind — used
 // wherever the Trips page needs to exclude both categories at once.
