@@ -7553,6 +7553,7 @@ function renderVendors(){
           (v.email?'<a href="mailto:'+mailtoAddr(v.email)+'" style="color:#2563eb;text-decoration:none;margin-right:12px">&#9993; '+v.email+'</a>':'')+
           (v.phone?'<span>&#128222; '+v.phone+'</span>':'')+
         '</div>':'')+
+        (v.website?'<div style="font-size:12px;margin-top:8px"><a href="'+(v.website.indexOf('http')===0?v.website:'https://'+v.website)+'" target="_blank" style="color:#2563eb;text-decoration:none">&#127760; '+escHtml(v.website)+'</a></div>':'')+
         '<div style="margin-top:8px">'+
           '<span class="vendor-stat">&#9992;&#65039; '+stats.trips+' trips</span>'+
           '<span class="vendor-stat">&#128176; $'+money(stats.revenue)+' revenue</span>'+
@@ -8278,21 +8279,42 @@ function saveBizVendor(id){
   var name = gv('bv-name');
   if(!name){toast('Vendor name is required','err');return;}
   var data = {name:name, category:gv('bv-category'), website:gv('bv-website'), notes:gv('bv-notes')};
+  var resultId = id||newId('BV', db.bizVendors);
   if(id){
     db.bizVendors = db.bizVendors.map(function(v){return v.id===id ? Object.assign({},v,data) : v;});
     toast('Vendor updated');
   } else {
-    data.id = newId('BV', db.bizVendors);
+    data.id = resultId;
     db.bizVendors.push(data);
     toast('Vendor added');
   }
+  syncVendorWebsiteBookmark(resultId);
   saveDB(); closeModal(); render();
-  return id||data.id;
+  return resultId;
+}
+// Keeps one Bookmarks entry (audience 'Vendors', tagged sourceVendorId so
+// re-saving updates it instead of piling up duplicates) in sync with a
+// Vendor's own Website field — added/updated when a website is set,
+// removed if the website field gets cleared out or the vendor is deleted.
+function syncVendorWebsiteBookmark(vendorId){
+  var v = db.bizVendors.find(function(x){return x.id===vendorId;});
+  var existing = db.bookmarks.find(function(b){return b.sourceVendorId===vendorId;});
+  if(!v || !v.website){
+    if(existing) db.bookmarks = db.bookmarks.filter(function(b){return b.id!==existing.id;});
+    return;
+  }
+  var url = /^https?:\/\//i.test(v.website) ? v.website : 'https://'+v.website;
+  if(existing){
+    db.bookmarks = db.bookmarks.map(function(b){return b.id===existing.id ? Object.assign({},b,{name:v.name, url:url, category:v.category||''}) : b;});
+  } else {
+    db.bookmarks.push({id:newId('BM', db.bookmarks), name:v.name, url:url, category:v.category||'', audience:'Vendors', notes:'', sourceVendorId:vendorId});
+  }
 }
 function delBizVendor(id){
   var v = db.bizVendors.find(function(x){return x.id===id;});
   if(!v || !confirm('Delete vendor '+v.name+'?')) return;
   db.bizVendors = db.bizVendors.filter(function(x){return x.id!==id;});
+  db.bookmarks = db.bookmarks.filter(function(b){return b.sourceVendorId!==id;});
   saveDB(); toast('Vendor deleted'); render();
 }
 

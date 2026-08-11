@@ -127,6 +127,8 @@ A separate page for referral and promo income, right next to Credit Card Consult
 
 The Suppliers page (labeled "Suppliers" in the nav, called `vendors` internally) is your directory of airlines, hotels, cruise lines, car rental companies, and referral partners. Each supplier card shows how many trips and clients are linked to it and how much revenue has flowed through it, computed automatically from your trip records — you don't update these numbers by hand.
 
+If you've filled in a **Website** on a Supplier, it now shows on the card as a clickable link that opens in a new tab.
+
 **Automatic supplier linking**: when a client's trip request names an airline, hotel brand, cruise line, car rental company, theme park, or tour vendor that matches an existing Supplier record by name, the client gets linked onto that supplier automatically, and that supplier becomes the trip's supplier if nothing else already claimed that slot. This only works for an **exact name match** — if a supplier is named "Delta Air Lines" in your list but a request says just "Delta," it won't connect automatically. Keep supplier names matching the option text on the intake form (e.g. "Delta," "Marriott," "Royal Caribbean") for this to work reliably.
 
 **Revenue imports create a missing Supplier for you.** When you import a revenue report (either the "Clean & Import Revenue File"/"Import Revenue CSV" buttons or the automatic Outlook sync) and a row names a supplier that isn't in your Suppliers list yet, the CRM adds it automatically — before creating the client and/or trip for that row — instead of leaving the trip with no supplier. If the exact same supplier name shows up on more than one row in the same import, only one Supplier record gets created and every row links to it. If you'd already imported a trip before its supplier existed, re-running that same import will retroactively link the supplier onto the existing trip rather than creating a duplicate.
@@ -140,6 +142,8 @@ The Suppliers page (labeled "Suppliers" in the nav, called `vendors` internally)
 A separate directory from Suppliers, for the non-travel businesses you deal with — a printer, a web host, an accountant, whoever isn't actually a travel booking partner. Each Vendor has a Name, a Category (Printing, Web/Hosting, Accounting, Legal, Marketing, Insurance, Office/Supplies, Software, Other), a Website, and Notes — no trip or revenue tracking, since these aren't bookings.
 
 **Contacts work exactly like Supplier Contacts** — open a Vendor and scroll to its own **Contacts** section: **+ Add Contact** opens that person's own record with a filterable Notes Log and a Tasks list with **+ Add Task**, same as everywhere else. Delete a contact with the trash icon on its row, no need to open it first.
+
+**Set a Website on a Vendor and it shows up in Bookmarks automatically** — no need to add it twice. It lands in the Bookmarks page's **Vendors** section, filed under the same category you picked for the vendor. Update the website (or the vendor's name/category) and the bookmark updates to match; clear the website out and the bookmark disappears.
 
 ---
 
