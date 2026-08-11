@@ -1173,14 +1173,19 @@ function displayStatus(t){
   return st;
 }
 // A "trip" record created from non-travel revenue (credit card consulting
-// fees, non-cash bonuses, referral fees) — identified by a case-insensitive
+// fees, non-cash bonuses, referral income) — identified by a case-insensitive
 // substring match against the Item/Class text the revenue importer stores
-// in trip.product. These aren't real bookings, so they're excluded from
-// the Trips page and shown on their own Credit Card Consulting page
-// instead (renderCreditCardConsulting()).
+// in trip.product. "referral" alone (not "referral fee") to also catch
+// "Referral Commission"/"Referral Bonus"/whatever else QuickBooks' actual
+// Item wording turns out to be — this only checks trip.product (a revenue-
+// import category name), never trip.notes or any client-referral field, so
+// it can't accidentally catch an unrelated "client was referred by..." note.
+// These aren't real bookings, so they're excluded from the Trips page and
+// shown on their own Credit Card Consulting page instead
+// (renderCreditCardConsulting()).
 function isNonTravelIncomeTrip(t){
   var p = (t.product||'').toLowerCase();
-  return p.indexOf('credit card consulting')!==-1 || p.indexOf('non-cash bonus')!==-1 || p.indexOf('noncash bonus')!==-1 || p.indexOf('referral fee')!==-1;
+  return p.indexOf('credit card consulting')!==-1 || p.indexOf('non-cash bonus')!==-1 || p.indexOf('noncash bonus')!==-1 || p.indexOf('referral')!==-1;
 }
 function tsNow(){
   const n=new Date();

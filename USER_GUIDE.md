@@ -88,7 +88,7 @@ Once linked, the Trips page shows those legs grouped together under one summary 
 
 **Set a Trip Name on any one leg and it copies to every other leg in the group automatically** — you only need to type it once. Renaming it later on any leg updates the whole group the same way; clearing it back to blank on one leg doesn't erase the name already showing on the others.
 
-**Credit card consulting fees, non-cash bonuses, and referral fees never show up here** — they're automatically kept off the Trips page and shown on their own **Credit Card Consulting** page instead (see below), based on what's typed in the record's **Product** field.
+**Credit card consulting fees, non-cash bonuses, and referral income never show up here** — they're automatically kept off the Trips page and shown on their own **Credit Card Consulting** page instead (see below), based on what's typed in the record's **Product** field.
 
 The trip form has two parts:
 
@@ -111,7 +111,7 @@ At the very bottom, a **Summary** section totals everything up live as you fill 
 
 ## Credit Card Consulting
 
-A separate page for the income that isn't really a travel booking — credit card consulting fees, non-cash bonuses, and referral fees. These are still added and edited through the exact same trip form as everything else (**+ Add Record** here opens it), the only thing that matters is what you type in the **Product** field: if it contains "credit card consulting," "non-cash bonus," or "referral fee" (any capitalization), it automatically shows up on this page instead of the Trips page — nothing else to set. Search, and the Records/Total Value stats at the top, work the same as everywhere else. There's no linking or collapsing here since these aren't itineraries with legs to group.
+A separate page for the income that isn't really a travel booking — credit card consulting fees, non-cash bonuses, and referral income. These are still added and edited through the exact same trip form as everything else (**+ Add Record** here opens it), the only thing that matters is what you type in the **Product** field: if it contains "credit card consulting," "non-cash bonus," or "referral" anywhere in it (any capitalization, any surrounding words — "Referral Commission," "Bonus Referral," etc. all count), it automatically shows up on this page instead of the Trips page — nothing else to set. Search, and the Records/Total Value stats at the top, work the same as everywhere else. There's no linking or collapsing here since these aren't itineraries with legs to group.
 
 ---
 
