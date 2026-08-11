@@ -8872,11 +8872,17 @@ function renderDash(){
   // countTripSummaryLines() so this number always matches what the Trips
   // page shows fresh/unfiltered, rather than a raw per-record db.trips.length.
   const dashTrips = db.trips.filter(function(t){ return !isNonTravelIncomeTrip(t) && t.status!=='Cancelled'; });
+  // "Upcoming" counts collapsed summary lines the same way the Trips page's
+  // own Status color-coding groups them (tripGroupsByCategory — a linked
+  // group counts once, keyed off its earliest-departing member's category),
+  // not raw records with a future departDate, so this number always matches
+  // what you'd count scrolling the Trips page's yellow-highlighted rows.
+  const upcomingGroups = tripGroupsByCategory(dashTrips, 'upcoming');
   const s={
     clients:db.clients.length,trips:countTripSummaryLines(dashTrips),
     value:db.trips.reduce(function(a,t){return a+(t.totalValue||0);},0),
     pts:db.trips.reduce(function(a,t){return a+tripBookedPoints(t);},0),
-    upcoming:db.trips.filter(function(t){return (t.departDate||'')>=today();}).length,
+    upcoming:upcomingGroups.length,
     tripsRevenue:db.trips.filter(function(t){return !isNonTravelIncomeTrip(t);}).reduce(function(a,t){return a+(t.totalValue||0);},0),
     ccRevenue:db.trips.filter(isCreditCardConsultingTrip).reduce(function(a,t){return a+(t.totalValue||0);},0),
     referralRevenue:db.trips.filter(isReferralIncomeTrip).reduce(function(a,t){return a+(t.totalValue||0);},0)
@@ -9017,11 +9023,7 @@ function renderDash(){
   if(statDashTrips) statDashTrips.addEventListener('click', function(){ openStatDrilldownModal('All Trips', tripHeaders, dashTrips.map(tripRow)); });
   var statDashUpcoming = $('stat-dash-upcoming');
   if(statDashUpcoming) statDashUpcoming.addEventListener('click', function(){
-    var upcomingTrips = db.trips.filter(function(t){
-      if((t.departDate||'')<today()) return false;
-      var st=displayStatus(t);
-      return st==='Completed'||st==='Upcoming';
-    });
+    var upcomingTrips = [].concat.apply([], upcomingGroups);
     openStatDrilldownModal('Upcoming Trips', tripHeaders, upcomingTrips.map(tripRow));
   });
   var statDashValue = $('stat-dash-value');
@@ -9532,6 +9534,30 @@ function countTripSummaryLines(list){
     if(!seenKeys[key]){ seenKeys[key] = true; count++; }
   });
   return count;
+}
+// Every summary-line group within `list` whose representative (earliest-
+// departing member, same as tripSummaryLineHtml's own sorted[0] and the
+// Trips page's group-aware Status sort) falls into `targetCategory` — the
+// grouped-not-raw-record equivalent of filtering by tripLifecycleCategory().
+// Returns one array of member trips per matching group, so callers can
+// either count groups (matches the Trips page's collapsed-line count
+// exactly) or flatten for a per-record drill-down list.
+function tripGroupsByCategory(list, targetCategory){
+  var groupOf = tripLinkGroups();
+  var listIds = {};
+  list.forEach(function(t){ listIds[t.id] = true; });
+  var seenKeys = {};
+  var matched = [];
+  list.forEach(function(t){
+    var group = groupOf[t.id] || [t];
+    var membersInList = group.filter(function(m){ return listIds[m.id]; });
+    var key = tripGroupKey(membersInList);
+    if(seenKeys[key]) return;
+    seenKeys[key] = true;
+    var earliest = membersInList.slice().sort(function(a,b){ return (a.departDate||'').localeCompare(b.departDate||''); })[0];
+    if(tripLifecycleCategory(earliest)===targetCategory) matched.push(membersInList);
+  });
+  return matched;
 }
 
 function renderTrips(){
