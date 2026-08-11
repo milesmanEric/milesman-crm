@@ -254,6 +254,7 @@ tr:last-child td{border-bottom:none}
       <button class="nb" id="nb-calendar">&#128197; Calendar</button>
       <button class="nb" id="nb-email">&#9993;&#65039; Email</button>
       <button class="nb" id="nb-marketing">&#128227; Marketing</button>
+      <button class="nb" id="nb-analytics">&#128200; Analytics</button>
       <button class="nb" id="nb-bookmarks">&#128278; Bookmarks</button>
     </nav>
     <div class="sb-footer">
@@ -750,7 +751,7 @@ const BOOKMARK_CATEGORIES = ['Airline','Hotel','Cruise Line','Car Rental','Tour/
 // Separate from category (the business type — Airline/Hotel/etc.): which
 // audience the link is for. A bookmark missing this field is treated as
 // Consumer (see renderBookmarks) so older saved bookmarks default sensibly.
-const BOOKMARK_AUDIENCES = ['Consumer','Travel Agent'];
+const BOOKMARK_AUDIENCES = ['Consumer','Travel Agent','Vendors'];
 // Starter pack of well-known consumer booking sites + travel-advisor/agent
 // portal logins, seeded on demand via "+ Load Starter Bookmarks" rather than
 // baked into every db by default. URLs were verified via live web research,
@@ -5852,7 +5853,7 @@ function go(v,cid){
   view=v;
   selCid=(v==='trips'&&cid)?cid:null;
   fSearch='';fStatus=STATUSES.filter(function(s){return s!=='Cancelled';});
-  ['dashboard','clients','trips','reports','calendar','email','vendors','bizvendors','planner','bookmarks','ccconsulting','referrals','marketing'].forEach(function(x){var el=$('nb-'+x);if(el)el.classList.toggle('active',x===v);});
+  ['dashboard','clients','trips','reports','calendar','email','vendors','bizvendors','planner','bookmarks','ccconsulting','referrals','marketing','analytics'].forEach(function(x){var el=$('nb-'+x);if(el)el.classList.toggle('active',x===v);});
   render();
 }
 
@@ -5873,6 +5874,7 @@ function render(){
   else if(view==='planner') renderPlanner();
   else if(view==='bookmarks') renderBookmarks();
   else if(view==='marketing') renderMarketing();
+  else if(view==='analytics') renderAnalytics();
   else if(view==='ccconsulting') renderCreditCardConsulting();
   else if(view==='referrals') renderReferrals();
 }
@@ -11677,7 +11679,12 @@ function bookmarkSectionHtml(audience, bookmarks){
     var cat = b.category || 'Other';
     (byCat[cat] = byCat[cat] || []).push(b);
   });
-  var cats = BOOKMARK_CATEGORIES.filter(function(c){ return byCat[c]; });
+  // Vendors bookmarks (a printer's ordering portal, a web host's login,
+  // etc.) use BIZ_VENDOR_CATS for category ordering instead of the
+  // travel-industry BOOKMARK_CATEGORIES (Airline/Hotel/etc.), which
+  // wouldn't mean anything for a non-travel business vendor.
+  var categoryOrder = audience==='Vendors' ? BIZ_VENDOR_CATS : BOOKMARK_CATEGORIES;
+  var cats = categoryOrder.filter(function(c){ return byCat[c]; });
   Object.keys(byCat).forEach(function(c){ if(cats.indexOf(c)===-1) cats.push(c); });
   var collapsedCats = window._bookmarkCategoriesCollapsed || {};
   return '<div style="margin-bottom:28px">'+
@@ -11703,6 +11710,13 @@ function renderMarketing(){
     '<div class="page-hdr"><div class="page-title">Marketing</div></div>'+
     '<div class="empty">Coming soon.</div>';
 }
+// Also a placeholder — functionality TBD, same reasoning as renderMarketing
+// above (reserve the nav slot now, build the real page later).
+function renderAnalytics(){
+  $('main').innerHTML =
+    '<div class="page-hdr"><div class="page-title">Analytics</div></div>'+
+    '<div class="empty">Coming soon.</div>';
+}
 
 function renderBookmarks(){
   var bookmarks = [...db.bookmarks].sort(function(a,b){return (a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase());});
@@ -11712,7 +11726,7 @@ function renderBookmarks(){
       '<button class="add-btn" id="btn-add-bookmark">+ Add Bookmark</button>'+
     '</div></div>'+
     (bookmarks.length ?
-      bookmarkSectionHtml('Travel Agent', bookmarks) + bookmarkSectionHtml('Consumer', bookmarks)
+      bookmarkSectionHtml('Travel Agent', bookmarks) + bookmarkSectionHtml('Consumer', bookmarks) + bookmarkSectionHtml('Vendors', bookmarks)
       : '<div class="empty">No bookmarks yet — save links to airline sites, visa/documentation portals, or other travel tools you use often</div>');
 
   $('btn-add-bookmark').addEventListener('click', function(){openBookmarkForm();});
@@ -11749,7 +11763,7 @@ function openBookmarkForm(id){
     '<div class="fg">'+
       fld('Name', inp('bm-name','text',d.name,'e.g. United Airlines'), true)+
       fld('URL', inp('bm-url','text',d.url,'e.g. www.united.com'), true)+
-      fld('Category', '<select id="bm-category"><option value="">-- Select --</option>'+selOpts(BOOKMARK_CATEGORIES,d.category)+'</select>')+
+      fld('Category', '<select id="bm-category">'+bookmarkCategoryOptionsHtml(d.audience||'Consumer', d.category)+'</select>')+
       fld('Audience', '<select id="bm-audience">'+selOpts(BOOKMARK_AUDIENCES,d.audience||'Consumer')+'</select>')+
       fld('Notes', '<textarea id="bm-notes">'+(d.notes||'')+'</textarea>', true)+
     '</div>'+
@@ -11761,6 +11775,17 @@ function openBookmarkForm(id){
   $('modal-close').addEventListener('click', closeModal);
   $('modal-cancel').addEventListener('click', closeModal);
   $('modal-save-bookmark').addEventListener('click', function(){saveBookmark(this.dataset.id);});
+  // Vendors bookmarks use BIZ_VENDOR_CATS (Printing/Web-Hosting/Accounting/
+  // etc.) instead of the travel-industry BOOKMARK_CATEGORIES — switching
+  // Audience swaps the Category options to match, same as bookmarkSectionHtml
+  // groups them on the list page.
+  $('bm-audience').addEventListener('change', function(){
+    document.getElementById('bm-category').innerHTML = bookmarkCategoryOptionsHtml(this.value, '');
+  });
+}
+function bookmarkCategoryOptionsHtml(audience, selected){
+  var opts = audience==='Vendors' ? BIZ_VENDOR_CATS : BOOKMARK_CATEGORIES;
+  return '<option value="">-- Select --</option>'+selOpts(opts, selected);
 }
 function saveBookmark(id){
   var name = gv('bm-name'), url = gv('bm-url');
@@ -12227,6 +12252,7 @@ function bindClick(id, handler){
   bindClick('nb-planner', function(){go('planner');closeMobileNav();});
   bindClick('nb-bookmarks', function(){go('bookmarks');closeMobileNav();});
   bindClick('nb-marketing', function(){go('marketing');closeMobileNav();});
+  bindClick('nb-analytics', function(){go('analytics');closeMobileNav();});
   bindClick('nb-ccconsulting', function(){go('ccconsulting');closeMobileNav();});
   bindClick('nb-referrals', function(){go('referrals');closeMobileNav();});
   bindClick('outlook-btn', syncOutlook);
