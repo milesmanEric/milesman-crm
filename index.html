@@ -8499,7 +8499,7 @@ function tripSummaryLineHtml(members, collapsed){
   var tripNames = sorted.map(function(t){return (t.booked && t.booked.tripName) || '';}).filter(Boolean);
   var uniqTripNames = tripNames.filter(function(n,i){return tripNames.indexOf(n)===i;});
   var tripNameDisplay = isGroup ? uniqTripNames.join(' / ') : '';
-  var label = [tripNameDisplay, uniqClientNames.join(', '), destinations].filter(Boolean).join(' — ');
+  var label = [uniqClientNames.join(', '), tripNameDisplay, destinations].filter(Boolean).join(' — ');
   var colors = TRIP_LIFECYCLE_COLORS[tripLifecycleCategory(sorted[0])];
   return '<tr class="trip-group-hdr" data-group-key="'+tripGroupKey(sorted)+'" style="background:'+colors.bg+';cursor:pointer">'+
     '<td colspan="12" style="padding:8px 12px;font-size:12px;color:'+colors.text+';font-weight:600">'+
