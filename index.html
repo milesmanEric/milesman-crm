@@ -739,7 +739,7 @@ function quoteTableStructure(cfg){
   });
   return structure;
 }
-const STATUSES = ['Planning','Confirmed','Upcoming','Completed','Cancelled'];
+const STATUSES = ['Planning','Confirmed','Upcoming','In Progress','Completed','Cancelled'];
 const TYPES    = ['Leisure','Business','Honeymoon','Family','Adventure','Cruise'];
 const CLASSES  = ['Basic Economy','Economy','Premium Economy','Business','First'];
 const NOTE_TYPES = ['Email Sent','Email Received','Initial Call','Follow-up','Post-Trip Follow-up','General','Trip Import','Text Message Sent','Text Message Received','Lead','Mailchimp Email Sent','Facebook Message'];
@@ -9370,14 +9370,15 @@ function tripGroupKey(members){
 }
 // Categorizes a trip for the Trips page's summary-line color-coding (and
 // the default "upcoming first" sort's rank) — status (Cancelled/Planning/
-// Upcoming) takes precedence over dates, since those are explicit choices
-// the user made; everything else (Confirmed/Completed/blank) is derived
-// from today vs. depart/return date.
+// Upcoming/In Progress) takes precedence over dates, since those are
+// explicit choices the user made; everything else (Confirmed/Completed/
+// blank) is derived from today vs. depart/return date.
 function tripLifecycleCategory(t){
   var st = t.status||'Planning';
   if(st==='Cancelled') return 'cancelled';
   if(st==='Planning') return 'planning';
   if(st==='Upcoming') return 'upcoming';
+  if(st==='In Progress') return 'inTrip';
   var t0 = today();
   if(t.departDate && t.departDate<=t0 && (!t.returnDate || t.returnDate>=t0)) return 'inTrip';
   if(t.departDate && t.departDate>t0) return 'upcoming';
