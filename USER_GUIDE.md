@@ -32,7 +32,7 @@ Worth knowing: this password screen keeps a casual visitor who stumbles on the C
 
 ## The stat numbers at the top of every page are clickable
 
-Every number in the row of boxes at the top of Dashboard, Clients, Trips, Suppliers, and Planner can be clicked. It opens a list of exactly which records add up to that number — click any row in that list to jump straight to that client, trip, supplier, or task. This is the fastest way to answer "which trips make up this revenue number" or "who are these upcoming clients."
+Every number in the row of boxes at the top of Dashboard, Clients, Trips, Suppliers, Vendors, and Planner can be clicked. It opens a list of exactly which records add up to that number — click any row in that list to jump straight to that client, trip, supplier, vendor, or task. This is the fastest way to answer "which trips make up this revenue number" or "who are these upcoming clients."
 
 On the Dashboard specifically, the **Total Revenue** and **Upcoming** tiles' lists only show trips that are actually Completed or Upcoming — a trip still in Planning, just Confirmed, or Cancelled won't clutter either list even if it has a future date or a dollar value on it. **Points deployed** totals only the actual miles/points redemptions recorded in trips' Booked Trip Details (the per-program amounts under every section's Points Used block — Airline, Cruise, Car Rental, Tours, Theme Park, Train, Bus, and each individual Hotel entry's own Points Used block) — not the simple Points Used field on the basic trip form.
 
@@ -135,13 +135,23 @@ The Suppliers page (labeled "Suppliers" in the nav, called `vendors` internally)
 
 ---
 
+## Vendors
+
+A separate directory from Suppliers, for the non-travel businesses you deal with — a printer, a web host, an accountant, whoever isn't actually a travel booking partner. Each Vendor has a Name, a Category (Printing, Web/Hosting, Accounting, Legal, Marketing, Insurance, Office/Supplies, Software, Other), a Website, and Notes — no trip or revenue tracking, since these aren't bookings.
+
+**Contacts work exactly like Supplier Contacts** — open a Vendor and scroll to its own **Contacts** section: **+ Add Contact** opens that person's own record with a filterable Notes Log and a Tasks list with **+ Add Task**, same as everywhere else. Delete a contact with the trash icon on its row, no need to open it first.
+
+---
+
 ## Planner
 
 Your follow-up task list, with the linked client's phone and email shown right in the table. Most tasks get created automatically — one per new trip request and one per new contact-form lead — but you can add your own anytime with **+ Add Task**.
 
 **A task can link to more than one client.** The task form's **Linked Client** dropdown is the primary contact; check any others under **Additional Clients** below it. The Client column then lists everyone linked, each one clickable to jump to their record, and the task shows up on every one of those clients' own task lists — not just the primary's. The Email field auto-fills with every linked client's email (comma-separated, so one click on the mail icon reaches all of them at once) — it re-fills whenever you change who's linked, and you can still type over it by hand if you need something different. Marking the task done logs a completion note on every linked client's record, not just the primary's.
 
-**A task can also link to a Supplier Contact** instead of (or alongside) a client — a separate **Supplier Contact** dropdown on the task form, searchable by name, lists every contact across every Supplier. Picking one automatically fills in **Linked Supplier** with that contact's own supplier and fills the Email field with their email. When a task has a Supplier Contact linked, the Planner table's Client/Phone/Email columns show *that contact's* name, phone, and email instead of any client's — so a task about, say, a cruise line's group desk contact shows their info front and center, not a client's that happens to also be tagged on it.
+**A task can also link to a Supplier Contact or a Vendor Contact** instead of (or alongside) a client — two separate dropdowns on the task form, each searchable by name, listing every contact across every Supplier or every Vendor respectively. Picking a Supplier Contact also automatically fills in **Linked Supplier** with that contact's own supplier; picking either one fills the Email field with their email.
+
+**The Planner table now has a color-coded Type column** — green **Supplier**, amber **Vendor**, blue **Client** — showing which kind of contact a task is really about, and the Client/Phone/Email columns follow the same priority: a linked Supplier Contact wins first, then a Vendor Contact, then a linked client. So a task about, say, a cruise line's group desk contact or your printer's sales rep shows *their* name/phone/email front and center, not a client's that happens to also be tagged on it.
 
 Checking a task's box marks it done immediately, but the row stays put — checked, struck through — instead of vanishing right away, so you can still see what you just did and hit the trash icon on it if it was a mistake. It'll drop off the default (Open) view the next time you navigate away and back, or switch the filter to "Done" and back. The trash icon deletes a task outright, any time.
 
