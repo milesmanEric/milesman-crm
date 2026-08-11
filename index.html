@@ -9544,6 +9544,25 @@ function renderTrips(){
     const ms=!q||(t.clientName||'').toLowerCase().includes(q)||(t.destination||'').toLowerCase().includes(q)||(t.bookingRef||'').toLowerCase().includes(q);
     return ms&&fStatus.indexOf(t.status)!==-1&&(!selCid||t.clientId===selCid);
   });
+  // Group-aware category lookup for the Status sort below — a linked-trip
+  // group's summary line shows its color/label from its earliest-departing
+  // member only (tripSummaryLineHtml's own sorted[0]), not from whichever
+  // member the plain per-record comparator happens to be comparing. Without
+  // this, a group's row could land somewhere in the list based on one
+  // member's status while actually rendering in a completely different
+  // member's color — exactly the "sort looks wrong" symptom this fixes.
+  // Cached per member since every trip in the same group resolves to the
+  // same representative.
+  var tripGroupOf = tripLinkGroups();
+  var repCategoryCache = {};
+  function repCategory(t){
+    if(repCategoryCache[t.id]!==undefined) return repCategoryCache[t.id];
+    var group = tripGroupOf[t.id] || [t];
+    var earliest = group.slice().sort(function(a,b){ return (a.departDate||'').localeCompare(b.departDate||''); })[0];
+    var cat = tripLifecycleCategory(earliest);
+    group.forEach(function(m){ repCategoryCache[m.id] = cat; });
+    return cat;
+  }
   // Sort
   list = list.slice().sort(function(a,b){
     // Default view — soonest-upcoming (or currently in-progress) trip date
@@ -9567,7 +9586,7 @@ function renderTrips(){
     // secondary sort.
     if(tripSortCol==='status'){
       var LIFECYCLE_SORT_RANK = {inTrip:0, upcoming:1, planning:2, past:3, cancelled:4};
-      var ar=LIFECYCLE_SORT_RANK[tripLifecycleCategory(a)], br=LIFECYCLE_SORT_RANK[tripLifecycleCategory(b)];
+      var ar=LIFECYCLE_SORT_RANK[repCategory(a)], br=LIFECYCLE_SORT_RANK[repCategory(b)];
       if(ar!==br) return tripSortDir==='asc' ? ar-br : br-ar;
       return (a.departDate||'').localeCompare(b.departDate||'');
     }
