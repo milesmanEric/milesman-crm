@@ -10422,6 +10422,7 @@ function openTripForm(id){
   }
   bindTripBalanceListeners();
   bindBookedTripDetailsListeners();
+  $('modal').scrollTop = 0;
 }
 
 function closeModal(){$('overlay').classList.remove('open');$('modal').classList.remove('modal-wide');}
