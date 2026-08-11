@@ -88,6 +88,8 @@ Once linked, the Trips page shows those legs grouped together under one summary 
 
 **Set a Trip Name on any one leg and it copies to every other leg in the group automatically** — you only need to type it once. Renaming it later on any leg updates the whole group the same way; clearing it back to blank on one leg doesn't erase the name already showing on the others.
 
+**Credit card consulting fees, non-cash bonuses, and referral fees never show up here** — they're automatically kept off the Trips page and shown on their own **Credit Card Consulting** page instead (see below), based on what's typed in the record's **Product** field.
+
 The trip form has two parts:
 
 1. **The basics** — origin/destination, dates, status (Planning/Confirmed/Upcoming/Completed/Cancelled), trip type, airline, hotel, cruise line, points used, cash paid, total value, Invoice Number, and a free-text Notes box. This is what shows up in the Trips list and on the Calendar. Picking **Upcoming** always colors the trip yellow on the Trips page regardless of its actual dates — handy if a trip's dates aren't final yet, or just aren't accurate, but you still want it to read as "coming up."
@@ -104,6 +106,12 @@ The trip form has two parts:
 None of this is required — fill in whatever you actually have confirmed. Leave a category blank if it doesn't apply to that trip.
 
 At the very bottom, a **Summary** section totals everything up live as you fill the form in: every points/miles redemption across every category, added up by program, and a **Total Cash Paid** figure (every Price field plus every points redemption's cash cost, all added together). Nothing to click — it just stays current as you type. If the trip has no Supplier linked, the Summary also shows the Invoice Number — once a Supplier is picked, the invoice is assumed to have gone to them instead, so it drops off this client-facing summary.
+
+---
+
+## Credit Card Consulting
+
+A separate page for the income that isn't really a travel booking — credit card consulting fees, non-cash bonuses, and referral fees. These are still added and edited through the exact same trip form as everything else (**+ Add Record** here opens it), the only thing that matters is what you type in the **Product** field: if it contains "credit card consulting," "non-cash bonus," or "referral fee" (any capitalization), it automatically shows up on this page instead of the Trips page — nothing else to set. Search, and the Records/Total Value stats at the top, work the same as everywhere else. There's no linking or collapsing here since these aren't itineraries with legs to group.
 
 ---
 

@@ -250,6 +250,7 @@ tr:last-child td{border-bottom:none}
       <button class="nb" id="nb-calendar">&#128197; Calendar</button>
       <button class="nb" id="nb-email">&#9993;&#65039; Email</button>
       <button class="nb" id="nb-bookmarks">&#128278; Bookmarks</button>
+      <button class="nb" id="nb-ccconsulting">&#128179; Credit Card Consulting</button>
     </nav>
     <div class="sb-footer">
       <button class="sync-btn" id="btn-undo" disabled style="color:#7c3aed;border-color:#c4b5fd;opacity:.4" title="Nothing to undo">&#8630; Undo</button>
@@ -1170,6 +1171,16 @@ function displayStatus(t){
   var st = t.status||'Planning';
   if(st==='Completed' && t.departDate && t.departDate>=today()) st='Upcoming';
   return st;
+}
+// A "trip" record created from non-travel revenue (credit card consulting
+// fees, non-cash bonuses, referral fees) — identified by a case-insensitive
+// substring match against the Item/Class text the revenue importer stores
+// in trip.product. These aren't real bookings, so they're excluded from
+// the Trips page and shown on their own Credit Card Consulting page
+// instead (renderCreditCardConsulting()).
+function isNonTravelIncomeTrip(t){
+  var p = (t.product||'').toLowerCase();
+  return p.indexOf('credit card consulting')!==-1 || p.indexOf('non-cash bonus')!==-1 || p.indexOf('noncash bonus')!==-1 || p.indexOf('referral fee')!==-1;
 }
 function tsNow(){
   const n=new Date();
@@ -5712,7 +5723,7 @@ function go(v,cid){
   view=v;
   selCid=(v==='trips'&&cid)?cid:null;
   fSearch='';fStatus=STATUSES.filter(function(s){return s!=='Cancelled';});
-  ['dashboard','clients','trips','reports','calendar','email','vendors','planner','bookmarks'].forEach(function(x){var el=$('nb-'+x);if(el)el.classList.toggle('active',x===v);});
+  ['dashboard','clients','trips','reports','calendar','email','vendors','planner','bookmarks','ccconsulting'].forEach(function(x){var el=$('nb-'+x);if(el)el.classList.toggle('active',x===v);});
   render();
 }
 
@@ -5731,6 +5742,7 @@ function render(){
   else if(view==='vendors') renderVendors();
   else if(view==='planner') renderPlanner();
   else if(view==='bookmarks') renderBookmarks();
+  else if(view==='ccconsulting') renderCreditCardConsulting();
 }
 
 function renderReports(){
@@ -8513,6 +8525,7 @@ function renderTrips(){
   const selC=db.clients.find(function(c){return c.id===selCid;});
   const q=fSearch.toLowerCase();
   let list=db.trips.filter(function(t){
+    if(isNonTravelIncomeTrip(t)) return false;
     const ms=!q||(t.clientName||'').toLowerCase().includes(q)||(t.destination||'').toLowerCase().includes(q)||(t.bookingRef||'').toLowerCase().includes(q);
     return ms&&fStatus.indexOf(t.status)!==-1&&(!selCid||t.clientId===selCid);
   });
@@ -10537,6 +10550,68 @@ function delTrip(id){
   saveDB();toast('Trip deleted');render();
 }
 
+// ── Credit Card Consulting ───────────────────────────────────────────────
+// Non-travel income records (credit card consulting fees, non-cash bonuses,
+// referral fees — see isNonTravelIncomeTrip()) are still stored as plain
+// trip records (they come in through the same revenue-import pipeline as
+// real bookings, §4 of DOCUMENTATION.md) and still edited through the same
+// Add/Edit Trip modal — this page is purely a different filtered view onto
+// db.trips, not a separate entity type, so no new CRUD logic is needed.
+function renderCreditCardConsulting(){
+  var q = (window._ccSearch||'').toLowerCase();
+  var list = db.trips.filter(function(t){
+    if(!isNonTravelIncomeTrip(t)) return false;
+    return !q || (t.clientName||'').toLowerCase().indexOf(q)!==-1 || (t.product||'').toLowerCase().indexOf(q)!==-1 || (t.notes||'').toLowerCase().indexOf(q)!==-1;
+  }).sort(function(a,b){ return (b.departDate||b.invoiceDate||'').localeCompare(a.departDate||a.invoiceDate||''); });
+  var totalValue = list.reduce(function(a,t){return a+(t.totalValue||0);},0);
+  $('main').innerHTML =
+    '<div class="page-hdr"><div class="page-title">Credit Card Consulting</div><button class="add-btn" id="btn-add-cc">+ Add Record</button></div>'+
+    '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:16px">'+
+      '<div class="stat"><div class="stat-lbl">Records</div><div class="stat-val">'+list.length+'</div></div>'+
+      '<div class="stat"><div class="stat-lbl">Total Value</div><div class="stat-val">$'+money(totalValue)+'</div></div>'+
+    '</div>'+
+    '<div class="search-row"><input id="cc-search" placeholder="Search..." value="'+escHtml(window._ccSearch||'')+'"/></div>'+
+    '<div class="tbl-wrap"><table><thead><tr>'+
+      '<th>Client</th><th>Item</th><th>Date</th><th>Points</th><th>Value</th><th>Notes</th><th></th>'+
+    '</tr></thead><tbody>'+
+    (list.length ? list.map(function(t){
+      return '<tr class="cc-row" data-id="'+t.id+'" style="cursor:pointer">'+
+        '<td><span class="open-client" data-id="'+t.clientId+'" style="font-weight:600;color:#2563eb;cursor:pointer;text-decoration:underline">'+escHtml(t.clientName||'')+'</span></td>'+
+        '<td style="font-size:12px;color:#555">'+escHtml(t.product||'—')+'</td>'+
+        '<td>'+(t.departDate?fmtDate(t.departDate):(t.invoiceDate?fmtDate(t.invoiceDate):'—'))+'</td>'+
+        '<td>'+(t.pointsUsed?fmt(t.pointsUsed):'—')+'</td>'+
+        '<td>$'+money(t.totalValue)+'</td>'+
+        '<td style="font-size:12px;color:#888;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escHtml(t.notes||'')+'</td>'+
+        '<td style="white-space:nowrap"><button class="icon-btn edit-cc" data-id="'+t.id+'" style="color:#2563eb">&#9999;&#65039;</button><button class="icon-btn del-cc" data-id="'+t.id+'" style="color:#dc2626">&#128465;&#65039;</button></td>'+
+      '</tr>';
+    }).join('') : '<tr><td colspan="7"><div class="empty">No credit card consulting, non-cash bonus, or referral fee records found</div></td></tr>')+
+    '</tbody></table></div>';
+
+  $('btn-add-cc').addEventListener('click', function(){ openTripForm(); });
+  $('cc-search').addEventListener('input', function(){
+    var pos=this.selectionStart;
+    window._ccSearch=this.value;
+    renderCreditCardConsulting();
+    var el=$('cc-search');
+    if(el){el.focus();try{el.setSelectionRange(pos,pos);}catch(e){}}
+  });
+  document.querySelectorAll('.open-client').forEach(function(span){
+    span.addEventListener('click', function(e){ e.stopPropagation(); openClientForm(span.dataset.id); });
+  });
+  document.querySelectorAll('.edit-cc').forEach(function(btn){
+    btn.addEventListener('click', function(e){ e.stopPropagation(); openTripForm(btn.dataset.id); });
+  });
+  document.querySelectorAll('.del-cc').forEach(function(btn){
+    btn.addEventListener('click', function(e){ e.stopPropagation(); delTrip(btn.dataset.id); });
+  });
+  document.querySelectorAll('.cc-row').forEach(function(row){
+    row.addEventListener('click', function(e){
+      if(e.target.closest('button, .open-client')) return;
+      openTripForm(row.dataset.id);
+    });
+  });
+}
+
 // ── Planner ───────────────────────────────────────────────────────────────
 function plannerSortArrow(col){
   var c = window._plannerSortCol || 'dueDate';
@@ -11258,6 +11333,7 @@ function bindClick(id, handler){
   bindClick('nb-vendors', function(){go('vendors');closeMobileNav();});
   bindClick('nb-planner', function(){go('planner');closeMobileNav();});
   bindClick('nb-bookmarks', function(){go('bookmarks');closeMobileNav();});
+  bindClick('nb-ccconsulting', function(){go('ccconsulting');closeMobileNav();});
   bindClick('outlook-btn', syncOutlook);
   bindClick('drive-btn', driveBackup);
   bindClick('drive-restore-btn', driveRestore);
