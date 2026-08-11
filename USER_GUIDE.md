@@ -36,7 +36,7 @@ Every number in the row of boxes at the top of Dashboard, Clients, Trips, Suppli
 
 On the Dashboard specifically, the **Total Revenue** and **Upcoming** tiles' lists only show trips that are actually Completed or Upcoming — a trip still in Planning, just Confirmed, or Cancelled won't clutter either list even if it has a future date or a dollar value on it. **Points deployed** totals only the actual miles/points redemptions recorded in trips' Booked Trip Details (the per-program amounts under every section's Points Used block — Airline, Cruise, Car Rental, Tours, Theme Park, Train, Bus, and each individual Hotel entry's own Points Used block) — not the simple Points Used field on the basic trip form.
 
-The Dashboard also has a **Revenue by Section** card that splits the headline Total Revenue figure into Trips, Credit Card Consulting, and Referrals — click any of the three to jump to that page.
+The Dashboard also has a **Revenue by Section** card that splits the headline Total Revenue figure into Trips, Credit Card Consulting, and Referrals and Promo — click any of the three to jump to that page.
 
 The Dashboard also has a **Planner tasks — today & overdue** card: your 10 most pressing open tasks (whatever's due today or already past due, most-overdue first), each showing its linked client(s) and due date. Click a task to open it, click a client name to open their record instead (a task linked to more than one client lists each of them separately), or hit **View all** to jump to the full Planner list filtered the same way.
 
@@ -90,7 +90,7 @@ Once linked, the Trips page shows those legs grouped together under one summary 
 
 **Set a Trip Name on any one leg and it copies to every other leg in the group automatically** — you only need to type it once. Renaming it later on any leg updates the whole group the same way; clearing it back to blank on one leg doesn't erase the name already showing on the others.
 
-**Credit card consulting fees, non-cash bonuses, and referral income never show up here** — they're automatically kept off the Trips page and shown on their own **Credit Card Consulting** and **Referrals** pages instead (see below), based on what's typed in the record's **Product** field.
+**Credit card consulting fees, non-cash bonuses, and referral/promo income never show up here** — they're automatically kept off the Trips page and shown on their own **Credit Card Consulting** and **Referrals and Promo** pages instead (see below), based on what's typed in the record's **Product** field.
 
 The trip form has two parts:
 
@@ -117,7 +117,7 @@ A separate page for income that isn't really a travel booking — credit card co
 
 ---
 
-## Referrals
+## Referrals and Promo
 
 A separate page for referral and promo income, right next to Credit Card Consulting in the nav. Works exactly the same way — added/edited through the same trip form, shows up here automatically whenever the **Product** field contains "referral" or "promo" anywhere in it (any capitalization, any surrounding words — "Referral Commission," "Bonus Referral," "Summer Promo," etc. all count) — with its own search box and Records/Total Value stats, independent of Credit Card Consulting's.
 

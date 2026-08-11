@@ -245,7 +245,7 @@ tr:last-child td{border-bottom:none}
       <button class="nb" id="nb-clients">&#128100; Clients <span class="nc" id="nc-clients">0</span></button>
       <button class="nb" id="nb-trips">&#9992;&#65039; Trips <span class="nc" id="nc-trips">0</span></button>
       <button class="nb" id="nb-ccconsulting">&#128179; Credit Card Consulting</button>
-      <button class="nb" id="nb-referrals">&#129309; Referrals</button>
+      <button class="nb" id="nb-referrals">&#129309; Referrals and Promo</button>
       <button class="nb" id="nb-vendors">&#127981; Suppliers <span class="nc" id="nc-vendors">0</span></button>
       <button class="nb" id="nb-planner">&#128203; Planner <span class="nc" id="nc-planner">0</span></button>
       <button class="nb" id="nb-reports">&#128202; Reports</button>
@@ -7979,7 +7979,7 @@ function renderDash(){
       '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">'+
         '<div class="stat dash-section-rev" data-go="trips" style="cursor:pointer"><div class="stat-lbl">Trips</div><div class="stat-val">$'+money(s.tripsRevenue)+'</div></div>'+
         '<div class="stat dash-section-rev" data-go="ccconsulting" style="cursor:pointer"><div class="stat-lbl">Credit Card Consulting</div><div class="stat-val">$'+money(s.ccRevenue)+'</div></div>'+
-        '<div class="stat dash-section-rev" data-go="referrals" style="cursor:pointer"><div class="stat-lbl">Referrals</div><div class="stat-val">$'+money(s.referralRevenue)+'</div></div>'+
+        '<div class="stat dash-section-rev" data-go="referrals" style="cursor:pointer"><div class="stat-lbl">Referrals and Promo</div><div class="stat-val">$'+money(s.referralRevenue)+'</div></div>'+
       '</div>'+
     '</div>'+
     '<div class="two-col">'+
@@ -10656,9 +10656,9 @@ function renderCreditCardConsulting(){
 }
 function renderReferrals(){
   renderNonTravelIncomePage({
-    title: 'Referrals',
+    title: 'Referrals and Promo',
     matchFn: isReferralIncomeTrip,
-    emptyMessage: 'No referral income records found',
+    emptyMessage: 'No referral or promo income records found',
     searchKey: '_referralSearch'
   });
 }
