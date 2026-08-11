@@ -5518,8 +5518,61 @@ async function checkForNewRevenueReportEmails(silent){
   }
 }
 
-setInterval(function(){ checkForNewTripFormEmails(true); checkForNewContactFormEmails(true); checkForNewRevenueReportEmails(true); }, 5*60*1000);
-setTimeout(function(){ checkForNewTripFormEmails(true); checkForNewContactFormEmails(true); checkForNewRevenueReportEmails(true); }, 5000);
+setInterval(function(){ checkForNewTripFormEmails(true); checkForNewContactFormEmails(true); checkForNewRevenueReportEmails(true); checkForUpcomingBirthdays(); }, 5*60*1000);
+setTimeout(function(){ checkForNewTripFormEmails(true); checkForNewContactFormEmails(true); checkForNewRevenueReportEmails(true); checkForUpcomingBirthdays(); }, 5000);
+
+// Unlike the three checkForNew*Emails functions above, this needs no
+// Outlook connection — it only reads db.clients.birthdate, so it runs
+// unconditionally on the same timer. There's no server-side/unattended
+// email-sending anywhere in this app (every "Send" button just opens a
+// mailto: draft for the user to review and click themselves), so
+// "automating" this means auto-preparing a ready-to-send draft rather than
+// actually sending anything unattended: once a client's birthday is
+// exactly 90 days out, this creates one Planner task (title/dueDate/
+// clientId, same shape processContactFormRow already uses for its
+// auto-created tasks) whose description holds the filled 'birthday'
+// TEMPLATES entry, ready to copy into an email. `mm_birthday90_notified`
+// (a client-id+year Set in localStorage) is the dedupe guard — without it
+// this would re-fire every 5 minutes for the entire day daysUntil stays at 90.
+function checkForUpcomingBirthdays(){
+  var notified;
+  try{ notified = JSON.parse(localStorage.getItem('mm_birthday90_notified')||'[]'); }catch(e){ notified = []; }
+  var notifiedSet = new Set(notified);
+  var todayD = new Date(today()+'T00:00:00');
+  var tpl = TEMPLATES.find(function(t){return t.id==='birthday';});
+  var created = 0;
+  db.clients.forEach(function(c){
+    if(!c.birthdate) return;
+    var parts = c.birthdate.split('-');
+    if(parts.length!==3) return;
+    var month = parseInt(parts[1],10)-1, day = parseInt(parts[2],10);
+    if(isNaN(month)||isNaN(day)) return;
+    var thisYearBday = new Date(todayD.getFullYear(), month, day);
+    if(thisYearBday < todayD) thisYearBday = new Date(todayD.getFullYear()+1, month, day);
+    var daysUntil = Math.round((thisYearBday - todayD) / 86400000);
+    if(daysUntil !== 90) return;
+    var key = c.id+'-'+thisYearBday.getFullYear();
+    if(notifiedSet.has(key)) return;
+
+    var bdayStr = thisYearBday.toLocaleDateString('en-US',{month:'long',day:'numeric'});
+    var filledBody = tpl ? fillTemplate(tpl.body, c) : '';
+    db.planner.push({
+      id:newId('PL',db.planner),
+      title:'Birthday trip outreach — '+c.name+' ('+bdayStr+')',
+      dueDate:today(), done:false, clientId:c.id, vendorId:'', tripId:'',
+      completionNoteType:'General',
+      desc:'Client’s birthday is '+bdayStr+' (90 days from today). Suggested email:\n\nSubject: '+(tpl?tpl.subject:'')+'\n\n'+filledBody,
+      createdAt: today()
+    });
+    notifiedSet.add(key);
+    created++;
+  });
+  if(created){
+    localStorage.setItem('mm_birthday90_notified', JSON.stringify(Array.from(notifiedSet)));
+    saveDB(); render();
+    debugLog('Birthday check: created '+created+' reminder task(s)');
+  }
+}
 
 // ── Book a Trip Form PDF import ──────────────────────────────────────────
 // Imports "Book a Trip" Google Form submissions exported as PDFs (the Google
@@ -6650,6 +6703,13 @@ var TEMPLATES = [
     description:'Thank a client after booking and share the referral program',
     subject:'Thank You for Booking with Miles Man!',
     body:"Hi {{firstName}},\n\nThank you so much for booking your upcoming trip with Miles Man! It's clients like you that make this job so rewarding, and I can't wait to help you make the most of your travels.\n\nWhile I have you, I wanted to share a little bonus: the Miles Man referral program! Here's how it works:\n\nRefer a friend, family member, or coworker to Miles Man. When they mention your name and book a trip with Miles Man, you'll receive $100 off your next booking. There's no limit to how many times you can earn this bonus, so feel free to spread the word as often as you'd like!\n\nIf you know anyone who could use some help planning their next getaway, send them my way \u2014 themilesman.com or (908) 419-7700.\n\nThanks again for trusting me with your travel plans.\n\nBest,\nEric"
+  },
+  {
+    id:'birthday',
+    name:'Birthday Trip Planning',
+    description:'Suggest booking a trip to celebrate an upcoming birthday',
+    subject:'Let’s Plan Something Special for Your Birthday!',
+    body:"Hi {{firstName}},\n\nYour birthday is coming up, and what better way to celebrate than with a getaway? Whether it's a relaxing beach escape, a milestone cruise, or a bucket-list adventure, I'd love to help you plan a trip worth celebrating.\n\nLet me know if you'd like to explore some options — I can put together ideas that fit your style and budget, and we can lock in the best use of your points and miles along the way.\n\nHappy almost-birthday!\n\nBest,\nEric"
   },
   {
     id:'referralcredit',

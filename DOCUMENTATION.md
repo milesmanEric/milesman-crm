@@ -204,7 +204,9 @@ Five tabs (`window._rptActiveTab`: `activity` / `invoice` / `certs` / `points` /
 Month-grid view. Trips are painted across every day from `departDate` to `returnDate` (capped at 60 days per trip to avoid runaway rendering on bad data). Cancelled trips are excluded entirely — `renderCalendar()`'s `tripMap` build skips any trip with `status==='Cancelled'` before painting cells, so a cancelled trip shows on neither the month grid nor the day-detail modal (`openDayTripsModal`, which reads from that same `tripMap`).
 
 ### Email
-A lightweight mail-merge tool: pick a client (or, for the referral template, multiple clients — see below), pick one of the canned templates (`TEMPLATES` in index.html — Welcome New Client, General Follow-Up, Trip Confirmation, Thank You & Referral, **Referral Credit Earned**), preview with placeholders substituted, then send.
+A lightweight mail-merge tool: pick a client (or, for the referral template, multiple clients — see below), pick one of the canned templates (`TEMPLATES` in index.html — Welcome New Client, General Follow-Up, Trip Confirmation, Thank You & Referral, **Birthday Trip Planning**, **Referral Credit Earned**), preview with placeholders substituted, then send.
+
+**Birthday Trip Planning** is a plain mail-merge template like the first four (`{{firstName}}` only, no special send path) — what's automated is *surfacing* it, not sending it (this app has no server-side/unattended send capability anywhere; every template here ends in a `mailto:` draft the user still has to click Send on themselves). `checkForUpcomingBirthdays()` runs on the same unconditional 5-minute timer as the `checkForNew*Emails` checks (§4.4/§4.5) — unlike those three it needs no Outlook connection, since it only reads `db.clients[].birthdate` (native `<input type="date">`, so `YYYY-MM-DD`). For each client whose birthday (this year, or next year if this year's has already passed) is exactly 90 days out, it auto-creates one `db.planner` task — `title:'Birthday trip outreach — <name> (<date>)'`, `dueDate:today()`, `clientId` set, `desc` holding the *filled* Birthday Trip Planning subject+body (`fillTemplate()`) ready to paste into an email — the same task-auto-creation shape `processContactFormRow` already uses for new leads (§4.5). `mm_birthday90_notified` (a `clientId+year` set in localStorage) is the dedupe guard, since without one this would re-create the same task every 5 minutes for the entire day `daysUntil` sits at 90 (there's no per-message id to dedupe against here, unlike the email-polling checks).
 
 Most templates use `{{firstName}}`/`{{fullName}}`/`{{email}}` against a single selected client and send as a plain-text `mailto:` body (mailto bodies can't carry HTML/images). **Referral Credit Earned** (`requiresReferral:true` on its `TEMPLATES` entry, no `body` string — see below) is different in every respect:
 
@@ -288,6 +290,9 @@ The website's general contact form (`themilesman.com`, unrelated to the Book a T
 - Creates a follow-up Planner task (`completionNoteType: 'Lead'`).
 
 `message` is deliberately excluded from the generic label-boundary scan (`parseContactFormEmailText()`) and instead runs to the end of the text once its label is found — an inquiry can easily contain the words "email" or "phone" ("please email me back"), which would otherwise be mistaken by the scan for the start of a later field and truncate the message. Deduplication mirrors §4.4: processed message IDs in `mm_contactform_processed_ids` (capped at 500).
+
+### 4.6 Automatic Birthday-Trip Reminders
+`checkForUpcomingBirthdays()` — folded into the same `setInterval`/`setTimeout` calls as §4.4/§4.5, but needs no Outlook connection (pure `db.clients` scan). See the **Birthday Trip Planning** template entry in the Email section above for the full mechanics — `mm_birthday90_notified` dedup, the auto-created Planner task shape, and why "automated" here means auto-drafting rather than auto-sending.
 
 ---
 
