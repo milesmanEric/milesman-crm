@@ -221,6 +221,7 @@ tr:last-child td{border-bottom:none}
 .modal-section-title{grid-column:1/-1;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#2563eb;margin:14px 0 2px;padding-top:14px;border-top:1px solid #f0f0f0}
 .modal-section-title:first-of-type{margin-top:0;padding-top:0;border-top:none}
 .form-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:18px}
+.form-actions-sticky{position:sticky;bottom:-26px;margin:18px -26px -26px;padding:12px 26px;background:#fff;border-top:1px solid #f0f0f0}
 .cancel-btn{padding:9px 20px;border-radius:8px;border:1px solid #d1d5db;background:#fff;color:#555;cursor:pointer;font-family:inherit;font-size:13px}
 .save-btn{padding:9px 20px;border-radius:8px;border:none;background:#2563eb;color:#fff;cursor:pointer;font-family:inherit;font-size:13px;font-weight:600}
 #toast{position:fixed;bottom:20px;right:20px;padding:11px 18px;border-radius:9px;font-size:13px;font-weight:600;z-index:1100;display:none}
@@ -10397,7 +10398,7 @@ function openTripForm(id){
       fld('Notes','<textarea id="tno">'+(d.notes||'')+'</textarea>',true)+
       bookedTripDetailsHtml(d.booked)+
     '</div>'+
-    '<div class="form-actions"><button class="cancel-btn" id="modal-cancel">Cancel</button><button class="save-btn" id="modal-save-trip" data-id="'+(id||'')+'">Save Trip</button></div>';
+    '<div class="form-actions form-actions-sticky"><button class="cancel-btn" id="modal-cancel">Cancel</button><button class="save-btn" id="modal-save-trip" data-id="'+(id||'')+'">Save Trip</button></div>';
   $('modal').classList.add('modal-wide');
   delete $('modal').dataset.balanceTogglesBound;
   $('overlay').classList.add('open');
