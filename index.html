@@ -5520,8 +5520,41 @@ async function checkForNewRevenueReportEmails(silent){
   }
 }
 
-setInterval(function(){ checkForNewTripFormEmails(true); checkForNewContactFormEmails(true); checkForNewRevenueReportEmails(true); checkForUpcomingBirthdays(); }, 5*60*1000);
-setTimeout(function(){ checkForNewTripFormEmails(true); checkForNewContactFormEmails(true); checkForNewRevenueReportEmails(true); checkForUpcomingBirthdays(); }, 5000);
+setInterval(function(){ checkForNewTripFormEmails(true); checkForNewContactFormEmails(true); checkForNewRevenueReportEmails(true); checkForUpcomingBirthdays(); autoUpdateTripStatusesByDate(); }, 5*60*1000);
+setTimeout(function(){ checkForNewTripFormEmails(true); checkForNewContactFormEmails(true); checkForNewRevenueReportEmails(true); checkForUpcomingBirthdays(); autoUpdateTripStatusesByDate(); }, 5000);
+
+// Auto-transitions a trip's stored status based on its dates: while today
+// falls within [departDate, returnDate] (or on departDate itself, for a
+// dateless-return trip) it becomes 'In Progress', and once that range has
+// passed it becomes 'Completed'. Planning and Cancelled are deliberate
+// holds and are never touched — same "explicit status wins" philosophy
+// tripLifecycleCategory() already uses for the Trips page's color-coding,
+// just now writing the status itself instead of only deriving a display
+// color from it. Idempotent (only writes/saves when a status would
+// actually change) so running it every 5 minutes doesn't churn the undo
+// stack or re-save unchanged data — also why it skips snapshot(), same as
+// the other automatic background checks (e.g. checkForUpcomingBirthdays).
+function autoUpdateTripStatusesByDate(){
+  var t0 = today();
+  var changed = 0;
+  db.trips = db.trips.map(function(t){
+    var st = t.status||'Planning';
+    if(st==='Planning' || st==='Cancelled' || !t.departDate) return t;
+    var endDate = t.returnDate || t.departDate;
+    var newStatus = null;
+    if(t.departDate<=t0 && endDate>=t0) newStatus = 'In Progress';
+    else if(endDate<t0) newStatus = 'Completed';
+    if(newStatus && newStatus!==st){
+      changed++;
+      return Object.assign({}, t, {status:newStatus});
+    }
+    return t;
+  });
+  if(changed){
+    saveDB(); render();
+    debugLog('Auto-updated status on '+changed+' trip(s) based on dates');
+  }
+}
 
 // Unlike the three checkForNew*Emails functions above, this needs no
 // Outlook connection — it only reads db.clients.birthdate, so it runs
@@ -9380,7 +9413,14 @@ function tripLifecycleCategory(t){
   if(st==='Upcoming') return 'upcoming';
   if(st==='In Progress') return 'inTrip';
   var t0 = today();
-  if(t.departDate && t.departDate<=t0 && (!t.returnDate || t.returnDate>=t0)) return 'inTrip';
+  // A missing returnDate used to make the "still in progress" check
+  // vacuously true forever (no upper bound to compare against), so a past
+  // trip with only a departDate and no returnDate never fell through to
+  // 'past' no matter how long ago it was. Falling back to departDate
+  // itself as the end date (same convention autoUpdateTripStatusesByDate()
+  // uses) treats a dateless-return trip as a single-day event instead.
+  var endDate = t.returnDate || t.departDate;
+  if(t.departDate && t.departDate<=t0 && endDate>=t0) return 'inTrip';
   if(t.departDate && t.departDate>t0) return 'upcoming';
   return 'past';
 }
@@ -9390,6 +9430,16 @@ const TRIP_LIFECYCLE_COLORS = {
   past:     {bg:'#ffedd5', text:'#9a3412'},
   cancelled:{bg:'#fee2e2', text:'#991b1b'},
   planning: {bg:'#dbeafe', text:'#1e40af'}
+};
+// Human-readable label per lifecycle category, for the Trips page summary
+// line's status text — keyed off the same tripLifecycleCategory() output
+// the line's own color comes from, not the trip's raw t.status, so the
+// text always agrees with the color even when it's date-derived rather
+// than an explicit status (e.g. a Confirmed trip currently in its date
+// range shows "In Progress" here, matching the green it's already shown in).
+const CATEGORY_LABELS = {
+  upcoming:'Upcoming', inTrip:'In Progress', past:'Completed',
+  cancelled:'Cancelled', planning:'Planning'
 };
 // Every trip on this page — whether it's linked to others or entirely on
 // its own — renders as one collapsible "unit": a full-width summary line,
@@ -9424,11 +9474,13 @@ function tripSummaryLineHtml(members, collapsed){
   var uniqTripNames = tripNames.filter(function(n,i){return tripNames.indexOf(n)===i;});
   var tripNameDisplay = isGroup ? uniqTripNames.join(' / ') : '';
   var label = [uniqClientNames.join(', '), tripNameDisplay, destinations].filter(Boolean).join(' — ');
-  var colors = TRIP_LIFECYCLE_COLORS[tripLifecycleCategory(sorted[0])];
+  var category = tripLifecycleCategory(sorted[0]);
+  var colors = TRIP_LIFECYCLE_COLORS[category];
+  var statusLabel = CATEGORY_LABELS[category] || '';
   return '<tr class="trip-group-hdr" data-group-key="'+tripGroupKey(sorted)+'" style="background:'+colors.bg+';cursor:pointer">'+
     '<td colspan="12" style="padding:8px 12px;font-size:12px;color:'+colors.text+';font-weight:600">'+
     '<span style="display:inline-block;width:12px">'+(collapsed?'&#9656;':'&#9662;')+'</span>'+
-    (isGroup?'&#128279; ':'')+escHtml(label)+(dateRange?' &middot; '+dateRange:'')+(isGroup?' &middot; '+sorted.length+' trips':'')+
+    (isGroup?'&#128279; ':'')+escHtml(label)+(statusLabel?' &middot; '+escHtml(statusLabel):'')+(dateRange?' &middot; '+dateRange:'')+(isGroup?' &middot; '+sorted.length+' trips':'')+
   '</td></tr>';
 }
 // Groups consecutive rendering by linked-trip membership without disturbing
