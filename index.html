@@ -544,7 +544,11 @@ const DRIVE_CLIENT_ID  = '1055867383042-an9l58o1qg22pt7o4ak8vaneeftv54ib.apps.go
 // also returns a Google ID token — used only by the Secure Sync feature
 // below (server-verified path), completely separate from the drive.file
 // access token that the existing Backup/Restore buttons use directly.
-const DRIVE_SCOPE      = 'https://www.googleapis.com/auth/drive.file openid email';
+// analytics.readonly added for the Analytics tab's GA4 card — same Google
+// account, no separate login flow needed, but an *existing* mm_drive_token
+// obtained before this scope was added won't carry it retroactively; the
+// user needs to reconnect Drive once for a token that actually has it.
+const DRIVE_SCOPE      = 'https://www.googleapis.com/auth/drive.file openid email https://www.googleapis.com/auth/analytics.readonly';
 const DRIVE_REDIRECT   = 'https://milesmaneric.github.io/milesman-crm/';
 const DRIVE_AUTH_SERVER = 'https://milesman-auth.vercel.app';
 // WordPress.com OAuth2 (Jetpack Stats access for the Analytics tab) — see
@@ -557,6 +561,9 @@ const WP_SCOPE        = 'stats';
 const WP_REDIRECT     = 'https://milesmaneric.github.io/milesman-crm/';
 const WP_AUTH_SERVER  = 'https://milesman-auth.vercel.app';
 const WP_SITE         = 'themilesman.com';
+// GA4 Data API — reuses the Drive OAuth token (see DRIVE_SCOPE above),
+// no separate login flow. https://developers.google.com/analytics/devguides/reporting/data/v1
+const GA4_PROPERTY_ID = '362931402';
 const BACKUP_FILENAME  = 'milesman-crm-backup.json';
 const LS_KEY           = 'milesman_crm_v2';
 
@@ -1891,6 +1898,7 @@ function checkDriveRedirect(){
       localStorage.removeItem('mm_drive_action');
       if(action==='backup') driveBackup();
       else if(action==='restore') driveRestore();
+      else if(action==='analytics') go('analytics');
     } else {
       debugLog('Drive token exchange failed: '+(d.error||'unknown'));
       if(d.error === 'invalid_grant'){
@@ -1985,6 +1993,68 @@ function loadWordpressStats(token){
   }).catch(function(e){
     var body = $('wp-stats-body');
     if(body) body.innerHTML = '<div class="empty">Failed to load stats: '+e.message+'</div>';
+  });
+}
+// GA4 Data API's runReport — one call gets both a daily breakdown (for the
+// trend table, same shape as the WordPress card's Last 30 Days table) and
+// the last-30-days headline totals (summed client-side from those same
+// rows, since runReport doesn't have a separate "totals so far" shortcut
+// the way WordPress.com's /stats endpoint conveniently bundles one in).
+// Metric values come back as strings (GA4 API convention) and the date
+// dimension as "YYYYMMDD" with no separators — both converted here.
+// Google's REST APIs generally support CORS for authenticated requests
+// (the existing Drive Backup/Restore buttons already call
+// googleapis.com directly with no proxy), so this is attempted the same
+// way; if that assumption turns out wrong for analyticsdata.googleapis.com
+// specifically, the fetch will fail and say so, same fallback message
+// pattern as the WordPress card before its proxy was added.
+function loadGA4Stats(token){
+  fetch('https://analyticsdata.googleapis.com/v1beta/properties/'+GA4_PROPERTY_ID+':runReport', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer '+token },
+    body: JSON.stringify({
+      dateRanges: [{ startDate: '30daysAgo', endDate: 'today' }],
+      dimensions: [{ name: 'date' }],
+      metrics: [{ name: 'activeUsers' }, { name: 'screenPageViews' }, { name: 'sessions' }]
+    })
+  }).then(function(r){ return r.json(); }).then(function(d){
+    var body = $('ga4-stats-body');
+    if(!body) return;
+    if(d.error){
+      body.innerHTML = '<div class="empty">'+escHtml((d.error && (d.error.message||d.error))||'Unknown error')+'</div>';
+      return;
+    }
+    var rows = d.rows||[];
+    if(!rows.length){
+      body.innerHTML = '<div class="empty">No data for the last 30 days.</div>';
+      return;
+    }
+    function ga4Date(s){ return s&&s.length===8 ? s.slice(0,4)+'-'+s.slice(4,6)+'-'+s.slice(6,8) : s; }
+    var parsed = rows.map(function(row){
+      return {
+        date: ga4Date(row.dimensionValues[0].value),
+        users: Number(row.metricValues[0].value)||0,
+        views: Number(row.metricValues[1].value)||0,
+        sessions: Number(row.metricValues[2].value)||0
+      };
+    });
+    var totalUsers = parsed.reduce(function(a,r){return a+r.users;},0);
+    var totalViews = parsed.reduce(function(a,r){return a+r.views;},0);
+    var totalSessions = parsed.reduce(function(a,r){return a+r.sessions;},0);
+    body.innerHTML =
+      '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px">'+
+        '<div class="stat"><div class="stat-lbl">Active Users (30d)</div><div class="stat-val">'+fmt(totalUsers)+'</div></div>'+
+        '<div class="stat"><div class="stat-lbl">Page Views (30d)</div><div class="stat-val">'+fmt(totalViews)+'</div></div>'+
+        '<div class="stat"><div class="stat-lbl">Sessions (30d)</div><div class="stat-val">'+fmt(totalSessions)+'</div></div>'+
+      '</div>'+
+      '<div class="tbl-wrap" style="max-height:320px;overflow-y:auto"><table><thead><tr><th>Date</th><th>Users</th><th>Views</th><th>Sessions</th></tr></thead><tbody>'+
+        parsed.slice().sort(function(a,b){return (b.date||'').localeCompare(a.date||'');}).map(function(r){
+          return '<tr><td>'+fmtDate(r.date)+'</td><td>'+fmt(r.users)+'</td><td>'+fmt(r.views)+'</td><td>'+fmt(r.sessions)+'</td></tr>';
+        }).join('')+
+      '</tbody></table></div>';
+  }).catch(function(e){
+    var body = $('ga4-stats-body');
+    if(body) body.innerHTML = '<div class="empty">Failed to load GA4 data: '+e.message+' (if this is a CORS error, let Claude know — a proxy endpoint will need to be added, same as the WordPress stats card).</div>';
   });
 }
 async function findBackupFile(token){
@@ -12078,9 +12148,13 @@ function renderMarketing(){
     '<div class="page-hdr"><div class="page-title">Marketing</div></div>'+
     '<div class="empty">Coming soon.</div>';
 }
-// WordPress.com/Jetpack Stats half is live (OAuth connect + raw stats
-// fetch); Google Analytics (GA4) half is still TBD — see
-// project_analytics_tab_setup memory for the full setup plan.
+// WordPress.com/Jetpack Stats and GA4 are both live now. GA4 reuses the
+// existing Drive OAuth token (DRIVE_SCOPE includes analytics.readonly)
+// rather than a separate connect button — getDriveTokenSilent() returns
+// null without redirecting if Drive was never connected, or if it was
+// connected before the analytics scope was added (an old token doesn't
+// retroactively gain a new scope), in which case this prompts a one-time
+// reconnect instead of silently failing the GA4 fetch.
 function renderAnalytics(){
   var wpToken = localStorage.getItem('mm_wp_token');
   $('main').innerHTML =
@@ -12093,7 +12167,10 @@ function renderAnalytics(){
         ? '<div id="wp-stats-body"><div class="empty">Loading…</div></div>'
         : '<div style="padding:8px 0"><button class="add-btn" id="wp-connect-btn">Connect WordPress.com</button></div>')+
     '</div>'+
-    '<div class="empty">Google Analytics (GA4) — coming soon.</div>';
+    '<div class="card" style="margin-bottom:16px">'+
+      '<div class="card-hdr"><span class="card-title">Google Analytics (GA4)</span></div>'+
+      '<div id="ga4-stats-body"><div class="empty">Loading…</div></div>'+
+    '</div>';
 
   var connectBtn = $('wp-connect-btn');
   if(connectBtn) connectBtn.addEventListener('click', wordpressLogin);
@@ -12103,6 +12180,18 @@ function renderAnalytics(){
     render();
   });
   if(wpToken) loadWordpressStats(wpToken);
+
+  getDriveTokenSilent().then(function(token){
+    var body = $('ga4-stats-body');
+    if(!body) return;
+    if(!token){
+      body.innerHTML = '<div style="padding:8px 0"><button class="add-btn" id="ga4-connect-btn">Connect Google Drive</button><div style="font-size:11px;color:#888;margin-top:6px">GA4 shares the same Google login as Drive backup — if Drive was connected before this feature existed, reconnect once to pick up Analytics access.</div></div>';
+      var ga4ConnectBtn = $('ga4-connect-btn');
+      if(ga4ConnectBtn) ga4ConnectBtn.addEventListener('click', function(){ localStorage.setItem('mm_drive_action','analytics'); driveLogin(); });
+      return;
+    }
+    loadGA4Stats(token);
+  });
 }
 
 function renderBookmarks(){
