@@ -547,6 +547,16 @@ const DRIVE_CLIENT_ID  = '1055867383042-an9l58o1qg22pt7o4ak8vaneeftv54ib.apps.go
 const DRIVE_SCOPE      = 'https://www.googleapis.com/auth/drive.file openid email';
 const DRIVE_REDIRECT   = 'https://milesmaneric.github.io/milesman-crm/';
 const DRIVE_AUTH_SERVER = 'https://milesman-auth.vercel.app';
+// WordPress.com OAuth2 (Jetpack Stats access for the Analytics tab) — see
+// https://developer.wordpress.com/docs/oauth2/. Unlike Drive/Outlook, this
+// flow needs no PKCE (WordPress.com's Authorization Code Grant is a
+// traditional confidential-client flow — the secret stays server-side in
+// api/wordpress-token.js, never in this file).
+const WP_CLIENT_ID    = '145675';
+const WP_SCOPE        = 'stats';
+const WP_REDIRECT     = 'https://milesmaneric.github.io/milesman-crm/';
+const WP_AUTH_SERVER  = 'https://milesman-auth.vercel.app';
+const WP_SITE         = 'themilesman.com';
 const BACKUP_FILENAME  = 'milesman-crm-backup.json';
 const LS_KEY           = 'milesman_crm_v2';
 
@@ -1892,6 +1902,62 @@ function checkDriveRedirect(){
   }).catch(function(e){
     debugLog('Drive token exchange error: '+e.message);
     toast('Drive auth error: '+e.message,'err');
+  });
+}
+function wordpressLogin(){
+  const params = new URLSearchParams({
+    client_id:     WP_CLIENT_ID,
+    redirect_uri:  WP_REDIRECT,
+    response_type: 'code',
+    scope:         WP_SCOPE,
+    state:         'wp_auth'
+  });
+  debugLog('Redirecting to WordPress.com login...');
+  window.location.href = 'https://public-api.wordpress.com/oauth2/authorize?'+params.toString();
+}
+function checkWordpressRedirect(){
+  const params = new URLSearchParams(window.location.search);
+  const code  = params.get('code');
+  const state = params.get('state');
+  if(!code || state !== 'wp_auth') return;
+
+  window.history.replaceState({},'',window.location.pathname);
+  debugLog('WordPress auth code received, exchanging...');
+
+  fetch(WP_AUTH_SERVER+'/api/wordpress-token',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({ code: code, redirect_uri: WP_REDIRECT })
+  }).then(function(r){return r.json();}).then(function(d){
+    if(d.access_token){
+      localStorage.setItem('mm_wp_token', d.access_token);
+      debugLog('WordPress token obtained successfully');
+      toast('WordPress.com connected!','ok');
+      render();
+    } else {
+      debugLog('WordPress token exchange failed: '+(d.error||'unknown'));
+      toast('WordPress auth failed: '+(d.error_description||d.error),'err');
+    }
+  }).catch(function(e){
+    debugLog('WordPress token exchange error: '+e.message);
+    toast('WordPress auth error: '+e.message,'err');
+  });
+}
+// Raw JSON display for now, not a formatted dashboard — the exact response
+// shape from /sites/$site/stats hasn't been verified against a real
+// connected site yet, so this avoids silently mis-mapping field names into
+// a polished-looking stat tile that's actually wrong. Once a real response
+// comes through here, this becomes properly formatted stat cards.
+function loadWordpressStats(token){
+  fetch('https://public-api.wordpress.com/rest/v1.1/sites/'+WP_SITE+'/stats', {
+    headers: { Authorization: 'Bearer '+token }
+  }).then(function(r){ return r.json(); }).then(function(d){
+    var body = $('wp-stats-body');
+    if(!body) return;
+    body.innerHTML = '<pre style="font-size:11px;white-space:pre-wrap;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:10px;max-height:400px;overflow:auto">'+escHtml(JSON.stringify(d,null,2))+'</pre>';
+  }).catch(function(e){
+    var body = $('wp-stats-body');
+    if(body) body.innerHTML = '<div class="empty">Failed to load stats: '+e.message+' (if this is a CORS error, the fetch will need to go through a Vercel proxy instead of hitting public-api.wordpress.com directly — let Claude know).</div>';
   });
 }
 async function findBackupFile(token){
@@ -11985,12 +12051,31 @@ function renderMarketing(){
     '<div class="page-hdr"><div class="page-title">Marketing</div></div>'+
     '<div class="empty">Coming soon.</div>';
 }
-// Also a placeholder — functionality TBD, same reasoning as renderMarketing
-// above (reserve the nav slot now, build the real page later).
+// WordPress.com/Jetpack Stats half is live (OAuth connect + raw stats
+// fetch); Google Analytics (GA4) half is still TBD — see
+// project_analytics_tab_setup memory for the full setup plan.
 function renderAnalytics(){
+  var wpToken = localStorage.getItem('mm_wp_token');
   $('main').innerHTML =
     '<div class="page-hdr"><div class="page-title">Analytics</div></div>'+
-    '<div class="empty">Coming soon.</div>';
+    '<div class="card" style="margin-bottom:16px">'+
+      '<div class="card-hdr"><span class="card-title">WordPress.com / Jetpack Stats</span>'+
+        (wpToken ? '<button class="cancel-btn" id="wp-disconnect">Disconnect</button>' : '')+
+      '</div>'+
+      (wpToken
+        ? '<div id="wp-stats-body"><div class="empty">Loading…</div></div>'
+        : '<div style="padding:8px 0"><button class="add-btn" id="wp-connect-btn">Connect WordPress.com</button></div>')+
+    '</div>'+
+    '<div class="empty">Google Analytics (GA4) — coming soon.</div>';
+
+  var connectBtn = $('wp-connect-btn');
+  if(connectBtn) connectBtn.addEventListener('click', wordpressLogin);
+  var disconnectBtn = $('wp-disconnect');
+  if(disconnectBtn) disconnectBtn.addEventListener('click', function(){
+    localStorage.removeItem('mm_wp_token');
+    render();
+  });
+  if(wpToken) loadWordpressStats(wpToken);
 }
 
 function renderBookmarks(){
@@ -12933,6 +13018,7 @@ loadDebugLog();
 startAutosave();
 updateUndoBtn();
 checkDriveRedirect();
+checkWordpressRedirect();
 updateSyncStatusDisplay();
 console.log('[CRM] Ready. Clients:', db.clients.length, 'Trips:', db.trips.length);
 } // end bootApp()
