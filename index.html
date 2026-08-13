@@ -2152,6 +2152,104 @@ function loadGA4Stats(token){
     if(body) body.innerHTML = '<div class="empty">Failed to load GA4 data: '+e.message+' (if this is a CORS error, let Claude know — a proxy endpoint will need to be added, same as the WordPress stats card).</div>';
   });
 }
+// Non-rendering counterparts to loadWordpressStats()/loadGA4Stats()/
+// loadFacebookCampaigns() — same endpoints and confirmed field shapes as
+// those three, but returning plain data instead of writing to the DOM, so
+// the assistant chat widget's get_analytics_summary tool can hand a
+// compact object to the model instead of scraping the rendered page.
+// Each source resolves independently (no Promise.all reject-on-first-
+// failure) so one disconnected/erroring source doesn't blank out the
+// other two.
+async function gatherWordpressSummary(){
+  var token = localStorage.getItem('mm_wp_token');
+  if(!token) return {connected:false};
+  try{
+    var path = encodeURIComponent('/sites/'+WP_SITE+'/stats');
+    var r = await fetch(WP_AUTH_SERVER+'/api/wordpress-stats?path='+path, {headers:{Authorization:'Bearer '+token}});
+    var d = await r.json();
+    if(d.error) return {connected:true, error: d.error_description||d.error};
+    var s = d.stats||{};
+    var visitRows = (d.visits&&d.visits.data)||[];
+    var last30Views = visitRows.reduce(function(a,row){return a+(row[1]||0);},0);
+    var last30Visitors = visitRows.reduce(function(a,row){return a+(row[2]||0);},0);
+    return {
+      connected: true,
+      visitorsToday: s.visitors_today||0, viewsToday: s.views_today||0,
+      visitorsYesterday: s.visitors_yesterday||0, viewsYesterday: s.views_yesterday||0,
+      totalVisitorsAllTime: s.visitors||0, totalViewsAllTime: s.views||0,
+      blogFollowers: s.followers_blog||0,
+      bestDay: s.views_best_day||null, bestDayViews: s.views_best_day_total||0,
+      last30DaysViews: last30Views, last30DaysVisitors: last30Visitors
+    };
+  }catch(e){ return {connected:true, error: e.message}; }
+}
+async function gatherGa4Summary(){
+  var token = await getDriveTokenSilent();
+  if(!token) return {connected:false};
+  try{
+    var r = await fetch('https://analyticsdata.googleapis.com/v1beta/properties/'+GA4_PROPERTY_ID+':runReport', {
+      method:'POST',
+      headers:{'Content-Type':'application/json', Authorization:'Bearer '+token},
+      body: JSON.stringify({
+        dateRanges: [{ startDate: '30daysAgo', endDate: 'today' }],
+        dimensions: [{ name: 'date' }],
+        metrics: [{ name: 'activeUsers' }, { name: 'screenPageViews' }, { name: 'sessions' }]
+      })
+    });
+    var d = await r.json();
+    if(d.error){
+      var msg = (d.error && (d.error.message||d.error))||'Unknown error';
+      if(/insufficient authentication scopes/i.test(String(msg))) return {connected:true, error:'Google Drive connection needs to be reconnected to grant Analytics access'};
+      return {connected:true, error: msg};
+    }
+    var rows = d.rows||[];
+    var totalUsers=0, totalViews=0, totalSessions=0;
+    rows.forEach(function(row){
+      totalUsers += Number(row.metricValues[0].value)||0;
+      totalViews += Number(row.metricValues[1].value)||0;
+      totalSessions += Number(row.metricValues[2].value)||0;
+    });
+    return {connected:true, activeUsers30d: totalUsers, pageViews30d: totalViews, sessions30d: totalSessions};
+  }catch(e){ return {connected:true, error: e.message}; }
+}
+async function gatherFacebookAdsSummary(){
+  var token = localStorage.getItem('mm_fb_token');
+  if(!token) return {connected:false};
+  try{
+    var results = await Promise.all([
+      fbGraph('/'+FB_AD_ACCOUNT, {query:{fields:'name,currency'}}),
+      fbGraph('/'+FB_AD_ACCOUNT+'/campaigns', {query:{fields:'name,objective,status,effective_status,daily_budget', limit:'100'}}),
+      fbGraph('/'+FB_AD_ACCOUNT+'/insights', {query:{level:'campaign', date_preset:'last_30d', fields:'campaign_id,spend,impressions,clicks,cpc,ctr', limit:'100'}})
+    ]);
+    var account = results[0], campaignsResp = results[1], insightsResp = results[2];
+    if(account.error) return {connected:true, error: account.error.message};
+    if(campaignsResp.error) return {connected:true, error: campaignsResp.error.message};
+    var campaigns = campaignsResp.data||[];
+    var insightsByCampaign = {};
+    (insightsResp.data||[]).forEach(function(row){ insightsByCampaign[row.campaign_id] = row; });
+    var totalSpend=0, totalImpressions=0, totalClicks=0;
+    var campaignSummaries = campaigns.map(function(c){
+      var ins = insightsByCampaign[c.id] || {};
+      var spend = Number(ins.spend)||0, impressions = Number(ins.impressions)||0, clicks = Number(ins.clicks)||0;
+      totalSpend += spend; totalImpressions += impressions; totalClicks += clicks;
+      return {
+        name: c.name, status: c.effective_status||c.status, objective: c.objective,
+        dailyBudget: fbBudget(c.daily_budget),
+        spend30d: spend, impressions30d: impressions, clicks30d: clicks,
+        cpc30d: ins.cpc!==undefined ? Number(ins.cpc) : null
+      };
+    });
+    return {
+      connected: true, currency: account.currency||'USD', campaignCount: campaigns.length,
+      totalSpend30d: totalSpend, totalImpressions30d: totalImpressions, totalClicks30d: totalClicks,
+      campaigns: campaignSummaries
+    };
+  }catch(e){ return {connected:true, error: e.message}; }
+}
+async function gatherAnalyticsSummary(){
+  var results = await Promise.all([gatherWordpressSummary(), gatherGa4Summary(), gatherFacebookAdsSummary()]);
+  return { wordpress: results[0], ga4: results[1], facebookAds: results[2] };
+}
 async function findBackupFile(token){
   const q=encodeURIComponent("name='"+BACKUP_FILENAME+"' and trashed=false");
   const r=await fetch('https://www.googleapis.com/drive/v3/files?q='+q+'&orderBy=modifiedTime desc&fields=files(id,name,modifiedTime)',{
@@ -13854,7 +13952,7 @@ async function closeApp(){
 // maps straight onto an existing CRM action. Every mutating tool calls
 // snapshot() first, so any assistant-made change is undoable with the same
 // Undo button as everything else in the app.
-const ASSISTANT_SYSTEM_PROMPT = 'You are the in-app assistant for a travel agency CRM. Help the user look up and update their own clients, trips, and follow-up tasks using only the provided tools. Always resolve a client by name to a clientId with find_clients before acting on them — if more than one client matches, ask which one rather than guessing. Be concise. After taking an action, briefly confirm what you did.';
+const ASSISTANT_SYSTEM_PROMPT = 'You are the in-app assistant for a travel agency CRM. Help the user look up and update their own clients, trips, and follow-up tasks, and answer questions about blog/website traffic and Facebook Ads performance, using only the provided tools. Always resolve a client by name to a clientId with find_clients before acting on them — if more than one client matches, ask which one rather than guessing. For any traffic, blog, or ad-performance question, call get_analytics_summary — if a source comes back connected:false, tell the user that integration isn\'t connected rather than saying you can\'t access it. Be concise. After taking an action, briefly confirm what you did.';
 
 const ASSISTANT_TOOLS = [
   {
@@ -13919,6 +14017,11 @@ const ASSISTANT_TOOLS = [
       },
       required: ['name','email']
     }
+  },
+  {
+    name: 'get_analytics_summary',
+    description: 'Fetches current marketing/website performance: WordPress.com blog stats, Google Analytics (GA4) website traffic, and Facebook Ads campaign spend/performance. Each source reports connected:false if that integration isn\'t connected on this device — mention that to the user rather than treating it as an error. Use this for any question about site traffic, blog followers, or ad campaign performance/spend.',
+    input_schema: { type: 'object', properties: {} }
   }
 ];
 
@@ -13926,8 +14029,11 @@ const ASSISTANT_TOOLS = [
 // plain-object result (sent back to Claude as the tool_result). Never lets
 // the model run its own code — this is the fixed, reviewable surface of
 // what the assistant is allowed to do.
-function runAssistantTool(name, input){
+async function runAssistantTool(name, input){
   input = input || {};
+  if(name === 'get_analytics_summary'){
+    return await gatherAnalyticsSummary();
+  }
   if(name === 'find_clients'){
     var q = (input.query||'').toLowerCase();
     var matches = db.clients.filter(function(c){
@@ -14008,6 +14114,10 @@ function describeToolResult(name, input, result){
   if(result && result.message) return '✓ '+result.message;
   if(name==='find_clients') return 'Found '+((result.clients||[]).length)+' client(s) for "'+(input.query||'')+'"';
   if(name==='find_trips') return 'Found '+((result.trips||[]).length)+' trip(s)';
+  if(name==='get_analytics_summary'){
+    var connected = ['wordpress','ga4','facebookAds'].filter(function(k){return result[k]&&result[k].connected;});
+    return connected.length ? 'Fetched analytics ('+connected.join(', ')+')' : 'No analytics sources connected';
+  }
   return '✓ '+name+' done';
 }
 function setAssistantLoading(isLoading){
@@ -14034,13 +14144,15 @@ async function handleAssistantReply(reply){
   var toolUses = (reply.content||[]).filter(function(b){return b.type==='tool_use';});
   if(!toolUses.length) return;
 
-  var toolResults = toolUses.map(function(tu){
+  var toolResults = [];
+  for(var i=0;i<toolUses.length;i++){
+    var tu = toolUses[i];
     var result;
-    try{ result = runAssistantTool(tu.name, tu.input); }
+    try{ result = await runAssistantTool(tu.name, tu.input); }
     catch(e){ result = {error:e.message}; }
     assistantMsgBubble('action', describeToolResult(tu.name, tu.input||{}, result));
-    return {type:'tool_result', tool_use_id:tu.id, content:JSON.stringify(result)};
-  });
+    toolResults.push({type:'tool_result', tool_use_id:tu.id, content:JSON.stringify(result)});
+  }
   render();
   assistantMessages.push({role:'user', content:toolResults});
   var nextReply = await callAssistantAPI();
