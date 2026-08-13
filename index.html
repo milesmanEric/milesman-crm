@@ -1091,7 +1091,7 @@ const CRUISE_LOGOS = {
 // fStatus: array of selected trip statuses for the Trips page filter — default
 // is everything except Cancelled, since a cancelled trip is rarely what
 // you're looking for when just browsing the list.
-let view = 'dashboard', selCid = null, fStatus = STATUSES.filter(function(s){return s!=='Cancelled';}), fSearch = '';
+let view = 'dashboard', selCid = null, fStatus = STATUSES.filter(function(s){return s!=='Cancelled';}), fSearch = '', fHideSubOnly = false;
 let driveToken = null;
 
 const $ = id => document.getElementById(id);
@@ -6143,7 +6143,7 @@ async function importTripFormPDF(){
 function go(v,cid){
   view=v;
   selCid=(v==='trips'&&cid)?cid:null;
-  fSearch='';fStatus=STATUSES.filter(function(s){return s!=='Cancelled';});
+  fSearch='';fStatus=STATUSES.filter(function(s){return s!=='Cancelled';});fHideSubOnly=false;
   ['dashboard','clients','trips','reports','calendar','email','vendors','bizvendors','planner','bookmarks','ccconsulting','referrals','marketing','analytics'].forEach(function(x){var el=$('nb-'+x);if(el)el.classList.toggle('active',x===v);});
   render();
 }
@@ -9336,6 +9336,7 @@ function renderClients(){
   var clientSortCol = window._clientSortCol || 'name';
   var clientSortDir = window._clientSortDir || 'asc';
   var list=db.clients.filter(function(c){return !q||(c.name||'').toLowerCase().includes(q)||(c.email||'').toLowerCase().includes(q)||(c.city||'').toLowerCase().includes(q);});
+  if(fHideSubOnly) list = list.filter(function(c){var email=(c.email||'').trim().toLowerCase();return !email||(c.name||'').trim().toLowerCase()!==email;});
 
   list = list.slice().sort(function(a,b){
     var av, bv;
@@ -9374,6 +9375,7 @@ function renderClients(){
     })()+
     '<div class="search-row">'+
       '<input id="client-search" placeholder="Search by name, email, city..." value="'+fSearch+'"/>'+
+      '<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#555;white-space:nowrap;cursor:pointer"><input type="checkbox" id="client-hide-sub-only" '+(fHideSubOnly?'checked':'')+' style="width:14px;height:14px;cursor:pointer">Hide subscriber-only (no name on file)</label>'+
       '<button id="btn-select-all-clients" style="padding:7px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#555;cursor:pointer;font-size:12px;font-family:inherit">Select All</button>'+
       '<button id="btn-delete-checked-clients" style="display:none;padding:7px 14px;border-radius:7px;border:none;background:#dc2626;color:#fff;cursor:pointer;font-size:12px;font-family:inherit">&#128465; Delete Selected</button>'+
     '</div>'+
@@ -9442,6 +9444,10 @@ function renderClients(){
     renderClients();
     var el=$('client-search');
     if(el){el.focus();try{el.setSelectionRange(pos,pos);}catch(e){}}
+  });
+  $('client-hide-sub-only').addEventListener('change',function(){
+    fHideSubOnly=this.checked;
+    renderClients();
   });
   document.querySelectorAll('.trips-btn[data-cid]').forEach(function(btn){
     btn.addEventListener('click',function(){go('trips',btn.dataset.cid);});
