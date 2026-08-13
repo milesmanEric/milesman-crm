@@ -236,7 +236,7 @@ Reserved in the nav for later — nothing built yet, just a "Coming soon" placeh
 
 Two cards, each pulling from a different source: your **WordPress.com/Jetpack** blog stats and your **Google Analytics (GA4)** website traffic.
 
-**WordPress.com / Jetpack Stats** — click **Connect WordPress.com** the first time; after that it shows visitors and views (today, yesterday, and all-time), your blog's follower count, your single best day ever, and a day-by-day table for the last 30 days. **Disconnect** clears the connection if you ever need to reset it.
+**WordPress.com / Jetpack Stats** — click **Connect WordPress.com** the first time; after that it shows visitors and views (today, yesterday, and all-time), your blog's follower count, your single best day ever, and a day-by-day table for the last 30 days. **Disconnect** clears the connection if you ever need to reset it. Click the **Blog Followers** number itself and it jumps you straight down to the full follower list below.
 
 **Google Analytics (GA4)** — no separate login needed here; it rides along on the same Google sign-in you already use for Drive backup. If you haven't connected Drive yet, or connected it before this feature existed, you'll see a **Connect**/**Reconnect Google Drive** button — click it once and you're set going forward. Once connected, it shows active users, page views, and sessions over the last 30 days, plus a daily breakdown table.
 
@@ -244,7 +244,7 @@ Two cards, each pulling from a different source: your **WordPress.com/Jetpack** 
 - **WordPress**: Top Posts & Pages, Referrers, Views by Country, Search Terms, Blog Followers.
 - **GA4**: Top Pages, Traffic Sources, Device Category, Top Countries.
 
-All the GA4 detail sections, plus WordPress's Top Posts & Pages, Referrers, and Views by Country, show nicely formatted tables (linked titles/sources open in a new tab; countries show their flag). Search Terms shows a formatted table too where terms are actually visible — most search engines hide the exact query for privacy, so this section is often just a note saying how many were hidden rather than a list. Blog Followers still shows the raw data as-is — if anything there looks off, or you'd like it cleaned up, let Claude know.
+All the detail sections in both cards now show nicely formatted tables — linked titles/sources/names open in a new tab, countries show their flag, and followers show their avatar. Search Terms shows a table too where terms are actually visible — most search engines hide the exact query for privacy, so this section is often just a note saying how many were hidden rather than a list. Blog Followers only shows the first page of followers if you have more than one page — the "X WordPress.com followers, Y email subscribers" line above the list always shows your true totals either way.
 
 ---
 
