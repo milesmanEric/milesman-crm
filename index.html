@@ -1943,11 +1943,10 @@ function checkWordpressRedirect(){
     toast('WordPress auth error: '+e.message,'err');
   });
 }
-// Raw JSON display for now, not a formatted dashboard — the exact response
-// shape from /sites/$site/stats hasn't been verified against a real
-// connected site yet, so this avoids silently mis-mapping field names into
-// a polished-looking stat tile that's actually wrong. Once a real response
-// comes through here, this becomes properly formatted stat cards.
+// Field names confirmed against a real connected site's response —
+// `stats` (headline all-time/today/yesterday counters) and `visits.data`
+// (an array of [date, views, visitors] triples, oldest first, one row per
+// day for roughly the last 30 days).
 // Routed through api/wordpress-stats.js — public-api.wordpress.com sends no
 // CORS headers, so a direct browser fetch fails even with a valid token;
 // the proxy just relays this same request with CORS added, no secret
@@ -1960,7 +1959,29 @@ function loadWordpressStats(token){
   }).then(function(r){ return r.json(); }).then(function(d){
     var body = $('wp-stats-body');
     if(!body) return;
-    body.innerHTML = '<pre style="font-size:11px;white-space:pre-wrap;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:10px;max-height:400px;overflow:auto">'+escHtml(JSON.stringify(d,null,2))+'</pre>';
+    if(d.error){
+      body.innerHTML = '<div class="empty">'+escHtml(d.error_description||d.error)+'</div>';
+      return;
+    }
+    var s = d.stats||{};
+    var visitRows = (d.visits&&d.visits.data)||[]; // [date, views, visitors], oldest first
+    body.innerHTML =
+      '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px">'+
+        '<div class="stat"><div class="stat-lbl">Visitors Today</div><div class="stat-val">'+fmt(s.visitors_today)+'</div></div>'+
+        '<div class="stat"><div class="stat-lbl">Views Today</div><div class="stat-val">'+fmt(s.views_today)+'</div></div>'+
+        '<div class="stat"><div class="stat-lbl">Visitors Yesterday</div><div class="stat-val">'+fmt(s.visitors_yesterday)+'</div></div>'+
+        '<div class="stat"><div class="stat-lbl">Total Visitors</div><div class="stat-val">'+fmt(s.visitors)+'</div></div>'+
+        '<div class="stat"><div class="stat-lbl">Total Views</div><div class="stat-val">'+fmt(s.views)+'</div></div>'+
+        '<div class="stat"><div class="stat-lbl">Blog Followers</div><div class="stat-val">'+fmt(s.followers_blog)+'</div></div>'+
+      '</div>'+
+      (s.views_best_day?'<div style="font-size:12px;color:#666;margin-bottom:16px">Best day: <strong>'+fmtDate(s.views_best_day)+'</strong> — '+fmt(s.views_best_day_total)+' views</div>':'')+
+      (visitRows.length?
+        '<div class="tbl-wrap" style="max-height:320px;overflow-y:auto"><table><thead><tr><th>Date</th><th>Views</th><th>Visitors</th></tr></thead><tbody>'+
+          visitRows.slice().reverse().map(function(row){
+            return '<tr><td>'+fmtDate(row[0])+'</td><td>'+fmt(row[1])+'</td><td>'+fmt(row[2])+'</td></tr>';
+          }).join('')+
+        '</tbody></table></div>'
+      : '');
   }).catch(function(e){
     var body = $('wp-stats-body');
     if(body) body.innerHTML = '<div class="empty">Failed to load stats: '+e.message+'</div>';
