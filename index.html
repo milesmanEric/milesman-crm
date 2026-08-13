@@ -1984,7 +1984,7 @@ function loadWordpressStats(token){
         '<div class="stat"><div class="stat-lbl">Visitors Yesterday</div><div class="stat-val">'+fmt(s.visitors_yesterday)+'</div></div>'+
         '<div class="stat"><div class="stat-lbl">Total Visitors</div><div class="stat-val">'+fmt(s.visitors)+'</div></div>'+
         '<div class="stat"><div class="stat-lbl">Total Views</div><div class="stat-val">'+fmt(s.views)+'</div></div>'+
-        '<div class="stat"><div class="stat-lbl">Blog Followers</div><div class="stat-val">'+fmt(s.followers_blog)+'</div></div>'+
+        '<div class="stat" id="stat-wp-followers-tile" style="cursor:pointer" title="Click to see the follower list below"><div class="stat-lbl">Blog Followers</div><div class="stat-val">'+fmt(s.followers_blog)+'</div></div>'+
       '</div>'+
       (s.views_best_day?'<div style="font-size:12px;color:#666;margin-bottom:16px">Best day: <strong>'+fmtDate(s.views_best_day)+'</strong> — '+fmt(s.views_best_day_total)+' views</div>':'')+
       (visitRows.length?
@@ -1994,6 +1994,14 @@ function loadWordpressStats(token){
           }).join('')+
         '</tbody></table></div>'
       : '');
+    var statFollowersTile = $('stat-wp-followers-tile');
+    if(statFollowersTile) statFollowersTile.addEventListener('click', function(){
+      window._analyticsCollapsed = window._analyticsCollapsed || {};
+      window._analyticsCollapsed['wp-followers'] = false;
+      render();
+      var el = document.getElementById('wp-followers-body');
+      if(el) el.scrollIntoView({behavior:'smooth', block:'center'});
+    });
   }).catch(function(e){
     var body = $('wp-stats-body');
     if(body) body.innerHTML = '<div class="empty">Failed to load stats: '+e.message+'</div>';
@@ -12245,7 +12253,7 @@ function renderAnalytics(){
     if(!analyticsSectionCollapsed('wp-referrers')) loadWordpressReferrers(wpToken, 'wp-referrers-body');
     if(!analyticsSectionCollapsed('wp-countries')) loadWordpressCountries(wpToken, 'wp-countries-body');
     if(!analyticsSectionCollapsed('wp-search-terms')) loadWordpressSearchTerms(wpToken, 'wp-search-terms-body');
-    if(!analyticsSectionCollapsed('wp-followers')) loadWordpressExtra(wpToken, 'wp-followers-body', '/sites/'+WP_SITE+'/stats/followers?type=wpcom');
+    if(!analyticsSectionCollapsed('wp-followers')) loadWordpressFollowers(wpToken, 'wp-followers-body');
   }
 
   getDriveTokenSilent().then(function(token){
@@ -12386,6 +12394,39 @@ function loadWordpressSearchTerms(token, containerId){
     body.innerHTML = summaryLine+'<div class="tbl-wrap" style="max-height:320px;overflow-y:auto"><table><thead><tr><th>Search Term</th><th>Views</th></tr></thead><tbody>'+
       terms.slice().sort(function(a,b){return (b.views||0)-(a.views||0);}).map(function(t){
         return '<tr><td>'+escHtml(t.term||'')+'</td><td>'+fmt(t.views)+'</td></tr>';
+      }).join('')+
+    '</tbody></table></div>';
+  }).catch(function(e){
+    var body = $(containerId);
+    if(body) body.innerHTML = '<div class="empty">Failed to load: '+e.message+'</div>';
+  });
+}
+// Field names confirmed against a real response (2026-08-13):
+// { page, pages, total, total_email, total_wpcom, subscribers:[{avatar, label, login, ID, url, date_subscribed, ...}], is_owner_subscribed }.
+// Only fetches page 1 (type=wpcom) — pagination isn't wired up, so a
+// site with more than one page of followers only shows the first here;
+// the summary line still states the true total_wpcom/total_email counts
+// either way.
+function loadWordpressFollowers(token, containerId){
+  var path = '/sites/'+WP_SITE+'/stats/followers?type=wpcom';
+  fetch(WP_AUTH_SERVER+'/api/wordpress-stats?path='+encodeURIComponent(path), {
+    headers: { Authorization: 'Bearer '+token }
+  }).then(function(r){ return r.json(); }).then(function(d){
+    var body = $(containerId);
+    if(!body) return;
+    if(d.error){
+      body.innerHTML = '<div class="empty">'+escHtml(d.error_description||d.error)+'</div>';
+      return;
+    }
+    var subs = d.subscribers||[];
+    if(!subs.length){ body.innerHTML = '<div class="empty">No followers found.</div>'; return; }
+    var summaryLine = '<div style="font-size:11px;color:#888;margin-bottom:8px">'+fmt(d.total_wpcom)+' WordPress.com followers, '+fmt(d.total_email)+' email subscribers'+(d.pages>1?' — showing page 1 of '+fmt(d.pages):'')+'</div>';
+    body.innerHTML = summaryLine+'<div class="tbl-wrap" style="max-height:320px;overflow-y:auto"><table><thead><tr><th></th><th>Name</th><th>Subscribed</th></tr></thead><tbody>'+
+      subs.map(function(s){
+        var avatar = s.avatar ? '<img src="'+escHtml(s.avatar)+'" style="width:24px;height:24px;border-radius:50%">' : '';
+        var name = s.url ? '<a href="'+escHtml(s.url)+'" target="_blank" style="color:#2563eb;text-decoration:none">'+escHtml(s.label||s.login||'')+'</a>' : escHtml(s.label||s.login||'');
+        var dateStr = s.date_subscribed ? fmtDate(s.date_subscribed.slice(0,10)) : '';
+        return '<tr><td>'+avatar+'</td><td>'+name+'</td><td>'+dateStr+'</td></tr>';
       }).join('')+
     '</tbody></table></div>';
   }).catch(function(e){
