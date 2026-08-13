@@ -1848,7 +1848,11 @@ async function driveLogin(){
   const verifier = await generateCodeVerifier();
   const challenge = await generateCodeChallenge(verifier);
   localStorage.setItem('mm_drive_pkce', verifier);
-  localStorage.setItem('mm_drive_action', 'pending'); // remember to continue after redirect
+  // Only default to 'pending' if a caller hasn't already staged a more
+  // specific action (e.g. the Analytics tab's reconnect button sets
+  // 'analytics' before calling this) — this used to overwrite that
+  // unconditionally, silently dropping the caller's intent.
+  if(!localStorage.getItem('mm_drive_action')) localStorage.setItem('mm_drive_action', 'pending');
   const params = new URLSearchParams({
     client_id:            DRIVE_CLIENT_ID,
     redirect_uri:         DRIVE_REDIRECT,
