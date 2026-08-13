@@ -2482,6 +2482,65 @@ async function mailchimpProxyGet(path){
   }
   return d;
 }
+async function mailchimpProxyPut(path, body){
+  const r = await fetch(DRIVE_AUTH_SERVER+'/api/mailchimp?path='+encodeURIComponent(path), {
+    method: 'PUT',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(body)
+  });
+  const d = await r.json();
+  if(!r.ok){
+    var err = new Error((d && (d.detail||d.error_description||d.title)) || ('Mailchimp API returned '+r.status));
+    err.status = r.status;
+    throw err;
+  }
+  return d;
+}
+// Pushes one client into the chosen Mailchimp audience as a new member,
+// using Mailchimp's own "add or update" upsert endpoint keyed by
+// MD5(lowercased email) — never sets `status` on an existing member, only
+// `status_if_new`, so a client who already unsubscribed via Mailchimp
+// directly doesn't get silently re-subscribed on the next sync pass; only
+// a genuinely new member gets created as subscribed.
+async function syncClientToMailchimp(client){
+  if(!client.email) return;
+  // Uses the already-chosen audience only — never triggers the interactive
+  // pickMailchimpList() picker here, since this can fire unattended from a
+  // background sync (blog followers, Analytics tab load) and popping a
+  // modal mid-background-task would be jarring. If no audience has been
+  // picked yet (i.e. the user has never used Log/Sync Mailchimp Activity),
+  // this just no-ops via the caller's catch — first use of either of those
+  // two manual features establishes it going forward.
+  var listId = localStorage.getItem(MAILCHIMP_LIST_KEY);
+  if(!listId) throw new Error('No Mailchimp audience selected yet — use "Sync Mailchimp Activity" once first');
+  var hash = md5hex(client.email.trim().toLowerCase());
+  var nameParts = (client.name||'').trim().split(/\s+/);
+  await mailchimpProxyPut('/lists/'+listId+'/members/'+hash, {
+    email_address: client.email.trim(),
+    status_if_new: 'subscribed',
+    merge_fields: { FNAME: nameParts[0]||'', LNAME: nameParts.slice(1).join(' ')||'' }
+  });
+}
+// Auto-sync entry point: called whenever a client is newly marked as a
+// subscriber (blog-follower auto-sync, or the manual Sub checkbox on the
+// Clients page). Silent on success (no toast) since this is meant to run
+// unattended in the background the same way the blog-follower sync itself
+// does — only surfaces a debugLog line and, on failure, a toast, so a
+// misconfigured Mailchimp connection doesn't go unnoticed.
+function autoSyncSubscriberToMailchimp(client){
+  syncClientToMailchimp(client).then(function(){
+    debugLog('Mailchimp: synced '+client.email);
+  }).catch(function(e){
+    var msg = (e&&e.message)||String(e);
+    debugLog('Mailchimp: auto-sync failed for '+client.email+' — '+msg);
+    // "No audience selected yet" is an expected, silent no-op state (the
+    // user hasn't used the manual Mailchimp sync feature yet) — only
+    // surface a toast for an actual failure once an audience IS chosen.
+    if(msg.indexOf('No Mailchimp audience selected')===-1){
+      toast('Mailchimp sync failed for '+client.email+': '+msg,'err');
+    }
+  });
+}
 
 async function pickMailchimpList(){
   const d = await mailchimpProxyGet('/lists?count=100');
@@ -9477,7 +9536,13 @@ function renderClients(){
   document.querySelectorAll('.client-sub-cb').forEach(function(cb){
     cb.addEventListener('change', function(){
       var c = db.clients.find(function(x){return x.id===cb.dataset.id;});
-      if(c){ c.isSubscriber = cb.checked; saveDB(); toast(c.name+(cb.checked?' marked as subscriber':' unmarked as subscriber'),'ok'); }
+      if(c){
+        var wasSubscriber = c.isSubscriber;
+        c.isSubscriber = cb.checked;
+        saveDB();
+        toast(c.name+(cb.checked?' marked as subscriber':' unmarked as subscriber'),'ok');
+        if(cb.checked && !wasSubscriber) autoSyncSubscriberToMailchimp(c);
+      }
     });
   });
 
@@ -12657,7 +12722,7 @@ function syncBlogFollowersToClients(token){
     if(d.error) return;
     var subs = d.subscribers||[];
     if(!subs.length) return;
-    var created = 0, updated = 0, changed = false;
+    var created = 0, updated = 0, changed = false, newlySubscribed = [];
     subs.forEach(function(s){
       var email = (s.label||'').trim();
       if(!email || email.indexOf('@')===-1) return;
@@ -12668,18 +12733,21 @@ function syncBlogFollowersToClients(token){
           if(!changed){ snapshot('Sync blog followers'); changed = true; }
           db.clients = db.clients.map(function(c){ return c.id===existing.id ? Object.assign({},c,{isSubscriber:true}) : c; });
           updated++;
+          newlySubscribed.push(Object.assign({},existing,{isSubscriber:true}));
         }
       } else {
         if(!changed){ snapshot('Sync blog followers'); changed = true; }
-        db.clients.push({
+        var newClient = {
           id: newId('C', db.clients),
           name: email,
           email: email,
           isSubscriber: true,
           joined: today(),
           notesLog: [{ts:new Date().toLocaleString(), text:'Auto-added from WordPress.com blog subscriber list.', noteType:'General'}]
-        });
+        };
+        db.clients.push(newClient);
         created++;
+        newlySubscribed.push(newClient);
       }
     });
     if(changed){
@@ -12689,6 +12757,7 @@ function syncBlogFollowersToClients(token){
       if(updated) parts.push(updated+' client'+(updated!==1?'s':'')+' marked as subscriber');
       toast(parts.join(', '), 'ok');
       render();
+      newlySubscribed.forEach(autoSyncSubscriberToMailchimp);
     }
   }).catch(function(e){
     debugLog('Blog follower sync failed: '+e.message);
