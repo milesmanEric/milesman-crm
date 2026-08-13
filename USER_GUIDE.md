@@ -240,11 +240,11 @@ Two cards, each pulling from a different source: your **WordPress.com/Jetpack** 
 
 **Google Analytics (GA4)** — no separate login needed here; it rides along on the same Google sign-in you already use for Drive backup. If you haven't connected Drive yet, or connected it before this feature existed, you'll see a **Connect**/**Reconnect Google Drive** button — click it once and you're set going forward. Once connected, it shows active users, page views, and sessions over the last 30 days, plus a daily breakdown table.
 
-**Drill down further**: under each card, click any of the four collapsed section headers (▸) to expand it and load the detail — nothing loads until you actually open a section, so the page stays quick even though there's a lot available:
-- **WordPress**: Top Posts & Pages, Referrers, Views by Country, Search Terms.
+**Drill down further**: under each card, click any collapsed section header (▸) to expand it and load the detail — nothing loads until you actually open a section, so the page stays quick even though there's a lot available:
+- **WordPress**: Top Posts & Pages, Referrers, Views by Country, Search Terms, Blog Followers.
 - **GA4**: Top Pages, Traffic Sources, Device Category, Top Countries.
 
-The GA4 detail sections and WordPress's Top Posts & Pages show nicely formatted tables (each linked title opens that page in a new tab). Referrers, Views by Country, and Search Terms currently show the raw data as-is rather than a formatted table — if anything there looks off or you'd like it cleaned up, let Claude know.
+All the GA4 detail sections, plus WordPress's Top Posts & Pages, Referrers, and Views by Country, show nicely formatted tables (linked titles/sources open in a new tab; countries show their flag). Search Terms shows a formatted table too where terms are actually visible — most search engines hide the exact query for privacy, so this section is often just a note saying how many were hidden rather than a list. Blog Followers still shows the raw data as-is — if anything there looks off, or you'd like it cleaned up, let Claude know.
 
 ---
 
