@@ -12401,17 +12401,38 @@ function loadWordpressSearchTerms(token, containerId){
     if(body) body.innerHTML = '<div class="empty">Failed to load: '+e.message+'</div>';
   });
 }
-// Field names confirmed against a real response (2026-08-13):
-// { page, pages, total, total_email, total_wpcom, subscribers:[{avatar, label, login, ID, url, date_subscribed, ...}], is_owner_subscribed }.
-// Only fetches page 1 (type=wpcom) — pagination isn't wired up, so a
-// site with more than one page of followers only shows the first here;
-// the summary line still states the true total_wpcom/total_email counts
-// either way.
-function loadWordpressFollowers(token, containerId){
-  var path = '/sites/'+WP_SITE+'/stats/followers?type=wpcom';
-  fetch(WP_AUTH_SERVER+'/api/wordpress-stats?path='+encodeURIComponent(path), {
+// Follows the `page`/`pages` fields to fetch every page, not just the
+// first — WordPress.com paginates followers (~15-20 per page), so a site
+// with more than one page used to only ever show the first. Capped at 10
+// pages as a sanity limit against a pathological `pages` value; returns
+// the last page's response with `subscribers` replaced by the full
+// combined list (the total_wpcom/total_email/total fields are the same
+// on every page, so which page's copy of those survives doesn't matter).
+function fetchAllWordpressFollowerPages(token, type, page, acc){
+  page = page || 1;
+  acc = acc || [];
+  if(page > 10) return Promise.resolve({subscribers: acc});
+  var path = '/sites/'+WP_SITE+'/stats/followers?type='+type+'&page='+page;
+  return fetch(WP_AUTH_SERVER+'/api/wordpress-stats?path='+encodeURIComponent(path), {
     headers: { Authorization: 'Bearer '+token }
   }).then(function(r){ return r.json(); }).then(function(d){
+    if(d.error) return d;
+    var combined = acc.concat(d.subscribers||[]);
+    if(d.pages && d.page < d.pages){
+      return fetchAllWordpressFollowerPages(token, type, d.page+1, combined);
+    }
+    return Object.assign({}, d, {subscribers: combined});
+  });
+}
+// Field names confirmed against a real response (2026-08-13):
+// { page, pages, total, total_email, total_wpcom, subscribers:[{avatar, label, login, ID, url, date_subscribed, ...}], is_owner_subscribed }.
+// Also has a temporary "Preview Email Subscribers" button — type=wpcom
+// (rendered here) has no email field at all, just an anonymous WordPress.com
+// username, so it can't be used for the planned client-record sync; this
+// button is purely to see a real type=email response before that gets
+// built, and will be removed once that's done.
+function loadWordpressFollowers(token, containerId){
+  fetchAllWordpressFollowerPages(token, 'wpcom').then(function(d){
     var body = $(containerId);
     if(!body) return;
     if(d.error){
@@ -12419,9 +12440,10 @@ function loadWordpressFollowers(token, containerId){
       return;
     }
     var subs = d.subscribers||[];
-    if(!subs.length){ body.innerHTML = '<div class="empty">No followers found.</div>'; return; }
-    var summaryLine = '<div style="font-size:11px;color:#888;margin-bottom:8px">'+fmt(d.total_wpcom)+' WordPress.com followers, '+fmt(d.total_email)+' email subscribers'+(d.pages>1?' — showing page 1 of '+fmt(d.pages):'')+'</div>';
-    body.innerHTML = summaryLine+'<div class="tbl-wrap" style="max-height:320px;overflow-y:auto"><table><thead><tr><th></th><th>Name</th><th>Subscribed</th></tr></thead><tbody>'+
+    var previewBtn = '<button type="button" id="wp-preview-email-subs-btn" style="padding:3px 10px;border-radius:6px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:11px;font-family:inherit;margin-bottom:8px">Preview Email Subscribers (temporary)</button><div id="wp-email-subs-preview"></div>';
+    if(!subs.length){ body.innerHTML = previewBtn+'<div class="empty">No followers found.</div>'; bindWpPreviewEmailSubsBtn(token); return; }
+    var summaryLine = '<div style="font-size:11px;color:#888;margin-bottom:8px">'+fmt(d.total_wpcom)+' WordPress.com followers, '+fmt(d.total_email)+' email subscribers</div>';
+    body.innerHTML = previewBtn+summaryLine+'<div class="tbl-wrap" style="max-height:320px;overflow-y:auto"><table><thead><tr><th></th><th>Name</th><th>Subscribed</th></tr></thead><tbody>'+
       subs.map(function(s){
         var avatar = s.avatar ? '<img src="'+escHtml(s.avatar)+'" style="width:24px;height:24px;border-radius:50%">' : '';
         var name = s.url ? '<a href="'+escHtml(s.url)+'" target="_blank" style="color:#2563eb;text-decoration:none">'+escHtml(s.label||s.login||'')+'</a>' : escHtml(s.label||s.login||'');
@@ -12429,9 +12451,24 @@ function loadWordpressFollowers(token, containerId){
         return '<tr><td>'+avatar+'</td><td>'+name+'</td><td>'+dateStr+'</td></tr>';
       }).join('')+
     '</tbody></table></div>';
+    bindWpPreviewEmailSubsBtn(token);
   }).catch(function(e){
     var body = $(containerId);
     if(body) body.innerHTML = '<div class="empty">Failed to load: '+e.message+'</div>';
+  });
+}
+function bindWpPreviewEmailSubsBtn(token){
+  var btn = document.getElementById('wp-preview-email-subs-btn');
+  if(!btn) return;
+  btn.addEventListener('click', function(){
+    var preview = document.getElementById('wp-email-subs-preview');
+    if(preview) preview.innerHTML = '<div class="empty">Loading…</div>';
+    fetchAllWordpressFollowerPages(token, 'email').then(function(d){
+      if(!preview) return;
+      preview.innerHTML = '<pre style="font-size:11px;white-space:pre-wrap;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:10px;max-height:300px;overflow:auto">'+escHtml(JSON.stringify(d,null,2))+'</pre>';
+    }).catch(function(e){
+      if(preview) preview.innerHTML = '<div class="empty">Failed to load: '+e.message+'</div>';
+    });
   });
 }
 // Raw JSON display — unlike the base /stats and top-posts endpoints
