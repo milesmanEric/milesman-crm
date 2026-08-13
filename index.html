@@ -12341,7 +12341,7 @@ function renderMarketing(){
     '<div class="page-hdr"><div class="page-title">Marketing</div></div>'+
     '<div class="card" style="margin-bottom:16px">'+
       '<div class="card-hdr"><span class="card-title">Facebook Ads</span>'+
-        (fbToken ? '<button class="cancel-btn" id="fb-disconnect">Disconnect</button>' : '')+
+        (fbToken ? '<span><button class="add-btn" id="fb-create-campaign-btn" style="margin-right:8px">+ Create Campaign</button><button class="cancel-btn" id="fb-disconnect">Disconnect</button></span>' : '')+
       '</div>'+
       (fbToken
         ? '<div id="fb-campaigns-body"><div class="empty">Loading…</div></div>'
@@ -12356,6 +12356,8 @@ function renderMarketing(){
     toast('Facebook disconnected','ok');
     render();
   });
+  var createCampaignBtn = $('fb-create-campaign-btn');
+  if(createCampaignBtn) createCampaignBtn.addEventListener('click', openFbCampaignWizard);
 
   if(fbToken) loadFacebookCampaigns(fbToken);
 }
@@ -12407,27 +12409,333 @@ function loadFacebookCampaigns(token){
 
     var currency = account.currency || 'USD';
     body.innerHTML = '<div style="font-size:11px;color:#888;margin-bottom:8px">'+escHtml(account.name||FB_AD_ACCOUNT)+' &middot; '+campaigns.length+' campaign'+(campaigns.length!==1?'s':'')+' &middot; last 30 days</div>'+
-      '<div class="tbl-wrap" style="overflow-x:auto"><table><thead><tr><th>Campaign</th><th>Status</th><th>Objective</th><th>Daily Budget</th><th>Spend (30d)</th><th>Impressions</th><th>Clicks</th><th>CPC</th></tr></thead><tbody>'+
+      '<div class="tbl-wrap" style="overflow-x:auto"><table><thead><tr><th>Campaign</th><th>Status</th><th>Objective</th><th>Daily Budget</th><th>Spend (30d)</th><th>Impressions</th><th>Clicks</th><th>CPC</th><th></th></tr></thead><tbody>'+
       campaigns.map(function(c){
         var ins = insightsByCampaign[c.id] || {};
         var dailyBudget = fbBudget(c.daily_budget);
         var lifeBudget = fbBudget(c.lifetime_budget);
         var budget = dailyBudget !== null ? currency+' '+money(dailyBudget)+'/day' : (lifeBudget !== null ? currency+' '+money(lifeBudget)+' lifetime' : '—');
+        var status = c.effective_status||c.status;
+        var toggleBtn = (status==='ACTIVE')
+          ? '<button class="cancel-btn fb-toggle-status" data-id="'+c.id+'" data-action="pause" style="font-size:11px;padding:3px 8px">Pause</button>'
+          : (status==='PAUSED' ? '<button class="cancel-btn fb-toggle-status" data-id="'+c.id+'" data-action="activate" style="font-size:11px;padding:3px 8px;color:#166534;border-color:#86efac">Activate</button>' : '');
         return '<tr>'+
           '<td>'+escHtml(c.name||'')+'</td>'+
-          '<td>'+fbStatusBadge(c.effective_status||c.status)+'</td>'+
+          '<td>'+fbStatusBadge(status)+'</td>'+
           '<td>'+escHtml((c.objective||'').replace(/_/g,' '))+'</td>'+
           '<td>'+budget+'</td>'+
           '<td>'+(ins.spend!==undefined ? currency+' '+money(ins.spend) : '—')+'</td>'+
           '<td>'+(ins.impressions!==undefined ? fmt(ins.impressions) : '—')+'</td>'+
           '<td>'+(ins.clicks!==undefined ? fmt(ins.clicks) : '—')+'</td>'+
           '<td>'+(ins.cpc!==undefined ? currency+' '+money(ins.cpc) : '—')+'</td>'+
+          '<td>'+toggleBtn+'</td>'+
         '</tr>';
       }).join('')+
       '</tbody></table></div>';
+
+    document.querySelectorAll('.fb-toggle-status').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var activating = btn.dataset.action==='activate';
+        var campaignName = btn.closest('tr').querySelector('td').textContent;
+        if(activating && !confirm('Activate "'+campaignName+'"? This makes it live and starts spending its budget immediately.')) return;
+        if(!activating && !confirm('Pause "'+campaignName+'"? It will stop spending immediately.')) return;
+        btn.disabled = true;
+        fbGraph('/'+btn.dataset.id, {method:'POST', body:{status: activating?'ACTIVE':'PAUSED'}}).then(function(r){
+          if(r.error){ toast('Failed: '+r.error.message,'err'); btn.disabled=false; return; }
+          toast(campaignName+(activating?' activated — now live':' paused'),'ok');
+          loadFacebookCampaigns(token);
+        }).catch(function(e){ toast('Failed: '+e.message,'err'); btn.disabled=false; });
+      });
+    });
   }).catch(function(e){
     if(body) body.innerHTML = '<div class="empty">Failed to load: '+e.message+'</div>';
   });
+}
+// ── Facebook Campaign Creation Wizard ───────────────────────────────────
+// 4-step flow: Campaign -> Ad Set (budget/audience) -> Creative (page/copy/
+// image) -> Review & Launch. Every object is created with status:'PAUSED'
+// — nothing spends money until explicitly activated afterward (the
+// Activate button wired into loadFacebookCampaigns() above), matching the
+// safety default promised when this feature was scoped. Field shapes
+// follow Meta's documented Marketing API behavior; not yet confirmed
+// against a real created campaign, so any validation error from Facebook
+// is shown verbatim in the wizard's progress panel rather than swallowed
+// — same show-the-real-error approach used for this app's other
+// unconfirmed integrations (WordPress search terms, etc).
+var FB_OBJECTIVES = [
+  {value:'OUTCOME_TRAFFIC', label:'Traffic — clicks to your website'},
+  {value:'OUTCOME_AWARENESS', label:'Awareness — reach & brand recall'},
+  {value:'OUTCOME_ENGAGEMENT', label:'Engagement — post/page engagement'},
+  {value:'OUTCOME_LEADS', label:'Leads — messages, calls, or your website'},
+  {value:'OUTCOME_SALES', label:'Sales — drive bookings/conversions'}
+];
+var FB_SPECIAL_AD_CATEGORIES = [
+  {value:'NONE', label:'None (most campaigns)'},
+  {value:'HOUSING', label:'Housing'},
+  {value:'EMPLOYMENT', label:'Employment'},
+  {value:'CREDIT', label:'Credit'},
+  {value:'SOCIAL_ISSUES_ELECTIONS_POLITICS', label:'Social Issues, Elections or Politics'}
+];
+var FB_CTAS = ['LEARN_MORE','SHOP_NOW','SIGN_UP','BOOK_TRAVEL','CONTACT_US','GET_QUOTE','CALL_NOW','SEND_MESSAGE'];
+
+function fbLabeledSelect(id, options, selected){
+  return '<select id="'+id+'">'+options.map(function(o){
+    return '<option value="'+o.value+'"'+(o.value===selected?' selected':'')+'>'+escHtml(o.label)+'</option>';
+  }).join('')+'</select>';
+}
+
+function openFbCampaignWizard(){
+  window._fbWizard = {
+    step: 1,
+    campaign: {objective:'OUTCOME_TRAFFIC', specialAdCategory:'NONE'},
+    adset: {budget:'25', startDate:today(), countries:'US', ageMin:'18', ageMax:'65', gender:'all'},
+    creative: {cta:'LEARN_MORE', url:'https://themilesman.com'},
+    pages: null
+  };
+  $('overlay').classList.add('open');
+  $('modal').classList.add('modal-wide');
+  renderFbWizard();
+  fbGraph('/'+FB_AD_ACCOUNT+'/promote_pages', {query:{limit:'50'}}).then(function(d){
+    window._fbWizard.pages = d.data||[];
+    if(window._fbWizard.step===3) renderFbWizard();
+  }).catch(function(){ window._fbWizard.pages = []; });
+}
+
+function fbWizardSaveStepFields(){
+  var w = window._fbWizard;
+  if(w.step===1){
+    w.campaign.name = ($('fbw-camp-name')||{}).value || w.campaign.name;
+    w.campaign.objective = ($('fbw-objective')||{}).value || w.campaign.objective;
+    w.campaign.specialAdCategory = ($('fbw-special-cat')||{}).value || w.campaign.specialAdCategory;
+  } else if(w.step===2){
+    w.adset.name = ($('fbw-adset-name')||{}).value || w.adset.name;
+    w.adset.budget = ($('fbw-budget')||{}).value || w.adset.budget;
+    w.adset.startDate = ($('fbw-start')||{}).value || w.adset.startDate;
+    w.adset.endDate = ($('fbw-end')||{}).value || '';
+    w.adset.countries = ($('fbw-countries')||{}).value || w.adset.countries;
+    w.adset.ageMin = ($('fbw-age-min')||{}).value || w.adset.ageMin;
+    w.adset.ageMax = ($('fbw-age-max')||{}).value || w.adset.ageMax;
+    w.adset.gender = ($('fbw-gender')||{}).value || w.adset.gender;
+  } else if(w.step===3){
+    w.creative.pageId = ($('fbw-page')||{}).value || w.creative.pageId;
+    w.creative.adName = ($('fbw-ad-name')||{}).value || w.creative.adName;
+    w.creative.primaryText = ($('fbw-primary-text')||{}).value || w.creative.primaryText;
+    w.creative.headline = ($('fbw-headline')||{}).value || w.creative.headline;
+    w.creative.description = ($('fbw-description')||{}).value || '';
+    w.creative.url = ($('fbw-url')||{}).value || w.creative.url;
+    w.creative.cta = ($('fbw-cta')||{}).value || w.creative.cta;
+  }
+}
+
+function fbWizardStepValid(){
+  var w = window._fbWizard;
+  if(w.step===1) return !!(w.campaign.name && w.campaign.objective);
+  if(w.step===2) return !!(w.adset.name && w.adset.budget && Number(w.adset.budget)>0 && w.adset.startDate && w.adset.countries);
+  if(w.step===3) return !!(w.creative.pageId && w.creative.adName && w.creative.primaryText && w.creative.headline && w.creative.url);
+  return true;
+}
+
+function renderFbWizard(){
+  var w = window._fbWizard;
+  var stepLabels = ['Campaign','Ad Set','Creative','Review & Launch'];
+  var stepper = '<div style="display:flex;gap:4px;margin-bottom:16px">'+stepLabels.map(function(lbl,i){
+    var n = i+1, active = n===w.step, done = n<w.step;
+    return '<div style="flex:1;text-align:center;padding:6px 4px;border-radius:6px;font-size:11px;font-weight:600;background:'+(active?'#2563eb':(done?'#dbeafe':'#f3f4f6'))+';color:'+(active?'#fff':(done?'#2563eb':'#888'))+'">'+n+'. '+lbl+'</div>';
+  }).join('')+'</div>';
+
+  var body = '';
+  if(w.step===1){
+    body =
+      fld('Campaign Name', inp('fbw-camp-name','text',w.campaign.name,'e.g. Summer Cruise Sale'), true)+
+      fld('Objective', fbLabeledSelect('fbw-objective', FB_OBJECTIVES, w.campaign.objective), true)+
+      fld('Special Ad Category', fbLabeledSelect('fbw-special-cat', FB_SPECIAL_AD_CATEGORIES, w.campaign.specialAdCategory), true)+
+      '<div class="field full" style="font-size:11px;color:#888">Required by Meta for every campaign — only choose one of the regulated categories if this ad is actually about housing, employment, credit, or social/political issues.</div>';
+  } else if(w.step===2){
+    body =
+      fld('Ad Set Name', inp('fbw-adset-name','text',w.adset.name,'e.g. Summer Cruise Sale — US 25-65'), true)+
+      fld('Daily Budget (USD)', inp('fbw-budget','number',w.adset.budget,'e.g. 25'), true)+
+      fld('Start Date', inp('fbw-start','date',w.adset.startDate), true)+
+      fld('End Date (optional)', inp('fbw-end','date',w.adset.endDate||''), true)+
+      fld('Countries (comma-separated 2-letter codes)', inp('fbw-countries','text',w.adset.countries,'e.g. US,CA'), true)+
+      fld('Age Min', inp('fbw-age-min','number',w.adset.ageMin))+
+      fld('Age Max', inp('fbw-age-max','number',w.adset.ageMax))+
+      '<div class="field"><label>Gender</label><select id="fbw-gender">'+
+        ['all','men','women'].map(function(g){return '<option value="'+g+'"'+(g===w.adset.gender?' selected':'')+'>'+(g==='all'?'All':g==='men'?'Men only':'Women only')+'</option>';}).join('')+
+      '</select></div>';
+  } else if(w.step===3){
+    var pageOpts = (w.pages||[]).map(function(p){return {value:p.id, label:p.name};});
+    var pageField = w.pages===null
+      ? '<div class="empty">Loading your Facebook Pages…</div>'
+      : (pageOpts.length
+        ? fbLabeledSelect('fbw-page', pageOpts, w.creative.pageId)
+        : inp('fbw-page','text',w.creative.pageId,'Paste your Facebook Page ID — none found automatically'));
+    body =
+      fld('Facebook Page (posts as)', pageField, true)+
+      fld('Ad Name', inp('fbw-ad-name','text',w.creative.adName,'e.g. Summer Cruise Sale — Ad 1'), true)+
+      '<div class="field full"><label>Primary Text</label><textarea id="fbw-primary-text" rows="3" placeholder="The main message shown above the image">'+escHtml(w.creative.primaryText||'')+'</textarea></div>'+
+      fld('Headline', inp('fbw-headline','text',w.creative.headline,'Short, bold text under the image'), true)+
+      fld('Description (optional)', inp('fbw-description','text',w.creative.description,'Small text under the headline'), true)+
+      fld('Destination URL', inp('fbw-url','url',w.creative.url,'https://themilesman.com'), true)+
+      '<div class="field full"><label>Call to Action</label><select id="fbw-cta">'+
+        FB_CTAS.map(function(c){return '<option value="'+c+'"'+(c===w.creative.cta?' selected':'')+'>'+c.replace(/_/g,' ')+'</option>';}).join('')+
+      '</select></div>'+
+      '<div class="field full"><label>Ad Image</label><input type="file" id="fbw-image" accept="image/*">'+
+        (w.creative.imageDataUrl?'<div style="margin-top:6px"><img src="'+w.creative.imageDataUrl+'" style="max-width:160px;max-height:160px;border-radius:6px;border:1px solid #e5e7eb"></div>':'')+
+      '</div>';
+  } else if(w.step===4){
+    var pageMatch = (w.pages||[]).find(function(p){return p.id===w.creative.pageId;});
+    var objLabel = (FB_OBJECTIVES.find(function(o){return o.value===w.campaign.objective;})||{}).label || w.campaign.objective;
+    body =
+      '<div class="field full"><label>Campaign</label><div>'+escHtml(w.campaign.name)+' &middot; '+escHtml(objLabel)+'</div></div>'+
+      '<div class="field full"><label>Ad Set</label><div>'+escHtml(w.adset.name)+' &middot; $'+money(Number(w.adset.budget)||0)+'/day &middot; '+escHtml(w.adset.countries)+' &middot; ages '+escHtml(w.adset.ageMin)+'-'+escHtml(w.adset.ageMax)+' &middot; '+escHtml(w.adset.gender)+'</div></div>'+
+      '<div class="field full"><label>Ad</label><div>'+escHtml(w.creative.adName||'')+' on '+escHtml(pageMatch?pageMatch.name:(w.creative.pageId||''))+(w.creative.imageDataUrl?' &middot; image attached':' &middot; <span style="color:#dc2626">no image selected</span>')+'</div></div>'+
+      '<div class="field full" style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px;font-size:12px;color:#92400e">This creates everything as <b>Paused</b> — nothing spends money until you explicitly activate it (from the campaign list on the Marketing tab, or in Ads Manager).</div>'+
+      '<div id="fbw-progress" class="field full"></div>';
+  }
+
+  $('modal').innerHTML =
+    '<div class="modal-hdr"><div class="modal-title">Create Facebook Campaign</div><button class="close-btn" id="modal-close">&#x2715;</button></div>'+
+    stepper+
+    '<div class="fg">'+body+'</div>'+
+    '<div class="form-actions form-actions-sticky">'+
+      '<button class="cancel-btn" id="modal-cancel">Cancel</button>'+
+      (w.step>1?'<button class="cancel-btn" id="fbw-back">Back</button>':'')+
+      (w.step<4?'<button class="save-btn" id="fbw-next">Next</button>':'<button class="save-btn" id="fbw-launch">Create Campaign (Paused)</button>')+
+    '</div>';
+
+  $('modal-close').addEventListener('click', closeModal);
+  $('modal-cancel').addEventListener('click', closeModal);
+  var backBtn = $('fbw-back');
+  if(backBtn) backBtn.addEventListener('click', function(){ fbWizardSaveStepFields(); w.step--; renderFbWizard(); });
+  var nextBtn = $('fbw-next');
+  if(nextBtn) nextBtn.addEventListener('click', function(){
+    fbWizardSaveStepFields();
+    if(!fbWizardStepValid()){ toast('Please fill in all required fields','err'); return; }
+    w.step++;
+    renderFbWizard();
+  });
+  var imageInput = $('fbw-image');
+  if(imageInput) imageInput.addEventListener('change', function(){
+    var file = imageInput.files[0];
+    if(!file) return;
+    var reader = new FileReader();
+    reader.onload = function(){
+      w.creative.imageDataUrl = reader.result;
+      renderFbWizard();
+    };
+    reader.readAsDataURL(file);
+  });
+  var launchBtn = $('fbw-launch');
+  if(launchBtn) launchBtn.addEventListener('click', fbWizardLaunch);
+}
+
+function fbWizardProgress(msg){
+  var el = $('fbw-progress');
+  if(el && msg) el.innerHTML += '<div style="font-size:12px;color:#555">'+escHtml(msg)+'</div>';
+}
+
+async function fbWizardLaunch(){
+  var w = window._fbWizard;
+  var launchBtn = $('fbw-launch');
+  var backBtn = $('fbw-back');
+  if(launchBtn){ launchBtn.disabled = true; launchBtn.textContent = 'Creating…'; }
+  if(backBtn) backBtn.disabled = true;
+  var progressEl = $('fbw-progress');
+  if(progressEl) progressEl.innerHTML = '';
+
+  try{
+    fbWizardProgress('Creating campaign…');
+    var specialCats = w.campaign.specialAdCategory==='NONE' ? [] : [w.campaign.specialAdCategory];
+    var campResp = await fbGraph('/'+FB_AD_ACCOUNT+'/campaigns', {method:'POST', body:{
+      name: w.campaign.name,
+      objective: w.campaign.objective,
+      status: 'PAUSED',
+      special_ad_categories: specialCats
+    }});
+    if(campResp.error) throw new Error('Campaign: '+campResp.error.message);
+    var campaignId = campResp.id;
+    fbWizardProgress('Campaign created (ID '+campaignId+').');
+
+    var isAwareness = w.campaign.objective==='OUTCOME_AWARENESS';
+    var optimizationGoal = isAwareness ? 'REACH' : 'LINK_CLICKS';
+    var targeting = {
+      geo_locations: { countries: w.adset.countries.split(',').map(function(s){return s.trim().toUpperCase();}).filter(Boolean) },
+      age_min: Number(w.adset.ageMin)||18,
+      age_max: Number(w.adset.ageMax)||65
+    };
+    if(w.adset.gender==='men') targeting.genders = [1];
+    if(w.adset.gender==='women') targeting.genders = [2];
+
+    fbWizardProgress('Creating ad set…');
+    var adsetBody = {
+      name: w.adset.name,
+      campaign_id: campaignId,
+      daily_budget: Math.round(Number(w.adset.budget)*100),
+      billing_event: 'IMPRESSIONS',
+      optimization_goal: optimizationGoal,
+      bid_strategy: 'LOWEST_COST_WITHOUT_CAP',
+      targeting: targeting,
+      status: 'PAUSED',
+      start_time: new Date(w.adset.startDate+'T12:00:00').toISOString()
+    };
+    if(!isAwareness) adsetBody.destination_type = 'WEBSITE';
+    if(w.adset.endDate) adsetBody.end_time = new Date(w.adset.endDate+'T12:00:00').toISOString();
+    var adsetResp = await fbGraph('/'+FB_AD_ACCOUNT+'/adsets', {method:'POST', body:adsetBody});
+    if(adsetResp.error) throw new Error('Ad Set: '+adsetResp.error.message);
+    var adsetId = adsetResp.id;
+    fbWizardProgress('Ad set created (ID '+adsetId+').');
+
+    var imageHash = null;
+    if(w.creative.imageDataUrl){
+      fbWizardProgress('Uploading image…');
+      var base64 = w.creative.imageDataUrl.split(',')[1];
+      var imgResp = await fbGraph('/'+FB_AD_ACCOUNT+'/adimages', {method:'POST', body:{bytes: base64}});
+      if(imgResp.error) throw new Error('Image upload: '+imgResp.error.message);
+      var images = imgResp.images||{};
+      var firstKey = Object.keys(images)[0];
+      imageHash = firstKey ? images[firstKey].hash : null;
+      fbWizardProgress('Image uploaded.');
+    }
+
+    fbWizardProgress('Creating ad creative…');
+    var linkData = {
+      message: w.creative.primaryText,
+      link: w.creative.url,
+      name: w.creative.headline,
+      call_to_action: { type: w.creative.cta, value: { link: w.creative.url } }
+    };
+    if(w.creative.description) linkData.description = w.creative.description;
+    if(imageHash) linkData.image_hash = imageHash;
+    var creativeResp = await fbGraph('/'+FB_AD_ACCOUNT+'/adcreatives', {method:'POST', body:{
+      name: w.creative.adName+' Creative',
+      object_story_spec: { page_id: w.creative.pageId, link_data: linkData }
+    }});
+    if(creativeResp.error) throw new Error('Creative: '+creativeResp.error.message);
+    var creativeId = creativeResp.id;
+    fbWizardProgress('Ad creative created.');
+
+    fbWizardProgress('Creating ad…');
+    var adResp = await fbGraph('/'+FB_AD_ACCOUNT+'/ads', {method:'POST', body:{
+      name: w.creative.adName,
+      adset_id: adsetId,
+      creative: { creative_id: creativeId },
+      status: 'PAUSED'
+    }});
+    if(adResp.error) throw new Error('Ad: '+adResp.error.message);
+    fbWizardProgress('Ad created (ID '+adResp.id+'). All paused — nothing is spending yet.');
+
+    toast('Campaign "'+w.campaign.name+'" created (paused)', 'ok');
+    if(launchBtn) launchBtn.textContent = 'Done';
+    var manageUrl = 'https://www.facebook.com/adsmanager/manage/campaigns?act='+FB_AD_ACCOUNT.replace('act_','')+'&selected_campaign_ids='+campaignId;
+    var el = $('fbw-progress');
+    if(el) el.innerHTML += '<div style="margin-top:8px"><a href="'+manageUrl+'" target="_blank" style="color:#2563eb">Open in Ads Manager &rarr;</a></div>';
+    setTimeout(function(){ closeModal(); render(); }, 2500);
+  } catch(e){
+    fbWizardProgress('Failed: '+(e&&e.message||e));
+    toast('Campaign creation failed: '+(e&&e.message||e), 'err');
+    if(launchBtn){ launchBtn.disabled=false; launchBtn.textContent='Retry'; }
+    if(backBtn) backBtn.disabled = false;
+  }
 }
 // A collapsible drill-down mini-section within a card — mirrors the
 // Bookmarks category collapse pattern (default collapsed,
