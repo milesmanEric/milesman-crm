@@ -226,9 +226,25 @@ Click **+ Load Starter Bookmarks** to add a pre-built set of consumer booking-si
 
 ---
 
-## Marketing / Analytics
+## Marketing
 
-Two spots reserved in the nav for later — nothing built yet, just a "Coming soon" placeholder on each.
+Reserved in the nav for later — nothing built yet, just a "Coming soon" placeholder.
+
+---
+
+## Analytics
+
+Two cards, each pulling from a different source: your **WordPress.com/Jetpack** blog stats and your **Google Analytics (GA4)** website traffic.
+
+**WordPress.com / Jetpack Stats** — click **Connect WordPress.com** the first time; after that it shows visitors and views (today, yesterday, and all-time), your blog's follower count, your single best day ever, and a day-by-day table for the last 30 days. **Disconnect** clears the connection if you ever need to reset it.
+
+**Google Analytics (GA4)** — no separate login needed here; it rides along on the same Google sign-in you already use for Drive backup. If you haven't connected Drive yet, or connected it before this feature existed, you'll see a **Connect**/**Reconnect Google Drive** button — click it once and you're set going forward. Once connected, it shows active users, page views, and sessions over the last 30 days, plus a daily breakdown table.
+
+**Drill down further**: under each card, click any of the four collapsed section headers (▸) to expand it and load the detail — nothing loads until you actually open a section, so the page stays quick even though there's a lot available:
+- **WordPress**: Top Posts & Pages, Referrers, Views by Country, Search Terms.
+- **GA4**: Top Pages, Traffic Sources, Device Category, Top Countries.
+
+The GA4 detail sections and WordPress's Top Posts & Pages show nicely formatted tables (each linked title opens that page in a new tab). Referrers, Views by Country, and Search Terms currently show the raw data as-is rather than a formatted table — if anything there looks off or you'd like it cleaned up, let Claude know.
 
 ---
 

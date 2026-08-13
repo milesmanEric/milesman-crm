@@ -12240,7 +12240,7 @@ function renderAnalytics(){
   });
   if(wpToken){
     loadWordpressStats(wpToken);
-    if(!analyticsSectionCollapsed('wp-top-posts')) loadWordpressExtra(wpToken, 'wp-top-posts-body', '/sites/'+WP_SITE+'/stats/top-posts?period=day&num=30&summarize=1');
+    if(!analyticsSectionCollapsed('wp-top-posts')) loadWordpressTopPosts(wpToken, 'wp-top-posts-body');
     if(!analyticsSectionCollapsed('wp-referrers')) loadWordpressExtra(wpToken, 'wp-referrers-body', '/sites/'+WP_SITE+'/stats/referrers?period=day&num=30&summarize=1');
     if(!analyticsSectionCollapsed('wp-countries')) loadWordpressExtra(wpToken, 'wp-countries-body', '/sites/'+WP_SITE+'/stats/country-views?period=day&num=30&summarize=1');
     if(!analyticsSectionCollapsed('wp-search-terms')) loadWordpressExtra(wpToken, 'wp-search-terms-body', '/sites/'+WP_SITE+'/stats/search-terms?period=day&num=30&summarize=1');
@@ -12262,12 +12262,41 @@ function renderAnalytics(){
     if(!analyticsSectionCollapsed('ga4-countries')) loadGA4Breakdown(token, 'ga4-countries-body', 'country', 'Country', 'activeUsers', 'Users');
   });
 }
-// Raw JSON display — unlike the base /stats endpoint (whose field names
-// got verified against a real response before being formatted), these
-// four sub-endpoints' exact response shapes haven't been confirmed live
-// yet, so this avoids guessing wrong and silently showing blank/mismapped
-// data. Once real responses come through here, each becomes a proper
-// formatted table the same way the base stats card was upgraded.
+// Field names confirmed against a real response (2026-08-13):
+// { summary: { postviews: [{id, href, title, type, views, ...}], total_views, dropped_ids } }.
+function loadWordpressTopPosts(token, containerId){
+  var path = '/sites/'+WP_SITE+'/stats/top-posts?period=day&num=30&summarize=1';
+  fetch(WP_AUTH_SERVER+'/api/wordpress-stats?path='+encodeURIComponent(path), {
+    headers: { Authorization: 'Bearer '+token }
+  }).then(function(r){ return r.json(); }).then(function(d){
+    var body = $(containerId);
+    if(!body) return;
+    if(d.error){
+      body.innerHTML = '<div class="empty">'+escHtml(d.error_description||d.error)+'</div>';
+      return;
+    }
+    var posts = (d.summary && d.summary.postviews) || [];
+    if(!posts.length){ body.innerHTML = '<div class="empty">No page view data for the last 30 days.</div>'; return; }
+    body.innerHTML = '<div class="tbl-wrap" style="max-height:320px;overflow-y:auto"><table><thead><tr><th>Title</th><th>Type</th><th>Views</th></tr></thead><tbody>'+
+      posts.map(function(p){
+        return '<tr>'+
+          '<td style="max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(p.href?'<a href="'+escHtml(p.href)+'" target="_blank" style="color:#2563eb;text-decoration:none">'+escHtml(p.title||p.href)+'</a>':escHtml(p.title||''))+'</td>'+
+          '<td>'+escHtml(p.type||'')+'</td>'+
+          '<td>'+fmt(p.views)+'</td>'+
+        '</tr>';
+      }).join('')+
+    '</tbody></table></div>';
+  }).catch(function(e){
+    var body = $(containerId);
+    if(body) body.innerHTML = '<div class="empty">Failed to load: '+e.message+'</div>';
+  });
+}
+// Raw JSON display — unlike the base /stats and top-posts endpoints
+// (whose field names got verified against real responses before being
+// formatted), these three sub-endpoints' exact response shapes haven't
+// been confirmed live yet, so this avoids guessing wrong and silently
+// showing blank/mismapped data. Once real responses come through here,
+// each becomes a proper formatted table the same way top-posts was.
 function loadWordpressExtra(token, containerId, path){
   fetch(WP_AUTH_SERVER+'/api/wordpress-stats?path='+encodeURIComponent(path), {
     headers: { Authorization: 'Bearer '+token }
