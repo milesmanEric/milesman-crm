@@ -1948,8 +1948,14 @@ function checkWordpressRedirect(){
 // connected site yet, so this avoids silently mis-mapping field names into
 // a polished-looking stat tile that's actually wrong. Once a real response
 // comes through here, this becomes properly formatted stat cards.
+// Routed through api/wordpress-stats.js — public-api.wordpress.com sends no
+// CORS headers, so a direct browser fetch fails even with a valid token;
+// the proxy just relays this same request with CORS added, no secret
+// involved (the token stays exactly as exposed to the browser as it
+// already was).
 function loadWordpressStats(token){
-  fetch('https://public-api.wordpress.com/rest/v1.1/sites/'+WP_SITE+'/stats', {
+  var path = encodeURIComponent('/sites/'+WP_SITE+'/stats');
+  fetch(WP_AUTH_SERVER+'/api/wordpress-stats?path='+path, {
     headers: { Authorization: 'Bearer '+token }
   }).then(function(r){ return r.json(); }).then(function(d){
     var body = $('wp-stats-body');
@@ -1957,7 +1963,7 @@ function loadWordpressStats(token){
     body.innerHTML = '<pre style="font-size:11px;white-space:pre-wrap;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:10px;max-height:400px;overflow:auto">'+escHtml(JSON.stringify(d,null,2))+'</pre>';
   }).catch(function(e){
     var body = $('wp-stats-body');
-    if(body) body.innerHTML = '<div class="empty">Failed to load stats: '+e.message+' (if this is a CORS error, the fetch will need to go through a Vercel proxy instead of hitting public-api.wordpress.com directly — let Claude know).</div>';
+    if(body) body.innerHTML = '<div class="empty">Failed to load stats: '+e.message+'</div>';
   });
 }
 async function findBackupFile(token){
