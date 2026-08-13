@@ -246,7 +246,9 @@ Two cards, each pulling from a different source: your **WordPress.com/Jetpack** 
 - **WordPress**: Top Posts & Pages, Referrers, Views by Country, Search Terms, Blog Followers.
 - **GA4**: Top Pages, Traffic Sources, Device Category, Top Countries.
 
-All the detail sections in both cards now show nicely formatted tables — linked titles/sources/names open in a new tab, countries show their flag, and followers show their avatar. Search Terms shows a table too where terms are actually visible — most search engines hide the exact query for privacy, so this section is often just a note saying how many were hidden rather than a list. Blog Followers only shows the first page of followers if you have more than one page — the "X WordPress.com followers, Y email subscribers" line above the list always shows your true totals either way.
+All the detail sections in both cards now show nicely formatted tables — linked titles/sources/names open in a new tab, countries show their flag, and followers show their avatar. Search Terms shows a table too where terms are actually visible — most search engines hide the exact query for privacy, so this section is often just a note saying how many were hidden rather than a list. Blog Followers shows every follower across all pages, not just the first.
+
+**Blog followers automatically become clients**: every time you open Analytics with WordPress connected, the app quietly checks your email subscriber list against your Clients list. If a subscriber's email matches an existing client, their **Subscriber** checkbox gets turned on automatically if it wasn't already. If a subscriber doesn't match anyone, a new client record is created for them (with the Subscriber box checked) so nobody who follows your blog falls through the cracks. You'll see a toast confirming what changed the moment it happens; if everything's already in sync, nothing happens and no toast appears.
 
 ---
 

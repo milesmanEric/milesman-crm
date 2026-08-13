@@ -12275,6 +12275,7 @@ function renderAnalytics(){
   });
   if(wpToken){
     loadWordpressStats(wpToken);
+    syncBlogFollowersToClients(wpToken);
     if(!analyticsSectionCollapsed('wp-top-posts')) loadWordpressTopPosts(wpToken, 'wp-top-posts-body');
     if(!analyticsSectionCollapsed('wp-referrers')) loadWordpressReferrers(wpToken, 'wp-referrers-body');
     if(!analyticsSectionCollapsed('wp-countries')) loadWordpressCountries(wpToken, 'wp-countries-body');
@@ -12452,11 +12453,6 @@ function fetchAllWordpressFollowerPages(token, type, page, acc){
 }
 // Field names confirmed against a real response (2026-08-13):
 // { page, pages, total, total_email, total_wpcom, subscribers:[{avatar, label, login, ID, url, date_subscribed, ...}], is_owner_subscribed }.
-// Also has a temporary "Preview Email Subscribers" button — type=wpcom
-// (rendered here) has no email field at all, just an anonymous WordPress.com
-// username, so it can't be used for the planned client-record sync; this
-// button is purely to see a real type=email response before that gets
-// built, and will be removed once that's done.
 function loadWordpressFollowers(token, containerId){
   fetchAllWordpressFollowerPages(token, 'wpcom').then(function(d){
     var body = $(containerId);
@@ -12466,10 +12462,9 @@ function loadWordpressFollowers(token, containerId){
       return;
     }
     var subs = d.subscribers||[];
-    var previewBtn = '<button type="button" id="wp-preview-email-subs-btn" style="padding:3px 10px;border-radius:6px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:11px;font-family:inherit;margin-bottom:8px">Preview Email Subscribers (temporary)</button><div id="wp-email-subs-preview"></div>';
-    if(!subs.length){ body.innerHTML = previewBtn+'<div class="empty">No followers found.</div>'; bindWpPreviewEmailSubsBtn(token); return; }
+    if(!subs.length){ body.innerHTML = '<div class="empty">No followers found.</div>'; return; }
     var summaryLine = '<div style="font-size:11px;color:#888;margin-bottom:8px">'+fmt(d.total_wpcom)+' WordPress.com followers, '+fmt(d.total_email)+' email subscribers</div>';
-    body.innerHTML = previewBtn+summaryLine+'<div class="tbl-wrap" style="max-height:320px;overflow-y:auto"><table><thead><tr><th></th><th>Name</th><th>Subscribed</th></tr></thead><tbody>'+
+    body.innerHTML = summaryLine+'<div class="tbl-wrap" style="max-height:320px;overflow-y:auto"><table><thead><tr><th></th><th>Name</th><th>Subscribed</th></tr></thead><tbody>'+
       subs.map(function(s){
         var avatar = s.avatar ? '<img src="'+escHtml(s.avatar)+'" style="width:24px;height:24px;border-radius:50%">' : '';
         var name = s.url ? '<a href="'+escHtml(s.url)+'" target="_blank" style="color:#2563eb;text-decoration:none">'+escHtml(s.label||s.login||'')+'</a>' : escHtml(s.label||s.login||'');
@@ -12477,24 +12472,66 @@ function loadWordpressFollowers(token, containerId){
         return '<tr><td>'+avatar+'</td><td>'+name+'</td><td>'+dateStr+'</td></tr>';
       }).join('')+
     '</tbody></table></div>';
-    bindWpPreviewEmailSubsBtn(token);
   }).catch(function(e){
     var body = $(containerId);
     if(body) body.innerHTML = '<div class="empty">Failed to load: '+e.message+'</div>';
   });
 }
-function bindWpPreviewEmailSubsBtn(token){
-  var btn = document.getElementById('wp-preview-email-subs-btn');
-  if(!btn) return;
-  btn.addEventListener('click', function(){
-    var preview = document.getElementById('wp-email-subs-preview');
-    if(preview) preview.innerHTML = '<div class="empty">Loading…</div>';
-    fetchAllWordpressFollowerPages(token, 'email').then(function(d){
-      if(!preview) return;
-      preview.innerHTML = '<pre style="font-size:11px;white-space:pre-wrap;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:10px;max-height:300px;overflow:auto">'+escHtml(JSON.stringify(d,null,2))+'</pre>';
-    }).catch(function(e){
-      if(preview) preview.innerHTML = '<div class="empty">Failed to load: '+e.message+'</div>';
+// "Always ensure all blog followers are clients with the subscriber box
+// checked" — runs automatically whenever the WordPress card loads on the
+// Analytics page (alongside loadWordpressStats()), matching every other
+// auto-import pipeline in this app (trip-form/contact-form/revenue email
+// imports all silently create/update client records too, no confirmation
+// dialog). Only type=email subscribers are used — type=wpcom followers
+// are anonymous WordPress.com usernames with no email at all, so there's
+// nothing to match a client record on. Confirmed against a real response
+// (2026-08-13): a subscriber's `label` field *is* their email address for
+// this type (there's no separate `email` field). Matches case-
+// insensitively on db.clients[].email; an existing match just gets
+// isSubscriber flipped on if it wasn't already, a non-match gets a new,
+// minimal client record. Self-terminating despite calling render() on
+// change (which re-runs this): the second pass finds every email already
+// synced and makes no further changes, so it doesn't loop.
+function syncBlogFollowersToClients(token){
+  fetchAllWordpressFollowerPages(token, 'email').then(function(d){
+    if(d.error) return;
+    var subs = d.subscribers||[];
+    if(!subs.length) return;
+    var created = 0, updated = 0, changed = false;
+    subs.forEach(function(s){
+      var email = (s.label||'').trim();
+      if(!email || email.indexOf('@')===-1) return;
+      var emailLower = email.toLowerCase();
+      var existing = db.clients.find(function(c){ return (c.email||'').toLowerCase()===emailLower; });
+      if(existing){
+        if(!existing.isSubscriber){
+          if(!changed){ snapshot('Sync blog followers'); changed = true; }
+          db.clients = db.clients.map(function(c){ return c.id===existing.id ? Object.assign({},c,{isSubscriber:true}) : c; });
+          updated++;
+        }
+      } else {
+        if(!changed){ snapshot('Sync blog followers'); changed = true; }
+        db.clients.push({
+          id: newId('C', db.clients),
+          name: email,
+          email: email,
+          isSubscriber: true,
+          joined: today(),
+          notesLog: [{ts:new Date().toLocaleString(), text:'Auto-added from WordPress.com blog subscriber list.', noteType:'General'}]
+        });
+        created++;
+      }
     });
+    if(changed){
+      saveDB();
+      var parts = [];
+      if(created) parts.push(created+' new subscriber'+(created!==1?'s':'')+' added as client'+(created!==1?'s':''));
+      if(updated) parts.push(updated+' client'+(updated!==1?'s':'')+' marked as subscriber');
+      toast(parts.join(', '), 'ok');
+      render();
+    }
+  }).catch(function(e){
+    debugLog('Blog follower sync failed: '+e.message);
   });
 }
 // Raw JSON display — unlike the base /stats and top-posts endpoints
