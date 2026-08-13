@@ -9102,6 +9102,7 @@ function renderDash(){
       '<div class="stat" id="stat-dash-upcoming"><div class="stat-lbl">Upcoming</div><div class="stat-val">'+s.upcoming+'</div></div>'+
       '<div class="stat" id="stat-dash-value"><div class="stat-lbl">Total Revenue</div><div class="stat-val">$'+money(s.value)+'</div></div>'+
       '<div class="stat" id="stat-dash-pts"><div class="stat-lbl">Points deployed</div><div class="stat-val">'+fmt(s.pts)+'</div></div>'+
+      '<div class="stat" id="stat-dash-followers" style="cursor:pointer" title="Click to view blog followers"><div class="stat-lbl">Blog Followers</div><div class="stat-val" id="dash-followers-val">—</div></div>'+
     '</div>'+
     '<div class="card" style="margin-bottom:16px">'+
       '<div class="card-hdr"><span class="card-title">Revenue by Section</span></div>'+
@@ -9231,6 +9232,31 @@ function renderDash(){
         return {cells:[t.clientName||'',t.destination||'',t.departDate||'—',displayStatus(t),fmt(tripBookedPoints(t))],onClick:function(){openTripForm(t.id);}};
       }));
   });
+
+  // Blog Followers tile — count is fetched independently here (Dashboard
+  // doesn't otherwise touch WordPress data at all) rather than reusing
+  // loadWordpressStats(), since that function targets the Analytics page's
+  // own #wp-stats-body container, not this one-number Dashboard tile.
+  // Clicking it jumps to the Analytics tab with the Blog Followers
+  // drill-down pre-expanded, same as clicking that same-labeled tile on
+  // the Analytics page itself.
+  var statDashFollowers = $('stat-dash-followers');
+  if(statDashFollowers) statDashFollowers.addEventListener('click', function(){
+    window._analyticsCollapsed = window._analyticsCollapsed || {};
+    window._analyticsCollapsed['wp-followers'] = false;
+    go('analytics');
+    var el = document.getElementById('wp-followers-body');
+    if(el) el.scrollIntoView({behavior:'smooth', block:'center'});
+  });
+  var dashWpToken = localStorage.getItem('mm_wp_token');
+  if(dashWpToken){
+    fetch(WP_AUTH_SERVER+'/api/wordpress-stats?path='+encodeURIComponent('/sites/'+WP_SITE+'/stats'), {
+      headers: { Authorization: 'Bearer '+dashWpToken }
+    }).then(function(r){ return r.json(); }).then(function(d){
+      var el = document.getElementById('dash-followers-val');
+      if(el && d.stats) el.textContent = fmt(d.stats.followers_blog);
+    }).catch(function(){});
+  }
 }
 
 function clientSortArrow(col){
