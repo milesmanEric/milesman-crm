@@ -12210,7 +12210,8 @@ function renderAnalytics(){
           analyticsSectionHtml('wp-top-posts','Top Posts & Pages (30 days)')+
           analyticsSectionHtml('wp-referrers','Referrers (30 days)')+
           analyticsSectionHtml('wp-countries','Views by Country (30 days)')+
-          analyticsSectionHtml('wp-search-terms','Search Terms (30 days)')
+          analyticsSectionHtml('wp-search-terms','Search Terms (30 days)')+
+          analyticsSectionHtml('wp-followers','Blog Followers')
         : '<div style="padding:8px 0"><button class="add-btn" id="wp-connect-btn">Connect WordPress.com</button></div>')+
     '</div>'+
     '<div class="card" style="margin-bottom:16px">'+
@@ -12241,9 +12242,10 @@ function renderAnalytics(){
   if(wpToken){
     loadWordpressStats(wpToken);
     if(!analyticsSectionCollapsed('wp-top-posts')) loadWordpressTopPosts(wpToken, 'wp-top-posts-body');
-    if(!analyticsSectionCollapsed('wp-referrers')) loadWordpressExtra(wpToken, 'wp-referrers-body', '/sites/'+WP_SITE+'/stats/referrers?period=day&num=30&summarize=1');
-    if(!analyticsSectionCollapsed('wp-countries')) loadWordpressExtra(wpToken, 'wp-countries-body', '/sites/'+WP_SITE+'/stats/country-views?period=day&num=30&summarize=1');
-    if(!analyticsSectionCollapsed('wp-search-terms')) loadWordpressExtra(wpToken, 'wp-search-terms-body', '/sites/'+WP_SITE+'/stats/search-terms?period=day&num=30&summarize=1');
+    if(!analyticsSectionCollapsed('wp-referrers')) loadWordpressReferrers(wpToken, 'wp-referrers-body');
+    if(!analyticsSectionCollapsed('wp-countries')) loadWordpressCountries(wpToken, 'wp-countries-body');
+    if(!analyticsSectionCollapsed('wp-search-terms')) loadWordpressSearchTerms(wpToken, 'wp-search-terms-body');
+    if(!analyticsSectionCollapsed('wp-followers')) loadWordpressExtra(wpToken, 'wp-followers-body', '/sites/'+WP_SITE+'/stats/followers?type=wpcom');
   }
 
   getDriveTokenSilent().then(function(token){
@@ -12284,6 +12286,106 @@ function loadWordpressTopPosts(token, containerId){
           '<td>'+escHtml(p.type||'')+'</td>'+
           '<td>'+fmt(p.views)+'</td>'+
         '</tr>';
+      }).join('')+
+    '</tbody></table></div>';
+  }).catch(function(e){
+    var body = $(containerId);
+    if(body) body.innerHTML = '<div class="empty">Failed to load: '+e.message+'</div>';
+  });
+}
+// Field names confirmed against a real response (2026-08-13):
+// { summary: { groups: [{group, name, url, total, results}], other_views, total_views } }.
+// `results` is inconsistently an array (multiple sub-sources within a
+// group, e.g. two facebook.com URL variants) or a bare {views:N} object
+// (a single-source group) — sidestepped entirely by only ever reading
+// each group's own top-level `total`, which is already the right
+// per-group aggregate either way.
+function loadWordpressReferrers(token, containerId){
+  var path = '/sites/'+WP_SITE+'/stats/referrers?period=day&num=30&summarize=1';
+  fetch(WP_AUTH_SERVER+'/api/wordpress-stats?path='+encodeURIComponent(path), {
+    headers: { Authorization: 'Bearer '+token }
+  }).then(function(r){ return r.json(); }).then(function(d){
+    var body = $(containerId);
+    if(!body) return;
+    if(d.error){
+      body.innerHTML = '<div class="empty">'+escHtml(d.error_description||d.error)+'</div>';
+      return;
+    }
+    var groups = (d.summary && d.summary.groups) || [];
+    if(!groups.length){ body.innerHTML = '<div class="empty">No referrer data for the last 30 days.</div>'; return; }
+    body.innerHTML = '<div class="tbl-wrap" style="max-height:320px;overflow-y:auto"><table><thead><tr><th>Source</th><th>Views</th></tr></thead><tbody>'+
+      groups.slice().sort(function(a,b){return (b.total||0)-(a.total||0);}).map(function(g){
+        var label = g.name || g.group || '';
+        var cell = g.url ? '<a href="'+escHtml(g.url)+'" target="_blank" style="color:#2563eb;text-decoration:none">'+escHtml(label)+'</a>' : escHtml(label);
+        return '<tr><td>'+cell+'</td><td>'+fmt(g.total)+'</td></tr>';
+      }).join('')+
+    '</tbody></table></div>';
+  }).catch(function(e){
+    var body = $(containerId);
+    if(body) body.innerHTML = '<div class="empty">Failed to load: '+e.message+'</div>';
+  });
+}
+// Field names confirmed against a real response (2026-08-13):
+// { "country-info": {CODE: {country_full, flag_icon, ...}}, summary: { views: [{country_code, views}], other_views, total_views } }.
+function loadWordpressCountries(token, containerId){
+  var path = '/sites/'+WP_SITE+'/stats/country-views?period=day&num=30&summarize=1';
+  fetch(WP_AUTH_SERVER+'/api/wordpress-stats?path='+encodeURIComponent(path), {
+    headers: { Authorization: 'Bearer '+token }
+  }).then(function(r){ return r.json(); }).then(function(d){
+    var body = $(containerId);
+    if(!body) return;
+    if(d.error){
+      body.innerHTML = '<div class="empty">'+escHtml(d.error_description||d.error)+'</div>';
+      return;
+    }
+    var views = (d.summary && d.summary.views) || [];
+    var countryInfo = d['country-info'] || {};
+    if(!views.length){ body.innerHTML = '<div class="empty">No country data for the last 30 days.</div>'; return; }
+    body.innerHTML = '<div class="tbl-wrap" style="max-height:320px;overflow-y:auto"><table><thead><tr><th>Country</th><th>Views</th></tr></thead><tbody>'+
+      views.slice().sort(function(a,b){return (b.views||0)-(a.views||0);}).map(function(v){
+        var info = countryInfo[v.country_code]||{};
+        var label = info.country_full || v.country_code;
+        var flag = info.flag_icon ? '<img src="'+escHtml(info.flag_icon)+'" style="width:16px;height:16px;border-radius:50%;vertical-align:middle;margin-right:6px">' : '';
+        return '<tr><td>'+flag+escHtml(label)+'</td><td>'+fmt(v.views)+'</td></tr>';
+      }).join('')+
+    '</tbody></table></div>';
+  }).catch(function(e){
+    var body = $(containerId);
+    if(body) body.innerHTML = '<div class="empty">Failed to load: '+e.message+'</div>';
+  });
+}
+// Outer shape confirmed against a real response (2026-08-13):
+// { summary: { search_terms: [], encrypted_search_terms, other_search_terms, total_search_terms } }.
+// The real response had an empty search_terms array (most search engines
+// encrypt query terms before referring traffic, per encrypted_search_terms
+// below), so individual-entry field names ({term, views}) are inferred
+// from this API's consistent `views`-per-result convention elsewhere
+// (top-posts/referrers/country-views all use it), not confirmed directly —
+// worth double-checking once a real populated array comes through.
+function loadWordpressSearchTerms(token, containerId){
+  var path = '/sites/'+WP_SITE+'/stats/search-terms?period=day&num=30&summarize=1';
+  fetch(WP_AUTH_SERVER+'/api/wordpress-stats?path='+encodeURIComponent(path), {
+    headers: { Authorization: 'Bearer '+token }
+  }).then(function(r){ return r.json(); }).then(function(d){
+    var body = $(containerId);
+    if(!body) return;
+    if(d.error){
+      body.innerHTML = '<div class="empty">'+escHtml(d.error_description||d.error)+'</div>';
+      return;
+    }
+    var s = d.summary || {};
+    var terms = s.search_terms || [];
+    var parts = [];
+    if(s.encrypted_search_terms) parts.push(fmt(s.encrypted_search_terms)+' hidden for privacy');
+    if(s.other_search_terms) parts.push(fmt(s.other_search_terms)+' other');
+    var summaryLine = parts.length ? '<div style="font-size:11px;color:#888;margin-bottom:8px">'+parts.join(' · ')+'</div>' : '';
+    if(!terms.length){
+      body.innerHTML = summaryLine+'<div class="empty">No visible search terms for the last 30 days'+(s.total_search_terms?' ('+fmt(s.total_search_terms)+' total — most search engines encrypt the query before referring traffic)':'')+'.</div>';
+      return;
+    }
+    body.innerHTML = summaryLine+'<div class="tbl-wrap" style="max-height:320px;overflow-y:auto"><table><thead><tr><th>Search Term</th><th>Views</th></tr></thead><tbody>'+
+      terms.slice().sort(function(a,b){return (b.views||0)-(a.views||0);}).map(function(t){
+        return '<tr><td>'+escHtml(t.term||'')+'</td><td>'+fmt(t.views)+'</td></tr>';
       }).join('')+
     '</tbody></table></div>';
   }).catch(function(e){
