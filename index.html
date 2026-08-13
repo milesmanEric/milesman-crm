@@ -12170,6 +12170,26 @@ function renderMarketing(){
     '<div class="page-hdr"><div class="page-title">Marketing</div></div>'+
     '<div class="empty">Coming soon.</div>';
 }
+// A collapsible drill-down mini-section within a card — mirrors the
+// Bookmarks category collapse pattern (default collapsed,
+// window._analyticsCollapsed keyed by section id, full re-render on
+// toggle). Deliberately fetches nothing until actually expanded — with 8
+// of these across both cards, firing every request on every Analytics
+// page load would be 8 extra API calls for detail the user may never look
+// at.
+function analyticsSectionCollapsed(key){
+  return (window._analyticsCollapsed||{})[key] !== false;
+}
+function analyticsSectionHtml(key, title){
+  var collapsed = analyticsSectionCollapsed(key);
+  return '<div style="margin-top:12px;border-top:1px solid #f0f0f0;padding-top:10px">'+
+    '<div class="analytics-sec-hdr" data-key="'+escHtml(key)+'" style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">'+
+      '<span style="display:inline-block;width:10px">'+(collapsed?'&#9656;':'&#9662;')+'</span>'+
+      escHtml(title)+
+    '</div>'+
+    (collapsed?'':'<div id="'+key+'-body"><div class="empty">Loading…</div></div>')+
+  '</div>';
+}
 // WordPress.com/Jetpack Stats and GA4 are both live now. GA4 reuses the
 // existing Drive OAuth token (DRIVE_SCOPE includes analytics.readonly)
 // rather than a separate connect button — getDriveTokenSilent() returns
@@ -12186,13 +12206,30 @@ function renderAnalytics(){
         (wpToken ? '<button class="cancel-btn" id="wp-disconnect">Disconnect</button>' : '')+
       '</div>'+
       (wpToken
-        ? '<div id="wp-stats-body"><div class="empty">Loading…</div></div>'
+        ? '<div id="wp-stats-body"><div class="empty">Loading…</div></div>'+
+          analyticsSectionHtml('wp-top-posts','Top Posts & Pages (30 days)')+
+          analyticsSectionHtml('wp-referrers','Referrers (30 days)')+
+          analyticsSectionHtml('wp-countries','Views by Country (30 days)')+
+          analyticsSectionHtml('wp-search-terms','Search Terms (30 days)')
         : '<div style="padding:8px 0"><button class="add-btn" id="wp-connect-btn">Connect WordPress.com</button></div>')+
     '</div>'+
     '<div class="card" style="margin-bottom:16px">'+
       '<div class="card-hdr"><span class="card-title">Google Analytics (GA4)</span></div>'+
       '<div id="ga4-stats-body"><div class="empty">Loading…</div></div>'+
+      analyticsSectionHtml('ga4-top-pages','Top Pages (30 days)')+
+      analyticsSectionHtml('ga4-traffic-sources','Traffic Sources (30 days)')+
+      analyticsSectionHtml('ga4-devices','Device Category (30 days)')+
+      analyticsSectionHtml('ga4-countries','Top Countries (30 days)')+
     '</div>';
+
+  document.querySelectorAll('.analytics-sec-hdr').forEach(function(hdr){
+    hdr.addEventListener('click', function(){
+      var key = hdr.dataset.key;
+      window._analyticsCollapsed = window._analyticsCollapsed || {};
+      window._analyticsCollapsed[key] = !analyticsSectionCollapsed(key);
+      render();
+    });
+  });
 
   var connectBtn = $('wp-connect-btn');
   if(connectBtn) connectBtn.addEventListener('click', wordpressLogin);
@@ -12201,7 +12238,13 @@ function renderAnalytics(){
     localStorage.removeItem('mm_wp_token');
     render();
   });
-  if(wpToken) loadWordpressStats(wpToken);
+  if(wpToken){
+    loadWordpressStats(wpToken);
+    if(!analyticsSectionCollapsed('wp-top-posts')) loadWordpressExtra(wpToken, 'wp-top-posts-body', '/sites/'+WP_SITE+'/stats/top-posts?period=day&num=30&summarize=1');
+    if(!analyticsSectionCollapsed('wp-referrers')) loadWordpressExtra(wpToken, 'wp-referrers-body', '/sites/'+WP_SITE+'/stats/referrers?period=day&num=30&summarize=1');
+    if(!analyticsSectionCollapsed('wp-countries')) loadWordpressExtra(wpToken, 'wp-countries-body', '/sites/'+WP_SITE+'/stats/country-views?period=day&num=30&summarize=1');
+    if(!analyticsSectionCollapsed('wp-search-terms')) loadWordpressExtra(wpToken, 'wp-search-terms-body', '/sites/'+WP_SITE+'/stats/search-terms?period=day&num=30&summarize=1');
+  }
 
   getDriveTokenSilent().then(function(token){
     var body = $('ga4-stats-body');
@@ -12213,6 +12256,69 @@ function renderAnalytics(){
       return;
     }
     loadGA4Stats(token);
+    if(!analyticsSectionCollapsed('ga4-top-pages')) loadGA4Breakdown(token, 'ga4-top-pages-body', 'pagePath', 'Page', 'screenPageViews', 'Views');
+    if(!analyticsSectionCollapsed('ga4-traffic-sources')) loadGA4Breakdown(token, 'ga4-traffic-sources-body', 'sessionDefaultChannelGroup', 'Channel', 'sessions', 'Sessions');
+    if(!analyticsSectionCollapsed('ga4-devices')) loadGA4Breakdown(token, 'ga4-devices-body', 'deviceCategory', 'Device', 'activeUsers', 'Users');
+    if(!analyticsSectionCollapsed('ga4-countries')) loadGA4Breakdown(token, 'ga4-countries-body', 'country', 'Country', 'activeUsers', 'Users');
+  });
+}
+// Raw JSON display — unlike the base /stats endpoint (whose field names
+// got verified against a real response before being formatted), these
+// four sub-endpoints' exact response shapes haven't been confirmed live
+// yet, so this avoids guessing wrong and silently showing blank/mismapped
+// data. Once real responses come through here, each becomes a proper
+// formatted table the same way the base stats card was upgraded.
+function loadWordpressExtra(token, containerId, path){
+  fetch(WP_AUTH_SERVER+'/api/wordpress-stats?path='+encodeURIComponent(path), {
+    headers: { Authorization: 'Bearer '+token }
+  }).then(function(r){ return r.json(); }).then(function(d){
+    var body = $(containerId);
+    if(!body) return;
+    body.innerHTML = '<pre style="font-size:11px;white-space:pre-wrap;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:10px;max-height:300px;overflow:auto">'+escHtml(JSON.stringify(d,null,2))+'</pre>';
+  }).catch(function(e){
+    var body = $(containerId);
+    if(body) body.innerHTML = '<div class="empty">Failed to load: '+e.message+'</div>';
+  });
+}
+// Single-dimension/single-metric GA4 breakdown, sorted desc, top 15 —
+// reuses the exact same runReport response parsing already proven against
+// a real property for the daily-trend card, just with a different
+// dimension/metric pair each time.
+function loadGA4Breakdown(token, containerId, dimensionName, dimensionLabel, metricName, metricLabel){
+  fetch('https://analyticsdata.googleapis.com/v1beta/properties/'+GA4_PROPERTY_ID+':runReport', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer '+token },
+    body: JSON.stringify({
+      dateRanges: [{ startDate: '30daysAgo', endDate: 'today' }],
+      dimensions: [{ name: dimensionName }],
+      metrics: [{ name: metricName }],
+      orderBys: [{ metric: { metricName: metricName }, desc: true }],
+      limit: 15
+    })
+  }).then(function(r){ return r.json(); }).then(function(d){
+    var body = $(containerId);
+    if(!body) return;
+    if(d.error){
+      var msg = (d.error && (d.error.message||d.error))||'Unknown error';
+      if(/insufficient authentication scopes/i.test(String(msg))){
+        body.innerHTML = '<div class="empty">Reconnect Google Drive from the GA4 card above to refresh Analytics access.</div>';
+        return;
+      }
+      body.innerHTML = '<div class="empty">'+escHtml(msg)+'</div>';
+      return;
+    }
+    var rows = d.rows||[];
+    if(!rows.length){ body.innerHTML = '<div class="empty">No data for the last 30 days.</div>'; return; }
+    body.innerHTML = '<div class="tbl-wrap" style="max-height:280px;overflow-y:auto"><table><thead><tr><th>'+escHtml(dimensionLabel)+'</th><th>'+escHtml(metricLabel)+'</th></tr></thead><tbody>'+
+      rows.map(function(row){
+        var label = row.dimensionValues[0].value || '(not set)';
+        var val = Number(row.metricValues[0].value)||0;
+        return '<tr><td style="max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escHtml(label)+'</td><td>'+fmt(val)+'</td></tr>';
+      }).join('')+
+    '</tbody></table></div>';
+  }).catch(function(e){
+    var body = $(containerId);
+    if(body) body.innerHTML = '<div class="empty">Failed to load: '+e.message+'</div>';
   });
 }
 
