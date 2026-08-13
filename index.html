@@ -564,6 +564,18 @@ const WP_SITE         = 'themilesman.com';
 // GA4 Data API — reuses the Drive OAuth token (see DRIVE_SCOPE above),
 // no separate login flow. https://developers.google.com/analytics/devguides/reporting/data/v1
 const GA4_PROPERTY_ID = '362931402';
+// Facebook Marketing API — same OAuth-via-Vercel-proxy shape as WordPress
+// (api/facebook-token.js holds the App Secret, exchanges the code for a
+// long-lived ~60-day token). ads_management (create/launch) + ads_read
+// (insights) scopes. Graph API calls are relayed through
+// api/facebook-graph.js the same defensive way WordPress's are, since
+// several act_{id} endpoints don't reliably send CORS headers to a direct
+// browser fetch.
+const FB_APP_ID       = '1285326830438388';
+const FB_SCOPE        = 'ads_management,ads_read,business_management';
+const FB_REDIRECT     = 'https://milesmaneric.github.io/milesman-crm/';
+const FB_AUTH_SERVER  = 'https://milesman-auth.vercel.app';
+const FB_AD_ACCOUNT   = 'act_2429348457583319';
 const BACKUP_FILENAME  = 'milesman-crm-backup.json';
 const LS_KEY           = 'milesman_crm_v2';
 
@@ -1954,6 +1966,59 @@ function checkWordpressRedirect(){
     debugLog('WordPress token exchange error: '+e.message);
     toast('WordPress auth error: '+e.message,'err');
   });
+}
+function facebookLogin(){
+  const params = new URLSearchParams({
+    client_id:     FB_APP_ID,
+    redirect_uri:  FB_REDIRECT,
+    response_type: 'code',
+    scope:         FB_SCOPE,
+    state:         'fb_auth'
+  });
+  debugLog('Redirecting to Facebook login...');
+  window.location.href = 'https://www.facebook.com/v21.0/dialog/oauth?'+params.toString();
+}
+function checkFacebookRedirect(){
+  const params = new URLSearchParams(window.location.search);
+  const code  = params.get('code');
+  const state = params.get('state');
+  if(!code || state !== 'fb_auth') return;
+
+  window.history.replaceState({},'',window.location.pathname);
+  debugLog('Facebook auth code received, exchanging...');
+
+  fetch(FB_AUTH_SERVER+'/api/facebook-token',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({ code: code, redirect_uri: FB_REDIRECT })
+  }).then(function(r){return r.json();}).then(function(d){
+    if(d.access_token){
+      localStorage.setItem('mm_fb_token', d.access_token);
+      debugLog('Facebook token obtained successfully');
+      toast('Facebook connected!','ok');
+      go('marketing');
+    } else {
+      debugLog('Facebook token exchange failed: '+JSON.stringify(d.error||d));
+      var msg = (d.error && (d.error.message||d.error.error_description)) || d.error_description || 'unknown error';
+      toast('Facebook auth failed: '+msg,'err');
+    }
+  }).catch(function(e){
+    debugLog('Facebook token exchange error: '+e.message);
+    toast('Facebook auth error: '+e.message,'err');
+  });
+}
+function fbGraph(path, opts){
+  opts = opts || {};
+  var token = localStorage.getItem('mm_fb_token');
+  var qs = opts.query ? '&'+new URLSearchParams(opts.query).toString() : '';
+  var url = FB_AUTH_SERVER+'/api/facebook-graph?path='+encodeURIComponent(path)+qs;
+  var fetchOpts = { headers: { Authorization: 'Bearer '+token } };
+  if(opts.method === 'POST'){
+    fetchOpts.method = 'POST';
+    fetchOpts.headers['Content-Type'] = 'application/json';
+    fetchOpts.body = JSON.stringify(opts.body||{});
+  }
+  return fetch(url, fetchOpts).then(function(r){ return r.json(); });
 }
 // Field names confirmed against a real connected site's response —
 // `stats` (headline all-time/today/yesterday counters) and `visits.data`
@@ -12200,9 +12265,98 @@ function bookmarkSectionHtml(audience, bookmarks){
 // its own render function/nav slot now so the sidebar has a fixed spot to
 // build into later, rather than bolting a new nav entry on afterward.
 function renderMarketing(){
+  var fbToken = localStorage.getItem('mm_fb_token');
   $('main').innerHTML =
     '<div class="page-hdr"><div class="page-title">Marketing</div></div>'+
-    '<div class="empty">Coming soon.</div>';
+    '<div class="card" style="margin-bottom:16px">'+
+      '<div class="card-hdr"><span class="card-title">Facebook Ads</span>'+
+        (fbToken ? '<button class="cancel-btn" id="fb-disconnect">Disconnect</button>' : '')+
+      '</div>'+
+      (fbToken
+        ? '<div id="fb-campaigns-body"><div class="empty">Loading…</div></div>'
+        : '<div style="padding:8px 0"><button class="add-btn" id="fb-connect-btn">Connect Facebook Ads</button></div>')+
+    '</div>';
+
+  var connectBtn = $('fb-connect-btn');
+  if(connectBtn) connectBtn.addEventListener('click', facebookLogin);
+  var disconnectBtn = $('fb-disconnect');
+  if(disconnectBtn) disconnectBtn.addEventListener('click', function(){
+    localStorage.removeItem('mm_fb_token');
+    toast('Facebook disconnected','ok');
+    render();
+  });
+
+  if(fbToken) loadFacebookCampaigns(fbToken);
+}
+// daily_budget/lifetime_budget are documented by Meta as the account's
+// minor currency unit (cents for USD), so divided by 100 here;
+// insights.spend/cpc are documented as already being in full currency
+// units, not cents. Not yet confirmed against a real connected account's
+// response — if a live response shows otherwise, this is a one-line fix.
+function fbBudget(minorUnits){
+  if(minorUnits === undefined || minorUnits === null || minorUnits === '') return null;
+  return Number(minorUnits)/100;
+}
+var FB_STATUS_COLORS = {
+  ACTIVE:      {bg:'#dcfce7', fg:'#166534'},
+  PAUSED:      {bg:'#f3f4f6', fg:'#4b5563'},
+  DELETED:     {bg:'#fee2e2', fg:'#991b1b'},
+  ARCHIVED:    {bg:'#f3f4f6', fg:'#4b5563'},
+  IN_PROCESS:  {bg:'#fef3c7', fg:'#92400e'},
+  WITH_ISSUES: {bg:'#fee2e2', fg:'#991b1b'}
+};
+function fbStatusBadge(status){
+  var c = FB_STATUS_COLORS[status] || {bg:'#f3f4f6', fg:'#4b5563'};
+  return '<span style="background:'+c.bg+';color:'+c.fg+';padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">'+escHtml(status||'—')+'</span>';
+}
+// First working slice of the Marketing tab: connect + read-only campaign
+// list with 30-day performance, no creation yet — deliberately mirrors the
+// caution applied to the WordPress follower-sync feature (confirm real
+// field shapes before building anything that writes/spends money). Once a
+// live connect confirms these field names/units are right, campaign/ad set
+// creation is the next layer, built the same way GA4's drill-downs were:
+// show raw response first if anything looks off, format once confirmed.
+function loadFacebookCampaigns(token){
+  var body = $('fb-campaigns-body');
+  Promise.all([
+    fbGraph('/'+FB_AD_ACCOUNT, {query:{fields:'name,currency'}}),
+    fbGraph('/'+FB_AD_ACCOUNT+'/campaigns', {query:{fields:'name,objective,status,effective_status,daily_budget,lifetime_budget,created_time', limit:'100'}}),
+    fbGraph('/'+FB_AD_ACCOUNT+'/insights', {query:{level:'campaign', date_preset:'last_30d', fields:'campaign_id,spend,impressions,clicks,cpc,ctr', limit:'100'}})
+  ]).then(function(results){
+    var account = results[0], campaignsResp = results[1], insightsResp = results[2];
+    if(!body) return;
+    if(account.error){ body.innerHTML = '<div class="empty">'+escHtml(account.error.message||'Failed to load account')+'</div>'; return; }
+    if(campaignsResp.error){ body.innerHTML = '<div class="empty">'+escHtml(campaignsResp.error.message||'Failed to load campaigns')+'</div>'; return; }
+
+    var campaigns = campaignsResp.data||[];
+    var insightsByCampaign = {};
+    (insightsResp.data||[]).forEach(function(row){ insightsByCampaign[row.campaign_id] = row; });
+
+    if(!campaigns.length){ body.innerHTML = '<div class="empty">No campaigns found for this ad account.</div>'; return; }
+
+    var currency = account.currency || 'USD';
+    body.innerHTML = '<div style="font-size:11px;color:#888;margin-bottom:8px">'+escHtml(account.name||FB_AD_ACCOUNT)+' &middot; '+campaigns.length+' campaign'+(campaigns.length!==1?'s':'')+' &middot; last 30 days</div>'+
+      '<div class="tbl-wrap" style="overflow-x:auto"><table><thead><tr><th>Campaign</th><th>Status</th><th>Objective</th><th>Daily Budget</th><th>Spend (30d)</th><th>Impressions</th><th>Clicks</th><th>CPC</th></tr></thead><tbody>'+
+      campaigns.map(function(c){
+        var ins = insightsByCampaign[c.id] || {};
+        var dailyBudget = fbBudget(c.daily_budget);
+        var lifeBudget = fbBudget(c.lifetime_budget);
+        var budget = dailyBudget !== null ? currency+' '+money(dailyBudget)+'/day' : (lifeBudget !== null ? currency+' '+money(lifeBudget)+' lifetime' : '—');
+        return '<tr>'+
+          '<td>'+escHtml(c.name||'')+'</td>'+
+          '<td>'+fbStatusBadge(c.effective_status||c.status)+'</td>'+
+          '<td>'+escHtml((c.objective||'').replace(/_/g,' '))+'</td>'+
+          '<td>'+budget+'</td>'+
+          '<td>'+(ins.spend!==undefined ? currency+' '+money(ins.spend) : '—')+'</td>'+
+          '<td>'+(ins.impressions!==undefined ? fmt(ins.impressions) : '—')+'</td>'+
+          '<td>'+(ins.clicks!==undefined ? fmt(ins.clicks) : '—')+'</td>'+
+          '<td>'+(ins.cpc!==undefined ? currency+' '+money(ins.cpc) : '—')+'</td>'+
+        '</tr>';
+      }).join('')+
+      '</tbody></table></div>';
+  }).catch(function(e){
+    if(body) body.innerHTML = '<div class="empty">Failed to load: '+e.message+'</div>';
+  });
 }
 // A collapsible drill-down mini-section within a card — mirrors the
 // Bookmarks category collapse pattern (default collapsed,
@@ -13535,6 +13689,7 @@ startAutosave();
 updateUndoBtn();
 checkDriveRedirect();
 checkWordpressRedirect();
+checkFacebookRedirect();
 updateSyncStatusDisplay();
 console.log('[CRM] Ready. Clients:', db.clients.length, 'Trips:', db.trips.length);
 } // end bootApp()
