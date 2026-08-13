@@ -2025,7 +2025,25 @@ function loadGA4Stats(token){
     var body = $('ga4-stats-body');
     if(!body) return;
     if(d.error){
-      body.innerHTML = '<div class="empty">'+escHtml((d.error && (d.error.message||d.error))||'Unknown error')+'</div>';
+      var msg = (d.error && (d.error.message||d.error))||'Unknown error';
+      // A cached mm_drive_token from before analytics.readonly was added to
+      // DRIVE_SCOPE is still "valid" (not expired) as far as
+      // getDriveTokenSilent() can tell — it just doesn't carry the new
+      // scope, which only shows up as this specific API error, not as
+      // "not connected". Surfacing a reconnect button here (rather than
+      // just the raw error) is the only way to recover from that case,
+      // since there was no earlier point where the code could have known
+      // to ask for one.
+      if(/insufficient authentication scopes/i.test(String(msg))){
+        body.innerHTML = '<div style="padding:8px 0">'+
+          '<div style="font-size:12px;color:#666;margin-bottom:8px">Your Google Drive connection predates Analytics access being added — reconnect once to grant it.</div>'+
+          '<button class="add-btn" id="ga4-reconnect-btn">Reconnect Google Drive</button>'+
+        '</div>';
+        var reconnectBtn = $('ga4-reconnect-btn');
+        if(reconnectBtn) reconnectBtn.addEventListener('click', function(){ localStorage.setItem('mm_drive_action','analytics'); driveLogin(); });
+        return;
+      }
+      body.innerHTML = '<div class="empty">'+escHtml(msg)+'</div>';
       return;
     }
     var rows = d.rows||[];
