@@ -9353,9 +9353,10 @@ function renderDash(){
         (recent.length?
           '<table><thead><tr><th>Client</th><th>Destination</th><th>Depart</th><th>Status</th></tr></thead><tbody>'+
           recent.map(function(t){
-            var st=t.status||'Planning';
-            if(st==='Completed' && t.departDate && t.departDate>=today()) st='Upcoming';
-            return '<tr><td class="n">'+(t.clientId?'<span class="dash-client-link" data-id="'+t.clientId+'" style="color:#2563eb;cursor:pointer;text-decoration:underline">'+(t.clientName||'')+'</span>':(t.clientName||''))+'</td><td>'+(t.destination||'')+'</td><td>'+(t.departDate||'')+'</td><td>'+badge(st)+'</td></tr>';
+            var cat = tripLifecycleCategory(t);
+            var colors = TRIP_LIFECYCLE_COLORS[cat];
+            var statusHtml = '<span class="badge" style="background:'+colors.bg+';color:'+colors.text+'">'+CATEGORY_LABELS[cat]+'</span>';
+            return '<tr><td class="n">'+(t.clientId?'<span class="dash-client-link" data-id="'+t.clientId+'" style="color:#2563eb;cursor:pointer;text-decoration:underline">'+(t.clientName||'')+'</span>':(t.clientName||''))+'</td><td>'+(t.destination||'')+'</td><td>'+(t.departDate||'')+'</td><td>'+statusHtml+'</td></tr>';
           }).join('')+
           '</tbody></table>':
           '<div class="empty">No trips yet</div>')+
