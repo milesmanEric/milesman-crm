@@ -3017,7 +3017,9 @@ function cleanAndImportRevenue(){
         const row=extractRevenueRow(getCol, cols);
         if(row) revenueRows.push(row);
       });
-      startRevenueImport(revenueRows);
+      var extractionSkipped=result.rows.length-revenueRows.length;
+      debugLog('Clean & Import Revenue: '+revenueRows.length+' of '+result.rows.length+' cleaned row(s) extracted, '+extractionSkipped+' skipped');
+      startRevenueImport(revenueRows, extractionSkipped);
     }catch(err){
       console.error(err);
       debugLog('Clean & Import Revenue FAILED: '+err.message);
@@ -4505,7 +4507,7 @@ function parseCSVLine(line){
 // "Clean & Import Revenue File" (cleanAndImportRevenue, header-only getCol
 // since cleaned data always has a header row).
 function extractRevenueRow(getCol, cols){
-  if(cols.length<3) return null;
+  if(cols.length<3){ debugLog('Revenue row SKIPPED: only '+cols.length+' column(s), need at least 3 — raw: '+JSON.stringify(cols)); return null; }
 
   const date    = getCol(cols,['date'],0);
   const invoiceNum = getCol(cols,['num','invoice'],1);
@@ -4519,7 +4521,8 @@ function extractRevenueRow(getCol, cols){
                   cols[cols.length-1]||'';
   const amt     = parseFloat(amtStr.replace(/[$,"]/g,''))||0;
 
-  if(!nameVal||amt===0) return null;
+  if(!nameVal){ debugLog('Revenue row SKIPPED: no Name value — raw: '+JSON.stringify(cols)); return null; }
+  if(amt===0){ debugLog('Revenue row SKIPPED: amount is $0 or unparseable (raw amount string: "'+amtStr+'") — name='+nameVal+' raw: '+JSON.stringify(cols)); return null; }
 
   // Class (normalized to Last, First) is the client whenever it's present.
   // If Name differs from Class, Name is very likely the supplier being paid —
@@ -4590,8 +4593,11 @@ function extractRevenueRow(getCol, cols){
 // resolution modal, ending in finalizeImport() — which creates trips,
 // links suppliers, and updates client revenue. Choosing "+ Add as new
 // client" in that modal is what folds client creation into this same flow.
-function startRevenueImport(rows){
-  if(!rows.length){toast('No valid rows found','err');return;}
+function startRevenueImport(rows, extractionSkipped){
+  if(!rows.length){
+    toast('No valid rows found'+(extractionSkipped?' — '+extractionSkipped+' row(s) were skipped (see debug log for why)':''),'err');
+    return;
+  }
 
   const unmatchedNames=[];
   const autoResolutions={};
@@ -4623,7 +4629,7 @@ function startRevenueImport(rows){
     else { unmatchedNames.push(row.name); }
   });
 
-  window._importState={rows,unmatchedNames,resolutions:autoResolutions,cursor:0};
+  window._importState={rows,unmatchedNames,resolutions:autoResolutions,cursor:0,extractionSkipped:extractionSkipped||0};
   processImportQueue();
 }
 function importRevenue(){
@@ -4669,8 +4675,11 @@ function importRevenue(){
           const row=extractRevenueRow(getCol, cols);
           if(row) rows.push(row);
         }
+        var candidateRowCount=lines.length-startRow;
+        var extractionSkipped=candidateRowCount-rows.length;
+        debugLog('Revenue import: '+rows.length+' of '+candidateRowCount+' candidate row(s) extracted, '+extractionSkipped+' skipped');
 
-        startRevenueImport(rows);
+        startRevenueImport(rows, extractionSkipped);
       }catch(err){console.error(err);toast('Could not read CSV: '+err.message,'err');}
     };r.readAsText(f);
   };inp.click();
@@ -4901,13 +4910,15 @@ function finalizeImport(){
 
     imported++;totalRev+=row.amt;
   });
+  var extractionSkipped = state.extractionSkipped||0;
   snapshot('Import trips');
   saveDB();render();
   window._importState=null;
   toast('Imported '+imported+' trips — $'+money(totalRev)+
     (suppliersCreated?', created '+suppliersCreated+' new supplier'+(suppliersCreated!==1?'s':''):'')+
     (relinked?', backfilled '+relinked+' existing trip'+(relinked!==1?'s':''):'')+
-    (skipped?' ('+skipped+' skipped)':''),'ok');
+    (skipped?' ('+skipped+' skipped)':'')+
+    (extractionSkipped?', '+extractionSkipped+' row'+(extractionSkipped!==1?'s':'')+' skipped before matching (see debug log for why)':''),'ok');
 }
 
 function importCSV(){
@@ -5863,11 +5874,13 @@ async function cleanAndImportRevenuePdfEmail(arrayBuffer, filename){
     var row=extractRevenueRow(getCol, cols);
     if(row) revenueRows.push(row);
   });
+  var extractionSkipped=result.rows.length-revenueRows.length;
+  debugLog('Revenue report email: '+revenueRows.length+' of '+result.rows.length+' cleaned row(s) extracted, '+extractionSkipped+' skipped');
   if(!revenueRows.length){
     debugLog('Revenue report email: no valid revenue rows found in "'+filename+'"');
     return;
   }
-  startRevenueImport(revenueRows);
+  startRevenueImport(revenueRows, extractionSkipped);
 }
 async function checkForNewRevenueReportEmails(silent){
   try{
