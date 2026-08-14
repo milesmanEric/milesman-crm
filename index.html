@@ -11884,6 +11884,7 @@ function openTripForm(id){
       fld('Airline',sel('tai',AIRLINES,d.airline))+fld('Class of Service',sel('tcl',CLASSES,d.flightClass||'Economy'))+
       fld('Hotel Brand',sel('tho',HOTELS,d.hotel))+fld('Hotel Nights',inp('thn','number',d.hotelNights||0))+
       fld('Cruise Line',sel('tcr',CRUISE_LINES,d.cruiseLine))+fld('Ship Name','<select id="tship">'+shipOptionsHtml(d.cruiseLine,d.shipName)+'</select>')+
+      '<div id="tvv-wrap" style="display:'+(d.cruiseLine==='Virgin Voyages'?'contents':'none')+'">'+fld('Virgin Voyages Voucher Expiry (MNVV)',inp('tvv-exp','date',d.vvVoucherExpiry))+'</div>'+
       fld('Points Used',inp('tpu','number',d.pointsUsed||0))+fld('Cash Paid ($)',inp('tcp','number',d.cashPaid||0))+
       fld('Total Value ($)',inp('tva','number',d.totalValue||0))+fld('Invoice Number',inp('tbr','text',d.bookingRef,'e.g. INV-10234'))+
       fld('Invoice Date',inp('tinv','date',d.invoiceDate))+
@@ -11905,6 +11906,8 @@ function openTripForm(id){
   });
   $('tcr').addEventListener('change',function(){
     document.getElementById('tship').innerHTML = shipOptionsHtml(this.value,'');
+    var vvWrap = document.getElementById('tvv-wrap');
+    if(vvWrap) vvWrap.style.display = this.value==='Virgin Voyages' ? 'contents' : 'none';
   });
   var tripLinkSearch = document.getElementById('trip-link-search');
   if(tripLinkSearch){
@@ -12005,7 +12008,7 @@ function saveTrip(id){
   // Captured before db.trips gets overwritten below — this is the sync diff's
   // "before" state for the linkedTripIds two-way sync at the end of this function.
   const oldLinkedTripIds=id?((db.trips.find(function(t){return t.id===id;})||{}).linkedTripIds||[]):[];
-  const data={clientId:clientId,clientName:client?client.name:'',clientIds:additionalClientIds,linkedTripIds:linkedTripIds,supplierId:supplierId,supplierName:supplier?supplier.name:'',origin:gv('tor'),destination:dest,departDate:gv('tdd'),returnDate:gv('trd'),status:gv('tst')||'Planning',type:gv('tty')||'Leisure',airline:gv('tai'),flightClass:gv('tcl')||'Economy',hotel:gv('tho'),hotelNights:gn('thn'),cruiseLine:gv('tcr'),shipName:gv('tship'),pointsUsed:gn('tpu'),cashPaid:gn('tcp'),totalValue:gn('tva'),bookingRef:gv('tbr'),invoiceDate:gv('tinv'),product:gv('tpr'),notes:gv('tno'),booked:readBookedTripDetails()};
+  const data={clientId:clientId,clientName:client?client.name:'',clientIds:additionalClientIds,linkedTripIds:linkedTripIds,supplierId:supplierId,supplierName:supplier?supplier.name:'',origin:gv('tor'),destination:dest,departDate:gv('tdd'),returnDate:gv('trd'),status:gv('tst')||'Planning',type:gv('tty')||'Leisure',airline:gv('tai'),flightClass:gv('tcl')||'Economy',hotel:gv('tho'),hotelNights:gn('thn'),cruiseLine:gv('tcr'),shipName:gv('tship'),vvVoucherExpiry:gv('tvv-exp'),pointsUsed:gn('tpu'),cashPaid:gn('tcp'),totalValue:gn('tva'),bookingRef:gv('tbr'),invoiceDate:gv('tinv'),product:gv('tpr'),notes:gv('tno'),booked:readBookedTripDetails()};
   if(client){
     client.mileageBalances=readBalanceGrid('mb',AIRLINES,AIRLINE_STATUS);
     client.hotelBalances=readBalanceGrid('hb',HOTELS,HOTEL_STATUS);
