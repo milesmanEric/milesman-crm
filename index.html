@@ -4172,6 +4172,20 @@ function itineraryEmailBodyHtml(opts){
     itineraryDetailRow('Supplier', opts.supplierName) +
     itineraryDetailRow('Points Used', opts.pointsUsed) +
     itineraryDetailRow('Total Trip Value', opts.totalValue);
+  // One row per category that actually has a premium recorded — purchased
+  // either through that segment's own supplier (e.g. a cruise line's own
+  // trip protection add-on) or a separate dedicated travel insurer, either
+  // way tracked as that category's Insurance Premium field in Booked Trip
+  // Details. Only shows at all when at least one category has one, so a
+  // trip with no insurance purchased doesn't get an empty box.
+  var insuranceLineItems = [
+    ['Airline', opts.airlineInsurance], ['Hotel', opts.hotelInsurance], ['Cruise', opts.cruiseInsurance],
+    ['Car Rental', opts.carInsurance], ['Tours', opts.toursInsurance], ['Theme Park', opts.themeParkInsurance],
+    ['Train', opts.trainInsurance], ['Bus', opts.busInsurance]
+  ].filter(function(li){ return li[1]>0; });
+  var totalInsurance = insuranceLineItems.reduce(function(a,li){return a+li[1];},0);
+  var insuranceRows = insuranceLineItems.map(function(li){ return itineraryDetailRow(li[0]+' Insurance', '$'+money(li[1])); }).join('') +
+    (insuranceLineItems.length>1 ? itineraryDetailRow('Total', '$'+money(totalInsurance)) : '');
   return ''+
 '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f5f7; padding:30px 0;">'+
 '<tr>'+
@@ -4208,6 +4222,7 @@ toursBoxesHtml+
 itineraryDetailBox('Theme Park Details', themeParkRows)+
 itineraryDetailBox('Train Details', trainRows, opts.trainLogoUrl)+
 itineraryDetailBox('Bus Details', busRows, opts.busLogoUrl)+
+itineraryDetailBox('Insurance', insuranceRows)+
 itineraryDetailBox('Booking Details', bookingRows)+
 (opts.notes?(
 '<tr>'+
@@ -4332,6 +4347,19 @@ function tripToItineraryOpts(trip, client, extraNotes){
     busReturnDate: bus.returnDate?fmtDate(bus.returnDate):'',
     busClassOfService: bus.classOfService||'',
     busConfirmationNumber: bus.confirmationNumber||'',
+    // Each category's own Insurance Premium field from Booked Trip Details
+    // (whether purchased through that segment's own supplier, e.g. a cruise
+    // line's trip protection add-on, or a separate dedicated travel insurer)
+    // — itineraryEmailBodyHtml() rolls these into one Insurance section
+    // rather than repeating an "Insurance" line inside every other box.
+    airlineInsurance: air.insurancePremium||0,
+    hotelInsurance: b.hotelInsurancePremium||0,
+    cruiseInsurance: cru.insurancePremium||0,
+    carInsurance: car.insurancePremium||0,
+    toursInsurance: b.toursInsurancePremium||0,
+    themeParkInsurance: tp.insurancePremium||0,
+    trainInsurance: tra.insurancePremium||0,
+    busInsurance: bus.insurancePremium||0,
     bookingRef: trip.bookingRef||'',
     supplierName: (sup?sup.name:trip.supplierName)||'',
     // Points Used and Total Trip Value are sourced from Booked Trip Details
@@ -9282,6 +9310,17 @@ function tripBookedPriceTotal(t){
   total += hotels.reduce(function(a,h){return a+num(h&&h.price);},0);
   var tours = Array.isArray(b.tours) ? b.tours : [];
   total += tours.reduce(function(a,x){return a+num(x&&x.price);},0);
+  // Insurance premiums are real cash cost too, same as each category's own
+  // price field — left out of this total, "Total Trip Value" would silently
+  // undercount by whatever was spent on insurance.
+  total += num(b.airline && b.airline.insurancePremium);
+  total += num(b.hotelInsurancePremium);
+  total += num(b.cruise && b.cruise.insurancePremium);
+  total += num(b.carRental && b.carRental.insurancePremium);
+  total += num(b.toursInsurancePremium);
+  total += num(b.themePark && b.themePark.insurancePremium);
+  total += num(b.train && b.train.insurancePremium);
+  total += num(b.bus && b.bus.insurancePremium);
   return total;
 }
 // Same type/color convention the Planner's Type column uses (b-blue
@@ -11124,7 +11163,17 @@ function computeBookedTripSummary(bd){
     + (bd.themePark.price||0)
     + (bd.train.price||0)
     + (bd.bus.price||0);
-  return {rows:rows, totalCash: totalPrice + totalPtsCost};
+  // Insurance premiums are real cash cost too — same reasoning as
+  // tripBookedPriceTotal(), kept in sync with it.
+  var totalInsurance = (bd.airline.insurancePremium||0)
+    + (bd.hotelInsurancePremium||0)
+    + (bd.cruise.insurancePremium||0)
+    + (bd.carRental.insurancePremium||0)
+    + (bd.toursInsurancePremium||0)
+    + (bd.themePark.insurancePremium||0)
+    + (bd.train.insurancePremium||0)
+    + (bd.bus.insurancePremium||0);
+  return {rows:rows, totalCash: totalPrice + totalPtsCost + totalInsurance};
 }
 // Invoice Number only shows here when the trip has no Supplier linked — a
 // linked Supplier means the invoice went to that supplier, not the client,
@@ -11503,12 +11552,14 @@ function bookedTripDetailsHtml(bd){
       '<div class="field full"><label>Records <span class="hint" style="text-transform:none;font-weight:400">(one per confirmation/PNR — e.g. separate records for different fare types or when not everyone is ticketed together)</span></label>'+
         '<div id="tb-airline-records">'+airlineRecordsListHtml(airlineRecords)+'</div>'+
         '<button type="button" id="tb-airline-record-add-btn" style="padding:5px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit">+ Add Record</button>'+
-      '</div>')+
+      '</div>'+
+      fld('Insurance Premium ($)',inp('tb-air-insurance','number',air.insurancePremium,'If purchased for this flight, through the airline or a separate insurer')))+
     bookedCatSectionHtml('hotel','Hotel',
       '<div class="field full"><label>Hotels <span class="hint" style="text-transform:none;font-weight:400">(add one entry per hotel stay on this trip)</span></label>'+
         '<div id="tb-hotel-entries">'+hotelEntriesListHtml(hotelEntries)+'</div>'+
         '<button type="button" id="tb-hotel-add-btn" style="padding:5px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit">+ Add Hotel</button>'+
-      '</div>')+
+      '</div>'+
+      fld('Insurance Premium ($)',inp('tb-hotel-insurance','number',bd.hotelInsurancePremium,'If purchased for this stay, through the hotel or a separate insurer')))+
     bookedCatSectionHtml('cruise','Cruise',
       fld('Confirmation Number',inp('tb-cruise-conf','text',cru.confirmationNumber,'e.g. C-445566'))+
       fld('Cruise Line',sel('tb-cruise-line',CRUISE_LINES,cru.cruiseLine))+
@@ -11520,6 +11571,7 @@ function bookedTripDetailsHtml(bd){
       fld('Return Port',inp('tb-cruise-return-port','text',cru.returnPort,'e.g. Fort Lauderdale, FL'))+
       fld('Loyalty Number',inp('tb-cruise-loyalty','text',cru.loyaltyNumber))+
       fld('Price ($)',inp('tb-cruise-price','number',cru.price))+
+      fld('Insurance Premium ($)',inp('tb-cruise-insurance','number',cru.insurancePremium,'If purchased for this sailing, through the cruise line or a separate insurer'))+
       fld('Notes','<textarea id="tb-cruise-notes">'+(cru.notes||'')+'</textarea>',true)+
       '<div class="field full"><label>Cabins <span class="hint" style="text-transform:none;font-weight:400">(add one entry per cabin booked on this sailing)</span></label>'+
         '<div id="tb-cabin-entries">'+cabinEntriesListHtml(cabinEntries,cru.cruiseLine)+'</div>'+
@@ -11537,6 +11589,7 @@ function bookedTripDetailsHtml(bd){
       fld('Pickup Time',inp('tb-car-pickuptime','time',car.pickupTime))+
       fld('Dropoff Time',inp('tb-car-dropofftime','time',car.dropoffTime))+
       fld('Price ($)',inp('tb-car-price','number',car.price))+
+      fld('Insurance Premium ($)',inp('tb-car-insurance','number',car.insurancePremium,'If purchased for this rental, through the rental company or a separate insurer'))+
       fld('Notes','<textarea id="tb-car-notes">'+(car.notes||'')+'</textarea>',true)+
       pointsEntriesSectionHtml(car.pts||[], 'tb-car-pts-entries', 'tb-car-pts-add-btn'))+
     bookedCatSectionHtml('tours','Tours',
@@ -11544,12 +11597,14 @@ function bookedTripDetailsHtml(bd){
         '<div id="tb-tours-entries">'+tourEntriesListHtml(tourEntries)+'</div>'+
         '<button type="button" id="tb-tours-add-btn" style="padding:5px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit">+ Add Tour</button>'+
       '</div>'+
+      fld('Insurance Premium ($)',inp('tb-tours-insurance','number',bd.toursInsurancePremium,'If purchased for these tours, through the vendor or a separate insurer'))+
       pointsEntriesSectionHtml(bd.toursPts||[], 'tb-tours-pts-entries', 'tb-tours-pts-add-btn'))+
     bookedCatSectionHtml('themepark','Theme Park',
       fld('Confirmation Number',inp('tb-tp-conf','text',tp.confirmationNumber,'e.g. TP-334455'))+
       fld('Park',sel('tb-tp-park',THEME_PARKS,tp.park))+
       fld('Ticket Type',inp('tb-tp-ticket','text',tp.ticketType,'e.g. Park Hopper'))+
       fld('Price ($)',inp('tb-tp-price','number',tp.price))+
+      fld('Insurance Premium ($)',inp('tb-tp-insurance','number',tp.insurancePremium,'If purchased for these tickets, through the park or a separate insurer'))+
       fld('Notes','<textarea id="tb-tp-notes">'+(tp.notes||'')+'</textarea>',true)+
       pointsEntriesSectionHtml(tp.pts||[], 'tb-tp-pts-entries', 'tb-tp-pts-add-btn'))+
     bookedCatSectionHtml('train','Train',
@@ -11560,6 +11615,7 @@ function bookedTripDetailsHtml(bd){
       fld('Return Date',inp('tb-train-retdate','date',tra.returnDate))+
       fld('Class of Service',sel('tb-train-class',TRAIN_CLASSES,tra.classOfService))+
       fld('Price ($)',inp('tb-train-price','number',tra.price))+
+      fld('Insurance Premium ($)',inp('tb-train-insurance','number',tra.insurancePremium,'If purchased for this trip, through the rail line or a separate insurer'))+
       fld('Logo URL',inp('tb-train-logo','text',tra.logoUrl,'optional — shown next to Train Details in Email Itinerary'))+
       fld('Notes','<textarea id="tb-train-notes">'+(tra.notes||'')+'</textarea>',true)+
       pointsEntriesSectionHtml(tra.pts||[], 'tb-train-pts-entries', 'tb-train-pts-add-btn'))+
@@ -11571,6 +11627,7 @@ function bookedTripDetailsHtml(bd){
       fld('Return Date',inp('tb-bus-retdate','date',bus.returnDate))+
       fld('Class of Service',sel('tb-bus-class',TRAIN_CLASSES,bus.classOfService))+
       fld('Price ($)',inp('tb-bus-price','number',bus.price))+
+      fld('Insurance Premium ($)',inp('tb-bus-insurance','number',bus.insurancePremium,'If purchased for this trip, through the bus line or a separate insurer'))+
       fld('Logo URL',inp('tb-bus-logo','text',bus.logoUrl,'optional — shown next to Bus Details in Email Itinerary'))+
       fld('Notes','<textarea id="tb-bus-notes">'+(bus.notes||'')+'</textarea>',true)+
       pointsEntriesSectionHtml(bus.pts||[], 'tb-bus-pts-entries', 'tb-bus-pts-add-btn'))+
@@ -11802,38 +11859,40 @@ function readBookedTripDetails(){
   return {
     tripName: gv('tb-trip-name'),
     airline: {
-      records: readAirlineRecords()
+      records: readAirlineRecords(), insurancePremium: gn('tb-air-insurance')
     },
     hotel: readHotelEntries(),
+    hotelInsurancePremium: gn('tb-hotel-insurance'),
     cruise: {
       confirmationNumber: gv('tb-cruise-conf'), cruiseLine: gv('tb-cruise-line'), shipName: gv('tb-cruise-ship'),
       sailingDate: gv('tb-cruise-sailing'), returnDate: gv('tb-cruise-return'), nights: gn('tb-cruise-nights'),
       departurePort: gv('tb-cruise-port'), returnPort: gv('tb-cruise-return-port'),
-      loyaltyNumber: gv('tb-cruise-loyalty'), price: gn('tb-cruise-price'), notes: gv('tb-cruise-notes'), cabins: readCabinEntries(),
+      loyaltyNumber: gv('tb-cruise-loyalty'), price: gn('tb-cruise-price'), insurancePremium: gn('tb-cruise-insurance'), notes: gv('tb-cruise-notes'), cabins: readCabinEntries(),
       pts: readPointsEntriesFrom(document.getElementById('tb-cruise-pts-entries'))
     },
     carRental: {
       confirmationNumber: gv('tb-car-conf'), company: gv('tb-car-company'), carSize: gv('tb-car-size'),
       pickupLocation: gv('tb-car-pickuploc'), dropoffLocation: gv('tb-car-dropoffloc'),
       pickupDate: gv('tb-car-pickupdate'), dropoffDate: gv('tb-car-dropoffdate'),
-      pickupTime: gv('tb-car-pickuptime'), dropoffTime: gv('tb-car-dropofftime'), price: gn('tb-car-price'),
+      pickupTime: gv('tb-car-pickuptime'), dropoffTime: gv('tb-car-dropofftime'), price: gn('tb-car-price'), insurancePremium: gn('tb-car-insurance'),
       notes: gv('tb-car-notes'), pts: readPointsEntriesFrom(document.getElementById('tb-car-pts-entries'))
     },
     tours: readTourEntries(),
     toursPts: readPointsEntriesFrom(document.getElementById('tb-tours-pts-entries')),
+    toursInsurancePremium: gn('tb-tours-insurance'),
     themePark: {
-      confirmationNumber: gv('tb-tp-conf'), park: gv('tb-tp-park'), ticketType: gv('tb-tp-ticket'), price: gn('tb-tp-price'), notes: gv('tb-tp-notes'),
+      confirmationNumber: gv('tb-tp-conf'), park: gv('tb-tp-park'), ticketType: gv('tb-tp-ticket'), price: gn('tb-tp-price'), insurancePremium: gn('tb-tp-insurance'), notes: gv('tb-tp-notes'),
       pts: readPointsEntriesFrom(document.getElementById('tb-tp-pts-entries'))
     },
     train: {
       confirmationNumber: gv('tb-train-conf'), departureCity: gv('tb-train-depcity'), arrivalCity: gv('tb-train-arrcity'),
       departureDate: gv('tb-train-depdate'), returnDate: gv('tb-train-retdate'), classOfService: gv('tb-train-class'),
-      price: gn('tb-train-price'), logoUrl: gv('tb-train-logo'), notes: gv('tb-train-notes'), pts: readPointsEntriesFrom(document.getElementById('tb-train-pts-entries'))
+      price: gn('tb-train-price'), insurancePremium: gn('tb-train-insurance'), logoUrl: gv('tb-train-logo'), notes: gv('tb-train-notes'), pts: readPointsEntriesFrom(document.getElementById('tb-train-pts-entries'))
     },
     bus: {
       confirmationNumber: gv('tb-bus-conf'), departureCity: gv('tb-bus-depcity'), arrivalCity: gv('tb-bus-arrcity'),
       departureDate: gv('tb-bus-depdate'), returnDate: gv('tb-bus-retdate'), classOfService: gv('tb-bus-class'),
-      price: gn('tb-bus-price'), logoUrl: gv('tb-bus-logo'), notes: gv('tb-bus-notes'), pts: readPointsEntriesFrom(document.getElementById('tb-bus-pts-entries'))
+      price: gn('tb-bus-price'), insurancePremium: gn('tb-bus-insurance'), logoUrl: gv('tb-bus-logo'), notes: gv('tb-bus-notes'), pts: readPointsEntriesFrom(document.getElementById('tb-bus-pts-entries'))
     }
   };
 }
