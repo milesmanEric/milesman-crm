@@ -9300,7 +9300,15 @@ function tripBookedPriceTotal(t){
   var b = (t && t.booked) || {};
   var total = 0;
   function num(x){ return Number(x)||0; }
-  total += num(b.airline && b.airline.price);
+  // booked.airline moved from one flat price field to a list of Airline
+  // Records (see airlineRecordRowInnerHtml/readAirlineRecords), each with
+  // its own price — sum those for current trips, same as
+  // computeBookedTripSummary() does, and only fall back to the old flat
+  // field for a legacy trip that never got a records array.
+  var airlineRecords = Array.isArray(b.airline && b.airline.records) ? b.airline.records : [];
+  total += airlineRecords.length ?
+    airlineRecords.reduce(function(a,r){return a+num(r&&r.price);},0) :
+    num(b.airline && b.airline.price);
   total += num(b.cruise && b.cruise.price);
   total += num(b.carRental && b.carRental.price);
   total += num(b.themePark && b.themePark.price);
