@@ -10075,8 +10075,13 @@ function tripGroupsByCategory(list, targetCategory){
 }
 
 function renderTrips(){
-  var tripSortCol = window._tripSortCol || 'upcoming';
-  var tripSortDir = window._tripSortDir || 'desc';
+  // Default landing sort (before any column header is ever clicked) is the
+  // same prescribed order the Status column itself sorts by — in progress,
+  // then upcoming, then planning, then completed, then cancelled — so the
+  // page opens already matching the color-coded order described in the
+  // Status header's own tooltip, not a separate date-based ordering.
+  var tripSortCol = window._tripSortCol || 'status';
+  var tripSortDir = window._tripSortDir || 'asc';
   const selC=db.clients.find(function(c){return c.id===selCid;});
   const q=fSearch.toLowerCase();
   let list=db.trips.filter(function(t){
@@ -10105,18 +10110,6 @@ function renderTrips(){
   }
   // Sort
   list = list.slice().sort(function(a,b){
-    // Default view — soonest-upcoming (or currently in-progress) trip date
-    // first, then most-recently-past, then no-date-at-all — not affected by
-    // tripSortDir, since "upcoming first" is a fixed direction, not a
-    // column a user flips between ascending/descending.
-    if(tripSortCol==='upcoming'){
-      var t0 = today();
-      function rank(t){ if(!t.departDate) return 2; return t.departDate>=t0 ? 0 : 1; }
-      var ar=rank(a), br=rank(b);
-      if(ar!==br) return ar-br;
-      if(ar===1) return (b.departDate||'').localeCompare(a.departDate||'');
-      return (a.departDate||'').localeCompare(b.departDate||'');
-    }
     // "Status" column doubles as the color-coded sort: current/in-progress
     // (green) first, then upcoming (yellow), then Planning (blue), then
     // completed/past (orange) — Cancelled (red) last, since it's excluded
