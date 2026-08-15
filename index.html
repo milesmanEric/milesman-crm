@@ -4747,11 +4747,14 @@ function showImportMatchModal(name){
   const overlay=$('import-match-overlay');
   $('import-match-name').textContent='No client found matching: "'+name+'"';
   const sel=$('import-match-sel');
-  const sorted=[...db.clients].sort((a,b)=>{
-    const al=(a.name||'').trim().split(' ').pop().toLowerCase();
-    const bl=(b.name||'').trim().split(' ').pop().toLowerCase();
-    return al.localeCompare(bl);
-  });
+  // Sorts on the stored name string directly (same convention as every
+  // other client picklist in the app, e.g. openTripForm's client select) —
+  // names are stored "Last, First", so this naturally sorts alphabetically
+  // by last name. The previous sort split on space and took the last word,
+  // which for "Last, First" actually pulled out the FIRST name, so the
+  // list looked sorted by first name instead of the expected last-name
+  // order everywhere else in the app.
+  const sorted=[...db.clients].sort((a,b)=>(a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase()));
   sel.innerHTML='<option value="">Select existing client...</option>'+sorted.map(c=>'<option value="'+c.id+'">'+c.name+'</option>').join('');
   overlay.style.display='flex';
 
