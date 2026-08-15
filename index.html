@@ -5522,6 +5522,21 @@ function parseTripFormEmailText(flatText){
   }
   return row;
 }
+// The watermark these polling checks advance to after every run — always a
+// few minutes BEHIND wall-clock "now", not "now" itself. Microsoft Graph's
+// search index can lag a few seconds to a couple minutes behind a message
+// actually landing in the mailbox; if the watermark advanced to the exact
+// moment a check ran, an email that arrived just before that moment but
+// wasn't yet indexed would be silently and PERMANENTLY excluded from every
+// future check (each one only ever filters receivedDateTime >= watermark,
+// there's no going back). This buffer creates a re-scan overlap window on
+// every run instead — safe to do since processedIds already dedupes by
+// message id, so re-seeing an already-handled email here is a no-op.
+function pollCheckpointNow(){
+  var d = new Date();
+  d.setMinutes(d.getMinutes()-10);
+  return d.toISOString();
+}
 // Polls the connected Outlook inbox for new "Book a trip" submission
 // emails and imports each one through the same logic as the manual CSV
 // import. silent=true (used by the timer and the on-load check) never
@@ -5539,7 +5554,7 @@ async function checkForNewTripFormEmails(silent){
       var d = new Date(); d.setDate(d.getDate()-1); return d.toISOString();
     })();
     var processedIds = JSON.parse(localStorage.getItem('mm_tripform_processed_ids')||'[]');
-    var checkedAt = new Date().toISOString();
+    var checkedAt = pollCheckpointNow();
 
     var url = 'https://graph.microsoft.com/v1.0/me/messages'+
       '?$select=id,subject,receivedDateTime,body'+
@@ -5679,7 +5694,7 @@ async function checkForNewContactFormEmails(silent){
       var d = new Date(); d.setDate(d.getDate()-1); return d.toISOString();
     })();
     var processedIds = JSON.parse(localStorage.getItem('mm_contactform_processed_ids')||'[]');
-    var checkedAt = new Date().toISOString();
+    var checkedAt = pollCheckpointNow();
 
     var url = 'https://graph.microsoft.com/v1.0/me/messages'+
       '?$select=id,subject,receivedDateTime,body'+
@@ -5940,7 +5955,7 @@ async function checkForNewRevenueReportEmails(silent){
       var d = new Date(); d.setDate(d.getDate()-1); return d.toISOString();
     })();
     var processedIds = JSON.parse(localStorage.getItem('mm_revenuereport_processed_ids')||'[]');
-    var checkedAt = new Date().toISOString();
+    var checkedAt = pollCheckpointNow();
 
     var url = 'https://graph.microsoft.com/v1.0/me/messages'+
       '?$select=id,subject,receivedDateTime,hasAttachments'+
@@ -14307,6 +14322,20 @@ debugLog('Search: '+window.location.search);
 debugLog('Hash: '+window.location.hash.slice(0,100));
 loadDB();
 autoSeedDefaultBookmarksOnce();
+// One-time recovery for the watermark bug pollCheckpointNow() fixes: any
+// checkpoint already saved in this browser from before the fix could sit
+// past the receivedDateTime of a real email that arrived but was never
+// found (Graph index lag advancing the old, unbuffered watermark past it).
+// Clearing these once forces the next check for each to fall back to its
+// own 24-hours-ago default window, safe to do since processedIds already
+// prevents anything genuinely already-imported from being duplicated.
+if(!localStorage.getItem('mm_pollcheckpoint_buffer_fix_v1')){
+  localStorage.setItem('mm_pollcheckpoint_buffer_fix_v1','1');
+  localStorage.removeItem('mm_last_tripform_check');
+  localStorage.removeItem('mm_last_contactform_check');
+  localStorage.removeItem('mm_last_revenuereport_check');
+  debugLog('One-time reset of email-poll checkpoints (watermark buffer fix) — next check re-scans the last 24h');
+}
 render();
 loadDebugLog();
 startAutosave();
