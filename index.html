@@ -2381,11 +2381,20 @@ async function driveRestore(){
       return;
     }
     if(Array.isArray(d.clients)&&Array.isArray(d.trips)){
+      // Full db schema — every field, not just clients/trips/vendors/planner.
+      // This used to silently drop bizVendors/bookmarks/savedReports on every
+      // restore (they were never listed here), wiping that data from the live
+      // app even though the downloaded backup file actually had it, and only
+      // surfacing later as a crash wherever that data got touched next (e.g.
+      // Outlook Sync's db.bizVendors.forEach).
       db={
         clients:Array.isArray(d.clients)?d.clients:[],
         trips:Array.isArray(d.trips)?d.trips:[],
         vendors:Array.isArray(d.vendors)?d.vendors:[],
-        planner:Array.isArray(d.planner)?d.planner:[]
+        bizVendors:Array.isArray(d.bizVendors)?d.bizVendors:[],
+        planner:Array.isArray(d.planner)?d.planner:[],
+        bookmarks:Array.isArray(d.bookmarks)?d.bookmarks:[],
+        savedReports:Array.isArray(d.savedReports)?d.savedReports:[]
       };
       db.clients.forEach(function(c){ if(c.name && !c.name.includes(',')) c.name=toLastFirst(c.name); });
       saveDB();render();
@@ -2475,11 +2484,20 @@ async function secureSyncRestore(){
     }
     const d = await r.json();
     if(Array.isArray(d.clients)&&Array.isArray(d.trips)){
+      // Full db schema — every field, not just clients/trips/vendors/planner.
+      // This used to silently drop bizVendors/bookmarks/savedReports on every
+      // restore (they were never listed here), wiping that data from the live
+      // app even though the downloaded backup file actually had it, and only
+      // surfacing later as a crash wherever that data got touched next (e.g.
+      // Outlook Sync's db.bizVendors.forEach).
       db={
         clients:Array.isArray(d.clients)?d.clients:[],
         trips:Array.isArray(d.trips)?d.trips:[],
         vendors:Array.isArray(d.vendors)?d.vendors:[],
-        planner:Array.isArray(d.planner)?d.planner:[]
+        bizVendors:Array.isArray(d.bizVendors)?d.bizVendors:[],
+        planner:Array.isArray(d.planner)?d.planner:[],
+        bookmarks:Array.isArray(d.bookmarks)?d.bookmarks:[],
+        savedReports:Array.isArray(d.savedReports)?d.savedReports:[]
       };
       db.clients.forEach(function(c){ if(c.name && !c.name.includes(',')) c.name=toLastFirst(c.name); });
       saveDB();render();
@@ -3043,7 +3061,7 @@ function importJSON(){
     r.onload=function(ev){
       try{
         const d=JSON.parse(ev.target.result);
-        if(Array.isArray(d.clients)&&Array.isArray(d.trips)){db=d;if(!Array.isArray(db.vendors))db.vendors=[];if(!Array.isArray(db.planner))db.planner=[];(db.clients||[]).forEach(function(c){ if(c.name && !c.name.includes(',')) c.name=toLastFirst(c.name); });saveDB();toast('Data imported');render();}
+        if(Array.isArray(d.clients)&&Array.isArray(d.trips)){db=d;if(!Array.isArray(db.vendors))db.vendors=[];if(!Array.isArray(db.bizVendors))db.bizVendors=[];if(!Array.isArray(db.planner))db.planner=[];if(!Array.isArray(db.bookmarks))db.bookmarks=[];if(!Array.isArray(db.savedReports))db.savedReports=[];(db.clients||[]).forEach(function(c){ if(c.name && !c.name.includes(',')) c.name=toLastFirst(c.name); });saveDB();toast('Data imported');render();}
         else toast('Invalid backup file','err');
       }catch(ex){toast('Could not read file','err');}
     };r.readAsText(f);
