@@ -292,6 +292,7 @@ tr:last-child td{border-bottom:none}
         <button class="sync-btn" id="btn-import-suppliers-sb" style="color:#059669;border-color:#6ee7b7">&#127981; Import Suppliers CSV</button>
         <button class="sync-btn" id="btn-import-revenue" style="color:#059669;border-color:#6ee7b7">&#128178; Import Revenue CSV</button>
         <button class="sync-btn" id="btn-clean-import-revenue" style="color:#7c3aed;border-color:#c4b5fd">&#129529; Clean &amp; Import Revenue File</button>
+        <button class="sync-btn" id="btn-reset-revenue-import-history" style="color:#888;border-color:#ddd;font-size:11px" title="Lets the automatic Revenue Report email check re-fetch and re-attempt every report email again, instead of skipping ones it already saw">&#128260; Re-check All Revenue Report Emails</button>
         <button class="sync-btn" id="btn-import-csv" style="color:#059669;border-color:#6ee7b7">&#128203; Import Clients CSV</button>
         <button class="sync-btn" id="btn-import-tripform" style="color:#059669;border-color:#6ee7b7">&#9992;&#65039; Import Book a Trip Form PDF(s)</button>
         <button class="sync-btn" id="btn-import-formspree" style="color:#059669;border-color:#6ee7b7">&#128231; Import Formspree Submissions</button>
@@ -13958,6 +13959,20 @@ function bindClick(id, handler){
     if(btn){btn.style.color='';btn.style.borderColor='';}
     toast('Outlook login reset - click Sync to reconnect','ok');
     debugLog('MS tokens cleared');
+  });
+  // Doesn't touch anything already imported — finalizeImport()'s own
+  // duplicate-signature check (clientId+invoiceNum+supplierId+amt+date)
+  // still applies on re-fetch, so a report email that already fully
+  // succeeded just gets its trips backfilled/deduped again, not doubled.
+  // This only clears which emails the check has SEEN, so one that was
+  // skipped, partially imported, or missed due to the watermark bug gets
+  // a genuine second attempt.
+  bindClick('btn-reset-revenue-import-history', function(){
+    if(!confirm('Let the automatic Revenue Report email check re-fetch and re-attempt every report email again? Already-imported trips will not be duplicated (matched by client/invoice/supplier/amount/date), so this is safe to use whenever a report seems to have been missed or only partially imported.')) return;
+    localStorage.removeItem('mm_revenuereport_processed_ids');
+    localStorage.removeItem('mm_last_revenuereport_check');
+    toast('Revenue report import history cleared — next check re-scans the last 24h','ok');
+    debugLog('Revenue report import history cleared (manual reset)');
   });
   bindClick('btn-user-guide', function(){ window.open('user-guide.html', '_blank', 'noopener,noreferrer'); });
   bindClick('btn-documentation', function(){ window.open('documentation.html', '_blank', 'noopener,noreferrer'); });
