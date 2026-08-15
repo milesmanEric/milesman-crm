@@ -13433,6 +13433,26 @@ function deleteBookmark(id){
 }
 // Adds the DEFAULT_BOOKMARKS starter pack, skipping any name+category+
 // audience combo that's already present so this is safe to click more than once.
+// Runs once ever (mm_default_bookmarks_seeded gate, set the first time this
+// runs regardless of outcome) so a user who later deletes the starter set on
+// purpose doesn't have it silently reappear on next launch — this is purely
+// about not having to click "+ Load Starter Bookmarks" by hand on a brand
+// new install, not an ongoing top-up. Skips entirely if bookmarks already
+// exist (e.g. restored from a backup that already had some), since seeding
+// on top of real data is the manual button's job, not this one's.
+function autoSeedDefaultBookmarksOnce(){
+  if(localStorage.getItem('mm_default_bookmarks_seeded')) return;
+  localStorage.setItem('mm_default_bookmarks_seeded', '1');
+  if(db.bookmarks.length) return;
+  // forEach+push, not map() — newId() derives the next id from
+  // db.bookmarks's current length, so each push must land before the next
+  // newId() call or every seeded bookmark would get the same id.
+  DEFAULT_BOOKMARKS.forEach(function(b){
+    db.bookmarks.push(Object.assign({id:newId('BM', db.bookmarks), notes:''}, b));
+  });
+  saveDB();
+  debugLog('Auto-seeded '+db.bookmarks.length+' starter bookmarks (first run)');
+}
 function seedDefaultBookmarks(){
   var existing = {};
   db.bookmarks.forEach(function(b){ existing[(b.name||'')+'|'+(b.category||'')+'|'+(b.audience||'Consumer')] = true; });
@@ -14286,6 +14306,7 @@ debugLog('Page URL: '+window.location.href.slice(0,200));
 debugLog('Search: '+window.location.search);
 debugLog('Hash: '+window.location.hash.slice(0,100));
 loadDB();
+autoSeedDefaultBookmarksOnce();
 render();
 loadDebugLog();
 startAutosave();
