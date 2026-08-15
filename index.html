@@ -5982,6 +5982,19 @@ async function checkForNewRevenueReportEmails(silent){
     if(!messages.length) return;
 
     for(var mi=0; mi<messages.length; mi++){
+      // window._importState is a single global slot (see startRevenueImport()/
+      // processImportQueue()) — if an earlier message in this same batch (or
+      // any other pending import, e.g. a manual one the user has open) left
+      // it non-null waiting on a manual Unmatched Client resolution,
+      // starting another import here would silently clobber those pending
+      // rows with zero error before the user ever saw the resolution modal.
+      // Stop the batch here instead — this message and any after it are
+      // NOT marked processed, so they're picked up again on the next check
+      // once the pending one is resolved and the slot frees up.
+      if(window._importState){
+        debugLog('Revenue report email: an import is still awaiting manual client resolution — stopping this batch at message '+(mi+1)+' of '+messages.length+', remaining will retry on next check');
+        break;
+      }
       var msg = messages[mi];
       processedIds.push(msg.id);
       try{
