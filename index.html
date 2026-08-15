@@ -1128,6 +1128,72 @@ function getFirstName(name){
   var parts = name.trim().split(/\s+/);
   return parts[0];
 }
+// QuickBooks' "Sales by Customer Detail" PDF export truncates the Class
+// column to its fixed print width and appends "..." when a name doesn't
+// fit (e.g. "Bakhash" -> "Bak...", or a long first name can even swallow
+// the whole last name down to nothing but "..."). Revenue-importer name
+// matching used to require an exact first+last match, so any truncated row
+// simply never matched a real client, no matter how unambiguous the
+// visible prefix was.
+function isTruncatedSeg(seg){
+  seg = (seg||'').trim();
+  return seg.slice(-3)==='...' || seg.slice(-1)==='…';
+}
+function stripTruncation(seg){
+  seg = (seg||'').trim();
+  if(seg.slice(-3)==='...') return seg.slice(0,-3).trim();
+  if(seg.slice(-1)==='…') return seg.slice(0,-1).trim();
+  return seg;
+}
+// Matches a revenue-import row's client name against db.clients. Exact
+// full-name match first; otherwise compares first/last name independently,
+// treating a "..."-truncated segment (see stripTruncation) as a known
+// prefix rather than requiring the full segment to match — "Bak..."
+// matches a stored last name of "Bakhash". Only returns a match when
+// exactly one client fits, so an empty/ambiguous prefix (a Class value
+// truncated down to nothing but the first name) never guesses wrong; it
+// just falls through to the normal unmatched-client flow instead. Shared
+// by startRevenueImport's pre-pass and finalizeImport's per-row match so
+// the two can't silently disagree the way they used to.
+function matchClientByName(name){
+  if(!name) return null;
+  var nl = name.toLowerCase().trim();
+  var exact = db.clients.find(function(c){return (c.name||'').toLowerCase().trim()===nl;});
+  if(exact) return exact;
+  var inputFirst = getFirstName(nl).toLowerCase();
+  var inputLast = getLastName(nl).toLowerCase();
+  if(!inputFirst || !inputLast || inputFirst===inputLast) return null;
+  function segMatches(inputSeg, candidateSeg){
+    if(isTruncatedSeg(inputSeg)){
+      var prefix = stripTruncation(inputSeg);
+      return prefix ? candidateSeg.indexOf(prefix)===0 : true;
+    }
+    return candidateSeg===inputSeg;
+  }
+  var candidates = db.clients.filter(function(c){
+    var cFirst = getFirstName(c.name).toLowerCase();
+    var cLast = getLastName(c.name).toLowerCase();
+    return segMatches(inputFirst, cFirst) && segMatches(inputLast, cLast);
+  });
+  return candidates.length===1 ? candidates[0] : null;
+}
+// Builds a clean name for a brand-new client created from an import row's
+// (possibly report-truncated) name, so nothing ever gets a literal "..."
+// baked into its stored name. If truncation ate an entire segment (e.g. a
+// Class value truncated down to zero characters of last name), the new
+// client is created with just the side we do know rather than a garbled
+// "..., Jonathan" that sorts to the top of the client list and is easy to
+// miss entirely — the reason "no client was created" for a truncated new
+// customer used to look, from the client list, indistinguishable from the
+// row having been silently dropped.
+function cleanNewClientName(name){
+  var trimmed = (name||'').trim();
+  if(!trimmed) return trimmed;
+  var last = stripTruncation(getLastName(trimmed));
+  var first = stripTruncation(getFirstName(trimmed));
+  if(last && first) return last+', '+first;
+  return first||last||trimmed;
+}
 function extractDateFromText(text){
   if(!text) return '';
   // Match patterns like 7/19/26, 12/27/25, 5/29/26
@@ -4640,7 +4706,7 @@ function extractRevenueRow(getCol, cols){
 // resolution modal, ending in finalizeImport() — which creates trips,
 // links suppliers, and updates client revenue. Choosing "+ Add as new
 // client" in that modal is what folds client creation into this same flow.
-function startRevenueImport(rows, extractionSkipped){
+function startRevenueImport(rows, extractionSkipped, autoResolveUnmatched){
   if(!rows.length){
     toast('No valid rows found'+(extractionSkipped?' — '+extractionSkipped+' row(s) were skipped (see debug log for why)':''),'err');
     return;
@@ -4649,30 +4715,30 @@ function startRevenueImport(rows, extractionSkipped){
   const unmatchedNames=[];
   const autoResolutions={};
 
-  function fuzzyMatchClient(name){
-    if(!name) return null;
-    const nl=name.toLowerCase().trim();
-    // Get first/last regardless of input format (handles 'Last, First' or 'First Last')
-    const inputFirst=getFirstName(nl).toLowerCase();
-    const inputLast=getLastName(nl).toLowerCase();
-    // Exact match against stored 'Last, First' format
-    var m=db.clients.find(c=>(c.name||'').toLowerCase().trim()===nl); if(m) return m;
-    // Match by comparing first+last regardless of how input or stored name is formatted
-    if(inputFirst && inputLast && inputFirst!==inputLast){
-      m=db.clients.find(function(c){
-        var cFirst=getFirstName(c.name).toLowerCase();
-        var cLast=getLastName(c.name).toLowerCase();
-        return cFirst===inputFirst && cLast===inputLast;
-      });
-      if(m) return m;
-    }
-    return null;
-  }
-
   rows.forEach(function(row){
     if(autoResolutions[row.name]!==undefined||unmatchedNames.includes(row.name)) return;
-    const matched=fuzzyMatchClient(row.name);
+    const matched=matchClientByName(row.name);
     if(matched){ autoResolutions[row.name]=matched.id; }
+    else if(autoResolveUnmatched){
+      // Running unattended (automatic revenue report email import) — no one
+      // is necessarily present to click through an Unmatched Client modal,
+      // and leaving one pending in window._importState (a plain in-memory
+      // slot, never persisted anywhere) is fragile: anything that reloads
+      // the page before it's resolved — closing the app, locking, even just
+      // a refresh — silently discards the ENTIRE pending batch with zero
+      // trace. That's the likely explanation for a real report (Adam Garth/
+      // BHPT $557.55 plus 3 other rows) all vanishing together despite
+      // extracting correctly. Auto-creating a client here (same shape the
+      // modal's own "+ Add as new client" button uses) avoids ever leaving
+      // state in that fragile condition during an unattended run.
+      const newCid=newId('C',db.clients);
+      const cleanName=cleanNewClientName(row.name);
+      db.clients.push({id:newCid,name:cleanName,email:'',phone:'',location:'',preferredAirline:'',preferredHotel:'',preferredCruiseLine:'',notesLog:[],joined:today(),totalTrips:0,totalRevenue:0});
+      autoResolutions[row.name]=newCid;
+      var truncNote = (isTruncatedSeg(getFirstName(row.name))||isTruncatedSeg(getLastName(row.name))) ?
+        ' — source report Class/Name was truncated ("'+row.name+'"), please verify/complete this client\'s name' : '';
+      debugLog('Revenue report email: auto-created client "'+cleanName+'" ('+newCid+') — no match found and running unattended'+truncNote);
+    }
     else { unmatchedNames.push(row.name); }
   });
 
@@ -4745,7 +4811,14 @@ function processImportQueue(){
 
 function showImportMatchModal(name){
   const overlay=$('import-match-overlay');
-  $('import-match-name').textContent='No client found matching: "'+name+'"';
+  // A "..."-truncated name here (see stripTruncation) means the source
+  // report's Class/Name column simply ran out of room — flagging that
+  // explicitly instead of showing a bare garbled string ("...  Jonathan")
+  // stops a real, unambiguous match from getting clicked "Skip" out of
+  // confusion about what the name even is.
+  const truncNote = (isTruncatedSeg(getFirstName(name))||isTruncatedSeg(getLastName(name))) ?
+    ' (name is cut off in the source report — the Class/Name column ran out of room)' : '';
+  $('import-match-name').textContent='No client found matching: "'+name+'"'+truncNote;
   const sel=$('import-match-sel');
   // Sorts on the stored name string directly (same convention as every
   // other client picklist in the app, e.g. openTripForm's client select) —
@@ -4760,7 +4833,7 @@ function showImportMatchModal(name){
 
   $('import-match-add').onclick=function(){
     const newCid=newId('C',db.clients);
-    db.clients.push({id:newCid,name:toLastFirst(name),email:'',phone:'',location:'',preferredAirline:'',preferredHotel:'',notesLog:[],joined:today(),totalTrips:0,totalRevenue:0});
+    db.clients.push({id:newCid,name:cleanNewClientName(name),email:'',phone:'',location:'',preferredAirline:'',preferredHotel:'',notesLog:[],joined:today(),totalTrips:0,totalRevenue:0});
     saveDB();
     window._importState.resolutions[name]=newCid;
     overlay.style.display='none';
@@ -4809,10 +4882,6 @@ function finalizeImport(){
     }
 
     // Find client by name
-    const cl=row.name.toLowerCase().trim();
-    const parts=cl.split(/\s+/);
-    const first=parts[0]||'';
-    const last=parts[parts.length-1]||'';
     let cid=null;
 
     // Check resolution from match modal first
@@ -4820,22 +4889,11 @@ function finalizeImport(){
       cid=state.resolutions[row.name];
     }
 
-    // Get first/last regardless of format
-    const rowFirst = getFirstName(cl);
-    const rowLast = getLastName(cl);
-
-    // Fuzzy match if no resolution — exact or both-names-match only
+    // Fuzzy match if no resolution — same truncation-tolerant matcher
+    // startRevenueImport's pre-pass already used, so the two can't
+    // disagree about which client a given row belongs to.
     if(!cid){
-      const direct=db.clients.find(function(c){
-        const fn=(c.name||'').toLowerCase().trim();
-        if(fn===cl) return true;
-        if(rowFirst&&rowLast&&rowFirst!==rowLast){
-          var cFirst=getFirstName(c.name);
-          var cLast=getLastName(c.name);
-          if(cFirst===rowFirst && cLast===rowLast) return true;
-        }
-        return false;
-      });
+      const direct=matchClientByName(row.name);
       if(direct) cid=direct.id;
     }
 
@@ -5945,7 +6003,7 @@ async function cleanAndImportRevenuePdfEmail(arrayBuffer, filename){
     debugLog('Revenue report email: no valid revenue rows found in "'+filename+'"');
     return;
   }
-  startRevenueImport(revenueRows, extractionSkipped);
+  startRevenueImport(revenueRows, extractionSkipped, true);
 }
 async function checkForNewRevenueReportEmails(silent){
   try{
