@@ -10121,7 +10121,20 @@ function renderTrips(){
       var LIFECYCLE_SORT_RANK = {inTrip:0, upcoming:1, planning:2, past:3, cancelled:4};
       var ar=LIFECYCLE_SORT_RANK[repCategory(a)], br=LIFECYCLE_SORT_RANK[repCategory(b)];
       if(ar!==br) return tripSortDir==='asc' ? ar-br : br-ar;
-      return (a.departDate||'').localeCompare(b.departDate||'');
+      // Within a tied category, nearest date to today first — soonest
+      // departure first for the future-facing categories (in progress/
+      // upcoming/planning), but most-recently-departed first for the
+      // past-facing ones (completed/cancelled), since "nearest" means
+      // closest to today in whichever direction that category actually
+      // runs. A dateless trip always sorts last within its category rather
+      // than jumping to the front just because '' sorts low.
+      var cat = repCategory(a);
+      var pastFacing = (cat==='past' || cat==='cancelled');
+      var ad=a.departDate||'', bd=b.departDate||'';
+      if(!ad && !bd) return 0;
+      if(!ad) return 1;
+      if(!bd) return -1;
+      return pastFacing ? bd.localeCompare(ad) : ad.localeCompare(bd);
     }
     var av, bv;
     if(tripSortCol==='id'){
