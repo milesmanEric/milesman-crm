@@ -10461,7 +10461,8 @@ function openGroupForm(id){
     var info = tripSummaryLineInfo(members);
     var unitIds = members.map(function(m){return m.id;});
     var checked = unitIds.length && unitIds.every(function(tid){return currentTripIds.indexOf(tid)!==-1;});
-    return '<label style="display:flex;align-items:center;gap:8px;padding:5px 0;font-size:13px;cursor:pointer">'+
+    var searchText = [info.label, info.statusLabel, info.dateRange].filter(Boolean).join(' ').toLowerCase();
+    return '<label class="group-trip-row" data-search="'+escHtml(searchText)+'" style="display:flex;align-items:center;gap:8px;padding:5px 0;font-size:13px;cursor:pointer">'+
       '<input type="checkbox" class="group-trip-cb" value="'+unitIds.join(',')+'" '+(checked?'checked':'')+' style="width:14px;height:14px">'+
       '<span>'+escHtml(info.label||'(no client/trip name)')+(info.statusLabel?' &middot; '+escHtml(info.statusLabel):'')+(info.dateRange?' &middot; '+info.dateRange:'')+'</span>'+
     '</label>';
@@ -10499,7 +10500,8 @@ function openGroupForm(id){
     '<div class="fg">'+
       fld('Group Name', inp('grp-name','text',g.name,'e.g. Smith Family Reunion 2026'))+
       '<div class="field full"><label>Trips <span class="hint" style="text-transform:none;font-weight:400">(pick which existing collapsed trips belong to this group)</span></label>'+
-        '<div style="border:1px solid #e5e7eb;border-radius:8px;padding:10px;max-height:260px;overflow-y:auto;background:#fafafa">'+
+        (units.length ? '<input type="text" id="group-trip-search" placeholder="Search trips..." autocomplete="off" style="margin-bottom:6px">' : '')+
+        '<div id="group-trip-list" style="border:1px solid #e5e7eb;border-radius:8px;padding:10px;max-height:260px;overflow-y:auto;background:#fafafa">'+
           (memberChecks || '<div style="color:#aaa;font-size:12px">No trips yet</div>')+
         '</div>'+
       '</div>'+
@@ -10520,6 +10522,15 @@ function openGroupForm(id){
   $('modal-save-group').addEventListener('click', function(){ saveGroup(this.dataset.id||null); });
   var delFormBtn = $('btn-del-group-form');
   if(delFormBtn) delFormBtn.addEventListener('click', function(){ delGroup(id); });
+  var groupTripSearch = $('group-trip-search');
+  if(groupTripSearch){
+    groupTripSearch.addEventListener('input', function(){
+      var q = this.value.toLowerCase().trim();
+      document.querySelectorAll('.group-trip-row').forEach(function(row){
+        row.style.display = (!q || row.dataset.search.indexOf(q)!==-1) ? 'flex' : 'none';
+      });
+    });
+  }
   document.querySelectorAll('.del-grpnote-btn').forEach(function(btn){
     btn.addEventListener('click', function(){
       var el = document.getElementById('grpne-'+this.dataset.idx);
