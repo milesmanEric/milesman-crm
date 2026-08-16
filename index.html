@@ -21,6 +21,8 @@ nav{padding:10px 8px}
 .nb.active{background:#dbeafe;color:#1d4ed8;font-weight:600}
 .nc{margin-left:auto;font-size:10px;background:#e5e7eb;color:#555;border-radius:20px;padding:1px 7px}
 .nb.active .nc{background:#bfdbfe;color:#1d4ed8}
+.nb-section{font-size:10px;font-weight:700;color:#999;text-transform:uppercase;letter-spacing:.06em;padding:12px 10px 4px;margin-top:2px}
+.nb-section:first-child{padding-top:2px}
 .sb-footer{padding:12px;border-top:1px solid #e0e0e0;flex-shrink:0}
 .sync-btn{width:100%;padding:7px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit;margin-bottom:6px}
 .sync-btn.synced{color:#059669;border-color:#6ee7b7;background:#f0fdf4}
@@ -243,22 +245,27 @@ tr:last-child td{border-bottom:none}
     </div>
     <nav>
       <button class="nb active" id="nb-dashboard">&#128202; Dashboard</button>
+      <div class="nb-section">Clients &amp; Trips</div>
       <button class="nb" id="nb-clients">&#128100; Clients <span class="nc" id="nc-clients">0</span></button>
       <button class="nb" id="nb-trips">&#9992;&#65039; Trips <span class="nc" id="nc-trips">0</span></button>
       <button class="nb" id="nb-groups">&#128193; Groups <span class="nc" id="nc-groups">0</span></button>
       <button class="nb" id="nb-ccconsulting">&#128179; Credit Card Consulting</button>
       <button class="nb" id="nb-referrals">&#129309; Referrals and Promo</button>
+      <div class="nb-section">Partners</div>
       <button class="nb" id="nb-vendors">&#127981; Suppliers <span class="nc" id="nc-vendors">0</span></button>
       <button class="nb" id="nb-bizvendors">&#127970; Vendors <span class="nc" id="nc-bizvendors">0</span></button>
+      <div class="nb-section">Work</div>
       <button class="nb" id="nb-planner">&#128203; Planner <span class="nc" id="nc-planner">0</span></button>
-      <button class="nb" id="nb-reports">&#128202; Reports</button>
       <button class="nb" id="nb-calendar">&#128197; Calendar</button>
       <button class="nb" id="nb-email">&#9993;&#65039; Email</button>
+      <div class="nb-section">Insights</div>
+      <button class="nb" id="nb-reports">&#128202; Reports</button>
       <button class="nb" id="nb-marketing">&#128227; Marketing</button>
       <button class="nb" id="nb-analytics">&#128200; Analytics</button>
+      <div class="nb-section">Resources</div>
+      <button class="nb" id="nb-bookmarks">&#128278; Bookmarks</button>
       <a class="nb" id="nb-public-site" href="https://themilesman.com/" target="_blank" rel="noopener">&#127760; Miles Man Site</a>
       <a class="nb" id="nb-wordpress" href="https://themilesman.com/wp-admin/" target="_blank" rel="noopener">&#128273; WordPress Admin</a>
-      <button class="nb" id="nb-bookmarks">&#128278; Bookmarks</button>
     </nav>
     <div class="sb-footer">
       <button class="sync-btn" id="btn-undo" disabled style="color:#7c3aed;border-color:#c4b5fd;opacity:.4" title="Nothing to undo">&#8630; Undo</button>
@@ -302,14 +309,18 @@ tr:last-child td{border-bottom:none}
         <button class="sync-btn" id="btn-clear-trips" style="color:#dc2626;border-color:#fca5a5">&#128465; Clear All Trips</button>
       </div>
 
-      <button class="sync-btn" id="btn-user-guide" style="color:#888;border-color:#ddd;font-size:11px">&#128214; User Guide</button>
-      <button class="sync-btn" id="btn-documentation" style="color:#888;border-color:#ddd;font-size:11px">&#128220; Documentation</button>
-      <button class="sync-btn" id="btn-debug-toggle" style="color:#888;border-color:#ddd;font-size:11px">&#128030; Debug Panel</button>
-      <button class="sync-btn" id="btn-test-connectivity" style="color:#888;border-color:#ddd;font-size:11px">&#128225; Test Connectivity</button>
-      <button class="sync-btn" id="btn-change-password" style="color:#888;border-color:#ddd;font-size:11px">&#128273; Change Password</button>
+      <button class="menu-toggle-btn" data-menu="menu-more">&#9881;&#65039; Help &amp; Settings <span class="menu-caret">&#9656;</span></button>
+      <div class="menu-group" id="menu-more" style="display:none">
+        <button class="sync-btn" id="btn-user-guide" style="color:#888;border-color:#ddd;font-size:11px">&#128214; User Guide</button>
+        <button class="sync-btn" id="btn-documentation" style="color:#888;border-color:#ddd;font-size:11px">&#128220; Documentation</button>
+        <button class="sync-btn" id="btn-debug-toggle" style="color:#888;border-color:#ddd;font-size:11px">&#128030; Debug Panel</button>
+        <button class="sync-btn" id="btn-test-connectivity" style="color:#888;border-color:#ddd;font-size:11px">&#128225; Test Connectivity</button>
+        <button class="sync-btn" id="btn-change-password" style="color:#888;border-color:#ddd;font-size:11px">&#128273; Change Password</button>
+        <button class="sync-btn" id="btn-copy-drive-refresh" style="color:#888;border-color:#ddd;font-size:11px" title="One-time Secure Sync server setup — copies this device's Drive refresh token for pasting into Vercel">&#128203; Copy Drive Refresh Token</button>
+      </div>
+
       <button class="sync-btn" id="btn-lock-app" style="color:#888;border-color:#ddd;font-size:11px">&#128274; Lock</button>
       <button class="sync-btn" id="btn-close-app" style="color:#888;border-color:#ddd;font-size:11px" title="Saves everything, then ends the session (same as Lock, plus an explicit save first)">&#128682; Close</button>
-      <button class="sync-btn" id="btn-copy-drive-refresh" style="color:#888;border-color:#ddd;font-size:11px" title="One-time Secure Sync server setup — copies this device's Drive refresh token for pasting into Vercel">&#128203; Copy Drive Refresh Token</button>
       <div class="footer-txt">(908) 419-7700 &middot; themilesman.com</div>
     </div>
   </div>
