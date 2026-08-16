@@ -15025,6 +15025,13 @@ async function sendAssistantMessage(userText){
     var reply = await callAssistantAPI();
     await handleAssistantReply(reply);
   }catch(e){
+    // callAssistantAPI()'s own debugLog only fires once it has an actual
+    // HTTP response to inspect (the !r.ok branch) — a failure before that
+    // (the fetch() call itself throwing: network down, CORS rejection,
+    // an ad blocker dropping the request) skips straight to this catch
+    // instead, and this used to only ever show the chat bubble with
+    // nothing written to the Debug Panel at all for that case.
+    debugLog('Assistant chat failed: '+e.message);
     assistantMsgBubble('error', 'Something went wrong: '+e.message);
   }
   setAssistantLoading(false);
