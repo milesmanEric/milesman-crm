@@ -14979,7 +14979,16 @@ async function callAssistantAPI(){
     body: JSON.stringify({messages:assistantMessages, tools:ASSISTANT_TOOLS, system:ASSISTANT_SYSTEM_PROMPT})
   });
   const data = await r.json();
-  if(!r.ok) throw new Error((data && (data.error && data.error.message || data.error_description || data.error)) || 'Assistant request failed');
+  if(!r.ok){
+    // The chat bubble only ever showed the bare message text (e.g.
+    // "authentication service is unavailable") with nowhere to see the
+    // rest of what Anthropic actually returned (error type, request id) —
+    // logging the full raw body here means that detail survives in the
+    // Debug Panel instead of being visible only for as long as the chat
+    // bubble is on screen.
+    debugLog('Assistant API error ('+r.status+'): '+JSON.stringify(data));
+    throw new Error((data && (data.error && data.error.message || data.error_description || data.error)) || 'Assistant request failed');
+  }
   return data;
 }
 async function handleAssistantReply(reply){
