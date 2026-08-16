@@ -8447,7 +8447,14 @@ function openVendorForm(id){
       fld('Phone', inp('vph','text',d.phone,''))+
       fld('Website', inp('vwb','text',d.website,'https://'))+
       '<div class="field full"><label>Notes</label><textarea id="vno" rows="2">'+(d.notes||'')+'</textarea></div>'+
-      '<div class="field full" id="client-link-section" style="display:'+(d.type==='Referral Partner'?'flex':'none')+'"><label>Linked Clients (Referral Partner)</label>'+
+      // Used to be hidden unless Type==='Referral Partner', on the
+      // assumption only referral partners ever needed manual client links —
+      // but any Supplier's clientIds can end up with a stale entry too (see
+      // saveTrip()'s comment on why that field is otherwise supposed to stay
+      // empty for a trip-linked Supplier), and there was no way to reach the
+      // checkboxes to fix it without briefly switching Type away and back.
+      // Now always visible so any vendor's linked clients can be reviewed.
+      '<div class="field full" id="client-link-section"><label>Linked Clients</label>'+
         '<div style="border:1px solid #e5e7eb;border-radius:8px;padding:10px;max-height:200px;overflow-y:auto;background:#fafafa">'+
           (clientChecks || '<div style="color:#aaa;font-size:12px">No clients yet</div>')+
         '</div>'+
@@ -8559,12 +8566,6 @@ function openVendorForm(id){
   $('overlay').classList.add('open');
   $('modal-close').addEventListener('click', closeModal);
   $('modal-cancel').addEventListener('click', closeModal);
-
-  // Show/hide client links based on type
-  document.getElementById('vtype').addEventListener('change', function(){
-    var sec = document.getElementById('client-link-section');
-    sec.style.display = this.value==='Referral Partner' ? 'flex' : 'none';
-  });
 
   $('modal-save-vendor').addEventListener('click', function(){saveVendor(this.dataset.id);});
   document.querySelectorAll('.supplier-client-link').forEach(function(el){
@@ -9485,7 +9486,23 @@ function renderDash(){
     ccRevenue:db.trips.filter(isCreditCardConsultingTrip).reduce(function(a,t){return a+(t.totalValue||0);},0),
     referralRevenue:db.trips.filter(isReferralIncomeTrip).reduce(function(a,t){return a+(t.totalValue||0);},0)
   };
-  const recent=[].concat(db.trips).sort(function(a,b){return (b.id||'').localeCompare(a.id||'');}).slice(0,6);
+  // Dashboard's "Upcoming & In Progress" widget: excludes non-travel income
+  // (Referrals/Credit Card Consulting have no travel dates, so they'd never
+  // belong here anyway) and anything not currently 'inTrip' or 'upcoming'
+  // per tripLifecycleCategory() (so Planning/Completed/Cancelled trips
+  // don't show). In-progress trips list first, then upcoming ones ordered
+  // soonest-departing first — same category priority and per-category date
+  // sort tripLifecycleCategory()'s own callers (e.g. the Trips page's
+  // status coloring) already treat as "what's most urgent right now".
+  const recent=[].concat(db.trips).filter(function(t){
+    if(isNonTravelIncomeTrip(t)) return false;
+    var cat=tripLifecycleCategory(t);
+    return cat==='inTrip'||cat==='upcoming';
+  }).sort(function(a,b){
+    var catA=tripLifecycleCategory(a), catB=tripLifecycleCategory(b);
+    if(catA!==catB) return catA==='inTrip'?-1:1;
+    return (a.departDate||'').localeCompare(b.departDate||'');
+  }).slice(0,6);
   // Same "Today & Overdue" definition Planner's own date filter uses
   // (dueDate<=today(), not done), sorted most-overdue-first, capped to 10
   // so this doesn't grow unbounded on a busy day.
@@ -9519,7 +9536,7 @@ function renderDash(){
     '</div>'+
     '<div class="two-col">'+
       '<div class="card">'+
-        '<div class="card-hdr"><span class="card-title">Recent trips</span><button class="view-all" id="dash-view-all">View all &rarr;</button></div>'+
+        '<div class="card-hdr"><span class="card-title">Upcoming &amp; In Progress Trips</span><button class="view-all" id="dash-view-all">View all &rarr;</button></div>'+
         (recent.length?
           '<table><thead><tr><th>Client</th><th>Destination</th><th>Depart</th><th>Status</th></tr></thead><tbody>'+
           recent.map(function(t){
@@ -9529,7 +9546,7 @@ function renderDash(){
             return '<tr><td class="n">'+(t.clientId?'<span class="dash-client-link" data-id="'+t.clientId+'" style="color:#2563eb;cursor:pointer;text-decoration:underline">'+(t.clientName||'')+'</span>':(t.clientName||''))+'</td><td>'+(t.destination||'')+'</td><td>'+(t.departDate||'')+'</td><td>'+statusHtml+'</td></tr>';
           }).join('')+
           '</tbody></table>':
-          '<div class="empty">No trips yet</div>')+
+          '<div class="empty">No upcoming or in-progress trips</div>')+
       '</div>'+
       '<div class="card">'+
         '<div class="card-hdr"><span class="card-title">Top clients</span></div>'+
