@@ -1186,11 +1186,26 @@ function matchClientByName(name){
 // miss entirely — the reason "no client was created" for a truncated new
 // customer used to look, from the client list, indistinguishable from the
 // row having been silently dropped.
+//
+// A segment that's only PARTLY truncated (e.g. "Bak..." out of "Bakhash")
+// keeps a trailing "…" rather than being silently trimmed down to just
+// "Bak" — an early version of this function stripped it entirely, which
+// created real clients like "Lip, Skyler" (from a report row truncated to
+// "Skyler Lip...") that read as a complete, correct name with no sign
+// anything was missing. The "…" is the only thing standing between "this
+// prefix happens to be someone's whole last name" and "this got cut off",
+// so dropping it silently reintroduces exactly the wrong-looking-right
+// data this function exists to prevent.
 function cleanNewClientName(name){
   var trimmed = (name||'').trim();
   if(!trimmed) return trimmed;
-  var last = stripTruncation(getLastName(trimmed));
-  var first = stripTruncation(getFirstName(trimmed));
+  var lastRaw = getLastName(trimmed), firstRaw = getFirstName(trimmed);
+  function keepMarked(seg){
+    if(!isTruncatedSeg(seg)) return seg;
+    var known = stripTruncation(seg);
+    return known ? known+'…' : '';
+  }
+  var last = keepMarked(lastRaw), first = keepMarked(firstRaw);
   if(last && first) return last+', '+first;
   return first||last||trimmed;
 }
@@ -4714,6 +4729,7 @@ function startRevenueImport(rows, extractionSkipped, autoResolveUnmatched){
 
   const unmatchedNames=[];
   const autoResolutions={};
+  var incompleteNameCount=0;
 
   rows.forEach(function(row){
     if(autoResolutions[row.name]!==undefined||unmatchedNames.includes(row.name)) return;
@@ -4735,14 +4751,16 @@ function startRevenueImport(rows, extractionSkipped, autoResolveUnmatched){
       const cleanName=cleanNewClientName(row.name);
       db.clients.push({id:newCid,name:cleanName,email:'',phone:'',location:'',preferredAirline:'',preferredHotel:'',preferredCruiseLine:'',notesLog:[],joined:today(),totalTrips:0,totalRevenue:0});
       autoResolutions[row.name]=newCid;
-      var truncNote = (isTruncatedSeg(getFirstName(row.name))||isTruncatedSeg(getLastName(row.name))) ?
+      var isIncomplete = isTruncatedSeg(getFirstName(row.name))||isTruncatedSeg(getLastName(row.name));
+      if(isIncomplete) incompleteNameCount++;
+      var truncNote = isIncomplete ?
         ' — source report Class/Name was truncated ("'+row.name+'"), please verify/complete this client\'s name' : '';
       debugLog('Revenue report email: auto-created client "'+cleanName+'" ('+newCid+') — no match found and running unattended'+truncNote);
     }
     else { unmatchedNames.push(row.name); }
   });
 
-  window._importState={rows,unmatchedNames,resolutions:autoResolutions,cursor:0,extractionSkipped:extractionSkipped||0};
+  window._importState={rows,unmatchedNames,resolutions:autoResolutions,cursor:0,extractionSkipped:extractionSkipped||0,incompleteNameCount:incompleteNameCount};
   processImportQueue();
 }
 function importRevenue(){
@@ -4835,6 +4853,7 @@ function showImportMatchModal(name){
     const newCid=newId('C',db.clients);
     db.clients.push({id:newCid,name:cleanNewClientName(name),email:'',phone:'',location:'',preferredAirline:'',preferredHotel:'',notesLog:[],joined:today(),totalTrips:0,totalRevenue:0});
     saveDB();
+    if(isTruncatedSeg(getFirstName(name))||isTruncatedSeg(getLastName(name))) window._importState.incompleteNameCount=(window._importState.incompleteNameCount||0)+1;
     window._importState.resolutions[name]=newCid;
     overlay.style.display='none';
     window._importState.cursor++;
@@ -5019,6 +5038,7 @@ function finalizeImport(){
     imported++;totalRev+=row.amt;
   });
   var extractionSkipped = state.extractionSkipped||0;
+  var incompleteNameCount = state.incompleteNameCount||0;
   snapshot('Import trips');
   saveDB();render();
   window._importState=null;
@@ -5026,7 +5046,11 @@ function finalizeImport(){
     (suppliersCreated?', created '+suppliersCreated+' new supplier'+(suppliersCreated!==1?'s':''):'')+
     (relinked?', backfilled '+relinked+' existing trip'+(relinked!==1?'s':''):'')+
     (skipped?' ('+skipped+' skipped)':'')+
-    (extractionSkipped?', '+extractionSkipped+' row'+(extractionSkipped!==1?'s':'')+' skipped before matching (see debug log for why)':''),'ok');
+    (extractionSkipped?', '+extractionSkipped+' row'+(extractionSkipped!==1?'s':'')+' skipped before matching (see debug log for why)':'')+
+    // A new client created from a "..."-truncated report name only ever has
+    // a partial name (see cleanNewClientName) — surfaced here so it's not
+    // easy to miss the way it was when this only showed up in the debug log.
+    (incompleteNameCount?', '+incompleteNameCount+' new client name'+(incompleteNameCount!==1?'s':'')+' incomplete from report truncation — please verify':''),'ok');
 }
 
 function importCSV(){
