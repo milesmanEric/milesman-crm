@@ -1226,6 +1226,19 @@ function extractDateFromText(text){
   if(mo<1||mo>12||da<1||da>31) return '';
   return yr+'-'+String(mo).padStart(2,'0')+'-'+String(da).padStart(2,'0');
 }
+// Every "link a client to X" picklist (a trip's Additional Clients, a
+// task's Linked Client/Additional Clients, a supplier's Linked Clients)
+// only offers actual paying clients — not subscriber-only/newsletter
+// contacts who were never real clients — as new selections. Anyone
+// already linked (alreadyLinkedIds) still shows regardless of their
+// isPayingClient flag, so an existing link never silently vanishes from
+// the checklist (and, since these are read back from which checkboxes are
+// checked on save, silently drops off the record) just because the flag
+// wasn't set or got unchecked after the fact.
+function payingClientPicklist(alreadyLinkedIds){
+  var ids = alreadyLinkedIds || [];
+  return db.clients.filter(function(c){ return c.isPayingClient || ids.indexOf(c.id)!==-1; });
+}
 function taskClientId(t){
   if(t.clientId) return t.clientId;
   if(t.tripId){
@@ -8437,12 +8450,15 @@ function renderVendors(){
 function openVendorForm(id){
   var d = id ? (db.vendors.find(function(v){return v.id===id;}) || {}) : {};
 
-  // Build client checklist for referral partners
-  var sortedClients = [...db.clients].sort(function(a,b){
-    var al=(a.name||'').trim().split(' ').pop().toLowerCase();
-    var bl=(b.name||'').trim().split(' ').pop().toLowerCase();
-    return al.localeCompare(bl);
-  });
+  // Build client checklist for referral partners — sorts on the stored
+  // name string directly (same convention as every other client picklist,
+  // e.g. openTripForm's/openTaskForm's own Additional Clients list, and
+  // the import-match modal's client select). Names are stored "Last,
+  // First", so this naturally sorts alphabetically by last name; a prior
+  // version split on space and took the last word, which for "Last,
+  // First" actually pulled out the FIRST name, sorting the list by first
+  // name instead of the last-name order used everywhere else.
+  var sortedClients = payingClientPicklist(d.clientIds).sort(function(a,b){return (a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase());});
   var clientChecks = sortedClients.map(function(c){
     var checked = (d.clientIds||[]).includes(c.id) ? 'checked' : '';
     return '<label style="display:flex;align-items:center;gap:8px;padding:5px 0;font-size:13px;cursor:pointer">'+
@@ -12094,7 +12110,7 @@ function openTripForm(id){
   const initCid=d.clientId||selCid||'';
   const copts=[...db.clients].sort(function(a,b){return (a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase());}).map(function(c){return '<option value="'+c.id+'"'+(c.id===initCid?' selected':'')+'>'+c.name+' ('+c.id+')</option>';}).join('');
   const vopts=[...db.vendors].sort(function(a,b){return (a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase());}).map(function(v){return '<option value="'+v.id+'"'+(v.id===d.supplierId?' selected':'')+'>'+v.name+'</option>';}).join('');
-  const additionalClientChecks=[...db.clients].sort(function(a,b){return (a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase());}).map(function(c){
+  const additionalClientChecks=payingClientPicklist(d.clientIds).sort(function(a,b){return (a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase());}).map(function(c){
     var checked=(d.clientIds||[]).includes(c.id)?'checked':'';
     return '<label style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:13px;cursor:pointer">'+
       '<input type="checkbox" class="trip-client-cb" value="'+c.id+'" '+checked+' style="width:14px;height:14px">'+
@@ -13809,7 +13825,7 @@ function openTaskForm(id){
   // to every linked client's email so the field reflects reality on open,
   // not just after re-selecting clients.
   var displayEmail = d.email || linkedClientEmailsStr(d.clientId, d.clientIds);
-  var sortedClients = [...db.clients].sort(function(a,b){return (a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase());});
+  var sortedClients = payingClientPicklist([d.clientId].concat(d.clientIds||[]).filter(Boolean)).sort(function(a,b){return (a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase());});
   var sortedVendors = [...db.vendors].sort(function(a,b){return (a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase());});
   var sortedTrips = [...db.trips].sort(function(a,b){return (b.departDate||'').localeCompare(a.departDate||'');});
 
