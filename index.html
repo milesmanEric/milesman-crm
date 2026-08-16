@@ -10812,6 +10812,7 @@ function openClientForm(id){
             '<td style="font-size:11px;color:#555;padding:8px 10px">'+(t.invoiceNum||t.bookingRef||'—')+'</td>'+
             '<td style="font-size:11px;color:#555;padding:8px 10px">'+(t.product||'—')+'</td>'+
             '<td style="font-size:11px;color:#059669;font-weight:600;padding:8px 10px">'+(t.clientId===id?'Primary':'Companion')+'</td>'+
+            '<td style="padding:8px 10px"><button type="button" class="icon-btn del-client-trip" data-trip-id="'+t.id+'" title="Delete trip" style="color:#dc2626">&#128465;&#65039;</button></td>'+
           '</tr>';
         }).join('');
 
@@ -10838,6 +10839,7 @@ function openClientForm(id){
             '<th style="text-align:left;padding:6px 10px;font-size:10px;font-weight:700;color:#888;text-transform:uppercase">Invoice #</th>'+
             '<th style="text-align:left;padding:6px 10px;font-size:10px;font-weight:700;color:#888;text-transform:uppercase">Product</th>'+
             '<th style="text-align:left;padding:6px 10px;font-size:10px;font-weight:700;color:#888;text-transform:uppercase">Source</th>'+
+            '<th style="text-align:left;padding:6px 10px;font-size:10px;font-weight:700;color:#888;text-transform:uppercase"></th>'+
           '</tr></thead>'+
           '<tbody>'+tripRows+supRows+'</tbody></table></div></div>';
       })() : '') +
@@ -11061,9 +11063,21 @@ function openClientForm(id){
   $('modal-save-client').addEventListener('click',function(){saveClient(this.dataset.id);});
   // Bind trip row clicks to open trip form
   document.querySelectorAll('.client-trip-row').forEach(function(row){
-    row.addEventListener('click',function(){
+    row.addEventListener('click',function(e){
+      if(e.target.closest('.del-client-trip')) return;
       closeModal();
       openTripForm(row.dataset.tripId);
+    });
+  });
+  // Deletes right from the client's own Trips list — reopens this same
+  // client form afterward (rather than render(), which only refreshes
+  // #main and would leave the modal showing the now-deleted trip) so the
+  // list reflects the deletion without forcing a close/reopen round trip.
+  document.querySelectorAll('.del-client-trip').forEach(function(btn){
+    btn.addEventListener('click',function(e){
+      e.stopPropagation();
+      delTrip(btn.dataset.tripId);
+      openClientForm(id);
     });
   });
   document.querySelectorAll('.sup-link').forEach(function(el){
