@@ -9566,7 +9566,7 @@ function renderDash(){
     var cat=tripLifecycleCategory(t);
     return cat==='inTrip'||cat==='upcoming';
   }).sort(function(a,b){
-    return (a.departDate||'').localeCompare(b.departDate||'');
+    return depSortKey(a).localeCompare(depSortKey(b));
   });
   // Same "Today & Overdue" definition Planner's own date filter uses
   // (dueDate<=today(), not done), sorted most-overdue-first, capped to 10
@@ -9639,7 +9639,7 @@ function renderDash(){
     el.addEventListener('click',function(){
       var ids=(el.dataset.groupKey||'').split(',').filter(Boolean);
       var members=ids.map(function(id){return db.trips.find(function(t){return t.id===id;});}).filter(Boolean);
-      var earliest=members.sort(function(a,b){return (a.departDate||'').localeCompare(b.departDate||'');})[0];
+      var earliest=members.sort(function(a,b){return depSortKey(a).localeCompare(depSortKey(b));})[0];
       if(earliest) openTripForm(earliest.id);
     });
   });
@@ -10150,6 +10150,13 @@ function tripLifecycleCategory(t){
   if(t.departDate && t.departDate>t0) return 'upcoming';
   return 'past';
 }
+// Sort key for ascending departDate comparisons: a trip with no confirmed
+// date yet (blank departDate, only reachable here because status was
+// hand-set to "Upcoming"/"In Progress" without a date) must not jump ahead
+// of every dated trip just because '' sorts before any real date string —
+// it sorts as if scheduled far in the future instead, matching the "sorts
+// last" fix already applied to the Trips page's own Status-column sort.
+function depSortKey(t){ return t.departDate || '9999-12-31'; }
 const TRIP_LIFECYCLE_COLORS = {
   upcoming: {bg:'#fef9c3', text:'#854d0e'},
   inTrip:   {bg:'#dcfce7', text:'#166534'},
@@ -10186,7 +10193,7 @@ const CATEGORY_LABELS = {
 // checklist and group-level color derivation — both need the same label/
 // date-range/category logic without necessarily wanting the <tr> markup.
 function tripSummaryLineInfo(members){
-  var sorted = members.slice().sort(function(a,b){ return (a.departDate||'').localeCompare(b.departDate||''); });
+  var sorted = members.slice().sort(function(a,b){ return depSortKey(a).localeCompare(depSortKey(b)); });
   var isGroup = sorted.length > 1;
   var clientNames = sorted.map(function(t){return t.clientName||'';}).filter(Boolean);
   var uniqClientNames = clientNames.filter(function(n,i){return clientNames.indexOf(n)===i;});
@@ -10242,7 +10249,7 @@ function tripTableBodyHtml(list){
     var isCollapsed = collapsedGroups[key] !== false;
     html += tripSummaryLineHtml(membersInList, isCollapsed);
     if(!isCollapsed){
-      membersInList.slice().sort(function(a,b){ return (a.departDate||'').localeCompare(b.departDate||''); })
+      membersInList.slice().sort(function(a,b){ return depSortKey(a).localeCompare(depSortKey(b)); })
         .forEach(function(m){ html += tripRowHtml(m, membersInList.length>1); });
     }
     membersInList.forEach(function(m){ rendered[m.id] = true; });
@@ -10316,7 +10323,7 @@ function tripGroupsByCategory(list, targetCategory){
     var key = tripGroupKey(membersInList);
     if(seenKeys[key]) return;
     seenKeys[key] = true;
-    var earliest = membersInList.slice().sort(function(a,b){ return (a.departDate||'').localeCompare(b.departDate||''); })[0];
+    var earliest = membersInList.slice().sort(function(a,b){ return depSortKey(a).localeCompare(depSortKey(b)); })[0];
     if(tripLifecycleCategory(earliest)===targetCategory) matched.push(membersInList);
   });
   return matched;
@@ -10368,7 +10375,7 @@ function groupCollapsedState(id){
 // green, matching how a single multi-leg trip's own color already works.
 function groupSummaryLineHtml(group, collapsed){
   var trips = groupTripObjects(group);
-  var sorted = trips.slice().sort(function(a,b){ return (a.departDate||'').localeCompare(b.departDate||''); });
+  var sorted = trips.slice().sort(function(a,b){ return depSortKey(a).localeCompare(depSortKey(b)); });
   var earliest = sorted[0];
   var category = earliest ? tripLifecycleCategory(earliest) : 'planning';
   var colors = TRIP_LIFECYCLE_COLORS[category];
@@ -10459,7 +10466,7 @@ function openGroupForm(id){
   var units = allTripSummaryUnits().filter(function(members){
     return members.some(function(m){return !isNonTravelIncomeTrip(m);}) || members.every(function(m){return currentTripIds.indexOf(m.id)!==-1;});
   }).sort(function(a,b){
-    return (tripSummaryLineInfo(a).sorted[0].departDate||'').localeCompare(tripSummaryLineInfo(b).sorted[0].departDate||'');
+    return depSortKey(tripSummaryLineInfo(a).sorted[0]).localeCompare(depSortKey(tripSummaryLineInfo(b).sorted[0]));
   });
   var memberChecks = units.map(function(members){
     var info = tripSummaryLineInfo(members);
@@ -10643,7 +10650,7 @@ function renderTrips(){
   function repCategory(t){
     if(repCategoryCache[t.id]!==undefined) return repCategoryCache[t.id];
     var group = tripGroupOf[t.id] || [t];
-    var earliest = group.slice().sort(function(a,b){ return (a.departDate||'').localeCompare(b.departDate||''); })[0];
+    var earliest = group.slice().sort(function(a,b){ return depSortKey(a).localeCompare(depSortKey(b)); })[0];
     var cat = tripLifecycleCategory(earliest);
     group.forEach(function(m){ repCategoryCache[m.id] = cat; });
     return cat;
