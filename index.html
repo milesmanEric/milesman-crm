@@ -13174,6 +13174,10 @@ function renderAnalytics(){
         : '<div style="padding:8px 0"><button class="add-btn" id="wp-connect-btn">Connect WordPress.com</button></div>')+
     '</div>'+
     '<div class="card" style="margin-bottom:16px">'+
+      '<div class="card-hdr"><span class="card-title">SEO (Yoast)</span></div>'+
+      '<div id="yoast-seo-body"><div class="empty">Loading…</div></div>'+
+    '</div>'+
+    '<div class="card" style="margin-bottom:16px">'+
       '<div class="card-hdr"><span class="card-title">Google Analytics (GA4)</span></div>'+
       '<div id="ga4-stats-body"><div class="empty">Loading…</div></div>'+
       analyticsSectionHtml('ga4-top-pages','Top Pages (30 days)')+
@@ -13208,6 +13212,8 @@ function renderAnalytics(){
     if(!analyticsSectionCollapsed('wp-followers')) loadWordpressFollowers(wpToken, 'wp-followers-body');
   }
 
+  loadYoastSeoAudit();
+
   getDriveTokenSilent().then(function(token){
     var body = $('ga4-stats-body');
     if(!body) return;
@@ -13222,6 +13228,95 @@ function renderAnalytics(){
     if(!analyticsSectionCollapsed('ga4-traffic-sources')) loadGA4Breakdown(token, 'ga4-traffic-sources-body', 'sessionDefaultChannelGroup', 'Channel', 'sessions', 'Sessions');
     if(!analyticsSectionCollapsed('ga4-devices')) loadGA4Breakdown(token, 'ga4-devices-body', 'deviceCategory', 'Device', 'activeUsers', 'Users');
     if(!analyticsSectionCollapsed('ga4-countries')) loadGA4Breakdown(token, 'ga4-countries-body', 'country', 'Country', 'activeUsers', 'Users');
+  });
+}
+// Yoast SEO attaches a `yoast_head_json` field (meta title, meta
+// description, robots directives, canonical, OG image, etc.) to every
+// post/page in the site's own public WordPress REST API — confirmed live
+// against themilesman.com (2026-08-16). Unlike the WordPress.com Stats/GA4
+// cards above, this needs no OAuth connection at all: it's public data,
+// routed only through api/wordpress-site-rest.js because self-hosted
+// WordPress doesn't send CORS headers, not because of any auth requirement.
+// Yoast's own internal SEO/readability traffic-light SCORES (green/amber/
+// red) are NOT included here — those are stored as post meta
+// (_yoast_wpseo_linkdex etc.) that's only exposed to an authenticated
+// wp-admin session, not the public REST API, so this audits the same
+// metadata Yoast's score is partly based on (title/description length,
+// noindex, missing OG image) rather than reproducing the score itself.
+var YOAST_TITLE_MAX = 60, YOAST_DESC_MAX = 156;
+// WordPress's title.rendered comes back HTML-entity-encoded (e.g. "&#8211;"
+// for an em dash) — feeding that straight into escHtml() double-escapes it,
+// so the raw entity code shows up literally in the table instead of the
+// actual character. A detached <textarea> is the standard safe way to
+// decode arbitrary named/numeric entities without a hand-maintained
+// replacement list (setting innerHTML on a textarea never executes
+// scripts; .value gives back the decoded text).
+function decodeHtmlEntities(str){
+  if(!str) return '';
+  var ta = document.createElement('textarea');
+  ta.innerHTML = str;
+  return ta.value;
+}
+function yoastLenBadge(len, max, whatMissing){
+  if(!len) return '<span style="color:#dc2626;font-weight:600">Missing</span>';
+  var over = len > max;
+  return '<span style="color:'+(over?'#b45309':'#166534')+'">'+len+' chars'+(over?' (over '+max+')':'')+'</span>';
+}
+function loadYoastSeoAudit(){
+  var body = $('yoast-seo-body');
+  if(!body) return;
+  var fields = 'link,type,title,yoast_head_json.title,yoast_head_json.description,yoast_head_json.og_description,yoast_head_json.robots,yoast_head_json.og_image';
+  function fetchType(type){
+    var path = '/wp/v2/'+type;
+    return fetch(WP_AUTH_SERVER+'/api/wordpress-site-rest?path='+encodeURIComponent(path)+'&per_page=100&_fields='+encodeURIComponent(fields))
+      .then(function(r){ return r.json(); })
+      .then(function(d){ return {type:type, data:d}; });
+  }
+  Promise.all([fetchType('posts'), fetchType('pages')]).then(function(results){
+    if(!body) return;
+    var items = [];
+    var loadError = null;
+    results.forEach(function(r){
+      if(!Array.isArray(r.data)){ loadError = (r.data && (r.data.error_description||r.data.message)) || 'Failed to load '+r.type; return; }
+      r.data.forEach(function(p){ items.push(Object.assign({}, p, {postType: r.type==='pages'?'Page':'Post'})); });
+    });
+    if(!items.length){
+      body.innerHTML = '<div class="empty">'+escHtml(loadError||'No posts or pages found.')+'</div>';
+      return;
+    }
+    var noindexCount=0, noDescCount=0, noImageCount=0;
+    var rows = items.map(function(p){
+      var yh = p.yoast_head_json || {};
+      var seoTitle = yh.title || '';
+      var desc = yh.description || yh.og_description || '';
+      var noindex = !!(yh.robots && yh.robots.index==='noindex');
+      var hasImage = !!(yh.og_image && yh.og_image.length);
+      if(noindex) noindexCount++;
+      if(!desc) noDescCount++;
+      if(!hasImage) noImageCount++;
+      var name = decodeHtmlEntities((p.title && p.title.rendered) || seoTitle) || p.link;
+      return '<tr>'+
+        '<td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><a href="'+escHtml(p.link||'#')+'" target="_blank" style="color:#2563eb;text-decoration:none">'+escHtml(name)+'</a></td>'+
+        '<td>'+escHtml(p.postType)+'</td>'+
+        '<td>'+yoastLenBadge(seoTitle.length, YOAST_TITLE_MAX)+'</td>'+
+        '<td>'+yoastLenBadge(desc.length, YOAST_DESC_MAX)+'</td>'+
+        '<td>'+(noindex?'<span style="color:#dc2626;font-weight:600">Noindex</span>':'<span style="color:#166534">Indexed</span>')+'</td>'+
+        '<td>'+(hasImage?'<span style="color:#166534">Yes</span>':'<span style="color:#b45309">Missing</span>')+'</td>'+
+      '</tr>';
+    }).join('');
+    body.innerHTML =
+      '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px">'+
+        '<div class="stat"><div class="stat-lbl">Posts &amp; Pages</div><div class="stat-val">'+items.length+'</div></div>'+
+        '<div class="stat"><div class="stat-lbl">Missing Description</div><div class="stat-val" style="color:'+(noDescCount?'#dc2626':'#111')+'">'+noDescCount+'</div></div>'+
+        '<div class="stat"><div class="stat-lbl">Noindexed</div><div class="stat-val" style="color:'+(noindexCount?'#dc2626':'#111')+'">'+noindexCount+'</div></div>'+
+        '<div class="stat"><div class="stat-lbl">Missing OG Image</div><div class="stat-val" style="color:'+(noImageCount?'#b45309':'#111')+'">'+noImageCount+'</div></div>'+
+      '</div>'+
+      (loadError?'<div style="font-size:11px;color:#b45309;margin-bottom:8px">'+escHtml(loadError)+' (showing what did load)</div>':'')+
+      '<div class="tbl-wrap" style="max-height:400px;overflow-y:auto"><table><thead><tr><th>Title</th><th>Type</th><th>SEO Title</th><th>Meta Description</th><th>Robots</th><th>OG Image</th></tr></thead><tbody>'+
+      rows+
+      '</tbody></table></div>';
+  }).catch(function(e){
+    if(body) body.innerHTML = '<div class="empty">Failed to load: '+e.message+'</div>';
   });
 }
 // Field names confirmed against a real response (2026-08-13):
