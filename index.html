@@ -12151,7 +12151,16 @@ function closeModal(){$('overlay').classList.remove('open');$('modal').classList
 // ── CRUD ──────────────────────────────────────────────────────────────────
 function saveClient(id){
   const name=toLastFirst(gv('fn')),email=gv('fe');
-  if(!name||!email){toast('Name and email are required','err');return null;}
+  // Email used to be required to save at all, but the revenue importer's
+  // auto-create path (see cleanNewClientName/matchClientByName) already
+  // creates clients with a blank email whenever a report row has no email
+  // data — which is the normal case. That made this button look broken:
+  // opening one of those clients to fix an incomplete imported name and
+  // clicking Save did nothing but flash an easy-to-miss toast, since there
+  // was never an email to fill in for someone who's only in the system via
+  // a revenue line item. Every other read of client.email in this file
+  // already treats it as optional, so name is the only real requirement.
+  if(!name){toast('Name is required','err');return null;}
   snapshot(id?'Edit client':'Add client');
   const entries=Array.from(document.querySelectorAll('.note-entry'));
   var noteEntryEls = Array.from(document.querySelectorAll('.note-entry'));
