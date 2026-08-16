@@ -12751,6 +12751,18 @@ function fbStatusBadge(status){
 // live connect confirms these field names/units are right, campaign/ad set
 // creation is the next layer, built the same way GA4's drill-downs were:
 // show raw response first if anything looks off, format once confirmed.
+// Meta's Graph API error objects carry a code/error_subcode/type/
+// fbtrace_id alongside the human-readable message shown on screen (e.g.
+// "API Access Blocked") — those fields are what actually pinpoint the
+// cause (unreviewed permission vs missing Business Verification vs rate
+// limit vs something else) but the UI only has room to show the message.
+// Logs the full object here so the Debug Panel has what's needed to look
+// the exact code up, instead of just the same generic text the page shows.
+function fbLogGraphError(context, err){
+  if(!err) return;
+  debugLog('Facebook Ads: '+context+' failed — code='+err.code+' subcode='+(err.error_subcode||'—')+
+    ' type='+(err.type||'—')+' message='+(err.message||'—')+' fbtrace_id='+(err.fbtrace_id||'—'));
+}
 function loadFacebookCampaigns(token){
   var body = $('fb-campaigns-body');
   Promise.all([
@@ -12760,8 +12772,12 @@ function loadFacebookCampaigns(token){
   ]).then(function(results){
     var account = results[0], campaignsResp = results[1], insightsResp = results[2];
     if(!body) return;
-    if(account.error){ body.innerHTML = '<div class="empty">'+escHtml(account.error.message||'Failed to load account')+'</div>'; return; }
-    if(campaignsResp.error){ body.innerHTML = '<div class="empty">'+escHtml(campaignsResp.error.message||'Failed to load campaigns')+'</div>'; return; }
+    if(account.error){ fbLogGraphError('account fetch', account.error); body.innerHTML = '<div class="empty">'+escHtml(account.error.message||'Failed to load account')+'</div>'; return; }
+    if(campaignsResp.error){ fbLogGraphError('campaigns fetch', campaignsResp.error); body.innerHTML = '<div class="empty">'+escHtml(campaignsResp.error.message||'Failed to load campaigns')+'</div>'; return; }
+    // Insights failing isn't fatal on its own — campaigns can still render
+    // with '—' in the spend/impressions/clicks columns — but still worth a
+    // debug-log note rather than silently discarding why those came up empty.
+    if(insightsResp.error) fbLogGraphError('insights fetch (non-fatal)', insightsResp.error);
 
     var campaigns = campaignsResp.data||[];
     var insightsByCampaign = {};
@@ -12803,13 +12819,20 @@ function loadFacebookCampaigns(token){
         if(!activating && !confirm('Pause "'+campaignName+'"? It will stop spending immediately.')) return;
         btn.disabled = true;
         fbGraph('/'+btn.dataset.id, {method:'POST', body:{status: activating?'ACTIVE':'PAUSED'}}).then(function(r){
-          if(r.error){ toast('Failed: '+r.error.message,'err'); btn.disabled=false; return; }
+          if(r.error){ fbLogGraphError((activating?'activate':'pause')+' campaign', r.error); toast('Failed: '+r.error.message,'err'); btn.disabled=false; return; }
           toast(campaignName+(activating?' activated — now live':' paused'),'ok');
           loadFacebookCampaigns(token);
-        }).catch(function(e){ toast('Failed: '+e.message,'err'); btn.disabled=false; });
+        }).catch(function(e){ debugLog('Facebook Ads: '+(activating?'activate':'pause')+' campaign request failed — '+e.message); toast('Failed: '+e.message,'err'); btn.disabled=false; });
       });
     });
   }).catch(function(e){
+    // No Facebook error object reaches this branch — the request never got
+    // a response at all (network down, CORS rejection, or something like
+    // an ad blocker silently dropping the call to the proxy), which is a
+    // meaningfully different failure mode than Facebook returning an error
+    // body, so it's logged separately from fbLogGraphError's code/subcode
+    // format rather than forced into it.
+    debugLog('Facebook Ads: campaign list request failed before any response — '+e.message);
     if(body) body.innerHTML = '<div class="empty">Failed to load: '+e.message+'</div>';
   });
 }
