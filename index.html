@@ -9548,10 +9548,16 @@ function renderDash(){
   // (Referrals/Credit Card Consulting have no travel dates, so they'd never
   // belong here anyway) and anything not currently 'inTrip' or 'upcoming'
   // per tripLifecycleCategory() (so Planning/Completed/Cancelled trips
-  // don't show). In-progress trips list first, then upcoming ones ordered
-  // soonest-departing first — same category priority and per-category date
-  // sort tripLifecycleCategory()'s own callers (e.g. the Trips page's
-  // status coloring) already treat as "what's most urgent right now".
+  // don't show). Sorted purely by departDate ascending — the next trip
+  // (soonest departure) first, furthest-out last. This used to rank every
+  // 'inTrip' trip ahead of every 'upcoming' one regardless of date, which
+  // normally coincides with plain date order anyway (an in-progress trip's
+  // departDate is always <= today, before any upcoming trip's), but could
+  // disagree with it for a trip whose status was explicitly hand-set to
+  // "In Progress" (documented as a deliberate override for when the
+  // automatic date-based coloring isn't right) despite an actual
+  // departDate later than some other upcoming trip's — a plain date sort
+  // never has that mismatch.
   // Not sliced to 6 here — dashTripSummaryLinesHtml() caps at 6 *summary
   // lines* (post-grouping) instead, so a multi-leg linked trip isn't cut
   // off mid-group by capping the raw record list first.
@@ -9560,8 +9566,6 @@ function renderDash(){
     var cat=tripLifecycleCategory(t);
     return cat==='inTrip'||cat==='upcoming';
   }).sort(function(a,b){
-    var catA=tripLifecycleCategory(a), catB=tripLifecycleCategory(b);
-    if(catA!==catB) return catA==='inTrip'?-1:1;
     return (a.departDate||'').localeCompare(b.departDate||'');
   });
   // Same "Today & Overdue" definition Planner's own date filter uses
