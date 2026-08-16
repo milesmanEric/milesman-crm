@@ -9535,6 +9535,9 @@ function renderDash(){
   // soonest-departing first — same category priority and per-category date
   // sort tripLifecycleCategory()'s own callers (e.g. the Trips page's
   // status coloring) already treat as "what's most urgent right now".
+  // Not sliced to 6 here — dashTripSummaryLinesHtml() caps at 6 *summary
+  // lines* (post-grouping) instead, so a multi-leg linked trip isn't cut
+  // off mid-group by capping the raw record list first.
   const recent=[].concat(db.trips).filter(function(t){
     if(isNonTravelIncomeTrip(t)) return false;
     var cat=tripLifecycleCategory(t);
@@ -9543,7 +9546,7 @@ function renderDash(){
     var catA=tripLifecycleCategory(a), catB=tripLifecycleCategory(b);
     if(catA!==catB) return catA==='inTrip'?-1:1;
     return (a.departDate||'').localeCompare(b.departDate||'');
-  }).slice(0,6);
+  });
   // Same "Today & Overdue" definition Planner's own date filter uses
   // (dueDate<=today(), not done), sorted most-overdue-first, capped to 10
   // so this doesn't grow unbounded on a busy day.
@@ -9579,14 +9582,7 @@ function renderDash(){
       '<div class="card">'+
         '<div class="card-hdr"><span class="card-title">Upcoming &amp; In Progress Trips</span><button class="view-all" id="dash-view-all">View all &rarr;</button></div>'+
         (recent.length?
-          '<table><thead><tr><th>Client</th><th>Destination</th><th>Depart</th><th>Status</th></tr></thead><tbody>'+
-          recent.map(function(t){
-            var cat = tripLifecycleCategory(t);
-            var colors = TRIP_LIFECYCLE_COLORS[cat];
-            var statusHtml = '<span class="badge" style="background:'+colors.bg+';color:'+colors.text+'">'+CATEGORY_LABELS[cat]+'</span>';
-            return '<tr><td class="n">'+(t.clientId?'<span class="dash-client-link" data-id="'+t.clientId+'" style="color:#2563eb;cursor:pointer;text-decoration:underline">'+(t.clientName||'')+'</span>':(t.clientName||''))+'</td><td>'+(t.destination||'')+'</td><td>'+(t.departDate||'')+'</td><td>'+statusHtml+'</td></tr>';
-          }).join('')+
-          '</tbody></table>':
+          '<table id="dash-upcoming-trips-body"><tbody>'+dashTripSummaryLinesHtml(recent)+'</tbody></table>':
           '<div class="empty">No upcoming or in-progress trips</div>')+
       '</div>'+
       '<div class="card">'+
@@ -9614,6 +9610,18 @@ function renderDash(){
     '</div>';
   const va=$('dash-view-all');
   if(va) va.addEventListener('click',function(){go('trips');});
+  // Each summary line's own data-group-key (member trip ids, sorted and
+  // joined — see tripGroupKey()) is enough to re-derive its members here
+  // without a separate data attribute; opens the earliest-departing one,
+  // same representative tripSummaryLineHtml()'s own label/color are based on.
+  document.querySelectorAll('#dash-upcoming-trips-body .trip-group-hdr').forEach(function(el){
+    el.addEventListener('click',function(){
+      var ids=(el.dataset.groupKey||'').split(',').filter(Boolean);
+      var members=ids.map(function(id){return db.trips.find(function(t){return t.id===id;});}).filter(Boolean);
+      var earliest=members.sort(function(a,b){return (a.departDate||'').localeCompare(b.departDate||'');})[0];
+      if(earliest) openTripForm(earliest.id);
+    });
+  });
   const dpva=$('dash-planner-view-all');
   if(dpva) dpva.addEventListener('click',function(){
     window._plannerDateFilter='today-overdue';
@@ -10141,21 +10149,22 @@ const CATEGORY_LABELS = {
 // Every trip on this page — whether it's linked to others or entirely on
 // its own — renders as one collapsible "unit": a full-width summary line,
 // collapsed by default, that expands on click to reveal its underlying full
-// row(s). For a 2+-trip linked group (see trip.linkedTripIds) that's client
-// name(s), every member's destination in chronological order, the date
-// range spanning all of them, a link icon, and a trip count. For a lone
-// trip it's the same layout minus the link icon/count, since there's
-// nothing to distinguish it from a "group of one". The line's color reflects
-// the earliest-departing member's lifecycle category (see
-// tripLifecycleCategory() — yellow upcoming, green in-progress, orange
-// past, red cancelled, blue planning). Clicking it toggles collapsed/
-// expanded (see bindClick on .trip-group-hdr in renderTrips()).
+// row(s), listing client name(s), Trip Name (if any leg has one set), and
+// the date range spanning every member — a lone trip gets exactly the same
+// summary-line treatment as a 2+-trip group, just without the link icon/
+// trip count, since there's nothing else to distinguish a "group of one".
+// Destination is deliberately left out of this line (still visible once
+// expanded) — client/trip-name/dates is the identifying info wanted here.
+// The line's color reflects the earliest-departing member's lifecycle
+// category (see tripLifecycleCategory() — yellow upcoming, green
+// in-progress, orange past, red cancelled, blue planning). Clicking it
+// toggles collapsed/expanded (see bindClick on .trip-group-hdr in
+// renderTrips()).
 function tripSummaryLineHtml(members, collapsed){
   var sorted = members.slice().sort(function(a,b){ return (a.departDate||'').localeCompare(b.departDate||''); });
   var isGroup = sorted.length > 1;
   var clientNames = sorted.map(function(t){return t.clientName||'';}).filter(Boolean);
   var uniqClientNames = clientNames.filter(function(n,i){return clientNames.indexOf(n)===i;});
-  var destinations = sorted.map(function(t){return t.destination||'';}).filter(Boolean).join(' → ');
   var departDates = sorted.map(function(t){return t.departDate;}).filter(Boolean).sort();
   var returnDates = sorted.map(function(t){return t.returnDate;}).filter(Boolean).sort();
   var minDepart = departDates[0];
@@ -10164,13 +10173,14 @@ function tripSummaryLineHtml(members, collapsed){
   // Trip Name (booked.tripName) is a per-leg field, not a group-level one —
   // a linked group's legs usually share the same name (set once for the
   // whole vacation), but fall back to joining every distinct non-blank name
-  // found rather than guessing which leg's name "wins" if they differ.
-  // Only shown for actual groups (2+ legs) — a standalone trip's own Trip
-  // Name only shows once you expand it, same as its other fields.
+  // found rather than guessing which leg's name "wins" if they differ. Now
+  // shown for a lone trip too, not just 2+-trip groups — it's part of the
+  // line's core identifying info (client/trip name/dates), not something
+  // that should only appear once expanded.
   var tripNames = sorted.map(function(t){return (t.booked && t.booked.tripName) || '';}).filter(Boolean);
   var uniqTripNames = tripNames.filter(function(n,i){return tripNames.indexOf(n)===i;});
-  var tripNameDisplay = isGroup ? uniqTripNames.join(' / ') : '';
-  var label = [uniqClientNames.join(', '), tripNameDisplay, destinations].filter(Boolean).join(' — ');
+  var tripNameDisplay = uniqTripNames.join(' / ');
+  var label = [uniqClientNames.join(', '), tripNameDisplay].filter(Boolean).join(' — ');
   var category = tripLifecycleCategory(sorted[0]);
   var colors = TRIP_LIFECYCLE_COLORS[category];
   var statusLabel = CATEGORY_LABELS[category] || '';
@@ -10208,6 +10218,34 @@ function tripTableBodyHtml(list){
     }
     membersInList.forEach(function(m){ rendered[m.id] = true; });
   });
+  return html;
+}
+// Dashboard's own grouped-summary-line rendering — same linked-trip
+// grouping tripTableBodyHtml() uses for the real Trips page, but always
+// collapsed (never reads/writes window._tripGroupsCollapsed, since that's
+// shared global state with the Trips page and this is a fixed glance
+// widget, not an interactive table) and capped to 6 *lines* rather than 6
+// raw trip records, so one big linked group doesn't eat multiple slots
+// meant for other upcoming trips. Clicking a line opens the earliest-
+// departing member's trip (bound in renderDash(), re-deriving members
+// from the row's own data-group-key rather than needing a separate data
+// attribute).
+function dashTripSummaryLinesHtml(list){
+  var groupOf = tripLinkGroups();
+  var listIds = {};
+  list.forEach(function(t){ listIds[t.id] = true; });
+  var rendered = {};
+  var html = '';
+  var count = 0;
+  for(var i=0; i<list.length && count<6; i++){
+    var t = list[i];
+    if(rendered[t.id]) continue;
+    var group = groupOf[t.id] || [t];
+    var membersInList = group.filter(function(m){ return listIds[m.id]; });
+    html += tripSummaryLineHtml(membersInList, true);
+    membersInList.forEach(function(m){ rendered[m.id] = true; });
+    count++;
+  }
   return html;
 }
 // Number of summary lines tripTableBodyHtml() will render for this list —
