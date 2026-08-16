@@ -245,6 +245,7 @@ tr:last-child td{border-bottom:none}
       <button class="nb active" id="nb-dashboard">&#128202; Dashboard</button>
       <button class="nb" id="nb-clients">&#128100; Clients <span class="nc" id="nc-clients">0</span></button>
       <button class="nb" id="nb-trips">&#9992;&#65039; Trips <span class="nc" id="nc-trips">0</span></button>
+      <button class="nb" id="nb-groups">&#128193; Groups <span class="nc" id="nc-groups">0</span></button>
       <button class="nb" id="nb-ccconsulting">&#128179; Credit Card Consulting</button>
       <button class="nb" id="nb-referrals">&#129309; Referrals and Promo</button>
       <button class="nb" id="nb-vendors">&#127981; Suppliers <span class="nc" id="nc-vendors">0</span></button>
@@ -922,7 +923,7 @@ const DEFAULT_BOOKMARKS = [
   {name:'AwardWallet', url:'https://www.awardwallet.com', category:'Award Tools', audience:'Travel Agent', notes:'tracks client mileage/points balances across programs'}
 ];
 
-let db = {clients:[],trips:[],vendors:[],bizVendors:[],planner:[],bookmarks:[],savedReports:[]};
+let db = {clients:[],trips:[],vendors:[],bizVendors:[],planner:[],bookmarks:[],savedReports:[],groups:[]};
 const UNDO_STACK = [];
 const MAX_UNDO = 20;
 function snapshot(label){
@@ -1405,6 +1406,7 @@ function loadDB(){
     db.planner=Array.isArray(d.planner)?d.planner:[];
     db.bookmarks=Array.isArray(d.bookmarks)?d.bookmarks:[];
     db.savedReports=Array.isArray(d.savedReports)?d.savedReports:[];
+    db.groups=Array.isArray(d.groups)?d.groups:[];
     // Always normalize client names to 'Last, First' format on every load
     // (safe to run repeatedly since it skips names that already have a comma)
     var migrated=0;
@@ -2514,7 +2516,8 @@ async function driveRestore(){
         bizVendors:Array.isArray(d.bizVendors)?d.bizVendors:[],
         planner:Array.isArray(d.planner)?d.planner:[],
         bookmarks:Array.isArray(d.bookmarks)?d.bookmarks:[],
-        savedReports:Array.isArray(d.savedReports)?d.savedReports:[]
+        savedReports:Array.isArray(d.savedReports)?d.savedReports:[],
+        groups:Array.isArray(d.groups)?d.groups:[]
       };
       db.clients.forEach(function(c){ if(c.name && !c.name.includes(',')) c.name=toLastFirst(c.name); });
       saveDB();render();
@@ -2617,7 +2620,8 @@ async function secureSyncRestore(){
         bizVendors:Array.isArray(d.bizVendors)?d.bizVendors:[],
         planner:Array.isArray(d.planner)?d.planner:[],
         bookmarks:Array.isArray(d.bookmarks)?d.bookmarks:[],
-        savedReports:Array.isArray(d.savedReports)?d.savedReports:[]
+        savedReports:Array.isArray(d.savedReports)?d.savedReports:[],
+        groups:Array.isArray(d.groups)?d.groups:[]
       };
       db.clients.forEach(function(c){ if(c.name && !c.name.includes(',')) c.name=toLastFirst(c.name); });
       saveDB();render();
@@ -3181,7 +3185,7 @@ function importJSON(){
     r.onload=function(ev){
       try{
         const d=JSON.parse(ev.target.result);
-        if(Array.isArray(d.clients)&&Array.isArray(d.trips)){db=d;if(!Array.isArray(db.vendors))db.vendors=[];if(!Array.isArray(db.bizVendors))db.bizVendors=[];if(!Array.isArray(db.planner))db.planner=[];if(!Array.isArray(db.bookmarks))db.bookmarks=[];if(!Array.isArray(db.savedReports))db.savedReports=[];(db.clients||[]).forEach(function(c){ if(c.name && !c.name.includes(',')) c.name=toLastFirst(c.name); });saveDB();toast('Data imported');render();}
+        if(Array.isArray(d.clients)&&Array.isArray(d.trips)){db=d;if(!Array.isArray(db.vendors))db.vendors=[];if(!Array.isArray(db.bizVendors))db.bizVendors=[];if(!Array.isArray(db.planner))db.planner=[];if(!Array.isArray(db.bookmarks))db.bookmarks=[];if(!Array.isArray(db.savedReports))db.savedReports=[];if(!Array.isArray(db.groups))db.groups=[];(db.clients||[]).forEach(function(c){ if(c.name && !c.name.includes(',')) c.name=toLastFirst(c.name); });saveDB();toast('Data imported');render();}
         else toast('Invalid backup file','err');
       }catch(ex){toast('Could not read file','err');}
     };r.readAsText(f);
@@ -6503,7 +6507,7 @@ function go(v,cid){
   view=v;
   selCid=(v==='trips'&&cid)?cid:null;
   fSearch='';fStatus=STATUSES.filter(function(s){return s!=='Cancelled';});fHideSubOnly=false;
-  ['dashboard','clients','trips','reports','calendar','email','vendors','bizvendors','planner','bookmarks','ccconsulting','referrals','marketing','analytics'].forEach(function(x){var el=$('nb-'+x);if(el)el.classList.toggle('active',x===v);});
+  ['dashboard','clients','trips','groups','reports','calendar','email','vendors','bizvendors','planner','bookmarks','ccconsulting','referrals','marketing','analytics'].forEach(function(x){var el=$('nb-'+x);if(el)el.classList.toggle('active',x===v);});
   render();
 }
 
@@ -6513,9 +6517,11 @@ function render(){
   $('nc-trips').textContent=db.trips.length;
   var ncv=$('nc-vendors'); if(ncv) ncv.textContent=db.vendors.length;
   var ncp=$('nc-planner'); if(ncp) ncp.textContent=db.planner.filter(function(t){return !t.done;}).length;
+  var ncg=$('nc-groups'); if(ncg) ncg.textContent=db.groups.length;
   if(view==='dashboard') renderDash();
   else if(view==='clients') renderClients();
   else if(view==='trips') renderTrips();
+  else if(view==='groups') renderGroups();
   else if(view==='reports') renderReports();
   else if(view==='calendar') renderCalendar();
   else if(view==='email') renderEmail();
@@ -10160,7 +10166,11 @@ const CATEGORY_LABELS = {
 // in-progress, orange past, red cancelled, blue planning). Clicking it
 // toggles collapsed/expanded (see bindClick on .trip-group-hdr in
 // renderTrips()).
-function tripSummaryLineHtml(members, collapsed){
+// Pure data-builder shared by tripSummaryLineHtml() (the Trips page/
+// Dashboard's colored <tr>) and the Groups feature's own trip-picker
+// checklist and group-level color derivation — both need the same label/
+// date-range/category logic without necessarily wanting the <tr> markup.
+function tripSummaryLineInfo(members){
   var sorted = members.slice().sort(function(a,b){ return (a.departDate||'').localeCompare(b.departDate||''); });
   var isGroup = sorted.length > 1;
   var clientNames = sorted.map(function(t){return t.clientName||'';}).filter(Boolean);
@@ -10184,10 +10194,14 @@ function tripSummaryLineHtml(members, collapsed){
   var category = tripLifecycleCategory(sorted[0]);
   var colors = TRIP_LIFECYCLE_COLORS[category];
   var statusLabel = CATEGORY_LABELS[category] || '';
-  return '<tr class="trip-group-hdr" data-group-key="'+tripGroupKey(sorted)+'" style="background:'+colors.bg+';cursor:pointer">'+
-    '<td colspan="12" style="padding:8px 12px;font-size:12px;color:'+colors.text+';font-weight:600">'+
+  return {sorted:sorted, isGroup:isGroup, label:label, dateRange:dateRange, category:category, colors:colors, statusLabel:statusLabel};
+}
+function tripSummaryLineHtml(members, collapsed){
+  var info = tripSummaryLineInfo(members);
+  return '<tr class="trip-group-hdr" data-group-key="'+tripGroupKey(info.sorted)+'" style="background:'+info.colors.bg+';cursor:pointer">'+
+    '<td colspan="12" style="padding:8px 12px;font-size:12px;color:'+info.colors.text+';font-weight:600">'+
     '<span style="display:inline-block;width:12px">'+(collapsed?'&#9656;':'&#9662;')+'</span>'+
-    (isGroup?'&#128279; ':'')+escHtml(label)+(statusLabel?' &middot; '+escHtml(statusLabel):'')+(dateRange?' &middot; '+dateRange:'')+(isGroup?' &middot; '+sorted.length+' trips':'')+
+    (info.isGroup?'&#128279; ':'')+escHtml(info.label)+(info.statusLabel?' &middot; '+escHtml(info.statusLabel):'')+(info.dateRange?' &middot; '+info.dateRange:'')+(info.isGroup?' &middot; '+info.sorted.length+' trips':'')+
   '</td></tr>';
 }
 // Groups consecutive rendering by linked-trip membership without disturbing
@@ -10291,6 +10305,278 @@ function tripGroupsByCategory(list, targetCategory){
     if(tripLifecycleCategory(earliest)===targetCategory) matched.push(membersInList);
   });
   return matched;
+}
+
+// ── Groups (db.groups, 'GRP' ids) ───────────────────────────────────────────
+// A Group links together existing "collapsed trips" — a standalone trip or
+// an already-linked-legs vacation cluster, i.e. exactly what already shows
+// as one collapsed summary line on the Trips page — under one named,
+// notable umbrella (e.g. a big multi-family reunion booked as several
+// separate, unrelated trip records that still belong together in spirit).
+// This is deliberately a *different* relationship from trip.linkedTripIds
+// (which links individual LEGS of one vacation into one summary line) —
+// a Group links whole summary-line units to each other, one layer up.
+// db.groups[i] = {id, name, tripIds: [...], notesLog: [...]} — tripIds is a
+// flat list of member trip ids; which of those ids form their own
+// sub-clusters is re-derived live via tripLinkGroups() at render/pick time
+// rather than stored, so a Group never goes stale if a member trip's own
+// linkedTripIds change later.
+
+// Every distinct collapsed-trip-line unit across all of db.trips — one
+// entry per tripLinkGroups() cluster (or lone trip) — the same granularity
+// the Trips page itself shows, used both as the Group form's trip-picker
+// checklist and to resolve which sub-cluster(s) a Group's own flat tripIds
+// list actually contains.
+function allTripSummaryUnits(){
+  var groupOf = tripLinkGroups();
+  var seen = {};
+  var units = [];
+  db.trips.forEach(function(t){
+    if(seen[t.id]) return;
+    var members = groupOf[t.id] || [t];
+    members.forEach(function(m){ seen[m.id] = true; });
+    units.push(members);
+  });
+  return units;
+}
+function groupTripObjects(group){
+  return (group.tripIds||[]).map(function(id){return db.trips.find(function(t){return t.id===id;});}).filter(Boolean);
+}
+function groupCollapsedState(id){
+  return (window._groupsCollapsed||{})[id] !== false;
+}
+// Group-level header row — same color-coding convention as an individual
+// trip summary line (tripLifecycleCategory()/TRIP_LIFECYCLE_COLORS),
+// derived from the earliest-departing trip across *every* member trip in
+// the group, not just within one of its sub-clusters — a group spanning a
+// currently-in-progress trip and a further-out upcoming one still reads
+// green, matching how a single multi-leg trip's own color already works.
+function groupSummaryLineHtml(group, collapsed){
+  var trips = groupTripObjects(group);
+  var sorted = trips.slice().sort(function(a,b){ return (a.departDate||'').localeCompare(b.departDate||''); });
+  var earliest = sorted[0];
+  var category = earliest ? tripLifecycleCategory(earliest) : 'planning';
+  var colors = TRIP_LIFECYCLE_COLORS[category];
+  var statusLabel = CATEGORY_LABELS[category] || '';
+  var departDates = sorted.map(function(t){return t.departDate;}).filter(Boolean).sort();
+  var returnDates = sorted.map(function(t){return t.returnDate;}).filter(Boolean).sort();
+  var minDepart = departDates[0];
+  var maxReturn = returnDates.length ? returnDates[returnDates.length-1] : departDates[departDates.length-1];
+  var dateRange = minDepart ? (fmtDate(minDepart)+(maxReturn&&maxReturn!==minDepart?' – '+fmtDate(maxReturn):'')) : '';
+  return '<tr class="group-hdr" data-group-id="'+group.id+'" style="background:'+colors.bg+';cursor:pointer">'+
+    '<td colspan="12" style="padding:10px 12px;font-size:13px;color:'+colors.text+';font-weight:700">'+
+      '<span style="display:inline-block;width:12px">'+(collapsed?'&#9656;':'&#9662;')+'</span>'+
+      '&#128193; '+escHtml(group.name||'(untitled group)')+(statusLabel?' &middot; '+escHtml(statusLabel):'')+(dateRange?' &middot; '+dateRange:'')+' &middot; '+trips.length+' trip'+(trips.length!==1?'s':'')+
+      '<span style="float:right;font-weight:400">'+
+        '<button type="button" class="icon-btn edit-group" data-id="'+group.id+'" style="color:'+colors.text+'" title="Edit group">&#9999;&#65039;</button>'+
+        '<button type="button" class="icon-btn del-group" data-id="'+group.id+'" style="color:#dc2626" title="Delete group">&#128465;&#65039;</button>'+
+      '</span>'+
+    '</td></tr>';
+}
+function renderGroups(){
+  var sorted = [...db.groups].sort(function(a,b){return (a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase());});
+  var totalTripsInGroups = db.groups.reduce(function(a,g){return a+(g.tripIds||[]).length;},0);
+  $('main').innerHTML =
+    '<div class="page-hdr"><div class="page-title">Groups</div><button class="add-btn" id="btn-add-group">+ Add Group</button></div>'+
+    '<div class="stats-grid" style="grid-template-columns:repeat(2,1fr)">'+
+      '<div class="stat"><div class="stat-lbl">Groups</div><div class="stat-val">'+sorted.length+'</div></div>'+
+      '<div class="stat"><div class="stat-lbl">Trips in Groups</div><div class="stat-val">'+totalTripsInGroups+'</div></div>'+
+    '</div>'+
+    (sorted.length ?
+      '<div class="tbl-wrap"><table><tbody>'+
+      sorted.map(function(g){
+        var collapsed = groupCollapsedState(g.id);
+        var html = groupSummaryLineHtml(g, collapsed);
+        if(!collapsed){
+          var trips = groupTripObjects(g);
+          html += trips.length ? tripTableBodyHtml(trips) : '<tr><td colspan="12"><div class="empty">No trips in this group yet — edit it to add some</div></td></tr>';
+        }
+        return html;
+      }).join('')+
+      '</tbody></table></div>'
+      : '<div class="empty">No groups yet — click "+ Add Group" to link related trips together under one name</div>');
+  document.querySelectorAll('.group-hdr').forEach(function(row){
+    row.addEventListener('click', function(e){
+      if(e.target.closest('.edit-group, .del-group')) return;
+      var id = row.dataset.groupId;
+      window._groupsCollapsed = window._groupsCollapsed || {};
+      window._groupsCollapsed[id] = !groupCollapsedState(id);
+      render();
+    });
+  });
+  // Reuses the exact same trip-summary/trip-row click behavior the Trips
+  // page itself binds (openTripForm on a row, toggling window._tripGroupsCollapsed
+  // on a sub-cluster's own header) — a group's expanded body is built from
+  // tripTableBodyHtml(), the same function, so the same markup/classes need
+  // the same handlers here.
+  document.querySelectorAll('#main .trip-group-hdr').forEach(function(row){
+    row.addEventListener('click', function(){
+      var key = row.dataset.groupKey;
+      window._tripGroupsCollapsed = window._tripGroupsCollapsed || {};
+      window._tripGroupsCollapsed[key] = window._tripGroupsCollapsed[key]===false ? true : false;
+      render();
+    });
+  });
+  document.querySelectorAll('#main .trip-list-row').forEach(function(row){
+    row.addEventListener('click', function(e){
+      if(e.target.closest('input, button')) return;
+      openTripForm(row.dataset.tripId);
+    });
+  });
+  $('btn-add-group').addEventListener('click', function(){ openGroupForm(null); });
+  document.querySelectorAll('.edit-group').forEach(function(btn){
+    btn.addEventListener('click', function(e){ e.stopPropagation(); openGroupForm(btn.dataset.id); });
+  });
+  document.querySelectorAll('.del-group').forEach(function(btn){
+    btn.addEventListener('click', function(e){ e.stopPropagation(); delGroup(btn.dataset.id); });
+  });
+}
+function openGroupForm(id){
+  var g = id ? (db.groups.find(function(x){return x.id===id;}) || {}) : {};
+  var currentTripIds = g.tripIds || [];
+  var units = allTripSummaryUnits().sort(function(a,b){
+    return (tripSummaryLineInfo(a).sorted[0].departDate||'').localeCompare(tripSummaryLineInfo(b).sorted[0].departDate||'');
+  });
+  var memberChecks = units.map(function(members){
+    var info = tripSummaryLineInfo(members);
+    var unitIds = members.map(function(m){return m.id;});
+    var checked = unitIds.length && unitIds.every(function(tid){return currentTripIds.indexOf(tid)!==-1;});
+    return '<label style="display:flex;align-items:center;gap:8px;padding:5px 0;font-size:13px;cursor:pointer">'+
+      '<input type="checkbox" class="group-trip-cb" value="'+unitIds.join(',')+'" '+(checked?'checked':'')+' style="width:14px;height:14px">'+
+      '<span>'+escHtml(info.label||'(no client/trip name)')+(info.statusLabel?' &middot; '+escHtml(info.statusLabel):'')+(info.dateRange?' &middot; '+info.dateRange:'')+'</span>'+
+    '</label>';
+  }).join('');
+  var NOTE_TYPES_GRP = ['Email Sent','Email Received','Initial Call','Follow-up','Post-Trip Follow-up','General','Text Message Sent','Text Message Received','Lead','Facebook Message'];
+  var notesHtml = (function(){
+    var nl = g.notesLog||[];
+    var rows = nl.map(function(n,i){
+      return '<div class="note-entry" id="grpne-'+i+'" style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:10px;margin-bottom:8px">'+
+        '<div style="display:flex;align-items:center;margin-bottom:4px">'+
+          '<span class="note-ts" style="font-size:10px;color:#888;font-weight:600;letter-spacing:.03em">'+n.ts+'</span>'+
+          '<select class="grpnote-type-sel" style="font-size:11px;padding:2px 6px;border-radius:5px;border:1px solid #d1d5db;background:#fff;color:#374151;cursor:pointer;margin-left:8px">'+
+            '<option value="">-- Type --</option>'+
+            NOTE_TYPES_GRP.map(function(t){return '<option value="'+t+'"'+(n.noteType===t?' selected':'')+'>'+t+'</option>';}).join('')+
+          '</select>'+
+          '<button type="button" class="del-grpnote-btn" data-idx="'+i+'" title="Delete note" style="margin-left:auto;background:none;border:none;color:#dc2626;cursor:pointer;font-size:14px">&#128465;</button>'+
+        '</div>'+
+        '<textarea class="grpnote-txt" rows="2" style="width:100%;padding:6px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;font-family:inherit;resize:vertical;box-sizing:border-box">'+(n.text||'')+'</textarea>'+
+      '</div>';
+    }).join('');
+    rows += '<div class="note-entry" id="grpne-new" style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:10px;margin-bottom:8px">'+
+      '<div style="display:flex;align-items:center;margin-bottom:4px">'+
+        '<span style="font-size:10px;color:#888;font-weight:600">New Note</span>'+
+        '<select class="grpnote-type-sel" style="font-size:11px;padding:2px 6px;border-radius:5px;border:1px solid #d1d5db;background:#fff;color:#374151;cursor:pointer;margin-left:8px">'+
+          '<option value="">-- Type --</option>'+
+          NOTE_TYPES_GRP.map(function(t){return '<option value="'+t+'">'+t+'</option>';}).join('')+
+        '</select>'+
+      '</div>'+
+      '<textarea class="grpnote-txt" rows="2" placeholder="Add a note... (also logged onto every linked client and trip below)" style="width:100%;padding:6px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;font-family:inherit;resize:vertical;box-sizing:border-box"></textarea>'+
+    '</div>';
+    return rows;
+  })();
+  $('modal').innerHTML=
+    '<div class="modal-hdr"><div class="modal-title">'+(id?'Edit Group':'Add Group')+'</div><button class="close-btn" id="modal-close">&#x2715;</button></div>'+
+    '<div class="fg">'+
+      fld('Group Name', inp('grp-name','text',g.name,'e.g. Smith Family Reunion 2026'))+
+      '<div class="field full"><label>Trips <span class="hint" style="text-transform:none;font-weight:400">(pick which existing collapsed trips belong to this group)</span></label>'+
+        '<div style="border:1px solid #e5e7eb;border-radius:8px;padding:10px;max-height:260px;overflow-y:auto;background:#fafafa">'+
+          (memberChecks || '<div style="color:#aaa;font-size:12px">No trips yet</div>')+
+        '</div>'+
+      '</div>'+
+    '</div>'+
+    '<div style="margin-top:18px;border-top:1px solid #e5e7eb;padding-top:16px">'+
+      '<div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">Notes</div>'+
+      '<div style="font-size:11px;color:#888;margin-bottom:10px">A new note added here is also logged onto every client and trip linked to this group.</div>'+
+      notesHtml+
+    '</div>'+
+    '<div class="form-actions form-actions-sticky">'+
+      (id ? '<button class="cancel-btn" id="btn-del-group-form" style="color:#dc2626;border-color:#fca5a5">Delete Group</button>' : '')+
+      '<button class="cancel-btn" id="modal-cancel">Cancel</button>'+
+      '<button class="save-btn" id="modal-save-group" data-id="'+(id||'')+'">Save Group</button>'+
+    '</div>';
+  $('overlay').classList.add('open');
+  $('modal-close').addEventListener('click', closeModal);
+  $('modal-cancel').addEventListener('click', closeModal);
+  $('modal-save-group').addEventListener('click', function(){ saveGroup(this.dataset.id||null); });
+  var delFormBtn = $('btn-del-group-form');
+  if(delFormBtn) delFormBtn.addEventListener('click', function(){ delGroup(id); });
+  document.querySelectorAll('.del-grpnote-btn').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var el = document.getElementById('grpne-'+this.dataset.idx);
+      if(el) el.remove();
+    });
+  });
+}
+// A note added to a Group cascades onto every client linked to any of the
+// group's member trips (primary + additional travelers, same clientId/
+// clientIds split used everywhere else) and gets appended to each member
+// trip's own notes field — trips have no notesLog array of their own
+// (just one freeform notes string), so this appends a timestamped line
+// rather than pushing a structured entry the way client.notesLog works.
+function cascadeGroupNoteToClientsAndTrips(tripIds, note){
+  var clientIds = [];
+  tripIds.forEach(function(tid){
+    var t = db.trips.find(function(x){return x.id===tid;});
+    if(!t) return;
+    [t.clientId].concat(t.clientIds||[]).filter(Boolean).forEach(function(cid){
+      if(clientIds.indexOf(cid)===-1) clientIds.push(cid);
+    });
+  });
+  db.clients = db.clients.map(function(c){
+    if(clientIds.indexOf(c.id)===-1) return c;
+    var notesLog = Array.isArray(c.notesLog) ? c.notesLog.concat([note]) : [note];
+    return Object.assign({}, c, {notesLog:notesLog});
+  });
+  db.trips = db.trips.map(function(t){
+    if(tripIds.indexOf(t.id)===-1) return t;
+    var appended = (t.notes ? t.notes+'\n' : '') + '['+note.ts+'] '+note.text;
+    return Object.assign({}, t, {notes:appended});
+  });
+}
+function saveGroup(id){
+  var name = gv('grp-name');
+  if(!name){ toast('Group name is required','err'); return; }
+  var tripIds = [];
+  document.querySelectorAll('.group-trip-cb:checked').forEach(function(cb){
+    (cb.value||'').split(',').filter(Boolean).forEach(function(tid){ if(tripIds.indexOf(tid)===-1) tripIds.push(tid); });
+  });
+  // Same [id^="vne-"]-style collection Suppliers/Vendors use for their own
+  // notes, under a grpne- prefix — grpne-new is tracked separately as
+  // newNote so it (and only it) cascades below, rather than re-cascading
+  // every already-existing note on every save.
+  var notesLog = [];
+  var newNote = null;
+  document.querySelectorAll('[id^="grpne-"]').forEach(function(el){
+    var txt = (el.querySelector('.grpnote-txt')||{}).value||'';
+    var typ = (el.querySelector('.grpnote-type-sel')||{}).value||'';
+    var tsEl = el.querySelector('.note-ts');
+    if(el.id==='grpne-new'){
+      if(txt.trim()){ newNote = {ts:new Date().toLocaleString(), text:txt.trim(), noteType:typ}; notesLog.push(newNote); }
+    } else {
+      if(txt.trim()) notesLog.push({ts:tsEl?tsEl.textContent:'', text:txt.trim(), noteType:typ});
+    }
+  });
+  var data = {name:name, tripIds:tripIds, notesLog:notesLog};
+  var resultId = id;
+  snapshot(id?'Edit group':'Add group');
+  if(id){
+    db.groups = db.groups.map(function(g){return g.id===id ? Object.assign({},g,data) : g;});
+    toast('Group updated');
+  } else {
+    resultId = newId('GRP', db.groups);
+    db.groups.push(Object.assign({},data,{id:resultId}));
+    toast('Group added');
+  }
+  if(newNote) cascadeGroupNoteToClientsAndTrips(tripIds, newNote);
+  saveDB(); closeModal(); render();
+  return resultId;
+}
+function delGroup(id){
+  var g = db.groups.find(function(x){return x.id===id;});
+  if(!g || !confirm('Delete group "'+(g.name||'(untitled)')+'"? Member trips/clients are not affected.')) return;
+  snapshot('Delete group');
+  db.groups = db.groups.filter(function(x){return x.id!==id;});
+  saveDB(); closeModal(); toast('Group deleted'); render();
 }
 
 function renderTrips(){
@@ -14269,6 +14555,7 @@ function bindClick(id, handler){
   bindClick('nb-dashboard', function(){go('dashboard');closeMobileNav();});
   bindClick('nb-clients', function(){go('clients');closeMobileNav();});
   bindClick('nb-trips', function(){go('trips');closeMobileNav();});
+  bindClick('nb-groups', function(){go('groups');closeMobileNav();});
   bindClick('nb-reports', function(){go('reports');closeMobileNav();});
   bindClick('nb-calendar', function(){go('calendar');closeMobileNav();});
   bindClick('nb-email', function(){go('email');closeMobileNav();});
