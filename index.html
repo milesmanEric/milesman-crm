@@ -4963,11 +4963,6 @@ function finalizeImport(){
         if(row.supplierId && !dupTrip.supplierId){
           dupTrip.supplierId=row.supplierId;
           dupTrip.supplierName=row.supplierName;
-          var supx=db.vendors.find(function(v){return v.id===row.supplierId;});
-          if(supx&&!(supx.clientIds||[]).includes(cid)){
-            if(!supx.clientIds)supx.clientIds=[];
-            supx.clientIds.push(cid);
-          }
           backfilled.push('supplier -> '+row.supplierName);
         }
         if(row.date && !dupTrip.invoiceDate){
@@ -5022,14 +5017,10 @@ function finalizeImport(){
       invoiceNum:row.invoiceNum||''
     });
 
-    // Link client to supplier
-    if(row.supplierId){
-      var sup=db.vendors.find(function(v){return v.id===row.supplierId;});
-      if(sup&&!(sup.clientIds||[]).includes(cid)){
-        if(!sup.clientIds)sup.clientIds=[];
-        sup.clientIds.push(cid);
-      }
-    }
+    // Deliberately not pushing cid onto the supplier's clientIds here — see
+    // the matching comment in saveTrip(): getVendorStats() already derives
+    // the supplier's client list live from db.trips via supplierId, so it
+    // doesn't need (or want) a separately-maintained, never-cleaned-up copy.
 
     // Update client revenue
     const newRev=(client.totalRevenue||0)+row.amt;
@@ -12195,6 +12186,12 @@ function saveClient(id){
   var resultId = id;
   if(id){
     db.clients=db.clients.map(function(c){return c.id===id?Object.assign({},c,data):c;});
+    // trip.clientName is a denormalized copy of the primary client's name,
+    // read directly (no db.clients lookup) by the Dashboard, Trips page,
+    // reports, and more — without this, renaming a client here left every
+    // trip already on file still showing the old name everywhere except
+    // the Clients page, which is the only view that reads client.name live.
+    db.trips=db.trips.map(function(t){return t.clientId===id?Object.assign({},t,{clientName:name}):t;});
     toast('Client updated');
   }else{
     resultId = newId('C',db.clients);
@@ -12244,10 +12241,15 @@ function saveTrip(id){
     client.airlineCreditCards=readCardChecklist('facc');
     client.hotelCreditCards=readCardChecklist('fhcc');
   }
-  if(supplier && !(supplier.clientIds||[]).includes(clientId)){
-    if(!supplier.clientIds) supplier.clientIds=[];
-    supplier.clientIds.push(clientId);
-  }
+  // Deliberately NOT pushing clientId onto supplier.clientIds here — that
+  // list is the Supplier form's manually-curated "Referral Partner" client
+  // checklist (see openVendorForm), and getVendorStats() already derives
+  // "which clients have booked with this supplier" live from db.trips by
+  // matching supplierId, so it stays correct automatically as trips are
+  // added, edited, or deleted. Auto-pushing here used to double up with
+  // that and, since nothing ever removed the push, left a supplier's card
+  // showing a client's name forever even after every trip linking them to
+  // that supplier was deleted.
   if(id){
     db.trips=db.trips.map(function(t){return t.id===id?Object.assign({},t,data):t;});
     toast('Trip updated');
