@@ -10445,7 +10445,16 @@ function renderGroups(){
 function openGroupForm(id){
   var g = id ? (db.groups.find(function(x){return x.id===id;}) || {}) : {};
   var currentTripIds = g.tripIds || [];
-  var units = allTripSummaryUnits().sort(function(a,b){
+  // Credit Card Consulting/Referrals records aren't real bookings — same
+  // isNonTravelIncomeTrip() exclusion the Trips page and Dashboard already
+  // apply — so they don't belong in a picker meant for linking actual
+  // trips together. A unit already linked to this group stays visible
+  // regardless (checking every member is non-travel-income), so re-opening
+  // an existing group to edit it never silently drops a member the
+  // checklist itself no longer offers as a fresh pick.
+  var units = allTripSummaryUnits().filter(function(members){
+    return members.some(function(m){return !isNonTravelIncomeTrip(m);}) || members.every(function(m){return currentTripIds.indexOf(m.id)!==-1;});
+  }).sort(function(a,b){
     return (tripSummaryLineInfo(a).sorted[0].departDate||'').localeCompare(tripSummaryLineInfo(b).sorted[0].departDate||'');
   });
   var memberChecks = units.map(function(members){
