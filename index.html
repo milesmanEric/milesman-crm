@@ -1435,6 +1435,24 @@ function loadDB(){
       saveDB();
       console.log('[CRM] Migrated '+statusMigrated+' trips from "In Process" to "Planning"');
     }
+    // The generic 'Tool' bookmark category was renamed to 'Award Tools'
+    // (it was only ever used for Seats.aero/ExpertFlyer/Point.me/
+    // AwardWallet) — renaming BOOKMARK_CATEGORIES/DEFAULT_BOOKMARKS alone
+    // doesn't touch a category value already saved on an existing
+    // bookmark, so anyone who'd already loaded the starter pack under the
+    // old name needs this migrated too (safe to run repeatedly — nothing
+    // left to migrate once converted).
+    var bookmarkCatMigrated=0;
+    db.bookmarks.forEach(function(b){
+      if(b.category==='Tool'){
+        b.category='Award Tools';
+        bookmarkCatMigrated++;
+      }
+    });
+    if(bookmarkCatMigrated>0){
+      saveDB();
+      console.log('[CRM] Migrated '+bookmarkCatMigrated+' bookmark(s) from "Tool" to "Award Tools" category');
+    }
   }catch(e){db={clients:[],trips:[],vendors:[],planner:[]};}
 }
 
