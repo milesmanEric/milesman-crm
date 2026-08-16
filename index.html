@@ -1111,7 +1111,7 @@ const CRUISE_LOGOS = {
 // fStatus: array of selected trip statuses for the Trips page filter — default
 // is everything except Cancelled, since a cancelled trip is rarely what
 // you're looking for when just browsing the list.
-let view = 'dashboard', selCid = null, fStatus = STATUSES.filter(function(s){return s!=='Cancelled';}), fSearch = '', fHideSubOnly = false;
+let view = 'dashboard', selCid = null, fStatus = STATUSES.filter(function(s){return s!=='Cancelled';}), fSearch = '', fHideSubOnly = true;
 let driveToken = null;
 
 const $ = id => document.getElementById(id);
@@ -6517,7 +6517,7 @@ async function importTripFormPDF(){
 function go(v,cid){
   view=v;
   selCid=(v==='trips'&&cid)?cid:null;
-  fSearch='';fStatus=STATUSES.filter(function(s){return s!=='Cancelled';});fHideSubOnly=false;
+  fSearch='';fStatus=STATUSES.filter(function(s){return s!=='Cancelled';});fHideSubOnly=true;
   ['dashboard','clients','trips','groups','reports','calendar','email','vendors','bizvendors','planner','bookmarks','ccconsulting','referrals','marketing','analytics'].forEach(function(x){var el=$('nb-'+x);if(el)el.classList.toggle('active',x===v);});
   render();
 }
