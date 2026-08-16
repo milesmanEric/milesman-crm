@@ -234,7 +234,7 @@ A place to save links to sites you use often — airline sites, hotel booking to
 
 Click **+ Load Starter Bookmarks** to add a pre-built set of consumer booking-site links and travel-advisor/agent-portal login links for common airlines, hotels, car rental companies, cruise lines, tour operators, and theme parks — each one already tagged with the right category and audience. It won't add duplicates if you click it again later. A few entries are noted as unverified where the exact portal URL couldn't be confirmed — double-check those before relying on them.
 
-**Travel Agent → Tool** now includes a handful of award-booking tools — Seats.aero, ExpertFlyer, Point.me, and AwardWallet — for searching award availability and tracking client mileage balances across programs. These come in through the same "+ Load Starter Bookmarks" button as everything else above.
+**Travel Agent → Award Tools** now includes a handful of award-booking tools — Seats.aero, ExpertFlyer, Point.me, and AwardWallet — for searching award availability and tracking client mileage balances across programs. These come in through the same "+ Load Starter Bookmarks" button as everything else above.
 
 Right above Bookmarks in the sidebar, two more links — **Miles Man Site** and **WordPress Admin** — open the public website and its admin dashboard in a new tab, without leaving the CRM.
 
