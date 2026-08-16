@@ -44,6 +44,8 @@ At the very top of the Dashboard, **Quick Search** lets you jump straight to a C
 
 The Dashboard also has a **Planner tasks — today & overdue** card: your 10 most pressing open tasks (whatever's due today or already past due, most-overdue first), each showing its linked client(s) and due date. Click a task to open it, click a client name to open their record instead (a task linked to more than one client lists each of them separately), or hit **View all** to jump to the full Planner list filtered the same way.
 
+**Upcoming & In Progress Trips** (the table card next to Top Clients) only ever shows trips that are actually happening right now or still coming up — nothing in Planning, nothing already Completed, nothing Cancelled, and no Credit Card Consulting/Referral income rows, regardless of when they were added to the CRM. Trips already underway are listed first, then upcoming trips soonest-first, so the very next thing on your plate is always at the top. **View all** still goes to the full, unfiltered Trips page.
+
 (On a Supplier's or Invoice's own detail screen, the numbers there instead scroll you down to the transaction table that's already shown below — no extra click needed to see the detail, it's already on the same screen.)
 
 ---
@@ -56,7 +58,7 @@ Any popup window (Edit Client, Edit Task, Add Trip, etc.) stays open if you clic
 
 ## Clients
 
-**Adding a client**: Clients page → **+ Add Client**. Name and email are required. Everything else — phone, address, birthdate, citizenship/birth country, how they were referred, preferred airline/hotel/cruise line, mileage/points balances for every airline, hotel, cruise line, car rental, and credit card program, and which airline- and hotel-branded credit cards they hold — is optional and can be filled in over time.
+**Adding a client**: Clients page → **+ Add Client**. Only Name is required — email and everything else (phone, address, birthdate, citizenship/birth country, how they were referred, preferred airline/hotel/cruise line, mileage/points balances for every airline, hotel, cruise line, car rental, and credit card program, and which airline- and hotel-branded credit cards they hold) is optional and can be filled in over time. This matters in practice for a client created automatically by a revenue import (see [Suppliers](#suppliers)) with no email on file — you can still open that record, fix their name, and save it without being forced to make up an email address first.
 
 **If an existing client submits the Book a Trip form again** (website submission, imported via CSV or the automatic Outlook sync), any mileage/points balance they filled in on that new submission replaces what's already on their record for that program — points balances change constantly, so the newest number they typed in is trusted over whatever was there before. If they left a program blank on that particular submission, their existing balance for it is left alone rather than getting cleared out.
 
@@ -73,6 +75,8 @@ Each mileage/points section (Mileage Balances, Hotel Point Balances, Cruise Line
 **Attachments**: paste Google Drive links directly, or use "Browse Google Drive" to pick a file without leaving the CRM.
 
 **Referral Credits**: a section on the client record listing who they've referred, when, the $ amount, whether it's been used yet (checkbox), and — if it came from an actual sent certificate — a small `#000123` certificate number badge. Rows get added automatically when you send the "Referral Credit Earned" email (see [Emailing clients](#emailing-clients)), or add one yourself with **+ Add Referral Credit** for anything not sent through that flow (a manually-added row has no certificate number, since no certificate was actually issued for it). If a certificate went to more than one referrer at once, checking (or unchecking) "Used" on any one of their rows automatically checks/unchecks it on every other referrer's matching row too, since they all share the one physical certificate.
+
+**Every trip in the client's own Trips list has a trash-icon delete button right on it** — spot a bad or duplicate record while reviewing a client's booking history and you can remove it right there, no need to close out and go find it on the separate Trips page.
 
 ---
 
@@ -140,6 +144,10 @@ If you've filled in a **Website** on a Supplier, it now shows on the card as a c
 **Automatic supplier linking**: when a client's trip request names an airline, hotel brand, cruise line, car rental company, theme park, or tour vendor that matches an existing Supplier record by name, the client gets linked onto that supplier automatically, and that supplier becomes the trip's supplier if nothing else already claimed that slot. This only works for an **exact name match** — if a supplier is named "Delta Air Lines" in your list but a request says just "Delta," it won't connect automatically. Keep supplier names matching the option text on the intake form (e.g. "Delta," "Marriott," "Royal Caribbean") for this to work reliably.
 
 **Revenue imports create a missing Supplier for you.** When you import a revenue report (either the "Clean & Import Revenue File"/"Import Revenue CSV" buttons or the automatic Outlook sync) and a row names a supplier that isn't in your Suppliers list yet, the CRM adds it automatically — before creating the client and/or trip for that row — instead of leaving the trip with no supplier. If the exact same supplier name shows up on more than one row in the same import, only one Supplier record gets created and every row links to it. If you'd already imported a trip before its supplier existed, re-running that same import will retroactively link the supplier onto the existing trip rather than creating a duplicate.
+
+**Client matching in a revenue import now handles a name that got cut off in the source report.** QuickBooks' own PDF export sometimes truncates a client's name in its Class column to fit the printed column width (e.g. "Bakhash" printed as "Bak..."). This used to mean the row could never match that client — even an existing one — and would either sit unmatched or, worse, create a second duplicate client. Matching now recognizes a cut-off name as a partial match against your existing client list, and if it's a genuinely new client with no name to go on, the record it creates is named honestly (kept partial rather than presented as if it were the full, correct name) so you can spot and fix it. The import's closing toast tells you if any new client names came out incomplete, so you don't have to go hunting for them.
+
+**The "Linked Clients" checklist on a Supplier's own edit form is always available now** — it used to only show up when a Supplier's Type was set to "Referral Partner," which meant there was no way to review or clear it for a regular travel Supplier. If a client's name is stuck showing on a Supplier's card after you've deleted every trip that linked them (this can happen on records edited before this fix), open that Supplier, scroll to **Linked Clients**, and uncheck them there.
 
 **Contacts** — each Supplier can hold any number of people you deal with there (an account rep, a group desk contact, whoever), each with their own Name, Title, Email, and Phone. Open a Supplier and scroll to the **Contacts** section: **+ Add Contact** (or clicking an existing one) opens that contact's own record, which works just like a client's — a Notes Log you can filter by type and add entries to, and a Tasks list with its own **+ Add Task** for follow-ups tied specifically to that person. Delete a contact with the trash icon on its row in the Supplier form (no need to open it first).
 
@@ -226,27 +234,37 @@ A place to save links to sites you use often — airline sites, hotel booking to
 
 Click **+ Load Starter Bookmarks** to add a pre-built set of consumer booking-site links and travel-advisor/agent-portal login links for common airlines, hotels, car rental companies, cruise lines, tour operators, and theme parks — each one already tagged with the right category and audience. It won't add duplicates if you click it again later. A few entries are noted as unverified where the exact portal URL couldn't be confirmed — double-check those before relying on them.
 
+**Travel Agent → Tool** now includes a handful of award-booking tools — Seats.aero, ExpertFlyer, Point.me, and AwardWallet — for searching award availability and tracking client mileage balances across programs. These come in through the same "+ Load Starter Bookmarks" button as everything else above.
+
+Right above Bookmarks in the sidebar, two more links — **Miles Man Site** and **WordPress Admin** — open the public website and its admin dashboard in a new tab, without leaving the CRM.
+
 ---
 
 ## Marketing
 
-Reserved in the nav for later — nothing built yet, just a "Coming soon" placeholder.
+Facebook Ads campaign management for the agency's ad account.
+
+Click **Connect Facebook Ads** the first time. Once connected, you'll see every campaign — name, status, objective, daily/lifetime budget, and the last 30 days' spend/impressions/clicks/cost-per-click — with a **Pause**/**Activate** button on each row (Activate asks you to confirm first, since it starts real spend immediately). **+ Create Campaign** walks you through a 4-step wizard: Campaign (name/objective), Ad Set (budget/dates/targeting), Creative (Facebook Page/ad copy/image/link/call-to-action), then Review & Launch. Everything the wizard creates starts out **paused** — nothing spends a dollar until you explicitly hit Activate on it afterward, same button used on the campaign list.
+
+If the page shows an error like **"API Access Blocked"** instead of your campaigns, that's Facebook itself refusing the request, not something wrong in the CRM — it almost always means the Facebook App needs to go through Meta's App Review for ad permissions, or the Business Manager that owns the ad account hasn't finished Business Verification. Open the Debug Panel (sidebar, near the bottom) right after seeing the error — it now logs Facebook's full error code, which pins down exactly which of those it is.
 
 ---
 
 ## Analytics
 
-Two cards, each pulling from a different source: your **WordPress.com/Jetpack** blog stats and your **Google Analytics (GA4)** website traffic.
+Three cards, in this order: your **WordPress.com/Jetpack** blog stats, your **Google Analytics (GA4)** website traffic, and an **SEO (Yoast)** audit of your site's posts and pages.
 
 **WordPress.com / Jetpack Stats** — click **Connect WordPress.com** the first time; after that it shows visitors and views (today, yesterday, and all-time), your blog's follower count, your single best day ever, and a day-by-day table for the last 30 days. **Disconnect** clears the connection if you ever need to reset it. Click the **Blog Followers** number itself and it jumps you straight down to the full follower list below.
 
 **Google Analytics (GA4)** — no separate login needed here; it rides along on the same Google sign-in you already use for Drive backup. If you haven't connected Drive yet, or connected it before this feature existed, you'll see a **Connect**/**Reconnect Google Drive** button — click it once and you're set going forward. Once connected, it shows active users, page views, and sessions over the last 30 days, plus a daily breakdown table.
 
-**Drill down further**: under each card, click any collapsed section header (▸) to expand it and load the detail — nothing loads until you actually open a section, so the page stays quick even though there's a lot available:
+**SEO (Yoast)** — no connecting needed at all; this loads automatically since it's reading publicly-available data straight from your website. Four summary numbers up top (Posts & Pages / Missing Description / Noindexed / Missing OG Image), then two collapsible sections, **Posts** and **Pages** — expand either to see every post or page with its SEO title, meta description, whether it's set to be hidden from search engines ("Noindex"), and whether it has a social-share image, each flagged if it's missing or runs long. This checks the same Yoast SEO plugin data your website already has — it isn't the green/yellow/red score you'd see inside WordPress itself (that score only shows up in the WordPress admin, this app has no way to read it), just a plain checklist of the same kind of things that score looks at.
+
+**Drill down further**: under each of the first two cards, click any collapsed section header (▸) to expand it and load the detail — nothing loads until you actually open a section, so the page stays quick even though there's a lot available:
 - **WordPress**: Top Posts & Pages, Referrers, Views by Country, Search Terms, Blog Followers.
 - **GA4**: Top Pages, Traffic Sources, Device Category, Top Countries.
 
-All the detail sections in both cards now show nicely formatted tables — linked titles/sources/names open in a new tab, countries show their flag, and followers show their avatar. Search Terms shows a table too where terms are actually visible — most search engines hide the exact query for privacy, so this section is often just a note saying how many were hidden rather than a list. Blog Followers shows every follower across all pages, not just the first.
+All the detail sections show nicely formatted tables — linked titles/sources/names open in a new tab, countries show their flag, and followers show their avatar. Search Terms shows a table too where terms are actually visible — most search engines hide the exact query for privacy, so this section is often just a note saying how many were hidden rather than a list. Blog Followers shows every follower across all pages, not just the first.
 
 **Blog followers automatically become clients**: every time you open Analytics with WordPress connected, the app quietly checks your email subscriber list against your Clients list. If a subscriber's email matches an existing client, their **Subscriber** checkbox gets turned on automatically if it wasn't already. If a subscriber doesn't match anyone, a new client record is created for them (with the Subscriber box checked) so nobody who follows your blog falls through the cracks. You'll see a toast confirming what changed the moment it happens; if everything's already in sync, nothing happens and no toast appears.
 
