@@ -12514,9 +12514,30 @@ function openTripForm(id){
       '<span>'+escHtml(label)+'</span>'+
     '</label>';
   }).join('');
+  // Which named Group (db.groups, distinct from the Linked Trips cluster
+  // above) this trip currently belongs to, if any — a group's tripIds is
+  // every individual trip id from every collapsed unit added to it (see
+  // saveGroup), so a plain membership check here is enough, no need to
+  // re-derive via tripLinkGroups().
+  const tripGroup = id ? db.groups.find(function(g){ return (g.tripIds||[]).indexOf(id)!==-1; }) : null;
   $('modal').innerHTML=
     '<div class="modal-hdr"><div class="modal-title">'+(id?'Edit Trip':'Add Trip')+'</div><button class="close-btn" id="modal-close">&#x2715;</button></div>'+
     '<div class="fg">'+
+      (id ? '<div class="field full">'+
+        '<label>Group</label>'+
+        (tripGroup ?
+          '<div style="font-size:13px;color:#374151;margin-bottom:8px">&#128193; Part of group: <b>'+escHtml(tripGroup.name)+'</b></div>'+
+          // Adding a note here cascades to every trip AND client in the
+          // group (cascadeGroupNoteToClientsAndTrips), same as adding one
+          // from the Groups tab itself — this is just a shortcut so you
+          // don't have to leave the trip record to log it.
+          '<div style="display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap">'+
+            '<textarea id="trip-group-note-txt" rows="2" placeholder="Add a note to the group — it will also be added to every trip and client in the group..." style="flex:1;min-width:200px"></textarea>'+
+            '<select id="trip-group-note-type" style="width:150px">'+selOpts(NOTE_TYPES,'General')+'</select>'+
+            '<button type="button" class="cancel-btn" id="trip-group-note-add" data-group-id="'+tripGroup.id+'">Add Note</button>'+
+          '</div>'
+        : '<div style="font-size:12px;color:#aaa">Not part of a group</div>')+
+      '</div>' : '')+
       fld('Client',searchableSelectWrap('<select id="tc"><option value="">Select client...</option>'+copts+'</select>','Search clients...'),true)+
       fld('Supplier','<select id="tsup"><option value="">None</option>'+vopts+'</select>')+
       '<div class="field full"><label>Additional Clients <span class="hint" style="text-transform:none;font-weight:400">(if more than one client is on this trip)</span></label>'+
@@ -12552,6 +12573,32 @@ function openTripForm(id){
   $('modal-close').addEventListener('click',closeModal);
   $('modal-cancel').addEventListener('click',closeModal);
   $('modal-save-trip').addEventListener('click',function(){saveTrip(this.dataset.id);});
+  var tgna = document.getElementById('trip-group-note-add');
+  if(tgna) tgna.addEventListener('click', function(){
+    var groupId = this.dataset.groupId;
+    var group = db.groups.find(function(g){return g.id===groupId;});
+    if(!group) return;
+    var txtEl = document.getElementById('trip-group-note-txt');
+    var typeEl = document.getElementById('trip-group-note-type');
+    var txt = (txtEl.value||'').trim();
+    if(!txt){ toast('Enter a note first','err'); return; }
+    var note = {ts:new Date().toLocaleString(), text:txt, noteType:typeEl.value||'General'};
+    snapshot('Add group note');
+    db.groups = db.groups.map(function(g){
+      if(g.id!==groupId) return g;
+      var notesLog = Array.isArray(g.notesLog) ? g.notesLog.concat([note]) : [note];
+      return Object.assign({}, g, {notesLog:notesLog});
+    });
+    cascadeGroupNoteToClientsAndTrips(group.tripIds||[], note);
+    saveDB();
+    toast('Note added to group');
+    // Reflect the cascade in this trip's own Notes field immediately,
+    // without a full modal re-render that would drop unsaved edits.
+    var updatedTrip = db.trips.find(function(t){return t.id===id;});
+    var notesTa = document.getElementById('tno');
+    if(notesTa && updatedTrip) notesTa.value = updatedTrip.notes||'';
+    txtEl.value = '';
+  });
   $('tc').addEventListener('change',function(){
     document.getElementById('trip-balance-sections').innerHTML = tripBalanceSectionsHtml(this.value);
     bindTripBalanceListeners();
