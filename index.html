@@ -1315,6 +1315,14 @@ const today = () => {
   var d = new Date();
   return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 };
+// Same local Y/M/D construction as today() above (not UTC-based date math),
+// so this stays correct across a DST boundary or a timezone behind UTC.
+function addDaysToDateStr(dateStr, days){
+  var parts = (dateStr||'').split('-').map(Number);
+  var d = new Date(parts[0], (parts[1]||1)-1, parts[2]||1);
+  d.setDate(d.getDate()+days);
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
 function displayStatus(t){
   var st = t.status||'Planning';
   if(st==='Completed' && t.departDate && t.departDate>=today()) st='Upcoming';
@@ -6152,8 +6160,8 @@ async function checkForNewRevenueReportEmails(silent){
   }
 }
 
-setInterval(function(){ checkForNewTripFormEmails(true); checkForNewContactFormEmails(true); checkForNewRevenueReportEmails(true); checkForUpcomingBirthdays(); autoUpdateTripStatusesByDate(); }, 5*60*1000);
-setTimeout(function(){ checkForNewTripFormEmails(true); checkForNewContactFormEmails(true); checkForNewRevenueReportEmails(true); checkForUpcomingBirthdays(); autoUpdateTripStatusesByDate(); }, 5000);
+setInterval(function(){ checkForNewTripFormEmails(true); checkForNewContactFormEmails(true); checkForNewRevenueReportEmails(true); checkForUpcomingBirthdays(); checkForUpcomingTripDepartures(); autoUpdateTripStatusesByDate(); }, 5*60*1000);
+setTimeout(function(){ checkForNewTripFormEmails(true); checkForNewContactFormEmails(true); checkForNewRevenueReportEmails(true); checkForUpcomingBirthdays(); checkForUpcomingTripDepartures(); autoUpdateTripStatusesByDate(); }, 5000);
 
 // Auto-transitions a trip's stored status based on its dates: while today
 // falls within [departDate, returnDate] (or on departDate itself, for a
@@ -6238,6 +6246,47 @@ function checkForUpcomingBirthdays(){
     localStorage.setItem('mm_birthday90_notified', JSON.stringify(Array.from(notifiedSet)));
     saveDB(); render();
     debugLog('Birthday check: created '+created+' reminder task(s)');
+  }
+}
+// Same "auto-prepared draft, never auto-sent" pattern as
+// checkForUpcomingBirthdays() above — once a trip is exactly one day from
+// departing, this creates one Planner task (due today, so it surfaces right
+// away in Today & Overdue) whose description holds the filled
+// 'pretripwellwishes' TEMPLATES entry, ready to copy into an email to
+// whichever client(s) are on that trip. `mm_pretrip_notified` (a trip-id
+// Set in localStorage) is the dedupe guard — without it this would re-fire
+// every 5 minutes for the entire day the trip departs tomorrow.
+function checkForUpcomingTripDepartures(){
+  var notified;
+  try{ notified = JSON.parse(localStorage.getItem('mm_pretrip_notified')||'[]'); }catch(e){ notified = []; }
+  var notifiedSet = new Set(notified);
+  var tomorrow = addDaysToDateStr(today(), 1);
+  var tpl = TEMPLATES.find(function(t){return t.id==='pretripwellwishes';});
+  var created = 0;
+  db.trips.forEach(function(t){
+    if(!t.departDate || t.status==='Cancelled' || isNonTravelIncomeTrip(t)) return;
+    if(t.departDate!==tomorrow) return;
+    if(notifiedSet.has(t.id)) return;
+    var clients = [t.clientId].concat(t.clientIds||[]).filter(Boolean).map(function(cid){
+      return db.clients.find(function(c){return c.id===cid;});
+    }).filter(Boolean);
+    if(!clients.length) return;
+    var filledBody = tpl ? fillTemplate(tpl.body, clients) : '';
+    db.planner.push({
+      id:newId('PL',db.planner),
+      title:'Pre-trip well-wishes — '+(t.clientName||clients.map(function(c){return c.name;}).join(', ')),
+      dueDate:today(), done:false, clientId:t.clientId, clientIds:(t.clientIds||[]), vendorId:'', tripId:t.id,
+      completionNoteType:'General',
+      desc:'Trip departs tomorrow ('+fmtDate(t.departDate)+'). Suggested email:\n\nSubject: '+(tpl?tpl.subject:'')+'\n\n'+filledBody,
+      createdAt: today()
+    });
+    notifiedSet.add(t.id);
+    created++;
+  });
+  if(created){
+    localStorage.setItem('mm_pretrip_notified', JSON.stringify(Array.from(notifiedSet)));
+    saveDB(); render();
+    debugLog('Pre-trip well-wishes check: created '+created+' reminder task(s)');
   }
 }
 
@@ -7381,6 +7430,13 @@ var TEMPLATES = [
     description:'Suggest booking a trip to celebrate an upcoming birthday',
     subject:'Let’s Plan Something Special for Your Birthday!',
     body:"Hi {{firstName}},\n\nYour birthday is coming up, and what better way to celebrate than with a getaway? Whether it's a relaxing beach escape, a milestone cruise, or a bucket-list adventure, I'd love to help you plan a trip worth celebrating.\n\nLet me know if you'd like to explore some options — I can put together ideas that fit your style and budget, and we can lock in the best use of your points and miles along the way.\n\nHappy almost-birthday!\n\nBest,\nEric"
+  },
+  {
+    id:'pretripwellwishes',
+    name:'Pre-Trip Well Wishes',
+    description:'Wish a client well the day before their trip departs',
+    subject:'Have an Amazing Trip!',
+    body:"Hi {{firstName}},\n\nYour trip is almost here! I just wanted to reach out and wish you a fantastic time on your upcoming adventure.\n\nIf anything comes up or you have any last-minute questions before you head out, don't hesitate to reach out — I'm just a call or email away.\n\nSafe travels, and enjoy every moment!\n\nBest,\nEric"
   },
   {
     id:'referralcredit',
