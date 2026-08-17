@@ -1,0 +1,66 @@
+// Airline frequent flyer program definitions. See _shared.js for the
+// "these selectors are unverified guesses" disclaimer — it applies to
+// every entry below.
+
+module.exports = [
+  {
+    id: 'united-mileageplus',
+    name: 'United MileagePlus',
+    category: 'airline',
+    loginUrl: 'https://www.united.com/en/us/loyalty/login',
+    balanceUrl: 'https://www.united.com/en/us/myaccount/mileageplus',
+    keywords: ['miles', 'mileageplus'],
+    balanceSelectors: ['[data-testid*="mileage-balance" i]', '.mileage-balance', '.account-summary-miles'],
+    statusSelectors: ['[data-testid*="premier-status" i]', '.premier-status'],
+  },
+  {
+    id: 'delta-skymiles',
+    name: 'Delta SkyMiles',
+    category: 'airline',
+    loginUrl: 'https://www.delta.com/mytrips/login',
+    balanceUrl: 'https://www.delta.com/myprofile/my-skymiles-account',
+    keywords: ['skymiles', 'miles'],
+    balanceSelectors: ['.skymiles-balance', '[class*="miles-balance" i]'],
+    statusSelectors: ['[class*="medallion" i]'],
+  },
+  {
+    id: 'american-aadvantage',
+    name: 'American AAdvantage',
+    category: 'airline',
+    loginUrl: 'https://www.aa.com/homePage.do',
+    balanceUrl: 'https://www.aa.com/loyalty/aadvantageAccountActivity.do',
+    keywords: ['aadvantage', 'miles'],
+    balanceSelectors: ['[class*="miles-balance" i]', '.aadvantage-number-miles'],
+    statusSelectors: ['[class*="status-tier" i]'],
+  },
+  {
+    id: 'southwest-rapidrewards',
+    name: 'Southwest Rapid Rewards',
+    category: 'airline',
+    loginUrl: 'https://www.southwest.com/login/',
+    balanceUrl: 'https://www.southwest.com/account/rapid-rewards',
+    keywords: ['rapid rewards', 'points'],
+    balanceSelectors: ['[class*="points-balance" i]', '.rr-points-balance'],
+    statusSelectors: ['[class*="tier-status" i]'],
+  },
+  {
+    id: 'alaska-mileageplan',
+    name: 'Alaska Mileage Plan',
+    category: 'airline',
+    loginUrl: 'https://www.alaskaair.com/account/sign-in',
+    balanceUrl: 'https://www.alaskaair.com/account/mileage-plan',
+    keywords: ['mileage plan', 'miles'],
+    balanceSelectors: ['[class*="mileage-balance" i]'],
+    statusSelectors: ['[class*="mvp" i]'],
+  },
+  {
+    id: 'jetblue-trueblue',
+    name: 'JetBlue TrueBlue',
+    category: 'airline',
+    loginUrl: 'https://www.jetblue.com/account/sign-in',
+    balanceUrl: 'https://www.jetblue.com/account/trueblue',
+    keywords: ['trueblue', 'points'],
+    balanceSelectors: ['[class*="points-balance" i]'],
+    statusSelectors: ['[class*="tile-status" i]'],
+  },
+];

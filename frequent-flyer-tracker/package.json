@@ -1,0 +1,19 @@
+{
+  "name": "frequent-flyer-tracker",
+  "version": "1.0.0",
+  "description": "Local app that tracks your frequent flyer, hotel, and credit card points balances, refreshing them in the background after a one-time login per program.",
+  "private": true,
+  "type": "commonjs",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "node-cron": "^3.0.3",
+    "playwright": "^1.47.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
