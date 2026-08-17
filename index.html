@@ -592,6 +592,20 @@ const FB_SCOPE        = 'ads_management,ads_read,business_management';
 const FB_REDIRECT     = 'https://milesmaneric.github.io/milesman-crm/';
 const FB_AUTH_SERVER  = 'https://milesman-auth.vercel.app';
 const FB_AD_ACCOUNT   = 'act_1285326830438388';
+// Canva Connect API — lets the Facebook Ads wizard's Creative step pull an
+// ad image straight from a Canva design instead of only a local file. Uses
+// its own Vercel proxy (api/canva-token.js for the OAuth/PKCE exchange,
+// api/canva-api.js for the CORS-blocked Connect API calls) — same reason
+// Facebook/WordPress need one: Canva's own CORS policy explicitly blocks
+// authenticated browser fetches, not just an oversight to work around.
+// CANVA_CLIENT_ID is filled in once a Canva Developer Portal integration is
+// registered (canva.com/developers) — not a secret, safe to hardcode like
+// FB_APP_ID above, but connecting will fail with "Invalid Client" until a
+// real ID replaces this placeholder.
+const CANVA_CLIENT_ID  = 'REPLACE_WITH_CANVA_CLIENT_ID';
+const CANVA_SCOPE      = 'design:meta:read design:content:read';
+const CANVA_REDIRECT   = 'https://milesmaneric.github.io/milesman-crm/';
+const CANVA_AUTH_SERVER = 'https://milesman-auth.vercel.app';
 const BACKUP_FILENAME  = 'milesman-crm-backup.json';
 const LS_KEY           = 'milesman_crm_v2';
 
@@ -2161,6 +2175,188 @@ function fbGraph(path, opts){
     fetchOpts.body = JSON.stringify(opts.body||{});
   }
   return fetch(url, fetchOpts).then(function(r){ return r.json(); });
+}
+// ── Canva Connect (design picker for Facebook ad images) ────────────────
+// PKCE is mandatory for Canva's OAuth flow, unlike Facebook/WordPress's
+// plain authorization-code flow — code_verifier is a random string kept
+// only in this browser (never sent until the token exchange, and even then
+// only to prove this exchange came from the same browser that started the
+// redirect), code_challenge is its SHA-256 hash, sent up front.
+function canvaGenerateCodeVerifier(){
+  var bytes = new Uint8Array(64);
+  crypto.getRandomValues(bytes);
+  var binary = '';
+  bytes.forEach(function(b){ binary += String.fromCharCode(b); });
+  return btoa(binary).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+}
+function canvaCodeChallenge(verifier){
+  var data = new TextEncoder().encode(verifier);
+  return crypto.subtle.digest('SHA-256', data).then(function(digest){
+    var bytes = new Uint8Array(digest);
+    var binary = '';
+    bytes.forEach(function(b){ binary += String.fromCharCode(b); });
+    return btoa(binary).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+  });
+}
+function canvaLogin(){
+  var verifier = canvaGenerateCodeVerifier();
+  // Survives the full-page redirect to canva.com and back — sessionStorage
+  // would also work here (same tab), but localStorage matches how every
+  // other short-lived OAuth-flight value in this app is already stored.
+  localStorage.setItem('mm_canva_code_verifier', verifier);
+  canvaCodeChallenge(verifier).then(function(challenge){
+    const params = new URLSearchParams({
+      client_id:             CANVA_CLIENT_ID,
+      redirect_uri:          CANVA_REDIRECT,
+      response_type:         'code',
+      scope:                 CANVA_SCOPE,
+      state:                 'canva_auth',
+      code_challenge:        challenge,
+      code_challenge_method: 'S256'
+    });
+    debugLog('Redirecting to Canva login...');
+    window.location.href = 'https://www.canva.com/api/oauth/authorize?'+params.toString();
+  });
+}
+function checkCanvaRedirect(){
+  const params = new URLSearchParams(window.location.search);
+  const code  = params.get('code');
+  const state = params.get('state');
+  if(!code || state !== 'canva_auth') return;
+
+  window.history.replaceState({},'',window.location.pathname);
+  var verifier = localStorage.getItem('mm_canva_code_verifier');
+  localStorage.removeItem('mm_canva_code_verifier');
+  debugLog('Canva auth code received, exchanging...');
+
+  fetch(CANVA_AUTH_SERVER+'/api/canva-token',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({ code: code, redirect_uri: CANVA_REDIRECT, code_verifier: verifier })
+  }).then(function(r){return r.json();}).then(function(d){
+    if(d.access_token){
+      localStorage.setItem('mm_canva_token', d.access_token);
+      localStorage.setItem('mm_canva_refresh_token', d.refresh_token||'');
+      localStorage.setItem('mm_canva_token_expires', String(Date.now() + (Number(d.expires_in)||14400)*1000));
+      debugLog('Canva token obtained successfully');
+      toast('Canva connected!','ok');
+      go('marketing');
+    } else {
+      debugLog('Canva token exchange failed: '+JSON.stringify(d.error||d));
+      var msg = d.error_description || d.error || 'unknown error';
+      toast('Canva auth failed: '+msg,'err');
+    }
+  }).catch(function(e){
+    debugLog('Canva token exchange error: '+e.message);
+    toast('Canva auth error: '+e.message,'err');
+  });
+}
+// Canva's access token only lasts ~4 hours (vs Facebook's ~60-day one), so
+// unlike fbGraph() this needs to check/refresh before every call rather
+// than assuming whatever's in localStorage is still good. Refreshes ~60s
+// before actual expiry so a multi-step operation (e.g. the export/poll
+// dance) doesn't straddle the token going stale mid-way. Resolves null if
+// never connected at all, so callers can distinguish "not connected" from
+// "connected but the fetch itself failed."
+function getCanvaAccessToken(){
+  var token = localStorage.getItem('mm_canva_token');
+  if(!token) return Promise.resolve(null);
+  var expires = Number(localStorage.getItem('mm_canva_token_expires')||0);
+  if(Date.now() < expires - 60000) return Promise.resolve(token);
+  var refreshToken = localStorage.getItem('mm_canva_refresh_token');
+  if(!refreshToken) return Promise.resolve(token);
+  return fetch(CANVA_AUTH_SERVER+'/api/canva-token',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({ grant_type:'refresh_token', refresh_token: refreshToken })
+  }).then(function(r){return r.json();}).then(function(d){
+    if(d.access_token){
+      localStorage.setItem('mm_canva_token', d.access_token);
+      if(d.refresh_token) localStorage.setItem('mm_canva_refresh_token', d.refresh_token);
+      localStorage.setItem('mm_canva_token_expires', String(Date.now() + (Number(d.expires_in)||14400)*1000));
+      return d.access_token;
+    }
+    debugLog('Canva token refresh failed: '+JSON.stringify(d.error||d));
+    return token;
+  }).catch(function(e){
+    debugLog('Canva token refresh error: '+e.message);
+    return token;
+  });
+}
+function canvaApi(path, opts){
+  opts = opts || {};
+  return getCanvaAccessToken().then(function(token){
+    if(!token) return Promise.reject(new Error('Not connected to Canva'));
+    var qs = opts.query ? '&'+new URLSearchParams(opts.query).toString() : '';
+    var url = CANVA_AUTH_SERVER+'/api/canva-api?path='+encodeURIComponent(path)+qs;
+    var fetchOpts = { headers: { Authorization: 'Bearer '+token } };
+    if(opts.method === 'POST'){
+      fetchOpts.method = 'POST';
+      fetchOpts.headers['Content-Type'] = 'application/json';
+      fetchOpts.body = JSON.stringify(opts.body||{});
+    }
+    return fetch(url, fetchOpts).then(function(r){ return r.json(); });
+  });
+}
+// Opens a Canva design picker in the shared modal, temporarily replacing
+// whatever's currently shown there (typically the Facebook wizard's
+// Creative step) — this app only ever has one modal/overlay open at a
+// time, so picking a design (or cancelling) hands control back to the
+// caller via onPicked/onCancel rather than stacking a second modal.
+// onPicked receives the exported image as a data: URL, in the exact shape
+// the local file-picker's FileReader.readAsDataURL already produces, so
+// callers can drop it into the same field either way with no branching.
+function openCanvaDesignPicker(onPicked, onCancel){
+  $('modal').innerHTML =
+    '<div class="modal-hdr"><div class="modal-title">Select a Canva Design</div><button class="close-btn" id="canva-picker-close">&#x2715;</button></div>'+
+    '<div class="fg"><div id="canva-picker-body"><div class="empty">Loading your designs…</div></div></div>'+
+    '<div class="form-actions form-actions-sticky"><button class="cancel-btn" id="canva-picker-cancel">Cancel</button></div>';
+  $('modal').classList.add('modal-wide');
+  $('overlay').classList.add('open');
+
+  function cancel(){ if(onCancel) onCancel(); }
+  $('canva-picker-close').addEventListener('click', cancel);
+  $('canva-picker-cancel').addEventListener('click', cancel);
+
+  canvaApi('/designs', {query:{limit:'50', sort_by:'modified_descending'}}).then(function(resp){
+    var body = $('canva-picker-body');
+    if(!body) return;
+    if(resp.error){ body.innerHTML = '<div class="empty">'+escHtml(resp.error.message||'Failed to load designs')+'</div>'; return; }
+    var items = resp.items||[];
+    if(!items.length){ body.innerHTML = '<div class="empty">No designs found in your Canva account.</div>'; return; }
+    body.innerHTML = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px;max-height:420px;overflow-y:auto">'+
+      items.map(function(d){
+        var thumb = d.thumbnail && d.thumbnail.url;
+        return '<div class="canva-design-pick" data-id="'+escHtml(d.id)+'" style="cursor:pointer;border:1px solid #e5e7eb;border-radius:8px;padding:6px;text-align:center">'+
+          (thumb ? '<img src="'+escHtml(thumb)+'" style="width:100%;height:80px;object-fit:cover;border-radius:4px">' : '<div style="width:100%;height:80px;background:#f3f4f6;border-radius:4px"></div>')+
+          '<div style="font-size:11px;margin-top:4px;color:#555;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escHtml(d.title||'Untitled')+'</div>'+
+        '</div>';
+      }).join('')+
+    '</div>';
+    document.querySelectorAll('.canva-design-pick').forEach(function(el){
+      el.addEventListener('click', function(){
+        var designId = el.dataset.id;
+        body.innerHTML = '<div class="empty">Exporting image…</div>';
+        canvaApi('/x-export-full', {method:'POST', body:{design_id: designId}}).then(function(exportResp){
+          if(exportResp.error){
+            toast('Canva export failed: '+exportResp.error.message,'err');
+            body.innerHTML = '<div class="empty">'+escHtml(exportResp.error.message||'Export failed')+'</div>';
+            return;
+          }
+          if(exportResp.dataUrl){ onPicked(exportResp.dataUrl); }
+          else { toast('Canva export failed: no image returned','err'); }
+        }).catch(function(e){
+          debugLog('Canva export request failed — '+e.message);
+          toast('Canva export failed: '+e.message,'err');
+          body.innerHTML = '<div class="empty">Failed: '+escHtml(e.message)+'</div>';
+        });
+      });
+    });
+  }).catch(function(e){
+    var body = $('canva-picker-body');
+    debugLog('Canva design list request failed — '+e.message);
+    if(body) body.innerHTML = '<div class="empty">Failed to load: '+escHtml(e.message)+'</div>';
+  });
 }
 // Field names confirmed against a real connected site's response —
 // `stats` (headline all-time/today/yesterday counters) and `visits.data`
@@ -13363,6 +13559,7 @@ function bookmarkSectionHtml(audience, bookmarks){
 // build into later, rather than bolting a new nav entry on afterward.
 function renderMarketing(){
   var fbToken = localStorage.getItem('mm_fb_token');
+  var canvaToken = localStorage.getItem('mm_canva_token');
   $('main').innerHTML =
     '<div class="page-hdr"><div class="page-title">Marketing</div></div>'+
     '<div class="card" style="margin-bottom:16px">'+
@@ -13372,6 +13569,14 @@ function renderMarketing(){
       (fbToken
         ? '<div id="fb-campaigns-body"><div class="empty">Loading…</div></div>'
         : '<div style="padding:8px 0"><button class="add-btn" id="fb-connect-btn">Connect Facebook Ads</button></div>')+
+    '</div>'+
+    '<div class="card" style="margin-bottom:16px">'+
+      '<div class="card-hdr"><span class="card-title">Canva</span>'+
+        (canvaToken ? '<button class="cancel-btn" id="canva-disconnect">Disconnect</button>' : '')+
+      '</div>'+
+      (canvaToken
+        ? '<div style="padding:8px 0;font-size:12px;color:#166534">&#9989; Connected — the Facebook Ads wizard\'s Creative step can now pull an image straight from one of your Canva designs.</div>'
+        : '<div style="padding:8px 0"><button class="add-btn" id="canva-connect-btn">Connect Canva</button><div style="font-size:11px;color:#888;margin-top:6px">Optional — lets the ad-creation wizard pull an image straight from a Canva design instead of only a local file upload.</div></div>')+
     '</div>';
 
   var connectBtn = $('fb-connect-btn');
@@ -13384,6 +13589,17 @@ function renderMarketing(){
   });
   var createCampaignBtn = $('fb-create-campaign-btn');
   if(createCampaignBtn) createCampaignBtn.addEventListener('click', openFbCampaignWizard);
+
+  var canvaConnectBtn = $('canva-connect-btn');
+  if(canvaConnectBtn) canvaConnectBtn.addEventListener('click', canvaLogin);
+  var canvaDisconnectBtn = $('canva-disconnect');
+  if(canvaDisconnectBtn) canvaDisconnectBtn.addEventListener('click', function(){
+    localStorage.removeItem('mm_canva_token');
+    localStorage.removeItem('mm_canva_refresh_token');
+    localStorage.removeItem('mm_canva_token_expires');
+    toast('Canva disconnected','ok');
+    render();
+  });
 
   if(fbToken) loadFacebookCampaigns(fbToken);
 }
@@ -13682,7 +13898,11 @@ function renderFbWizard(){
       '<div class="field full"><label>Call to Action</label><select id="fbw-cta">'+
         FB_CTAS.map(function(c){return '<option value="'+c+'"'+(c===w.creative.cta?' selected':'')+'>'+c.replace(/_/g,' ')+'</option>';}).join('')+
       '</select></div>'+
-      '<div class="field full"><label>Ad Image</label><input type="file" id="fbw-image" accept="image/*">'+
+      '<div class="field full"><label>Ad Image</label>'+
+        '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'+
+          '<input type="file" id="fbw-image" accept="image/*">'+
+          '<button type="button" class="cancel-btn" id="fbw-canva-pick">&#127912; Select from Canva</button>'+
+        '</div>'+
         (w.creative.imageDataUrl?'<div style="margin-top:6px"><img src="'+w.creative.imageDataUrl+'" style="max-width:160px;max-height:160px;border-radius:6px;border:1px solid #e5e7eb"></div>':'')+
       '</div>';
   } else if(w.step===4){
@@ -13727,6 +13947,17 @@ function renderFbWizard(){
       renderFbWizard();
     };
     reader.readAsDataURL(file);
+  });
+  var canvaPickBtn = $('fbw-canva-pick');
+  if(canvaPickBtn) canvaPickBtn.addEventListener('click', function(){
+    if(!localStorage.getItem('mm_canva_token')){
+      toast('Connect Canva first — Marketing tab → Canva → Connect Canva','err');
+      return;
+    }
+    openCanvaDesignPicker(function(dataUrl){
+      w.creative.imageDataUrl = dataUrl;
+      renderFbWizard();
+    }, renderFbWizard);
   });
   var launchBtn = $('fbw-launch');
   if(launchBtn) launchBtn.addEventListener('click', fbWizardLaunch);
@@ -15452,6 +15683,7 @@ updateUndoBtn();
 checkDriveRedirect();
 checkWordpressRedirect();
 checkFacebookRedirect();
+checkCanvaRedirect();
 updateSyncStatusDisplay();
 console.log('[CRM] Ready. Clients:', db.clients.length, 'Trips:', db.trips.length);
 } // end bootApp()
