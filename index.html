@@ -9616,12 +9616,14 @@ function renderDash(){
     '<div class="card">'+
       '<div class="card-hdr"><span class="card-title">Planner tasks — today &amp; overdue</span><button class="view-all" id="dash-planner-view-all">View all &rarr;</button></div>'+
       (plannerTasks.length?
-        '<table><thead><tr><th>Client</th><th>Task</th><th>Due Date</th></tr></thead><tbody>'+
+        '<table><thead><tr><th>Client</th><th>Phone</th><th>Task</th><th>Due Date</th></tr></thead><tbody>'+
         plannerTasks.map(function(t){
           var cs=taskClients(t);
           var overdue=t.dueDate<today();
+          var phones=cs.map(function(c){return c.phone;}).filter(Boolean);
           return '<tr class="dash-task-row" data-id="'+t.id+'" style="cursor:pointer">'+
             '<td>'+(cs.length?cs.map(function(c){return '<span class="dash-client-link" data-id="'+c.id+'" style="color:#2563eb;cursor:pointer;text-decoration:underline">'+c.name+'</span>';}).join(', '):'<span style="color:#aaa">—</span>')+'</td>'+
+            '<td style="white-space:nowrap">'+(phones.length?phones.join(', '):'<span style="color:#aaa">—</span>')+'</td>'+
             '<td class="n">'+(t.title||'')+'</td>'+
             '<td>'+(overdue?'<span style="color:#dc2626;font-weight:600">'+t.dueDate+'</span>':t.dueDate)+'</td>'+
           '</tr>';
