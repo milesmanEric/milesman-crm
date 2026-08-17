@@ -13500,6 +13500,60 @@ function loadFacebookCampaigns(token){
     if(body) body.innerHTML = '<div class="empty">Failed to load: '+e.message+'</div>';
   });
 }
+// Account-level rollup for the Analytics tab's Facebook Ads card — same
+// insights endpoint loadFacebookCampaigns() already uses per-campaign, just
+// requested at level:'account' instead of level:'campaign' so it's one
+// summary row across every campaign rather than one row per campaign.
+function loadFacebookAdsAnalytics(token){
+  var body = $('fb-analytics-body');
+  if(!body) return;
+  Promise.all([
+    fbGraph('/'+FB_AD_ACCOUNT, {query:{fields:'name,currency'}}),
+    fbGraph('/'+FB_AD_ACCOUNT+'/insights', {query:{level:'account', date_preset:'last_30d', fields:'spend,impressions,reach,clicks,cpc,ctr'}})
+  ]).then(function(results){
+    var account = results[0], insightsResp = results[1];
+    if(!body) return;
+    if(account.error){ fbLogGraphError('analytics account fetch', account.error); body.innerHTML = '<div class="empty">'+escHtml(account.error.message||'Failed to load account')+'</div>'; return; }
+    if(insightsResp.error){ fbLogGraphError('analytics insights fetch', insightsResp.error); body.innerHTML = '<div class="empty">'+escHtml(insightsResp.error.message||'Failed to load insights')+'</div>'; return; }
+    var currency = account.currency || 'USD';
+    // A brand-new or fully-paused ad account has no rows at all for the
+    // period rather than a zeroed one, so fall back to an empty object
+    // instead of assuming data[0] exists.
+    var row = (insightsResp.data||[])[0] || {};
+    body.innerHTML = '<div style="font-size:11px;color:#888;margin-bottom:8px">'+escHtml(account.name||FB_AD_ACCOUNT)+' &middot; last 30 days</div>'+
+      '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px">'+
+        '<div class="stat"><div class="stat-lbl">Spend</div><div class="stat-val">'+currency+' '+money(row.spend||0)+'</div></div>'+
+        '<div class="stat"><div class="stat-lbl">Impressions</div><div class="stat-val">'+fmt(row.impressions||0)+'</div></div>'+
+        '<div class="stat"><div class="stat-lbl">Reach</div><div class="stat-val">'+fmt(row.reach||0)+'</div></div>'+
+        '<div class="stat"><div class="stat-lbl">Clicks</div><div class="stat-val">'+fmt(row.clicks||0)+'</div></div>'+
+        '<div class="stat"><div class="stat-lbl">CTR</div><div class="stat-val">'+(row.ctr!==undefined?Number(row.ctr).toFixed(2)+'%':'—')+'</div></div>'+
+      '</div>';
+  }).catch(function(e){
+    debugLog('Facebook Ads analytics: account/insights request failed before any response — '+e.message);
+    if(body) body.innerHTML = '<div class="empty">Failed to load: '+e.message+'</div>';
+  });
+}
+// Day-by-day breakdown backing the collapsible section below the summary
+// tiles — same time_increment:'1' pattern GA4's own daily table already
+// uses, just against Facebook's insights endpoint instead.
+function loadFacebookAdsDaily(token, bodyId){
+  var body = $(bodyId);
+  if(!body) return;
+  fbGraph('/'+FB_AD_ACCOUNT+'/insights', {query:{level:'account', date_preset:'last_30d', time_increment:'1', fields:'spend,impressions,clicks,cpc'}}).then(function(resp){
+    if(!body) return;
+    if(resp.error){ fbLogGraphError('daily insights fetch', resp.error); body.innerHTML = '<div class="empty">'+escHtml(resp.error.message||'Failed to load')+'</div>'; return; }
+    var rows = (resp.data||[]).slice().sort(function(a,b){return (b.date_start||'').localeCompare(a.date_start||'');});
+    if(!rows.length){ body.innerHTML = '<div class="empty">No data for this period.</div>'; return; }
+    body.innerHTML = '<div class="tbl-wrap" style="max-height:300px;overflow-y:auto"><table><thead><tr><th>Date</th><th>Spend</th><th>Impressions</th><th>Clicks</th><th>CPC</th></tr></thead><tbody>'+
+      rows.map(function(r){
+        return '<tr><td>'+fmtDate(r.date_start)+'</td><td>'+money(r.spend||0)+'</td><td>'+fmt(r.impressions||0)+'</td><td>'+fmt(r.clicks||0)+'</td><td>'+(r.cpc!==undefined?money(r.cpc):'—')+'</td></tr>';
+      }).join('')+
+      '</tbody></table></div>';
+  }).catch(function(e){
+    debugLog('Facebook Ads analytics: daily insights request failed before any response — '+e.message);
+    if(body) body.innerHTML = '<div class="empty">Failed to load: '+e.message+'</div>';
+  });
+}
 // ── Facebook Campaign Creation Wizard ───────────────────────────────────
 // 4-step flow: Campaign -> Ad Set (budget/audience) -> Creative (page/copy/
 // image) -> Review & Launch. Every object is created with status:'PAUSED'
@@ -13815,6 +13869,7 @@ function analyticsSectionHtml(key, title){
 // reconnect instead of silently failing the GA4 fetch.
 function renderAnalytics(){
   var wpToken = localStorage.getItem('mm_wp_token');
+  var fbToken = localStorage.getItem('mm_fb_token');
   $('main').innerHTML =
     '<div class="page-hdr"><div class="page-title">Analytics</div></div>'+
     '<div class="card" style="margin-bottom:16px">'+
@@ -13837,6 +13892,15 @@ function renderAnalytics(){
       analyticsSectionHtml('ga4-traffic-sources','Traffic Sources (30 days)')+
       analyticsSectionHtml('ga4-devices','Device Category (30 days)')+
       analyticsSectionHtml('ga4-countries','Top Countries (30 days)')+
+    '</div>'+
+    '<div class="card" style="margin-bottom:16px">'+
+      '<div class="card-hdr"><span class="card-title">Facebook Ads</span>'+
+        (fbToken ? '<button class="cancel-btn" id="fb-analytics-disconnect">Disconnect</button>' : '')+
+      '</div>'+
+      (fbToken
+        ? '<div id="fb-analytics-body"><div class="empty">Loading…</div></div>'+
+          analyticsSectionHtml('fb-ads-daily','Daily Spend & Performance (30 days)')
+        : '<div style="padding:8px 0"><button class="add-btn" id="fb-analytics-connect-btn">Connect Facebook</button></div>')+
     '</div>'+
     '<div class="card" style="margin-bottom:16px">'+
       '<div class="card-hdr"><span class="card-title">SEO (Yoast)</span></div>'+
@@ -13869,6 +13933,18 @@ function renderAnalytics(){
     if(!analyticsSectionCollapsed('wp-countries')) loadWordpressCountries(wpToken, 'wp-countries-body');
     if(!analyticsSectionCollapsed('wp-search-terms')) loadWordpressSearchTerms(wpToken, 'wp-search-terms-body');
     if(!analyticsSectionCollapsed('wp-followers')) loadWordpressFollowers(wpToken, 'wp-followers-body');
+  }
+
+  var fbConnectBtn = $('fb-analytics-connect-btn');
+  if(fbConnectBtn) fbConnectBtn.addEventListener('click', facebookLogin);
+  var fbDisconnectBtn = $('fb-analytics-disconnect');
+  if(fbDisconnectBtn) fbDisconnectBtn.addEventListener('click', function(){
+    localStorage.removeItem('mm_fb_token');
+    render();
+  });
+  if(fbToken){
+    loadFacebookAdsAnalytics(fbToken);
+    if(!analyticsSectionCollapsed('fb-ads-daily')) loadFacebookAdsDaily(fbToken, 'fb-ads-daily-body');
   }
 
   loadYoastSeoAudit();
