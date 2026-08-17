@@ -4423,6 +4423,138 @@ itineraryEmailBodyHtml(opts)+
 '</body>'+
 '</html>';
 }
+function itineraryDetailRowText(label, val){ return val ? (label+': '+val+'\n') : ''; }
+function itineraryPlainTextSection(title, rowsText){ return rowsText ? ('\n'+title+'\n'+rowsText) : ''; }
+// Plain-text counterpart to itineraryEmailBodyHtml() above, covering the
+// same sections/fallback rules (Booked Trip Details over the basic fields,
+// only-if-populated boxes) but as "Label: Value" lines instead of styled
+// HTML boxes — for contexts like the pre-trip well-wishes task where the
+// draft is a plain mailto: body, not a rendered HTML email.
+function tripItineraryPlainText(opts){
+  var datesLine = (opts.departDate?fmtDate(opts.departDate):'') + (opts.departDate&&opts.returnDate?' – ':'') + (opts.returnDate?fmtDate(opts.returnDate):'');
+  var out = 'Trip Itinerary'+((opts.tripName||opts.destination)?' — '+(opts.tripName||opts.destination):'')+'\n';
+  out += itineraryDetailRowText('Destination', opts.destination);
+  out += itineraryDetailRowText('Travel Dates', datesLine);
+  out += itineraryDetailRowText('Passengers', opts.passengers);
+
+  (opts.linkedTrips||[]).forEach(function(lt){
+    var label = lt.tripName || lt.destination || 'Linked trip';
+    var ltDatesLine = (lt.departDate?fmtDate(lt.departDate):'') + (lt.departDate&&lt.returnDate?' – ':'') + (lt.returnDate?fmtDate(lt.returnDate):'');
+    out += itineraryDetailRowText(label, ltDatesLine || lt.destination || '');
+  });
+
+  var airlineRecords = opts.airlineRecords || [];
+  if(airlineRecords.length){
+    airlineRecords.forEach(function(rec, ri){
+      var title = airlineRecords.length>1 ? 'Airline Record '+(ri+1) : 'Airline Record';
+      var rows = itineraryDetailRowText('Record Number', rec.recordNumber) + itineraryDetailRowText('Passengers', rec.passengers);
+      var segs = rec.segments||[];
+      segs.forEach(function(f,i){
+        var p = segs.length>1 ? ('Flight '+(i+1)+' — ') : '';
+        rows += itineraryDetailRowText(p+'Airline', f.airline) +
+          itineraryDetailRowText(p+'Flight Number', f.flightNumber) +
+          itineraryDetailRowText(p+'Route', f.origin&&f.destination?(f.origin+' → '+f.destination):'') +
+          itineraryDetailRowText(p+'Depart Date', f.departDate?fmtDate(f.departDate):'') +
+          itineraryDetailRowText(p+'Depart Time', f.departTime) +
+          itineraryDetailRowText(p+'Arrival Time', f.arrivalTime) +
+          itineraryDetailRowText(p+'Class of Service', f.classOfService);
+      });
+      out += itineraryPlainTextSection(title, rows);
+    });
+  } else if(opts.airline||opts.origin){
+    var flightRows = itineraryDetailRowText('Airline', opts.airline) +
+      itineraryDetailRowText('Route', opts.origin&&opts.destination?(opts.origin+' → '+opts.destination):'') +
+      itineraryDetailRowText('Class of Service', opts.flightClass);
+    out += itineraryPlainTextSection('Flight Details', flightRows);
+  }
+
+  var hotelEntries = opts.hotelEntries || [];
+  if(hotelEntries.length){
+    hotelEntries.forEach(function(h,i){
+      var rows = itineraryDetailRowText('Hotel', h.hotelBrand) +
+        itineraryDetailRowText('Check-in Date', h.checkInDate?fmtDate(h.checkInDate):'') +
+        itineraryDetailRowText('Nights', h.nights?(h.nights+(h.nights===1?' night':' nights')):'') +
+        itineraryDetailRowText('Confirmation Number', h.confirmationNumber);
+      out += itineraryPlainTextSection(hotelEntries.length>1?'Hotel '+(i+1)+' Details':'Hotel Details', rows);
+    });
+  } else if(opts.hotel){
+    var hotelRows = itineraryDetailRowText('Hotel', opts.hotel) + itineraryDetailRowText('Nights', opts.hotelNights);
+    out += itineraryPlainTextSection('Hotel Details', hotelRows);
+  }
+
+  var cruiseCabins = opts.cruiseCabins || [];
+  var cruiseRows = itineraryDetailRowText('Cruise Line', opts.cruiseLine) +
+    itineraryDetailRowText('Ship', opts.shipName) +
+    itineraryDetailRowText('Sailing Date', opts.cruiseSailingDate) +
+    itineraryDetailRowText('Return Date', opts.cruiseReturnDate) +
+    itineraryDetailRowText('Nights', opts.cruiseNights) +
+    itineraryDetailRowText('Departure Port', opts.cruiseDeparturePort) +
+    itineraryDetailRowText('Return Port', opts.cruiseReturnPort);
+  cruiseCabins.forEach(function(c,i){
+    var label = cruiseCabins.length>1 ? 'Cabin '+(i+1) : 'Cabin Type';
+    var val = [c.cabinType, c.peopleInCabin?(c.peopleInCabin+(c.peopleInCabin===1?' person':' people')):'', c.cabinNumber?('#'+c.cabinNumber):''].filter(Boolean).join(' — ');
+    cruiseRows += itineraryDetailRowText(label, val);
+  });
+  cruiseRows += itineraryDetailRowText('Confirmation Number', opts.cruiseConfirmationNumber) +
+    itineraryDetailRowText('Loyalty Number', opts.cruiseLoyaltyNumber);
+  out += itineraryPlainTextSection('Cruise Details', cruiseRows);
+
+  var carRows = itineraryDetailRowText('Company', opts.carRentalCompany) +
+    itineraryDetailRowText('Car Size', opts.carSize) +
+    itineraryDetailRowText('Pickup', [opts.carPickupLocation,opts.carPickupDate].filter(Boolean).join(' — ')) +
+    itineraryDetailRowText('Dropoff', [opts.carDropoffLocation,opts.carDropoffDate].filter(Boolean).join(' — ')) +
+    itineraryDetailRowText('Confirmation Number', opts.carConfirmationNumber);
+  out += itineraryPlainTextSection('Car Rental Details', carRows);
+
+  var tourEntries = opts.tourEntries || [];
+  tourEntries.forEach(function(t,i){
+    var rows = itineraryDetailRowText('Vendor', t.vendor) +
+      itineraryDetailRowText('Description', t.description) +
+      itineraryDetailRowText('Confirmation Number', t.confirmationNumber);
+    out += itineraryPlainTextSection(tourEntries.length>1?'Tour '+(i+1)+' Details':'Tour Details', rows);
+  });
+
+  var themeRows = itineraryDetailRowText('Park', opts.themePark) +
+    itineraryDetailRowText('Ticket Type', opts.themeParkTicketType) +
+    itineraryDetailRowText('Confirmation Number', opts.themeParkConfirmationNumber);
+  out += itineraryPlainTextSection('Theme Park Details', themeRows);
+
+  var trainRows = itineraryDetailRowText('Route', opts.trainDepartureCity&&opts.trainArrivalCity?(opts.trainDepartureCity+' → '+opts.trainArrivalCity):'') +
+    itineraryDetailRowText('Departure Date', opts.trainDepartureDate) +
+    itineraryDetailRowText('Return Date', opts.trainReturnDate) +
+    itineraryDetailRowText('Class of Service', opts.trainClassOfService) +
+    itineraryDetailRowText('Confirmation Number', opts.trainConfirmationNumber);
+  out += itineraryPlainTextSection('Train Details', trainRows);
+
+  var busRows = itineraryDetailRowText('Route', opts.busDepartureCity&&opts.busArrivalCity?(opts.busDepartureCity+' → '+opts.busArrivalCity):'') +
+    itineraryDetailRowText('Departure Date', opts.busDepartureDate) +
+    itineraryDetailRowText('Return Date', opts.busReturnDate) +
+    itineraryDetailRowText('Class of Service', opts.busClassOfService) +
+    itineraryDetailRowText('Confirmation Number', opts.busConfirmationNumber);
+  out += itineraryPlainTextSection('Bus Details', busRows);
+
+  var insuranceLineItems = [
+    ['Airline', opts.airlineInsurance], ['Hotel', opts.hotelInsurance], ['Cruise', opts.cruiseInsurance],
+    ['Car Rental', opts.carInsurance], ['Tours', opts.toursInsurance], ['Theme Park', opts.themeParkInsurance],
+    ['Train', opts.trainInsurance], ['Bus', opts.busInsurance]
+  ].filter(function(li){ return li[1]>0; });
+  if(insuranceLineItems.length){
+    var insRows = insuranceLineItems.map(function(li){ return itineraryDetailRowText(li[0]+' Insurance', '$'+money(li[1])); }).join('');
+    if(insuranceLineItems.length>1){
+      var totalInsurance = insuranceLineItems.reduce(function(a,li){return a+li[1];},0);
+      insRows += itineraryDetailRowText('Total', '$'+money(totalInsurance));
+    }
+    out += itineraryPlainTextSection('Insurance', insRows);
+  }
+
+  var bookingRows = (opts.supplierName ? '' : itineraryDetailRowText('Confirmation / Booking Ref', opts.bookingRef)) +
+    itineraryDetailRowText('Supplier', opts.supplierName) +
+    itineraryDetailRowText('Points Used', opts.pointsUsed) +
+    itineraryDetailRowText('Total Trip Value', opts.totalValue);
+  out += itineraryPlainTextSection('Booking Details', bookingRows);
+
+  return out;
+}
 function tripToItineraryOpts(trip, client, extraNotes){
   var sup = trip.supplierId ? db.vendors.find(function(v){return v.id===trip.supplierId;}) : null;
   var b = trip.booked || {};
@@ -6272,12 +6404,13 @@ function checkForUpcomingTripDepartures(){
     }).filter(Boolean);
     if(!clients.length) return;
     var filledBody = tpl ? fillTemplate(tpl.body, clients) : '';
+    var itineraryText = tripItineraryPlainText(tripToItineraryOpts(t, clients[0], ''));
     db.planner.push({
       id:newId('PL',db.planner),
       title:'Pre-trip well-wishes — '+(t.clientName||clients.map(function(c){return c.name;}).join(', ')),
       dueDate:today(), done:false, clientId:t.clientId, clientIds:(t.clientIds||[]), vendorId:'', tripId:t.id,
       completionNoteType:'General',
-      desc:'Trip departs tomorrow ('+fmtDate(t.departDate)+'). Suggested email:\n\nSubject: '+(tpl?tpl.subject:'')+'\n\n'+filledBody,
+      desc:'Trip departs tomorrow ('+fmtDate(t.departDate)+'). Suggested email:\n\nSubject: '+(tpl?tpl.subject:'')+'\n\n'+filledBody+'\n\n'+itineraryText,
       createdAt: today()
     });
     notifiedSet.add(t.id);
