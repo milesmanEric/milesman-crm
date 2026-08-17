@@ -65,6 +65,25 @@ To run automatically at login/boot, wrap `npm start` in your OS's usual
 mechanism (e.g. a `launchd` plist on macOS, a systemd user service on
 Linux, or Task Scheduler on Windows) pointed at this directory.
 
+### Run automatically on Windows
+
+`scripts/` has ready-made helpers that start the app hidden (no console
+window) whenever you log in — this uses Task Scheduler running in your own
+desktop session, **not** a Windows Service, since a Service can't show the
+visible browser window the one-time "Connect" login step needs.
+
+```powershell
+cd frequent-flyer-tracker
+npm install
+npx playwright install chromium
+powershell -ExecutionPolicy Bypass -File .\scripts\install-startup-task.ps1
+```
+
+It'll then start automatically at every login. Output is logged to
+`logs\output.log` since the window is hidden. To start it immediately
+without logging out again: `Start-ScheduledTask -TaskName FrequentFlyerTracker`.
+To remove the auto-start entry later: `powershell -ExecutionPolicy Bypass -File .\scripts\uninstall-startup-task.ps1`.
+
 Refresh cadence defaults to every 6 hours; override with:
 
 ```bash
