@@ -9620,10 +9620,16 @@ function renderDash(){
         plannerTasks.map(function(t){
           var cs=taskClients(t);
           var overdue=t.dueDate<today();
-          var phones=cs.map(function(c){return c.phone;}).filter(Boolean);
+          // Supplier Contact / Vendor Contact take precedence over a
+          // merely-also-linked client for the phone column, same precedence
+          // (and client-phone fallback, since taskContactInfo returns a
+          // blank phone for the 'client' case) the Planner page's own Phone
+          // column uses.
+          var primaryClient=(function(){var cid=taskClientId(t);return cid?db.clients.find(function(c){return c.id===cid;}):null;})();
+          var contactPhone=taskContactInfo(t).phone || (primaryClient?primaryClient.phone:'');
           return '<tr class="dash-task-row" data-id="'+t.id+'" style="cursor:pointer">'+
             '<td>'+(cs.length?cs.map(function(c){return '<span class="dash-client-link" data-id="'+c.id+'" style="color:#2563eb;cursor:pointer;text-decoration:underline">'+c.name+'</span>';}).join(', '):'<span style="color:#aaa">—</span>')+'</td>'+
-            '<td style="white-space:nowrap">'+(phones.length?phones.join(', '):'<span style="color:#aaa">—</span>')+'</td>'+
+            '<td style="white-space:nowrap">'+(contactPhone||'<span style="color:#aaa">—</span>')+'</td>'+
             '<td class="n">'+(t.title||'')+'</td>'+
             '<td>'+(overdue?'<span style="color:#dc2626;font-weight:600">'+t.dueDate+'</span>':t.dueDate)+'</td>'+
           '</tr>';
@@ -12836,6 +12842,23 @@ function plannerSortArrow(col){
   return d==='asc' ? ' &#9650;' : ' &#9660;';
 }
 
+// A task's "who this is about" — Supplier Contact and Vendor Contact both
+// take precedence over a merely-also-linked client, same precedence the
+// Phone/Email columns already used before this helper existed (a task
+// explicitly about a contact should surface THEIR info, not a client's
+// that happens to also be tagged on it). Backs the Type column's
+// color-coded badge (b-green Supplier / b-amber Vendor / b-blue Client)
+// as well as the Client-column label and the Phone/Email columns below.
+// Hoisted out of renderPlanner() so the Dashboard's own planner-tasks
+// widget can apply the same Supplier > Vendor > Client phone precedence.
+function taskContactInfo(t){
+  var vc = t.vendorContactId ? findVendorContact(t.vendorContactId) : null;
+  if(vc) return {type:'supplier', badgeCls:'b-green', badgeLabel:'Supplier', phone:vc.contact.phone, email:vc.contact.email};
+  var bvc = t.bizVendorContactId ? findBizVendorContact(t.bizVendorContactId) : null;
+  if(bvc) return {type:'vendor', badgeCls:'b-amber', badgeLabel:'Vendor', phone:bvc.contact.phone, email:bvc.contact.email};
+  if(taskClients(t).length) return {type:'client', badgeCls:'b-blue', badgeLabel:'Client', phone:'', email:''};
+  return {type:'none', badgeCls:'b-gray', badgeLabel:'—', phone:'', email:''};
+}
 function renderPlanner(){
   var statusFilter = window._plannerStatus||'';
   var dateFilter = window._plannerDateFilter!==undefined?window._plannerDateFilter:'today-overdue';
@@ -12867,21 +12890,6 @@ function renderPlanner(){
   function clientName(t){
     var cs=taskClients(t);
     return cs.length ? cs.map(function(c){return c.name;}).join(', ') : null;
-  }
-  // A task's "who this is about" — Supplier Contact and Vendor Contact both
-  // take precedence over a merely-also-linked client, same precedence the
-  // Phone/Email columns already used before this helper existed (a task
-  // explicitly about a contact should surface THEIR info, not a client's
-  // that happens to also be tagged on it). Backs the Type column's
-  // color-coded badge (b-green Supplier / b-amber Vendor / b-blue Client)
-  // as well as the Client-column label and the Phone/Email columns below.
-  function taskContactInfo(t){
-    var vc = t.vendorContactId ? findVendorContact(t.vendorContactId) : null;
-    if(vc) return {type:'supplier', badgeCls:'b-green', badgeLabel:'Supplier', phone:vc.contact.phone, email:vc.contact.email};
-    var bvc = t.bizVendorContactId ? findBizVendorContact(t.bizVendorContactId) : null;
-    if(bvc) return {type:'vendor', badgeCls:'b-amber', badgeLabel:'Vendor', phone:bvc.contact.phone, email:bvc.contact.email};
-    if(taskClients(t).length) return {type:'client', badgeCls:'b-blue', badgeLabel:'Client', phone:'', email:''};
-    return {type:'none', badgeCls:'b-gray', badgeLabel:'—', phone:'', email:''};
   }
   function clientLinksHtml(t){
     var cs=taskClients(t);
