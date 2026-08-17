@@ -14203,6 +14203,17 @@ function linkedClientEmailsStr(clientId, additionalIds){
     return c && c.email;
   }).filter(Boolean).join(', ');
 }
+// Same idea as linkedClientEmailsStr() above, for the task form's Phone
+// field — every linked client's phone (primary + additional), comma-joined.
+function linkedClientPhonesStr(clientId, additionalIds){
+  var ids = [];
+  if(clientId) ids.push(clientId);
+  (additionalIds||[]).forEach(function(cid){ if(cid && ids.indexOf(cid)===-1) ids.push(cid); });
+  return ids.map(function(cid){
+    var c = db.clients.find(function(x){return x.id===cid;});
+    return c && c.phone;
+  }).filter(Boolean).join(', ');
+}
 function openTaskForm(id){
   var d = id ? (db.planner.find(function(t){return t.id===id;})||{}) : {};
   // Existing tasks linked to a client before this task ever had its own
@@ -14211,6 +14222,11 @@ function openTaskForm(id){
   // to every linked client's email so the field reflects reality on open,
   // not just after re-selecting clients.
   var displayEmail = d.email || linkedClientEmailsStr(d.clientId, d.clientIds);
+  // Same precedence the Planner page's own Phone column uses (see
+  // taskContactInfo): a linked Supplier/Vendor Contact's phone wins over a
+  // merely-also-linked client's, falling back to every linked client's
+  // phone if neither contact is set.
+  var displayPhone = d.phone || taskContactInfo(d).phone || linkedClientPhonesStr(d.clientId, d.clientIds);
   var sortedClients = payingClientPicklist([d.clientId].concat(d.clientIds||[]).filter(Boolean)).sort(function(a,b){return (a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase());});
   var sortedVendors = [...db.vendors].sort(function(a,b){return (a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase());});
   var sortedTrips = [...db.trips].sort(function(a,b){return (b.departDate||'').localeCompare(a.departDate||'');});
@@ -14246,6 +14262,7 @@ function openTaskForm(id){
     '<div class="modal-hdr"><div class="modal-title">'+(id?'Edit Task':'Add Task')+'</div><button class="close-btn" id="modal-close">&#x2715;</button></div>'+
     '<div class="fg">'+
       fld('Task Title', inp('tk-title','text',d.title,'e.g. Follow up on quote'), true)+
+      fld('Phone', inp('tk-phone','tel',displayPhone))+
       fld('Email','<div style="display:flex;align-items:center;gap:8px">'+inp('tk-email','email',displayEmail)+
         '<span id="tk-email-link">'+(displayEmail?('<a href="mailto:'+mailtoAddr(displayEmail)+'" title="Email in Outlook" style="color:#2563eb;text-decoration:none;font-size:16px;flex-shrink:0">&#9993;&#65039;</a>'):'')+'</span>'+
       '</div>')+
@@ -14280,11 +14297,15 @@ function openTaskForm(id){
   $('modal-save-new-task').addEventListener('click', function(){ saveTaskAndNew(this.dataset.id); });
   $('tk-email').addEventListener('input', updateTaskEmailLinkDisplay);
   $('tk-client').addEventListener('change', refreshTaskEmailFromLinkedClients);
+  $('tk-client').addEventListener('change', refreshTaskPhoneFromLinkedClients);
   document.querySelectorAll('.task-client-cb').forEach(function(cb){
     cb.addEventListener('change', refreshTaskEmailFromLinkedClients);
+    cb.addEventListener('change', refreshTaskPhoneFromLinkedClients);
   });
   $('tk-vendor-contact').addEventListener('change', refreshTaskEmailFromVendorContact);
+  $('tk-vendor-contact').addEventListener('change', refreshTaskPhoneFromVendorContact);
   $('tk-bizvendor-contact').addEventListener('change', refreshTaskEmailFromBizVendorContact);
+  $('tk-bizvendor-contact').addEventListener('change', refreshTaskPhoneFromBizVendorContact);
 }
 // Linking clients on the task form also carries over their email(s) — the
 // primary Linked Client plus every checked Additional Client — so the
@@ -14340,6 +14361,38 @@ function refreshTaskEmailFromBizVendorContact(){
     updateTaskEmailLinkDisplay();
   }
 }
+// Same idea as refreshTaskEmailFromLinkedClients above, for the Phone field.
+function refreshTaskPhoneFromLinkedClients(){
+  var phoneInput = document.getElementById('tk-phone');
+  if(!phoneInput) return;
+  var clientSel = document.getElementById('tk-client');
+  var clientId = clientSel ? clientSel.value : '';
+  var additionalIds = Array.from(document.querySelectorAll('.task-client-cb:checked')).map(function(cb){return cb.value;});
+  var phones = linkedClientPhonesStr(clientId, additionalIds);
+  if(phones) phoneInput.value = phones;
+}
+// Same idea as refreshTaskEmailFromVendorContact above, for the Phone field.
+function refreshTaskPhoneFromVendorContact(){
+  var contactSel = document.getElementById('tk-vendor-contact');
+  if(!contactSel) return;
+  var found = findVendorContact(contactSel.value);
+  if(!found) return;
+  var vendorSel = document.getElementById('tk-vendor');
+  if(vendorSel) vendorSel.value = found.vendor.id;
+  if(found.contact.phone){
+    var phoneInput = document.getElementById('tk-phone');
+    if(phoneInput) phoneInput.value = found.contact.phone;
+  }
+}
+// Same idea as refreshTaskEmailFromBizVendorContact above, for the Phone field.
+function refreshTaskPhoneFromBizVendorContact(){
+  var contactSel = document.getElementById('tk-bizvendor-contact');
+  if(!contactSel) return;
+  var found = findBizVendorContact(contactSel.value);
+  if(!found || !found.contact.phone) return;
+  var phoneInput = document.getElementById('tk-phone');
+  if(phoneInput) phoneInput.value = found.contact.phone;
+}
 function updateTaskEmailLinkDisplay(){
   var emailInput = document.getElementById('tk-email');
   var linkSpan = document.getElementById('tk-email-link');
@@ -14355,6 +14408,7 @@ function saveTaskAndNew(id){
   var title = gv('tk-title');
   if(!title){toast('Task title is required','err');return;}
   var email = gv('tk-email');
+  var phone = gv('tk-phone');
   var clientId = gv('tk-client');
   var additionalClientIds = Array.from(document.querySelectorAll('.task-client-cb:checked')).map(function(cb){return cb.value;});
   var vendorId = gv('tk-vendor');
@@ -14369,6 +14423,7 @@ function saveTaskAndNew(id){
   openTaskForm();
   document.getElementById('tk-title').value = title;
   document.getElementById('tk-email').value = email;
+  document.getElementById('tk-phone').value = phone;
   var clientSel=document.getElementById('tk-client'); if(clientSel) clientSel.value=clientId;
   document.querySelectorAll('.task-client-cb').forEach(function(cb){ cb.checked = additionalClientIds.indexOf(cb.value)!==-1; });
   var vendorSel=document.getElementById('tk-vendor'); if(vendorSel) vendorSel.value=vendorId;
@@ -14396,6 +14451,7 @@ function saveTask(id){
   var additionalClientIds = Array.from(document.querySelectorAll('.task-client-cb:checked')).map(function(cb){return cb.value;}).filter(function(cid){return cid!==clientId;});
   var data = {
     title:title,
+    phone:gv('tk-phone'),
     email:gv('tk-email'),
     dueDate:gv('tk-due'),
     dueTime:gv('tk-time'),
