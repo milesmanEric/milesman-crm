@@ -215,7 +215,20 @@ async function refreshHeadless(accountId, provider) {
   return withPersistentContext(accountId, true, async (context) => {
     const page = context.pages()[0] || (await context.newPage());
     const targetUrl = provider.balanceUrl || provider.loginUrl;
-    await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 45000 });
+    try {
+      await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 45000 });
+    } catch {
+      // A headless browser is far more likely to be fingerprinted and
+      // blocked at the network/protocol level (bot protection) than the
+      // visible one used during Connect — that's the most likely cause
+      // here, not a real network outage. Report it plainly instead of
+      // leaking the raw Playwright stack into the dashboard.
+      return {
+        status: 'error',
+        message:
+          'Could not load the balance page in the background (often this provider\'s bot protection blocking a headless/invisible browser, even though the visible Connect window worked). Try "Refresh" again later, or fall back to editing the balance manually.',
+      };
+    }
     await page.waitForTimeout(1500);
 
     if (await looksLikeLoginPage(page)) {
