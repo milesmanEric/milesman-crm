@@ -588,7 +588,12 @@ const GA4_PROPERTY_ID = '362931402';
 // several act_{id} endpoints don't reliably send CORS headers to a direct
 // browser fetch.
 const FB_APP_ID       = '1037570602213729';
-const FB_SCOPE        = 'ads_management,ads_read,business_management';
+// pages_show_list/pages_read_engagement/read_insights added so the
+// Analytics tab's "Page Performance (organic, non-ads)" section can fetch
+// the connected Page's own access token (via /me/accounts) and query its
+// Insights — ads_management/ads_read alone don't cover organic Page data,
+// Facebook requires a page-scoped token for that, not the user token.
+const FB_SCOPE        = 'ads_management,ads_read,business_management,pages_show_list,pages_read_engagement,read_insights';
 const FB_REDIRECT     = 'https://milesmaneric.github.io/milesman-crm/';
 const FB_AUTH_SERVER  = 'https://milesman-auth.vercel.app';
 const FB_AD_ACCOUNT   = 'act_1285326830438388';
@@ -2182,7 +2187,11 @@ function checkFacebookRedirect(){
 }
 function fbGraph(path, opts){
   opts = opts || {};
-  var token = localStorage.getItem('mm_fb_token');
+  // opts.token overrides the stored user token — needed for Page Insights,
+  // which Facebook only serves against a page-scoped access token (see
+  // loadFacebookPageAnalytics), not the ad-account-scoped user token every
+  // other fbGraph() caller uses.
+  var token = opts.token || localStorage.getItem('mm_fb_token');
   var qs = opts.query ? '&'+new URLSearchParams(opts.query).toString() : '';
   var url = FB_AUTH_SERVER+'/api/facebook-graph?path='+encodeURIComponent(path)+qs;
   var fetchOpts = { headers: { Authorization: 'Bearer '+token } };
@@ -13958,6 +13967,69 @@ function loadFacebookAdsDaily(token, bodyId){
     if(body) body.innerHTML = '<div class="empty">Failed to load: '+e.message+'</div>';
   });
 }
+// Organic (non-ads) Page performance — a separate data source from
+// everything above, which is all scoped to the ad account. Facebook Page
+// Insights only accepts a page-scoped access token (obtained per-page from
+// /me/accounts), not the ad-account-scoped user token loadFacebookCampaigns/
+// loadFacebookAdsAnalytics already use — see fbGraph()'s opts.token
+// override, added specifically for this call.
+// Field names/periods follow Meta's current documented Page Insights
+// metrics (page_fans as lifetime total, the rest over a rolling 28-day
+// window) but aren't yet confirmed against a real connected Page's
+// response — if Facebook rejects a metric name, its own error message
+// (surfaced verbatim below) is what pins down the exact fix.
+function loadFacebookPageAnalytics(bodyId){
+  var body = $(bodyId);
+  if(!body) return;
+  fbGraph('/me/accounts', {query:{fields:'id,name,access_token'}}).then(function(pagesResp){
+    if(!body) return;
+    if(pagesResp.error){ fbLogGraphError('page list fetch', pagesResp.error); body.innerHTML = '<div class="empty">'+escHtml(pagesResp.error.message||'Failed to load Facebook Pages')+'</div>'; return; }
+    var pages = pagesResp.data||[];
+    if(!pages.length){ body.innerHTML = '<div class="empty">No Facebook Page found on this account — organic Page analytics need a connected Page (separate from the ad account).</div>'; return; }
+    // Assumes a single managed Page (true for a single-location business
+    // like this one) — if that's ever wrong, this shows the wrong page's
+    // name right in the label below, an easy tell for a one-line fix.
+    var page = pages[0];
+    var pageToken = page.access_token;
+
+    Promise.all([
+      fbGraph('/'+page.id+'/insights', {token:pageToken, query:{metric:'page_fans', period:'lifetime'}}),
+      fbGraph('/'+page.id+'/insights', {token:pageToken, query:{metric:'page_views_total,page_impressions,page_impressions_unique,page_post_engagements', period:'days_28'}})
+    ]).then(function(results){
+      if(!body) return;
+      var fansResp = results[0], statsResp = results[1];
+      if(fansResp.error){ fbLogGraphError('page fans fetch', fansResp.error); body.innerHTML = '<div class="empty">'+escHtml(fansResp.error.message||'Failed to load Page stats')+'</div>'; return; }
+      if(statsResp.error){ fbLogGraphError('page insights fetch', statsResp.error); body.innerHTML = '<div class="empty">'+escHtml(statsResp.error.message||'Failed to load Page stats')+'</div>'; return; }
+
+      function latestValue(metricData){
+        var vals = (metricData && metricData.values) || [];
+        return vals.length ? vals[vals.length-1].value : undefined;
+      }
+      var byName = {};
+      (fansResp.data||[]).concat(statsResp.data||[]).forEach(function(m){ byName[m.name] = m; });
+      var fans = latestValue(byName.page_fans);
+      var views = latestValue(byName.page_views_total);
+      var impressions = latestValue(byName.page_impressions);
+      var reach = latestValue(byName.page_impressions_unique);
+      var engagements = latestValue(byName.page_post_engagements);
+
+      body.innerHTML = '<div style="font-size:11px;color:#888;margin-bottom:8px">'+escHtml(page.name||'')+' &middot; last 28 days (Page Likes is all-time)</div>'+
+        '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px">'+
+          '<div class="stat"><div class="stat-lbl">Page Likes</div><div class="stat-val">'+(fans!==undefined?fmt(fans):'—')+'</div></div>'+
+          '<div class="stat"><div class="stat-lbl">Page Views</div><div class="stat-val">'+(views!==undefined?fmt(views):'—')+'</div></div>'+
+          '<div class="stat"><div class="stat-lbl">Impressions</div><div class="stat-val">'+(impressions!==undefined?fmt(impressions):'—')+'</div></div>'+
+          '<div class="stat"><div class="stat-lbl">Reach</div><div class="stat-val">'+(reach!==undefined?fmt(reach):'—')+'</div></div>'+
+          '<div class="stat"><div class="stat-lbl">Post Engagements</div><div class="stat-val">'+(engagements!==undefined?fmt(engagements):'—')+'</div></div>'+
+        '</div>';
+    }).catch(function(e){
+      debugLog('Facebook Page analytics: insights request failed before any response — '+e.message);
+      if(body) body.innerHTML = '<div class="empty">Failed to load: '+e.message+'</div>';
+    });
+  }).catch(function(e){
+    debugLog('Facebook Page analytics: page list request failed before any response — '+e.message);
+    if(body) body.innerHTML = '<div class="empty">Failed to load: '+e.message+'</div>';
+  });
+}
 // ── Facebook Campaign Creation Wizard ───────────────────────────────────
 // 4-step flow: Campaign -> Ad Set (budget/audience) -> Creative (page/copy/
 // image) -> Review & Launch. Every object is created with status:'PAUSED'
@@ -14313,12 +14385,15 @@ function renderAnalytics(){
       analyticsSectionHtml('ga4-countries','Top Countries (30 days)')+
     '</div>'+
     '<div class="card" style="margin-bottom:16px">'+
-      '<div class="card-hdr"><span class="card-title">Facebook Ads</span>'+
+      '<div class="card-hdr"><span class="card-title">Facebook</span>'+
         (fbToken ? '<button class="cancel-btn" id="fb-analytics-disconnect">Disconnect</button>' : '')+
       '</div>'+
       (fbToken
-        ? '<div id="fb-analytics-body"><div class="empty">Loading…</div></div>'+
-          analyticsSectionHtml('fb-ads-daily','Daily Spend & Performance (30 days)')
+        ? '<div style="font-size:11px;color:#888;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">Ads Performance</div>'+
+          '<div id="fb-analytics-body"><div class="empty">Loading…</div></div>'+
+          analyticsSectionHtml('fb-ads-daily','Daily Spend & Performance (30 days)')+
+          '<div style="font-size:11px;color:#888;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin:16px 0 6px;border-top:1px solid #f0f0f0;padding-top:12px">Page Performance (organic, non-ads)</div>'+
+          '<div id="fb-page-analytics-body"><div class="empty">Loading…</div></div>'
         : '<div style="padding:8px 0"><button class="add-btn" id="fb-analytics-connect-btn">Connect Facebook</button></div>')+
     '</div>'+
     '<div class="card" style="margin-bottom:16px">'+
@@ -14364,6 +14439,7 @@ function renderAnalytics(){
   if(fbToken){
     loadFacebookAdsAnalytics(fbToken);
     if(!analyticsSectionCollapsed('fb-ads-daily')) loadFacebookAdsDaily(fbToken, 'fb-ads-daily-body');
+    loadFacebookPageAnalytics('fb-page-analytics-body');
   }
 
   loadYoastSeoAudit();
