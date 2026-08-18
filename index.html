@@ -307,6 +307,7 @@ tr:last-child td{border-bottom:none}
         <button class="sync-btn" id="btn-import-revenue" style="color:#059669;border-color:#6ee7b7">&#128178; Import Revenue CSV</button>
         <button class="sync-btn" id="btn-clean-import-revenue" style="color:#7c3aed;border-color:#c4b5fd">&#129529; Clean &amp; Import Revenue File</button>
         <button class="sync-btn" id="btn-reset-revenue-import-history" style="color:#888;border-color:#ddd;font-size:11px" title="Lets the automatic Revenue Report email check re-fetch and re-attempt every report email again, instead of skipping ones it already saw">&#128260; Re-check All Revenue Report Emails</button>
+        <button class="sync-btn" id="btn-pending-import-matches" style="color:#d97706;border-color:#fde68a" title="Revenue import rows that had no client match — Skip this row now saves them here instead of discarding them">&#9203; Pending Import Matches (<span id="nc-pending-import-matches">0</span>)</button>
         <button class="sync-btn" id="btn-import-csv" style="color:#059669;border-color:#6ee7b7">&#128203; Import Clients CSV</button>
         <button class="sync-btn" id="btn-import-tripform" style="color:#059669;border-color:#6ee7b7">&#9992;&#65039; Import Book a Trip Form PDF(s)</button>
         <button class="sync-btn" id="btn-import-formspree" style="color:#059669;border-color:#6ee7b7">&#128231; Import Formspree Submissions</button>
@@ -979,7 +980,7 @@ const DEFAULT_BOOKMARKS = [
   {name:'AwardWallet', url:'https://www.awardwallet.com', category:'Award Tools', audience:'Travel Agent', notes:'tracks client mileage/points balances across programs'}
 ];
 
-let db = {clients:[],trips:[],vendors:[],bizVendors:[],planner:[],bookmarks:[],savedReports:[],groups:[],marketingPlan:[]};
+let db = {clients:[],trips:[],vendors:[],bizVendors:[],planner:[],bookmarks:[],savedReports:[],groups:[],marketingPlan:[],pendingImportMatches:[]};
 const UNDO_STACK = [];
 const MAX_UNDO = 20;
 function snapshot(label){
@@ -1472,6 +1473,7 @@ function loadDB(){
     db.savedReports=Array.isArray(d.savedReports)?d.savedReports:[];
     db.groups=Array.isArray(d.groups)?d.groups:[];
     db.marketingPlan=Array.isArray(d.marketingPlan)?d.marketingPlan:[];
+    db.pendingImportMatches=Array.isArray(d.pendingImportMatches)?d.pendingImportMatches:[];
     // Always normalize client names to 'Last, First' format on every load
     // (safe to run repeatedly since it skips names that already have a comma)
     var migrated=0;
@@ -2769,7 +2771,8 @@ async function driveRestore(){
         bookmarks:Array.isArray(d.bookmarks)?d.bookmarks:[],
         savedReports:Array.isArray(d.savedReports)?d.savedReports:[],
         groups:Array.isArray(d.groups)?d.groups:[],
-        marketingPlan:Array.isArray(d.marketingPlan)?d.marketingPlan:[]
+        marketingPlan:Array.isArray(d.marketingPlan)?d.marketingPlan:[],
+        pendingImportMatches:Array.isArray(d.pendingImportMatches)?d.pendingImportMatches:[]
       };
       db.clients.forEach(function(c){ if(c.name && !c.name.includes(',')) c.name=toLastFirst(c.name); });
       saveDB();render();
@@ -2874,7 +2877,8 @@ async function secureSyncRestore(){
         bookmarks:Array.isArray(d.bookmarks)?d.bookmarks:[],
         savedReports:Array.isArray(d.savedReports)?d.savedReports:[],
         groups:Array.isArray(d.groups)?d.groups:[],
-        marketingPlan:Array.isArray(d.marketingPlan)?d.marketingPlan:[]
+        marketingPlan:Array.isArray(d.marketingPlan)?d.marketingPlan:[],
+        pendingImportMatches:Array.isArray(d.pendingImportMatches)?d.pendingImportMatches:[]
       };
       db.clients.forEach(function(c){ if(c.name && !c.name.includes(',')) c.name=toLastFirst(c.name); });
       saveDB();render();
@@ -3515,7 +3519,7 @@ function importJSON(){
     r.onload=function(ev){
       try{
         const d=JSON.parse(ev.target.result);
-        if(Array.isArray(d.clients)&&Array.isArray(d.trips)){db=d;if(!Array.isArray(db.vendors))db.vendors=[];if(!Array.isArray(db.bizVendors))db.bizVendors=[];if(!Array.isArray(db.planner))db.planner=[];if(!Array.isArray(db.bookmarks))db.bookmarks=[];if(!Array.isArray(db.savedReports))db.savedReports=[];if(!Array.isArray(db.groups))db.groups=[];if(!Array.isArray(db.marketingPlan))db.marketingPlan=[];(db.clients||[]).forEach(function(c){ if(c.name && !c.name.includes(',')) c.name=toLastFirst(c.name); });saveDB();toast('Data imported');render();}
+        if(Array.isArray(d.clients)&&Array.isArray(d.trips)){db=d;if(!Array.isArray(db.vendors))db.vendors=[];if(!Array.isArray(db.bizVendors))db.bizVendors=[];if(!Array.isArray(db.planner))db.planner=[];if(!Array.isArray(db.bookmarks))db.bookmarks=[];if(!Array.isArray(db.savedReports))db.savedReports=[];if(!Array.isArray(db.groups))db.groups=[];if(!Array.isArray(db.marketingPlan))db.marketingPlan=[];if(!Array.isArray(db.pendingImportMatches))db.pendingImportMatches=[];(db.clients||[]).forEach(function(c){ if(c.name && !c.name.includes(',')) c.name=toLastFirst(c.name); });saveDB();toast('Data imported');render();}
         else toast('Invalid backup file','err');
       }catch(ex){toast('Could not read file','err');}
     };r.readAsText(f);
@@ -5379,158 +5383,171 @@ function showImportMatchModal(name){
   };
 }
 
+// Builds+pushes one trip from a revenue row now that a client id is known —
+// supplier creation, duplicate detection/backfill, trip creation, and
+// client revenue update. Factored out of finalizeImport()'s batch loop so
+// resolvePendingImportMatch() (resolving one Pending Import Match at a
+// time, outside any batch) can reuse the exact same logic rather than a
+// hand-copied version that could quietly drift from it. seenInBatch is a
+// signature-count map — pass one shared across a whole batch (as
+// finalizeImport() does) or a fresh {} for a single standalone row.
+// Returns {outcome: 'imported'|'relinked'|'duplicate'|'no-client', amt, supplierCreated}.
+function importRevenueRowForClient(row, cid, seenInBatch){
+  seenInBatch = seenInBatch || {};
+  var supplierCreated = false;
+  // Create the Supplier first if this row named one that doesn't exist yet
+  // (extractRevenueRow() already decided Name is the supplier, but only
+  // sets supplierId when an existing record matched it) — before any
+  // client/trip creation below, so the trip is never left pointing at a
+  // supplier name with no actual Supplier record behind it.
+  if(row.supplierName && !row.supplierId){
+    var newSupplier=db.vendors.find(function(v){return (v.name||'').toLowerCase().trim()===row.supplierName.toLowerCase().trim();});
+    if(!newSupplier){
+      newSupplier={id:newId('V',db.vendors),name:row.supplierName,type:'Supplier',category:'',clientIds:[],website:'',notes:'',notesLog:[]};
+      db.vendors.push(newSupplier);
+      supplierCreated = true;
+      debugLog('Revenue: created new Supplier "'+newSupplier.name+'" ('+newSupplier.id+')');
+    }
+    row.supplierId=newSupplier.id;
+  }
+
+  const client=db.clients.find(function(c){return c.id===cid;});
+  if(!client) return {outcome:'no-client'};
+
+  // Build a signature for this row, and count how many times this exact
+  // signature has already appeared earlier in this batch/session (to allow
+  // legitimate repeated line items).
+  var sig = cid+'|'+(row.invoiceNum||'')+'|'+(row.supplierId||'')+'|'+row.amt+'|'+(row.date?row.date.slice(0,10):today());
+  var occurrenceIndex = seenInBatch[sig] || 0;
+  seenInBatch[sig] = occurrenceIndex + 1;
+
+  var existingMatchCount = db.trips.filter(function(t){
+    if(row.invoiceNum && t.invoiceNum){
+      return t.clientId===cid && t.invoiceNum===row.invoiceNum && t.cashPaid===row.amt;
+    }
+    return t.clientId===cid &&
+           t.supplierId===(row.supplierId||'') &&
+           t.cashPaid===row.amt &&
+           (t.departDate||'').slice(0,10)===(row.date?row.date.slice(0,10):today());
+  }).length;
+
+  var dupExists = occurrenceIndex < existingMatchCount;
+  if(dupExists){
+    // Backfill: the matching trip may be missing data this later import
+    // pass can now fill in — a supplier or invoiceDate added since the
+    // trip was first imported.
+    var dupTrip = db.trips.find(function(t){
+      if(row.invoiceNum && t.invoiceNum){
+        return t.clientId===cid && t.invoiceNum===row.invoiceNum && t.cashPaid===row.amt;
+      }
+      return t.clientId===cid && t.cashPaid===row.amt &&
+             (t.departDate||'').slice(0,10)===(row.date?row.date.slice(0,10):today());
+    });
+    var backfilled=[];
+    if(dupTrip){
+      if(row.supplierId && !dupTrip.supplierId){
+        dupTrip.supplierId=row.supplierId;
+        dupTrip.supplierName=row.supplierName;
+        backfilled.push('supplier -> '+row.supplierName);
+      }
+      if(row.date && !dupTrip.invoiceDate){
+        var rowInvoiceDate='';
+        try{const d=new Date(row.date);if(!isNaN(d))rowInvoiceDate=d.toISOString().slice(0,10);}catch(e){}
+        if(rowInvoiceDate){ dupTrip.invoiceDate=rowInvoiceDate; backfilled.push('invoiceDate -> '+rowInvoiceDate); }
+      }
+    }
+    if(backfilled.length){
+      debugLog('Revenue: backfilled '+backfilled.join(', ')+' for existing trip '+dupTrip.id);
+      return {outcome:'relinked'};
+    }
+    debugLog('Revenue: duplicate skipped for '+client.name);
+    return {outcome:'duplicate'};
+  }
+
+  // Build destination: use memo, or supplier+date, or 'Imported Trip'
+  const tripId=newId('T',db.trips);
+  const dest=row.memo||(row.supplierName?row.supplierName+(row.date?' '+row.date:''):'Imported Trip');
+  // Use Ship Date column as trip start date if available, else fall back to extracted/invoice date
+  let tripDate=today();
+  if(row.shipDate){
+    try{const d=new Date(row.shipDate);if(!isNaN(d))tripDate=d.toISOString().slice(0,10);}catch(e){}
+  } else {
+    var extractedDate = extractDateFromText(dest);
+    if(extractedDate){
+      tripDate = extractedDate;
+    } else if(row.date){
+      try{const d=new Date(row.date);if(!isNaN(d))tripDate=d.toISOString().slice(0,10);}catch(e){}
+    }
+  }
+  // Separate from tripDate/departDate on purpose — departDate prioritizes
+  // Ship Date (the travel date) when present, but the "By Invoice #" report
+  // also needs the actual transaction/booking date (the source file's own
+  // "Date" column) to filter by, since those two dates can legitimately
+  // fall in different reporting periods.
+  let invoiceDate='';
+  if(row.date){
+    try{const d=new Date(row.date);if(!isNaN(d))invoiceDate=d.toISOString().slice(0,10);}catch(e){}
+  }
+
+  db.trips.push({
+    id:tripId,clientId:cid,clientName:client.name,
+    destination:dest,origin:'',departDate:tripDate,returnDate:tripDate,invoiceDate:invoiceDate,
+    status:'Completed',type:'Leisure',airline:'',flightClass:'',hotel:'',
+    hotelNights:0,pointsUsed:0,cashPaid:row.amt,totalValue:row.amt,
+    bookingRef:row.invoiceNum||'',notes:row.memo||'',product:row.product||'',
+    supplierId:row.supplierId||'',supplierName:row.supplierName||'',
+    invoiceNum:row.invoiceNum||''
+  });
+
+  // Deliberately not pushing cid onto the supplier's clientIds here — see
+  // the matching comment in saveTrip(): getVendorStats() already derives
+  // the supplier's client list live from db.trips via supplierId, so it
+  // doesn't need (or want) a separately-maintained, never-cleaned-up copy.
+
+  const newRev=(client.totalRevenue||0)+row.amt;
+  db.clients=db.clients.map(function(c){return c.id===cid?Object.assign({},c,{totalRevenue:newRev}):c;});
+
+  return {outcome:'imported', amt:row.amt, supplierCreated:supplierCreated};
+}
 function finalizeImport(){
   const state=window._importState;
-  let imported=0,skipped=0,totalRev=0,relinked=0;
+  let imported=0,skipped=0,totalRev=0,relinked=0,suppliersCreated=0,pendingSaved=0;
   var seenInBatch={}; // track signature counts seen so far in THIS import batch
-  var suppliersCreated=0;
   state.rows.forEach(function(row){
-    // Create the Supplier first if this row named one that doesn't exist
-    // yet (extractRevenueRow() already decided Name is the supplier, but
-    // only sets supplierId when an existing record matched it) — before any
-    // client/trip creation below, so the trip is never left pointing at a
-    // supplier name with no actual Supplier record behind it. Re-checks
-    // db.vendors fresh each row, so multiple rows naming the same new
-    // supplier within this batch dedupe onto the one record created for
-    // the first of them.
-    if(row.supplierName && !row.supplierId){
-      var newSupplier=db.vendors.find(function(v){return (v.name||'').toLowerCase().trim()===row.supplierName.toLowerCase().trim();});
-      if(!newSupplier){
-        newSupplier={id:newId('V',db.vendors),name:row.supplierName,type:'Supplier',category:'',clientIds:[],website:'',notes:'',notesLog:[]};
-        db.vendors.push(newSupplier);
-        suppliersCreated++;
-        debugLog('Revenue: created new Supplier "'+newSupplier.name+'" ('+newSupplier.id+')');
-      }
-      row.supplierId=newSupplier.id;
-    }
-
-    // Find client by name
+    // Find client by name — check resolution from the match modal first,
+    // then fall back to the same truncation-tolerant matcher
+    // startRevenueImport's pre-pass already used, so the two can't disagree
+    // about which client a given row belongs to.
     let cid=null;
-
-    // Check resolution from match modal first
     if(state.resolutions[row.name]!==undefined){
       cid=state.resolutions[row.name];
     }
-
-    // Fuzzy match if no resolution — same truncation-tolerant matcher
-    // startRevenueImport's pre-pass already used, so the two can't
-    // disagree about which client a given row belongs to.
     if(!cid){
       const direct=matchClientByName(row.name);
       if(direct) cid=direct.id;
     }
 
-    if(!cid){debugLog('Revenue: no client match for '+row.name);skipped++;return;}
-
-    const client=db.clients.find(c=>c.id===cid);
-    if(!client){skipped++;return;}
-
-    // Build a signature for this row, and count how many times this exact signature
-    // has already appeared earlier in THIS batch (to allow legitimate repeated line items)
-    var sig = cid+'|'+(row.invoiceNum||'')+'|'+(row.supplierId||'')+'|'+row.amt+'|'+(row.date?row.date.slice(0,10):today());
-    var occurrenceIndex = seenInBatch[sig] || 0; // how many times we've already seen this sig in this batch
-    seenInBatch[sig] = occurrenceIndex + 1;
-
-    // Count how many matching trips already exist in db.trips with this exact signature
-    var existingMatchCount = db.trips.filter(function(t){
-      if(row.invoiceNum && t.invoiceNum){
-        return t.clientId===cid && t.invoiceNum===row.invoiceNum && t.cashPaid===row.amt;
-      }
-      return t.clientId===cid &&
-             t.supplierId===(row.supplierId||'') &&
-             t.cashPaid===row.amt &&
-             (t.departDate||'').slice(0,10)===(row.date?row.date.slice(0,10):today());
-    }).length;
-
-    // Only treat as duplicate if we've already accounted for at least as many occurrences
-    // as already exist in db.trips (this allows legitimate repeated line items within a batch)
-    var dupExists = occurrenceIndex < existingMatchCount;
-    if(dupExists){
-      // Backfill: the matching trip may be missing data that this later
-      // import pass can now fill in — a supplier (if it was added to the
-      // Suppliers list after this trip was first imported) and/or an
-      // invoiceDate (a field added after older trips were already
-      // imported, so they were never given one). Without this, a re-import
-      // of the exact same file just sees an existing duplicate and skips
-      // it every time, and a trip imported before invoiceDate existed can
-      // never pick one up — the original row.date is only ever available
-      // during import, never stored on its own once departDate is set.
-      var dupTrip = db.trips.find(function(t){
-        if(row.invoiceNum && t.invoiceNum){
-          return t.clientId===cid && t.invoiceNum===row.invoiceNum && t.cashPaid===row.amt;
-        }
-        return t.clientId===cid && t.cashPaid===row.amt &&
-               (t.departDate||'').slice(0,10)===(row.date?row.date.slice(0,10):today());
-      });
-      var backfilled=[];
-      if(dupTrip){
-        if(row.supplierId && !dupTrip.supplierId){
-          dupTrip.supplierId=row.supplierId;
-          dupTrip.supplierName=row.supplierName;
-          backfilled.push('supplier -> '+row.supplierName);
-        }
-        if(row.date && !dupTrip.invoiceDate){
-          var rowInvoiceDate='';
-          try{const d=new Date(row.date);if(!isNaN(d))rowInvoiceDate=d.toISOString().slice(0,10);}catch(e){}
-          if(rowInvoiceDate){ dupTrip.invoiceDate=rowInvoiceDate; backfilled.push('invoiceDate -> '+rowInvoiceDate); }
-        }
-      }
-      if(backfilled.length){
-        relinked++;
-        debugLog('Revenue: backfilled '+backfilled.join(', ')+' for existing trip '+dupTrip.id);
-      } else {
-        debugLog('Revenue: duplicate skipped for '+client.name);
-      }
+    if(!cid){
+      // No client match at all — was either explicitly "Skip"ped in the
+      // match modal or the fuzzy match found nothing. Previously this row's
+      // data (amount, date, memo, invoice number — everything) was simply
+      // discarded here with only a debug log line as any trace, with no way
+      // to ever come back and resolve it. Saving it to Pending Import
+      // Matches instead means it can be picked up and matched to a client
+      // whenever, from the Debug Panel's "Pending Import Matches" button.
+      debugLog('Revenue: no client match for '+row.name+' — saved to Pending Import Matches');
+      db.pendingImportMatches.push({id:newId('PIM', db.pendingImportMatches), name:row.name, row:row, createdAt:tsNow()});
+      pendingSaved++;
       skipped++;
       return;
     }
 
-    // Build destination: use memo, or supplier+date, or 'Imported Trip'
-    const tripId=newId('T',db.trips);
-    const dest=row.memo||(row.supplierName?row.supplierName+(row.date?' '+row.date:''):'Imported Trip');
-    // Use Ship Date column as trip start date if available, else fall back to extracted/invoice date
-    let tripDate=today();
-    if(row.shipDate){
-      try{const d=new Date(row.shipDate);if(!isNaN(d))tripDate=d.toISOString().slice(0,10);}catch(e){}
-    } else {
-      var extractedDate = extractDateFromText(dest);
-      if(extractedDate){
-        tripDate = extractedDate;
-      } else if(row.date){
-        try{const d=new Date(row.date);if(!isNaN(d))tripDate=d.toISOString().slice(0,10);}catch(e){}
-      }
-    }
-    // Separate from tripDate/departDate on purpose — departDate prioritizes
-    // Ship Date (the travel date) when present, but the "By Invoice #"
-    // report also needs the actual transaction/booking date (the source
-    // file's own "Date" column) to filter by, since those two dates can
-    // legitimately fall in different reporting periods (e.g. booked in one
-    // month, travel happens the next).
-    let invoiceDate='';
-    if(row.date){
-      try{const d=new Date(row.date);if(!isNaN(d))invoiceDate=d.toISOString().slice(0,10);}catch(e){}
-    }
-
-    db.trips.push({
-      id:tripId,clientId:cid,clientName:client.name,
-      destination:dest,origin:'',departDate:tripDate,returnDate:tripDate,invoiceDate:invoiceDate,
-      status:'Completed',type:'Leisure',airline:'',flightClass:'',hotel:'',
-      hotelNights:0,pointsUsed:0,cashPaid:row.amt,totalValue:row.amt,
-      bookingRef:row.invoiceNum||'',notes:row.memo||'',product:row.product||'',
-      supplierId:row.supplierId||'',supplierName:row.supplierName||'',
-      invoiceNum:row.invoiceNum||''
-    });
-
-    // Deliberately not pushing cid onto the supplier's clientIds here — see
-    // the matching comment in saveTrip(): getVendorStats() already derives
-    // the supplier's client list live from db.trips via supplierId, so it
-    // doesn't need (or want) a separately-maintained, never-cleaned-up copy.
-
-    // Update client revenue
-    const newRev=(client.totalRevenue||0)+row.amt;
-    db.clients=db.clients.map(c=>c.id===cid?Object.assign({},c,{totalRevenue:newRev}):c);
-
-    imported++;totalRev+=row.amt;
+    var result = importRevenueRowForClient(row, cid, seenInBatch);
+    if(result.outcome==='no-client'){ skipped++; return; }
+    if(result.outcome==='relinked'){ relinked++; skipped++; return; }
+    if(result.outcome==='duplicate'){ skipped++; return; }
+    if(result.supplierCreated) suppliersCreated++;
+    imported++; totalRev+=result.amt;
   });
   var extractionSkipped = state.extractionSkipped||0;
   var incompleteNameCount = state.incompleteNameCount||0;
@@ -5542,10 +5559,98 @@ function finalizeImport(){
     (relinked?', backfilled '+relinked+' existing trip'+(relinked!==1?'s':''):'')+
     (skipped?' ('+skipped+' skipped)':'')+
     (extractionSkipped?', '+extractionSkipped+' row'+(extractionSkipped!==1?'s':'')+' skipped before matching (see debug log for why)':'')+
+    (pendingSaved?', '+pendingSaved+' saved to Pending Import Matches for later':'')+
     // A new client created from a "..."-truncated report name only ever has
     // a partial name (see cleanNewClientName) — surfaced here so it's not
     // easy to miss the way it was when this only showed up in the debug log.
     (incompleteNameCount?', '+incompleteNameCount+' new client name'+(incompleteNameCount!==1?'s':'')+' incomplete from report truncation — please verify':''),'ok');
+}
+
+// Revenue rows that never got a client match — either explicitly "Skip"ped
+// in the unmatched-client modal, or the fuzzy match found nothing — land
+// here (see finalizeImport()) instead of being discarded, so they can be
+// resolved to a client whenever, not just in the moment of the original
+// import. Stays open after each resolve/discard (re-renders itself) so
+// several can be worked through in one sitting.
+function openPendingImportMatchesModal(){
+  var pending = [...db.pendingImportMatches].sort(function(a,b){return (a.createdAt||'').localeCompare(b.createdAt||'');});
+  var sortedClients = [...db.clients].sort(function(a,b){return (a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase());});
+  var clientOpts = '<option value="">Select existing client...</option>'+sortedClients.map(function(c){return '<option value="'+c.id+'">'+c.name+'</option>';}).join('');
+
+  $('modal').innerHTML =
+    '<div class="modal-hdr"><div class="modal-title">Pending Import Matches</div><button class="close-btn" id="modal-close">&#x2715;</button></div>'+
+    '<div class="fg">'+
+      (pending.length ? pending.map(function(pm){
+        var row = pm.row||{};
+        var details = [row.date?fmtDate(row.date):'', row.amt?('$'+money(row.amt)):'', row.memo||row.product||''].filter(Boolean).join(' — ');
+        return '<div class="field full" style="border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin-bottom:10px;background:#fafafa">'+
+          '<div style="font-weight:600;color:#111;margin-bottom:4px">'+escHtml(pm.name)+'</div>'+
+          (details?'<div style="font-size:12px;color:#666;margin-bottom:10px">'+escHtml(details)+'</div>':'')+
+          '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">'+
+            '<select class="pim-client-sel" data-id="'+pm.id+'" style="flex:1;min-width:180px">'+clientOpts+'</select>'+
+            '<button type="button" class="pim-match-btn" data-id="'+pm.id+'" style="padding:6px 12px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit">Match</button>'+
+            '<button type="button" class="pim-newclient-btn" data-id="'+pm.id+'" style="padding:6px 12px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#059669;cursor:pointer;font-size:12px;font-family:inherit">+ Add as New Client</button>'+
+            '<button type="button" class="pim-discard-btn" data-id="'+pm.id+'" style="padding:6px 12px;border-radius:7px;border:none;background:none;color:#dc2626;cursor:pointer;font-size:12px;font-family:inherit">Discard</button>'+
+          '</div>'+
+        '</div>';
+      }).join('') : '<div class="empty">No pending import matches</div>')+
+    '</div>'+
+    '<div class="form-actions form-actions-sticky"><button class="cancel-btn" id="modal-cancel">Close</button></div>';
+
+  $('overlay').classList.add('open');
+  $('modal-close').addEventListener('click', closeModal);
+  $('modal-cancel').addEventListener('click', closeModal);
+
+  document.querySelectorAll('.pim-match-btn').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var sel = document.querySelector('.pim-client-sel[data-id="'+btn.dataset.id+'"]');
+      var cid = sel ? sel.value : '';
+      if(!cid){ toast('Select a client first','err'); return; }
+      resolvePendingImportMatch(btn.dataset.id, cid);
+    });
+  });
+  document.querySelectorAll('.pim-newclient-btn').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var pm = db.pendingImportMatches.find(function(x){return x.id===btn.dataset.id;});
+      if(!pm) return;
+      snapshot('Add client from pending import match');
+      var newCid = newId('C', db.clients);
+      db.clients.push({id:newCid, name:cleanNewClientName(pm.name), email:'', phone:'', location:'', preferredAirline:'', preferredHotel:'', notesLog:[], joined:today(), totalTrips:0, totalRevenue:0});
+      resolvePendingImportMatch(btn.dataset.id, newCid, true);
+    });
+  });
+  document.querySelectorAll('.pim-discard-btn').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      if(!confirm('Discard this pending match without importing it? This cannot be undone from here.')) return;
+      snapshot('Discard pending import match');
+      db.pendingImportMatches = db.pendingImportMatches.filter(function(x){return x.id!==btn.dataset.id;});
+      saveDB();render();
+      openPendingImportMatchesModal();
+    });
+  });
+}
+// skipSnapshot lets the "+ Add as New Client" button (which already took
+// its own snapshot before creating the client) avoid a redundant second
+// undo step for what's really one logical action from the user's
+// perspective.
+function resolvePendingImportMatch(id, cid, skipSnapshot){
+  var pm = db.pendingImportMatches.find(function(x){return x.id===id;});
+  if(!pm) return;
+  if(!skipSnapshot) snapshot('Resolve pending import match');
+  var result = importRevenueRowForClient(pm.row, cid, {});
+  db.pendingImportMatches = db.pendingImportMatches.filter(function(x){return x.id!==id;});
+  saveDB();
+  if(result.outcome==='imported'){
+    toast('Imported $'+money(result.amt)+' for '+pm.name+(result.supplierCreated?' (created new supplier)':''),'ok');
+  } else if(result.outcome==='relinked'){
+    toast('Matched to an existing trip — backfilled missing info','ok');
+  } else if(result.outcome==='duplicate'){
+    toast('Looks like a duplicate of an existing trip — not re-imported','info');
+  } else {
+    toast('Could not resolve — client not found','err');
+  }
+  render();
+  openPendingImportMatchesModal();
 }
 
 function importCSV(){
@@ -7022,6 +7127,7 @@ function render(){
   var ncv=$('nc-vendors'); if(ncv) ncv.textContent=db.vendors.length;
   var ncp=$('nc-planner'); if(ncp) ncp.textContent=db.planner.filter(function(t){return !t.done;}).length;
   var ncg=$('nc-groups'); if(ncg) ncg.textContent=db.groups.length;
+  var ncpim=$('nc-pending-import-matches'); if(ncpim) ncpim.textContent=db.pendingImportMatches.length;
   if(view==='dashboard') renderDash();
   else if(view==='clients') renderClients();
   else if(view==='trips') renderTrips();
@@ -15644,6 +15750,7 @@ function bindClick(id, handler){
     toast('Revenue report import history cleared — next check re-scans the last 24h','ok');
     debugLog('Revenue report import history cleared (manual reset)');
   });
+  bindClick('btn-pending-import-matches', openPendingImportMatchesModal);
   bindClick('btn-user-guide', function(){ window.open('user-guide.html', '_blank', 'noopener,noreferrer'); });
   bindClick('btn-documentation', function(){ window.open('documentation.html', '_blank', 'noopener,noreferrer'); });
   bindClick('btn-debug-toggle', function(){
