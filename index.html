@@ -14653,11 +14653,18 @@ function fetchYesterdayGA4(dateStr){
 function fetchYesterdayWordPress(dateStr){
   var token = localStorage.getItem('mm_wp_token');
   if(!token) return Promise.reject(new Error('WordPress.com not connected'));
-  return fetch(WP_AUTH_SERVER+'/api/wordpress-stats?path='+encodeURIComponent('/sites/'+WP_SITE+'/stats/visits')+'&unit=day&date='+dateStr+'&quantity=1', {
+  // Reuses the same /sites/{site}/stats endpoint loadWordpressStats() already
+  // calls successfully (its visits.data array is the same [date, views,
+  // visitors] rows behind that card's own "Last 30 Days" table) — a
+  // separate /stats/visits path tried here originally returned "unauthorized"
+  // from WordPress.com despite a valid token, for reasons that were never
+  // pinned down; this proven endpoint sidesteps the question entirely.
+  return fetch(WP_AUTH_SERVER+'/api/wordpress-stats?path='+encodeURIComponent('/sites/'+WP_SITE+'/stats'), {
     headers:{Authorization:'Bearer '+token}
   }).then(function(r){return r.json();}).then(function(data){
     if(data.error) throw new Error(data.error_description||data.error);
-    var day = (data.data||[])[0];
+    var rows = (data.visits&&data.visits.data)||[];
+    var day = rows.find(function(r){ return r[0]===dateStr; });
     if(!day) return {views:0, visitors:0};
     return {views:day[1], visitors:day[2]};
   });
