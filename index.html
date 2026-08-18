@@ -3117,14 +3117,69 @@ function loadMailchimpAnalytics(bodyId){
     function pct(rate){ return rate!=null ? (Math.round(rate*10)/10)+'%' : '—'; }
     body.innerHTML = '<div style="font-size:11px;color:#888;margin-bottom:8px">'+escHtml(list.name||'')+'</div>'+
       '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px">'+
-        '<div class="stat"><div class="stat-lbl">Subscribers</div><div class="stat-val">'+fmt(stats.member_count||0)+'</div></div>'+
-        '<div class="stat"><div class="stat-lbl">Unsubscribed</div><div class="stat-val">'+fmt(stats.unsubscribe_count||0)+'</div></div>'+
-        '<div class="stat"><div class="stat-lbl">Campaigns Sent</div><div class="stat-val">'+fmt(stats.campaign_count||0)+'</div></div>'+
-        '<div class="stat"><div class="stat-lbl">Avg Open Rate</div><div class="stat-val">'+pct(stats.open_rate)+'</div></div>'+
-        '<div class="stat"><div class="stat-lbl">Avg Click Rate</div><div class="stat-val">'+pct(stats.click_rate)+'</div></div>'+
+        '<div class="stat" id="mc-tile-subscribers" style="cursor:pointer" title="Click to see subscribers"><div class="stat-lbl">Subscribers</div><div class="stat-val">'+fmt(stats.member_count||0)+'</div></div>'+
+        '<div class="stat" id="mc-tile-unsubscribed" style="cursor:pointer" title="Click to see unsubscribed"><div class="stat-lbl">Unsubscribed</div><div class="stat-val">'+fmt(stats.unsubscribe_count||0)+'</div></div>'+
+        '<div class="stat mc-tile-to-campaigns" style="cursor:pointer" title="Click to see campaigns below"><div class="stat-lbl">Campaigns Sent</div><div class="stat-val">'+fmt(stats.campaign_count||0)+'</div></div>'+
+        '<div class="stat mc-tile-to-campaigns" style="cursor:pointer" title="Click to see per-campaign rates below"><div class="stat-lbl">Avg Open Rate</div><div class="stat-val">'+pct(stats.open_rate)+'</div></div>'+
+        '<div class="stat mc-tile-to-campaigns" style="cursor:pointer" title="Click to see per-campaign rates below"><div class="stat-lbl">Avg Click Rate</div><div class="stat-val">'+pct(stats.click_rate)+'</div></div>'+
       '</div>';
+    var subsTile = $('mc-tile-subscribers');
+    if(subsTile) subsTile.addEventListener('click', function(){ openMailchimpMembersModal(listId, 'subscribed', 'Subscribers'); });
+    var unsubsTile = $('mc-tile-unsubscribed');
+    if(unsubsTile) unsubsTile.addEventListener('click', function(){ openMailchimpMembersModal(listId, 'unsubscribed', 'Unsubscribed'); });
+    // Campaigns Sent / Avg Open Rate / Avg Click Rate are all aggregates
+    // over the same per-campaign data the Recent Campaigns section below
+    // already breaks out — same expand+scroll pattern the WordPress card's
+    // own Blog Followers tile uses, rather than building a second view of
+    // the same numbers.
+    document.querySelectorAll('.mc-tile-to-campaigns').forEach(function(tile){
+      tile.addEventListener('click', function(){
+        window._analyticsCollapsed = window._analyticsCollapsed || {};
+        window._analyticsCollapsed['mc-campaigns'] = false;
+        render();
+        var el = document.getElementById('mc-campaigns-body');
+        if(el) el.scrollIntoView({behavior:'smooth', block:'center'});
+      });
+    });
   }).catch(function(e){
     debugLog('Mailchimp analytics: list stats request failed — '+e.message);
+    if(body) body.innerHTML = '<div class="empty">Failed to load: '+escHtml(e.message)+'</div>';
+  });
+}
+// Member-list drilldown for the Subscribers/Unsubscribed tiles — same
+// shared modal pattern openMailchimpCampaignActivity() already uses.
+function openMailchimpMembersModal(listId, status, title){
+  $('modal').innerHTML =
+    '<div class="modal-hdr"><div class="modal-title">'+escHtml(title)+'</div><button class="close-btn" id="modal-close">&#x2715;</button></div>'+
+    '<div class="fg"><div id="mc-members-body"><div class="empty">Loading…</div></div></div>'+
+    '<div class="form-actions form-actions-sticky"><button class="cancel-btn" id="modal-cancel">Close</button></div>';
+  $('modal').classList.add('modal-wide');
+  $('overlay').classList.add('open');
+  $('modal-close').addEventListener('click', closeModal);
+  $('modal-cancel').addEventListener('click', closeModal);
+
+  mailchimpProxyGet('/lists/'+listId+'/members?status='+status+'&count=1000&sort_field=last_changed&sort_dir=DESC').then(function(resp){
+    var body = $('mc-members-body');
+    if(!body) return;
+    if(resp.error){ body.innerHTML = '<div class="empty">'+escHtml(resp.error.message||resp.detail||'Failed to load')+'</div>'; return; }
+    var members = resp.members||[];
+    if(!members.length){ body.innerHTML = '<div class="empty">No '+escHtml(title.toLowerCase())+' found.</div>'; return; }
+    var dateLabel = status==='unsubscribed' ? 'Last Changed' : 'Joined';
+    body.innerHTML = '<div style="font-size:11px;color:#888;margin-bottom:8px">'+(resp.total_items!=null?fmt(resp.total_items):members.length)+' '+escHtml(title.toLowerCase())+'</div>'+
+      '<div class="tbl-wrap" style="max-height:420px;overflow-y:auto"><table><thead><tr><th>Email</th><th>Name</th><th>'+dateLabel+'</th></tr></thead><tbody>'+
+      members.map(function(m){
+        var name = [m.merge_fields&&m.merge_fields.FNAME, m.merge_fields&&m.merge_fields.LNAME].filter(Boolean).join(' ');
+        var dateStr = status==='unsubscribed' ? m.last_changed : m.timestamp_opt||m.timestamp_signup;
+        return '<tr>'+
+          '<td>'+escHtml(m.email_address||'')+'</td>'+
+          '<td>'+escHtml(name)+'</td>'+
+          '<td style="white-space:nowrap">'+(dateStr?fmtDate(dateStr.slice(0,10)):'—')+'</td>'+
+        '</tr>';
+      }).join('')+
+      '</tbody></table></div>';
+  }).catch(function(e){
+    debugLog('Mailchimp members request failed — '+e.message);
+    var body = $('mc-members-body');
     if(body) body.innerHTML = '<div class="empty">Failed to load: '+escHtml(e.message)+'</div>';
   });
 }
