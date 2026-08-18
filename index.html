@@ -10322,6 +10322,14 @@ function renderDash(){
       '<input type="text" id="dash-quick-search" placeholder="Search clients, suppliers, or vendors..." autocomplete="off" style="width:100%;padding:9px 12px;border-radius:8px;border:1px solid #d1d5db;font-size:13px;font-family:inherit;box-sizing:border-box">'+
       '<div id="dash-quick-search-results"></div>'+
     '</div>'+
+    '<div class="card" style="margin-bottom:16px">'+
+      '<div class="card-hdr"><span class="card-title">Daily Summary</span><button class="cancel-btn" id="dash-daily-summary-refresh">&#128260; Regenerate</button></div>'+
+      '<div id="daily-summary-body"><div class="empty">Loading…</div></div>'+
+    '</div>'+
+    '<div class="card" style="margin-bottom:16px">'+
+      '<div class="card-hdr"><span class="card-title">Yesterday\'s Analytics</span></div>'+
+      '<div id="daily-compilation-body"><div class="empty">Loading…</div></div>'+
+    '</div>'+
     '<div class="stats-grid">'+
       '<div class="stat" id="stat-dash-clients"><div class="stat-lbl">Clients</div><div class="stat-val">'+s.clients+'</div></div>'+
       '<div class="stat" id="stat-dash-trips"><div class="stat-lbl">Total trips</div><div class="stat-val">'+s.trips+'</div></div>'+
@@ -10497,6 +10505,15 @@ function renderDash(){
       if(el && d.stats) el.textContent = fmt(d.stats.followers_blog);
     }).catch(function(){});
   }
+
+  // Same #daily-summary-body/#daily-compilation-body containers and
+  // per-day localStorage cache the Analytics tab's own Daily Summary/
+  // Yesterday's Analytics cards use — generating it here (or there,
+  // whichever is opened first) means the other page shows the same
+  // already-generated result instantly, no duplicate Claude call.
+  loadDailySummary(false);
+  var dashSummaryRefreshBtn = $('dash-daily-summary-refresh');
+  if(dashSummaryRefreshBtn) dashSummaryRefreshBtn.addEventListener('click', function(){ loadDailySummary(true); });
 }
 
 function clientSortArrow(col){
