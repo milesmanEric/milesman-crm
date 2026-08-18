@@ -3064,6 +3064,83 @@ async function getMailchimpListId(){
   var id = localStorage.getItem(MAILCHIMP_LIST_KEY);
   return id || await pickMailchimpList();
 }
+// Analytics tab's Mailchimp card — unlike Facebook/WordPress/GA4, there's
+// no separate browser-side "Connect" step: Mailchimp auth is a single
+// server-side API key already set on Vercel (mailchimpProxyGet), so the
+// only missing-setup state possible here is "no audience chosen yet",
+// which reuses the same MAILCHIMP_LIST_KEY the manual Sync Mailchimp
+// Activity button already relies on. Deliberately reads localStorage
+// directly instead of calling getMailchimpListId() (which pops the
+// interactive picker automatically) — a page load isn't the moment to
+// surprise the user with a modal, so a first-time visit here shows a
+// plain button instead and waits for a deliberate click.
+// Field names (stats.member_count/unsubscribe_count/campaign_count/
+// open_rate/click_rate) follow Mailchimp's documented List response shape
+// but aren't yet confirmed against a real audience's response — if any is
+// wrong, Mailchimp's own error message (surfaced verbatim on failure) is
+// what pins down the fix.
+function loadMailchimpAnalytics(bodyId){
+  var body = $(bodyId);
+  if(!body) return;
+  var listId = localStorage.getItem(MAILCHIMP_LIST_KEY);
+  if(!listId){
+    body.innerHTML = '<div style="padding:8px 0"><button class="add-btn" id="mc-analytics-pick-list">Choose Mailchimp Audience</button></div>';
+    var pickBtn = $('mc-analytics-pick-list');
+    if(pickBtn) pickBtn.addEventListener('click', function(){
+      pickMailchimpList().then(function(){ render(); }).catch(function(){});
+    });
+    return;
+  }
+  mailchimpProxyGet('/lists/'+listId).then(function(list){
+    if(!body) return;
+    var stats = list.stats || {};
+    // Confirmed live: List stats' open_rate/click_rate are already
+    // percentages (e.g. 49.56 meaning 49.56%), not a fraction of 1 —
+    // unlike the per-campaign Reports endpoint below, which uses the
+    // opposite convention. Mailchimp isn't consistent about this across
+    // endpoints, so don't assume the same math applies to both.
+    function pct(rate){ return rate!=null ? (Math.round(rate*10)/10)+'%' : '—'; }
+    body.innerHTML = '<div style="font-size:11px;color:#888;margin-bottom:8px">'+escHtml(list.name||'')+'</div>'+
+      '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px">'+
+        '<div class="stat"><div class="stat-lbl">Subscribers</div><div class="stat-val">'+fmt(stats.member_count||0)+'</div></div>'+
+        '<div class="stat"><div class="stat-lbl">Unsubscribed</div><div class="stat-val">'+fmt(stats.unsubscribe_count||0)+'</div></div>'+
+        '<div class="stat"><div class="stat-lbl">Campaigns Sent</div><div class="stat-val">'+fmt(stats.campaign_count||0)+'</div></div>'+
+        '<div class="stat"><div class="stat-lbl">Avg Open Rate</div><div class="stat-val">'+pct(stats.open_rate)+'</div></div>'+
+        '<div class="stat"><div class="stat-lbl">Avg Click Rate</div><div class="stat-val">'+pct(stats.click_rate)+'</div></div>'+
+      '</div>';
+  }).catch(function(e){
+    debugLog('Mailchimp analytics: list stats request failed — '+e.message);
+    if(body) body.innerHTML = '<div class="empty">Failed to load: '+escHtml(e.message)+'</div>';
+  });
+}
+function loadMailchimpCampaignsReport(bodyId){
+  var body = $(bodyId);
+  if(!body) return;
+  var listId = localStorage.getItem(MAILCHIMP_LIST_KEY);
+  if(!listId){ body.innerHTML = '<div class="empty">Choose an audience above first.</div>'; return; }
+  mailchimpProxyGet('/reports?list_id='+encodeURIComponent(listId)+'&count=10&sort_field=send_time&sort_dir=DESC').then(function(resp){
+    if(!body) return;
+    var reports = resp.reports||[];
+    if(!reports.length){ body.innerHTML = '<div class="empty">No sent campaigns yet for this audience.</div>'; return; }
+    body.innerHTML = '<div class="tbl-wrap"><table><thead><tr><th>Campaign</th><th>Sent</th><th>Emails</th><th>Opens</th><th>Open Rate</th><th>Clicks</th><th>Click Rate</th></tr></thead><tbody>'+
+      reports.map(function(r){
+        var opens = r.opens||{}, clicks = r.clicks||{};
+        return '<tr>'+
+          '<td>'+escHtml(r.campaign_title||'')+'</td>'+
+          '<td style="white-space:nowrap">'+(r.send_time?fmtDate(r.send_time.slice(0,10)):'—')+'</td>'+
+          '<td>'+fmt(r.emails_sent||0)+'</td>'+
+          '<td>'+fmt(opens.opens_total||0)+'</td>'+
+          '<td>'+(opens.open_rate!=null?(Math.round(opens.open_rate*1000)/10)+'%':'—')+'</td>'+
+          '<td>'+fmt(clicks.clicks_total||0)+'</td>'+
+          '<td>'+(clicks.click_rate!=null?(Math.round(clicks.click_rate*1000)/10)+'%':'—')+'</td>'+
+        '</tr>';
+      }).join('')+
+      '</tbody></table></div>';
+  }).catch(function(e){
+    debugLog('Mailchimp analytics: campaign reports request failed — '+e.message);
+    if(body) body.innerHTML = '<div class="empty">Failed to load: '+escHtml(e.message)+'</div>';
+  });
+}
 
 // Fetches the most recently SENT campaign and its full body (plain_text,
 // falling back to stripped HTML — verified against the real API that
@@ -14400,6 +14477,11 @@ function renderAnalytics(){
         : '<div style="padding:8px 0"><button class="add-btn" id="fb-analytics-connect-btn">Connect Facebook</button></div>')+
     '</div>'+
     '<div class="card" style="margin-bottom:16px">'+
+      '<div class="card-hdr"><span class="card-title">Mailchimp</span></div>'+
+      '<div id="mc-analytics-body"><div class="empty">Loading…</div></div>'+
+      analyticsSectionHtml('mc-campaigns','Recent Campaigns')+
+    '</div>'+
+    '<div class="card" style="margin-bottom:16px">'+
       '<div class="card-hdr"><span class="card-title">SEO (Yoast)</span></div>'+
       '<div id="yoast-seo-summary"><div class="empty">Loading…</div></div>'+
       analyticsSectionHtml('yoast-posts','Posts')+
@@ -14444,6 +14526,9 @@ function renderAnalytics(){
     if(!analyticsSectionCollapsed('fb-ads-daily')) loadFacebookAdsDaily(fbToken, 'fb-ads-daily-body');
     loadFacebookPageAnalytics('fb-page-analytics-body');
   }
+
+  loadMailchimpAnalytics('mc-analytics-body');
+  if(!analyticsSectionCollapsed('mc-campaigns')) loadMailchimpCampaignsReport('mc-campaigns-body');
 
   loadYoastSeoAudit();
 
