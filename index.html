@@ -600,17 +600,21 @@ const GA4_PROPERTY_ID = '362931402';
 // several act_{id} endpoints don't reliably send CORS headers to a direct
 // browser fetch.
 const FB_APP_ID       = '1037570602213729';
-// pages_show_list/pages_read_engagement/read_insights added so the
-// Analytics tab's "Page Performance (organic, non-ads)" section can fetch
-// the connected Page's own access token (via /me/accounts) and query its
-// Insights — ads_management/ads_read alone don't cover organic Page data,
-// Facebook requires a page-scoped token for that, not the user token.
-// (2026-08-19: confirmed via a diagnostic revert that a "Feature
-// Unavailable" login-dialog error happening around the same time was NOT
-// caused by these permissions — the original ads-only scope hit the same
-// error, so it's an app/account-level Facebook-side issue, unrelated to
-// what scope is requested. Restored to the full intended scope.)
-const FB_SCOPE        = 'ads_management,ads_read,business_management,pages_show_list,pages_read_engagement,read_insights';
+// pages_show_list/pages_read_engagement added so the Analytics tab's
+// "Page Performance (organic, non-ads)" section can fetch the connected
+// Page's own access token via /me/accounts — ads_management/ads_read
+// alone don't cover organic Page data.
+// read_insights deliberately left OUT: Facebook's login dialog rejects
+// the whole request with "Invalid Scopes: read_insights" until it has
+// Advanced Access approved via a full App Review — unlike the other
+// permissions here, which work in Development Mode for the app's own
+// admin without review. (This was the real, previously-undiagnosed cause
+// of the "Feature Unavailable" error blocking login entirely — earlier
+// diagnostic reverts happened to coincide with a separate, since-cleared
+// developer-account hold, which is why removing just the Page scopes
+// back then didn't fix it.) Page Insights itself won't work without this
+// permission — re-add it once Advanced Access is granted.
+const FB_SCOPE        = 'ads_management,ads_read,business_management,pages_show_list,pages_read_engagement';
 const FB_REDIRECT     = 'https://milesmaneric.github.io/milesman-crm/';
 const FB_AUTH_SERVER  = 'https://milesman-auth.vercel.app';
 const FB_AD_ACCOUNT   = 'act_1285326830438388';
