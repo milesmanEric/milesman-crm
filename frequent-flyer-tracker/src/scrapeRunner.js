@@ -186,12 +186,27 @@ async function loginInteractive(accountId, provider, credentials) {
       return { success: false, message: 'Timed out waiting for login to complete in the browser window.' };
     }
 
-    if (provider.balanceUrl) {
-      await page.goto(provider.balanceUrl, { waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => {});
-      await page.waitForTimeout(1500);
+    // Try wherever login actually landed first — many providers already
+    // redirect straight to the account/dashboard page after a successful
+    // login, and a real user would never separately deep-link to an
+    // internal account URL. That extra jump is both often unnecessary and
+    // one of the more common bot-detection triggers, so it's now a
+    // fallback rather than the default path.
+    let balance = await extractBalance(page, provider);
+    let statusTier = await extractStatusTier(page, provider);
+
+    if (balance === null && provider.balanceUrl && page.url() !== provider.balanceUrl) {
+      const navigated = await page
+        .goto(provider.balanceUrl, { waitUntil: 'domcontentloaded', timeout: 45000 })
+        .then(() => true)
+        .catch(() => false);
+      if (navigated) {
+        await page.waitForTimeout(1500);
+        balance = await extractBalance(page, provider);
+        statusTier = statusTier || (await extractStatusTier(page, provider));
+      }
     }
-    const balance = await extractBalance(page, provider);
-    const statusTier = await extractStatusTier(page, provider);
+
     if (balance === null) {
       await saveDebugArtifacts(accountId, page, 'balance-not-found');
       return {
@@ -214,9 +229,15 @@ async function refreshHeadless(accountId, provider) {
   }
   return withPersistentContext(accountId, true, async (context) => {
     const page = context.pages()[0] || (await context.newPage());
-    const targetUrl = provider.balanceUrl || provider.loginUrl;
+
+    // Land on the login URL first, not the deep account-balance link: with
+    // a valid saved session this naturally redirects to the logged-in
+    // dashboard (mirroring a real returning visitor), whereas jumping
+    // straight to an internal account URL is both a common bot-detection
+    // trigger and, if that URL is stale/wrong, fails outright with no
+    // fallback. balanceUrl is only tried after this comes up empty.
     try {
-      await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 45000 });
+      await page.goto(provider.loginUrl, { waitUntil: 'domcontentloaded', timeout: 45000 });
     } catch {
       // A headless browser is far more likely to be fingerprinted and
       // blocked at the network/protocol level (bot protection) than the
@@ -226,7 +247,7 @@ async function refreshHeadless(accountId, provider) {
       return {
         status: 'error',
         message:
-          'Could not load the balance page in the background (often this provider\'s bot protection blocking a headless/invisible browser, even though the visible Connect window worked). Try "Refresh" again later, or fall back to editing the balance manually.',
+          'Could not load the account page in the background (often this provider\'s bot protection blocking a headless/invisible browser, even though the visible Connect window worked). Try "Refresh" again later, or fall back to editing the balance manually.',
       };
     }
     await page.waitForTimeout(1500);
@@ -235,8 +256,21 @@ async function refreshHeadless(accountId, provider) {
       return { status: 'needs-login', message: 'Saved session expired — reconnect this account.' };
     }
 
-    const balance = await extractBalance(page, provider);
-    const statusTier = await extractStatusTier(page, provider);
+    let balance = await extractBalance(page, provider);
+    let statusTier = await extractStatusTier(page, provider);
+
+    if (balance === null && provider.balanceUrl && page.url() !== provider.balanceUrl) {
+      const navigated = await page
+        .goto(provider.balanceUrl, { waitUntil: 'domcontentloaded', timeout: 45000 })
+        .then(() => true)
+        .catch(() => false);
+      if (navigated) {
+        await page.waitForTimeout(1500);
+        balance = await extractBalance(page, provider);
+        statusTier = statusTier || (await extractStatusTier(page, provider));
+      }
+    }
+
     if (balance === null) {
       await saveDebugArtifacts(accountId, page, 'balance-not-found');
       return { status: 'error', message: 'Logged in, but could not find a balance on the page (selectors may need updating).' };
