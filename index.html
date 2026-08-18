@@ -14621,6 +14621,135 @@ function analyticsSectionHtml(key, title){
     (collapsed?'':'<div id="'+key+'-body"><div class="empty">Loading…</div></div>')+
   '</div>';
 }
+// "Daily Summary" card at the top of the Analytics tab — gathers
+// yesterday's numbers from whichever sources are connected in THIS
+// browser and asks Claude (same api/claude-messages.js proxy the
+// Assistant chat uses) to interpret them in plain English with
+// recommendations. Separate from api/daily-analytics-email.js's
+// server-side cron version, which uses its own stored tokens and
+// actually emails the result unattended — this one only ever displays
+// in-app, using whatever's already connected here, and is cached per-day
+// in localStorage so reopening the tab repeatedly doesn't re-bill a
+// fresh Claude call each time. The Regenerate button forces a fresh pull.
+function dailySummaryCacheKey(){ return 'mm_daily_summary_'+addDaysToDateStr(today(),-1); }
+function fetchYesterdayGA4(dateStr){
+  return getDriveTokenSilent().then(function(token){
+    if(!token) return Promise.reject(new Error('Google Drive not connected'));
+    return fetch('https://analyticsdata.googleapis.com/v1beta/properties/'+GA4_PROPERTY_ID+':runReport', {
+      method:'POST',
+      headers:{'Content-Type':'application/json', Authorization:'Bearer '+token},
+      body: JSON.stringify({
+        dateRanges:[{startDate:dateStr, endDate:dateStr}],
+        metrics:[{name:'activeUsers'},{name:'screenPageViews'},{name:'sessions'}]
+      })
+    }).then(function(r){return r.json();}).then(function(data){
+      if(data.error) throw new Error(data.error.message||JSON.stringify(data.error));
+      var row = (data.rows||[])[0];
+      var vals = row ? row.metricValues.map(function(m){return m.value;}) : ['0','0','0'];
+      return {activeUsers:vals[0], pageViews:vals[1], sessions:vals[2]};
+    });
+  });
+}
+function fetchYesterdayWordPress(dateStr){
+  var token = localStorage.getItem('mm_wp_token');
+  if(!token) return Promise.reject(new Error('WordPress.com not connected'));
+  return fetch(WP_AUTH_SERVER+'/api/wordpress-stats?path='+encodeURIComponent('/sites/'+WP_SITE+'/stats/visits')+'&unit=day&date='+dateStr+'&quantity=1', {
+    headers:{Authorization:'Bearer '+token}
+  }).then(function(r){return r.json();}).then(function(data){
+    if(data.error) throw new Error(data.error_description||data.error);
+    var day = (data.data||[])[0];
+    if(!day) return {views:0, visitors:0};
+    return {views:day[1], visitors:day[2]};
+  });
+}
+function fetchYesterdayFacebookAds(dateStr){
+  if(!localStorage.getItem('mm_fb_token')) return Promise.reject(new Error('Facebook not connected'));
+  return fbGraph('/'+FB_AD_ACCOUNT+'/insights', {query:{level:'account', time_range:JSON.stringify({since:dateStr, until:dateStr}), fields:'spend,impressions,clicks,cpc'}}).then(function(resp){
+    if(resp.error) throw new Error(resp.error.message);
+    var row = (resp.data||[])[0];
+    return row ? {spend:row.spend, impressions:row.impressions, clicks:row.clicks} : {spend:0, impressions:0, clicks:0};
+  });
+}
+function fetchYesterdayFacebookPage(dateStr){
+  if(!localStorage.getItem('mm_fb_token')) return Promise.reject(new Error('Facebook not connected'));
+  return fbGraph('/me/accounts', {query:{fields:'id,name,access_token'}}).then(function(pagesResp){
+    if(pagesResp.error) throw new Error(pagesResp.error.message);
+    var page = (pagesResp.data||[])[0];
+    if(!page) throw new Error('no managed Page found');
+    return fbGraph('/'+page.id+'/insights', {token:page.access_token, query:{metric:'page_views_total,page_impressions,page_post_engagements', period:'day', since:dateStr, until:dateStr}}).then(function(resp){
+      if(resp.error) throw new Error(resp.error.message);
+      var byName = {};
+      (resp.data||[]).forEach(function(m){ byName[m.name] = (m.values||[])[0]; });
+      return {
+        pageName: page.name,
+        views: byName.page_views_total?byName.page_views_total.value:0,
+        impressions: byName.page_impressions?byName.page_impressions.value:0,
+        engagements: byName.page_post_engagements?byName.page_post_engagements.value:0
+      };
+    });
+  });
+}
+function fetchYesterdayMailchimpSummary(){
+  var listId = localStorage.getItem(MAILCHIMP_LIST_KEY);
+  if(!listId) return Promise.reject(new Error('no audience chosen yet'));
+  return mailchimpProxyGet('/lists/'+listId).then(function(list){
+    var stats = list.stats||{};
+    return {listName:list.name, subscribers:stats.member_count, unsubscribed:stats.unsubscribe_count, openRate:stats.open_rate, clickRate:stats.click_rate};
+  });
+}
+function loadDailySummary(force){
+  var body = $('daily-summary-body');
+  if(!body) return;
+  var cached = !force && localStorage.getItem(dailySummaryCacheKey());
+  if(cached){
+    body.innerHTML = '<div style="white-space:pre-wrap;font-size:13px;line-height:1.6">'+escHtml(cached)+'</div>';
+    return;
+  }
+  body.innerHTML = '<div class="empty">Gathering yesterday\'s numbers…</div>';
+  var yesterday = addDaysToDateStr(today(), -1);
+  var sections = [];
+  var failures = [];
+  function tryFetch(label, fn){
+    return fn().then(function(result){
+      sections.push(label+':\n'+JSON.stringify(result, null, 2));
+    }).catch(function(e){
+      failures.push(label+': '+(e&&e.message||e));
+    });
+  }
+  Promise.all([
+    tryFetch('Google Analytics (GA4)', function(){ return fetchYesterdayGA4(yesterday); }),
+    tryFetch('WordPress.com / Jetpack', function(){ return fetchYesterdayWordPress(yesterday); }),
+    tryFetch('Facebook Ads', function(){ return fetchYesterdayFacebookAds(yesterday); }),
+    tryFetch('Facebook Page (organic)', function(){ return fetchYesterdayFacebookPage(yesterday); }),
+    tryFetch('Mailchimp', function(){ return fetchYesterdayMailchimpSummary(); })
+  ]).then(function(){
+    if(!body) return;
+    if(!sections.length){
+      body.innerHTML = '<div class="empty">No connected analytics sources yet — connect WordPress, Google Drive, Facebook, or Mailchimp below to get a daily summary.</div>';
+      return;
+    }
+    var statsText = sections.join('\n\n');
+    return fetch(DRIVE_AUTH_SERVER+'/api/claude-messages', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        system: 'You write short, plain-English daily marketing analytics summaries for a small travel agency owner (Miles Man Travel) who is not a data analyst. Given raw stats for one day, write: (1) a 2-3 sentence plain-English summary of what happened, (2) 2-4 bullet-point observations worth noting (good or bad, only if genuinely notable — do not manufacture insight from noise in small numbers), (3) 1-3 concrete, specific recommended actions for today. No fluff, no generic advice like "keep posting consistently." If a data source is missing, just skip it silently rather than commenting on the gap.',
+        messages: [{role:'user', content:'Yesterday ('+yesterday+') stats:\n\n'+statsText}]
+      })
+    }).then(function(r){ return r.json(); }).then(function(data){
+      if(!body) return;
+      if(data.error) throw new Error(data.error.message||JSON.stringify(data.error));
+      var block = (data.content||[]).find(function(b){return b.type==='text';});
+      var text = block ? block.text : '(no summary generated)';
+      if(failures.length) text += '\n\n(Not included: '+failures.join(' · ')+')';
+      localStorage.setItem(dailySummaryCacheKey(), text);
+      body.innerHTML = '<div style="white-space:pre-wrap;font-size:13px;line-height:1.6">'+escHtml(text)+'</div>';
+    });
+  }).catch(function(e){
+    debugLog('Daily summary generation failed: '+e.message);
+    if(body) body.innerHTML = '<div class="empty">Failed to generate summary: '+escHtml(e.message)+'</div>';
+  });
+}
 // WordPress.com/Jetpack Stats and GA4 are both live now. GA4 reuses the
 // existing Drive OAuth token (DRIVE_SCOPE includes analytics.readonly)
 // rather than a separate connect button — getDriveTokenSilent() returns
@@ -14633,6 +14762,10 @@ function renderAnalytics(){
   var fbToken = localStorage.getItem('mm_fb_token');
   $('main').innerHTML =
     '<div class="page-hdr"><div class="page-title">Analytics</div></div>'+
+    '<div class="card" style="margin-bottom:16px">'+
+      '<div class="card-hdr"><span class="card-title">Daily Summary</span><button class="cancel-btn" id="daily-summary-refresh">&#128260; Regenerate</button></div>'+
+      '<div id="daily-summary-body"><div class="empty">Loading…</div></div>'+
+    '</div>'+
     '<div class="card" style="margin-bottom:16px">'+
       '<div class="card-hdr"><span class="card-title">WordPress.com / Jetpack Stats</span>'+
         (wpToken ? '<button class="cancel-btn" id="wp-disconnect">Disconnect</button>' : '')+
@@ -14719,6 +14852,10 @@ function renderAnalytics(){
 
   loadMailchimpAnalytics('mc-analytics-body');
   if(!analyticsSectionCollapsed('mc-campaigns')) loadMailchimpCampaignsReport('mc-campaigns-body');
+
+  loadDailySummary(false);
+  var summaryRefreshBtn = $('daily-summary-refresh');
+  if(summaryRefreshBtn) summaryRefreshBtn.addEventListener('click', function(){ loadDailySummary(true); });
 
   loadYoastSeoAudit();
 
