@@ -291,6 +291,8 @@ tr:last-child td{border-bottom:none}
           <button class="io-btn" id="btn-backup">&#11015; Backup</button>
           <button class="io-btn" id="btn-restore">&#11014; Restore</button>
         </div>
+        <div style="font-size:10px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.04em;margin:10px 0 4px;border-top:1px solid #eee;padding-top:8px">Desktop Apps</div>
+        <button class="sync-btn" id="btn-launch-quickbooks" style="color:#2563eb;border-color:#93c5fd" title="Copies the QuickBooks executable path to your clipboard — browsers can't launch desktop apps directly">&#128203; Launch QuickBooks Desktop</button>
       </div>
 
       <button class="menu-toggle-btn" data-menu="menu-email">&#9993;&#65039; Email <span class="menu-caret">&#9656;</span></button>
@@ -2904,6 +2906,19 @@ async function secureSyncRestore(){
 // clipboard, so it can be pasted into Vercel's DRIVE_SERVER_REFRESH_TOKEN
 // environment variable — no separate OAuth flow needed to stand up the
 // server side of Secure Sync.
+// Browsers refuse to navigate to a local .exe via file:// (Chrome/Edge
+// block it outright as a security measure — there's no reliable way for a
+// web page to launch a desktop app), so this copies the executable path
+// to the clipboard instead, ready to paste into Win+R — the one thing
+// that's guaranteed to actually work regardless of browser restrictions.
+const QUICKBOOKS_PATH = 'C:\\Program Files (x86)\\Intuit\\QuickBooks 2021\\QBW32.EXE';
+function launchQuickBooks(){
+  navigator.clipboard.writeText(QUICKBOOKS_PATH).then(function(){
+    toast('QuickBooks path copied — press Win+R, paste (Ctrl+V), Enter','ok');
+  }).catch(function(){
+    toast('Could not copy automatically — open manually: '+QUICKBOOKS_PATH,'err');
+  });
+}
 function copyDriveRefreshToken(){
   var rt = localStorage.getItem('mm_drive_refresh');
   if(!rt){ toast('No Drive refresh token yet — click "Backup to Google Drive" first to connect','err'); return; }
@@ -16090,6 +16105,7 @@ function bindClick(id, handler){
     toast('Google Drive login reset — tap Backup or Restore to reconnect','ok');
     debugLog('Drive tokens cleared');
   });
+  bindClick('btn-launch-quickbooks', launchQuickBooks);
   bindClick('btn-ms-signout', function(){
     localStorage.removeItem('mm_ms_token');
     localStorage.removeItem('mm_ms_refresh');
