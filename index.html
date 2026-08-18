@@ -8142,10 +8142,13 @@ function renderReferralCreditPreview(referrers, referredClients){
 }
 
 function renderEmail(){
+  // Client names are stored "Last, First" (see toLastFirst()), so sorting
+  // on the full string already alphabetizes by last name — splitting on
+  // space and taking the last token (the old approach here) actually
+  // grabbed the *first* name instead, since "Garcia, Maria".split(' ')
+  // ends with "Maria", not the last name.
   var sortedClients = [...db.clients].sort(function(a,b){
-    var al=(a.name||'').trim().split(' ').pop().toLowerCase();
-    var bl=(b.name||'').trim().split(' ').pop().toLowerCase();
-    return al.localeCompare(bl);
+    return (a.name||'').trim().toLowerCase().localeCompare((b.name||'').trim().toLowerCase());
   });
 
   var clientOpts = '<option value="">Select client...</option>'+
