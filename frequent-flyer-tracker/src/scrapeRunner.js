@@ -192,6 +192,16 @@ async function loginInteractive(accountId, provider, credentials) {
     }
     const balance = await extractBalance(page, provider);
     const statusTier = await extractStatusTier(page, provider);
+    if (balance === null) {
+      await saveDebugArtifacts(accountId, page, 'balance-not-found');
+      return {
+        success: true,
+        balance: null,
+        statusTier,
+        message:
+          'Logged in and saved the session, but could not find a balance on the page — this provider\'s selectors likely need updating (see data/debug/ for a screenshot).',
+      };
+    }
     return { success: true, balance, statusTier, message: null };
   });
 }

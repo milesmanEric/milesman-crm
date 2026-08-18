@@ -126,14 +126,15 @@ app.post('/api/accounts/:id/connect', requireUnlocked, async (req, res) => {
   try {
     const result = await scrapeRunner.loginInteractive(account.id, provider, credentials);
     if (result.success) {
+      const balanceFound = result.balance !== null && result.balance !== undefined;
       const patch = {
         hasSession: true,
-        lastCheckStatus: 'ok',
-        lastCheckMessage: null,
+        lastCheckStatus: balanceFound ? 'ok' : 'error',
+        lastCheckMessage: balanceFound ? null : result.message,
         lastUpdated: new Date().toISOString(),
         source: 'scraped',
       };
-      if (result.balance !== null && result.balance !== undefined) patch.balance = result.balance;
+      if (balanceFound) patch.balance = result.balance;
       if (result.statusTier) patch.statusTier = result.statusTier;
       res.json(db.updateAccount(account.id, patch));
     } else {
