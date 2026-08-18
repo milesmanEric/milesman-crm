@@ -1,0 +1,37 @@
+name: Assistant Chatbox Health Check
+
+on:
+  schedule:
+    - cron: '50 12 * * *'
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Assistant chatbox endpoint
+        run: |
+          response=$(curl -s -w '\n%{http_code}' -X POST https://milesman-auth.vercel.app/api/claude-messages \
+            -H 'Content-Type: application/json' \
+            -d '{"messages":[{"role":"user","content":"Say OK if you can hear me."}],"system":"Reply with exactly: OK"}')
+          http_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | sed '$d')
+          echo "HTTP status: $http_code"
+          echo "Response body: $body"
+
+          if [ "$http_code" -lt 200 ] || [ "$http_code" -ge 300 ]; then
+            echo "::error::Request failed with HTTP $http_code"
+            exit 1
+          fi
+
+          if echo "$body" | jq -e 'has("error")' > /dev/null 2>&1; then
+            echo "::error::Chatbox endpoint returned an error: $(echo "$body" | jq -c '.error')"
+            exit 1
+          fi
+
+          if ! echo "$body" | jq -e '.content | type == "array" and length > 0' > /dev/null 2>&1; then
+            echo "::error::Response missing a valid content array"
+            exit 1
+          fi
+
+          echo "Chatbox check passed."
