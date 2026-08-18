@@ -14617,7 +14617,7 @@ function loadYoastSeoAudit(){
   var fields = 'link,type,title,yoast_head_json.title,yoast_head_json.description,yoast_head_json.og_description,yoast_head_json.robots,yoast_head_json.og_image';
   function fetchType(type){
     var path = '/wp/v2/'+type;
-    return fetch(WP_AUTH_SERVER+'/api/wordpress-site-rest?path='+encodeURIComponent(path)+'&per_page=100&_fields='+encodeURIComponent(fields))
+    return fetch(WP_AUTH_SERVER+'/api/wordpress-stats?site=1&path='+encodeURIComponent(path)+'&per_page=100&_fields='+encodeURIComponent(fields))
       .then(function(r){ return r.json(); })
       .then(function(d){ return {type:type, data:d}; });
   }
