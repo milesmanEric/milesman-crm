@@ -3140,8 +3140,8 @@ function loadMailchimpCampaignsReport(bodyId){
     body.innerHTML = '<div class="tbl-wrap"><table><thead><tr><th>Campaign</th><th>Sent</th><th>Emails</th><th>Opens</th><th>Open Rate</th><th>Clicks</th><th>Click Rate</th></tr></thead><tbody>'+
       reports.map(function(r){
         var opens = r.opens||{}, clicks = r.clicks||{};
-        return '<tr>'+
-          '<td>'+escHtml(r.campaign_title||'')+'</td>'+
+        return '<tr class="mc-campaign-row" data-id="'+r.id+'" data-title="'+escHtml(r.campaign_title||'')+'" style="cursor:pointer">'+
+          '<td style="color:#2563eb;text-decoration:underline">'+escHtml(r.campaign_title||'')+'</td>'+
           '<td style="white-space:nowrap">'+(r.send_time?fmtDate(r.send_time.slice(0,10)):'—')+'</td>'+
           '<td>'+fmt(r.emails_sent||0)+'</td>'+
           '<td>'+fmt(opens.opens_total||0)+'</td>'+
@@ -3150,9 +3150,79 @@ function loadMailchimpCampaignsReport(bodyId){
           '<td>'+(clicks.click_rate!=null?(Math.round(clicks.click_rate*1000)/10)+'%':'—')+'</td>'+
         '</tr>';
       }).join('')+
-      '</tbody></table></div>';
+      '</tbody></table></div>'+
+      '<div style="font-size:11px;color:#888;margin-top:6px">Click a campaign to see who opened/clicked it.</div>';
+    document.querySelectorAll('.mc-campaign-row[data-id]').forEach(function(row){
+      row.addEventListener('click', function(){
+        openMailchimpCampaignActivity(row.dataset.id, row.dataset.title);
+      });
+    });
   }).catch(function(e){
     debugLog('Mailchimp analytics: campaign reports request failed — '+e.message);
+    if(body) body.innerHTML = '<div class="empty">Failed to load: '+escHtml(e.message)+'</div>';
+  });
+}
+// Per-recipient drilldown for one campaign — who actually opened/clicked,
+// not just the aggregate counts the Recent Campaigns table already shows.
+// Mailchimp's email-activity endpoint returns every recipient regardless
+// of engagement (including ones who never opened at all), each with an
+// `activity` array of individual events (one entry per open/click/etc.,
+// so a recipient who opened 3 times has 3 'open' entries) — collapsed
+// here into a single Opens/Clicks count per person and sorted
+// engaged-first, since "who opened" is almost always more interesting
+// than the un-opened majority on a typical send.
+function openMailchimpCampaignActivity(campaignId, campaignTitle){
+  $('modal').innerHTML =
+    '<div class="modal-hdr"><div class="modal-title">'+escHtml(campaignTitle||'Campaign Activity')+'</div><button class="close-btn" id="modal-close">&#x2715;</button></div>'+
+    '<div class="fg"><div id="mc-activity-body"><div class="empty">Loading…</div></div></div>'+
+    '<div class="form-actions form-actions-sticky"><button class="cancel-btn" id="modal-cancel">Close</button></div>';
+  $('modal').classList.add('modal-wide');
+  $('overlay').classList.add('open');
+  $('modal-close').addEventListener('click', closeModal);
+  $('modal-cancel').addEventListener('click', closeModal);
+
+  mailchimpProxyGet('/reports/'+campaignId+'/email-activity?count=1000').then(function(resp){
+    var body = $('mc-activity-body');
+    if(!body) return;
+    var emails = resp.emails||[];
+    if(!emails.length){ body.innerHTML = '<div class="empty">No recipient activity found.</div>'; return; }
+    var rows = emails.map(function(e){
+      var activity = e.activity||[];
+      var opens = activity.filter(function(a){ return a.action==='open'; });
+      var clicks = activity.filter(function(a){ return a.action==='click'; });
+      var lastAction = activity.slice().sort(function(a,b){ return (b.timestamp||'').localeCompare(a.timestamp||''); })[0];
+      return {
+        email: e.email_address||'',
+        opens: opens.length,
+        clicks: clicks.length,
+        lastTs: lastAction?lastAction.timestamp:''
+      };
+    }).sort(function(a,b){
+      // Engaged (opened or clicked) first, most-clicked first within that,
+      // then alphabetical for the never-opened tail — matches what someone
+      // scanning this list actually wants to see up top.
+      var aEng = a.opens>0||a.clicks>0, bEng = b.opens>0||b.clicks>0;
+      if(aEng!==bEng) return aEng?-1:1;
+      if(b.clicks!==a.clicks) return b.clicks-a.clicks;
+      if(b.opens!==a.opens) return b.opens-a.opens;
+      return a.email.localeCompare(b.email);
+    });
+    var openedCount = rows.filter(function(r){return r.opens>0;}).length;
+    var clickedCount = rows.filter(function(r){return r.clicks>0;}).length;
+    body.innerHTML = '<div style="font-size:11px;color:#888;margin-bottom:8px">'+rows.length+' recipients &middot; '+openedCount+' opened &middot; '+clickedCount+' clicked</div>'+
+      '<div class="tbl-wrap" style="max-height:420px;overflow-y:auto"><table><thead><tr><th>Email</th><th>Opens</th><th>Clicks</th><th>Last Activity</th></tr></thead><tbody>'+
+      rows.map(function(r){
+        return '<tr>'+
+          '<td>'+escHtml(r.email)+'</td>'+
+          '<td>'+(r.opens>0?('<span style="color:#166534;font-weight:600">'+r.opens+'</span>'):'<span style="color:#aaa">0</span>')+'</td>'+
+          '<td>'+(r.clicks>0?('<span style="color:#1e40af;font-weight:600">'+r.clicks+'</span>'):'<span style="color:#aaa">0</span>')+'</td>'+
+          '<td style="white-space:nowrap">'+(r.lastTs?fmtDate(r.lastTs.slice(0,10)):'—')+'</td>'+
+        '</tr>';
+      }).join('')+
+      '</tbody></table></div>';
+  }).catch(function(e){
+    debugLog('Mailchimp analytics: email activity request failed — '+e.message);
+    var body = $('mc-activity-body');
     if(body) body.innerHTML = '<div class="empty">Failed to load: '+escHtml(e.message)+'</div>';
   });
 }
