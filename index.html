@@ -802,6 +802,22 @@ const STATUSES = ['Planning','Confirmed','Upcoming','In Progress','Completed','C
 const TYPES    = ['Leisure','Business','Honeymoon','Family','Adventure','Cruise'];
 const CLASSES  = ['Basic Economy','Economy','Premium Economy','Business','First'];
 const NOTE_TYPES = ['Email Sent','Email Received','Initial Call','Follow-up','Post-Trip Follow-up','General','Trip Import','Text Message Sent','Text Message Received','Lead','Mailchimp Email Sent','Facebook Message'];
+const MARKETING_CHANNELS = ['Email','Social Media','Blog Post','Facebook Ad','Google Ad','Print','Event','Referral Push','Other'];
+const MARKETING_PLAN_STATUSES = ['Planned','In Progress','Done','Cancelled'];
+// Same idea as TRIP_LIFECYCLE_COLORS — one bg/text pair per channel, used
+// for both the Marketing Plan list rows and the Marketing Calendar cells so
+// an item reads as the same channel in both places at a glance.
+const MARKETING_CHANNEL_COLORS = {
+  'Email':          {bg:'#dbeafe', text:'#1e40af'},
+  'Social Media':   {bg:'#fce7f3', text:'#9d174d'},
+  'Blog Post':      {bg:'#dcfce7', text:'#166534'},
+  'Facebook Ad':    {bg:'#e0e7ff', text:'#3730a3'},
+  'Google Ad':      {bg:'#fef9c3', text:'#854d0e'},
+  'Print':          {bg:'#f3f4f6', text:'#374151'},
+  'Event':          {bg:'#ffedd5', text:'#9a3412'},
+  'Referral Push':  {bg:'#f0fdfa', text:'#115e59'},
+  'Other':          {bg:'#f3f4f6', text:'#4b5563'}
+};
 const THEME_PARKS = ['Disney World','Disneyland California','Universal Studios Hollywood','Universal Studios Orlando'];
 const TRAIN_CLASSES = ['Coach','Business Class','First Class','Sleeper Car'];
 const CAR_SIZES = ['Economy','Compact','Midsize','Full-size','SUV','Minivan','Luxury','Convertible'];
@@ -949,7 +965,7 @@ const DEFAULT_BOOKMARKS = [
   {name:'AwardWallet', url:'https://www.awardwallet.com', category:'Award Tools', audience:'Travel Agent', notes:'tracks client mileage/points balances across programs'}
 ];
 
-let db = {clients:[],trips:[],vendors:[],bizVendors:[],planner:[],bookmarks:[],savedReports:[],groups:[]};
+let db = {clients:[],trips:[],vendors:[],bizVendors:[],planner:[],bookmarks:[],savedReports:[],groups:[],marketingPlan:[]};
 const UNDO_STACK = [];
 const MAX_UNDO = 20;
 function snapshot(label){
@@ -1441,6 +1457,7 @@ function loadDB(){
     db.bookmarks=Array.isArray(d.bookmarks)?d.bookmarks:[];
     db.savedReports=Array.isArray(d.savedReports)?d.savedReports:[];
     db.groups=Array.isArray(d.groups)?d.groups:[];
+    db.marketingPlan=Array.isArray(d.marketingPlan)?d.marketingPlan:[];
     // Always normalize client names to 'Last, First' format on every load
     // (safe to run repeatedly since it skips names that already have a comma)
     var migrated=0;
@@ -2733,7 +2750,8 @@ async function driveRestore(){
         planner:Array.isArray(d.planner)?d.planner:[],
         bookmarks:Array.isArray(d.bookmarks)?d.bookmarks:[],
         savedReports:Array.isArray(d.savedReports)?d.savedReports:[],
-        groups:Array.isArray(d.groups)?d.groups:[]
+        groups:Array.isArray(d.groups)?d.groups:[],
+        marketingPlan:Array.isArray(d.marketingPlan)?d.marketingPlan:[]
       };
       db.clients.forEach(function(c){ if(c.name && !c.name.includes(',')) c.name=toLastFirst(c.name); });
       saveDB();render();
@@ -2837,7 +2855,8 @@ async function secureSyncRestore(){
         planner:Array.isArray(d.planner)?d.planner:[],
         bookmarks:Array.isArray(d.bookmarks)?d.bookmarks:[],
         savedReports:Array.isArray(d.savedReports)?d.savedReports:[],
-        groups:Array.isArray(d.groups)?d.groups:[]
+        groups:Array.isArray(d.groups)?d.groups:[],
+        marketingPlan:Array.isArray(d.marketingPlan)?d.marketingPlan:[]
       };
       db.clients.forEach(function(c){ if(c.name && !c.name.includes(',')) c.name=toLastFirst(c.name); });
       saveDB();render();
@@ -3401,7 +3420,7 @@ function importJSON(){
     r.onload=function(ev){
       try{
         const d=JSON.parse(ev.target.result);
-        if(Array.isArray(d.clients)&&Array.isArray(d.trips)){db=d;if(!Array.isArray(db.vendors))db.vendors=[];if(!Array.isArray(db.bizVendors))db.bizVendors=[];if(!Array.isArray(db.planner))db.planner=[];if(!Array.isArray(db.bookmarks))db.bookmarks=[];if(!Array.isArray(db.savedReports))db.savedReports=[];if(!Array.isArray(db.groups))db.groups=[];(db.clients||[]).forEach(function(c){ if(c.name && !c.name.includes(',')) c.name=toLastFirst(c.name); });saveDB();toast('Data imported');render();}
+        if(Array.isArray(d.clients)&&Array.isArray(d.trips)){db=d;if(!Array.isArray(db.vendors))db.vendors=[];if(!Array.isArray(db.bizVendors))db.bizVendors=[];if(!Array.isArray(db.planner))db.planner=[];if(!Array.isArray(db.bookmarks))db.bookmarks=[];if(!Array.isArray(db.savedReports))db.savedReports=[];if(!Array.isArray(db.groups))db.groups=[];if(!Array.isArray(db.marketingPlan))db.marketingPlan=[];(db.clients||[]).forEach(function(c){ if(c.name && !c.name.includes(',')) c.name=toLastFirst(c.name); });saveDB();toast('Data imported');render();}
         else toast('Invalid backup file','err');
       }catch(ex){toast('Could not read file','err');}
     };r.readAsText(f);
@@ -13577,6 +13596,14 @@ function renderMarketing(){
       (canvaToken
         ? '<div style="padding:8px 0;font-size:12px;color:#166534">&#9989; Connected — the Facebook Ads wizard\'s Creative step can now pull an image straight from one of your Canva designs.</div>'
         : '<div style="padding:8px 0"><button class="add-btn" id="canva-connect-btn">Connect Canva</button><div style="font-size:11px;color:#888;margin-top:6px">Optional — lets the ad-creation wizard pull an image straight from a Canva design instead of only a local file upload.</div></div>')+
+    '</div>'+
+    '<div class="card" style="margin-bottom:16px">'+
+      '<div class="card-hdr"><span class="card-title">Marketing Plan</span><button class="add-btn" id="mkt-plan-add-btn">+ Add Plan Item</button></div>'+
+      '<div id="mkt-plan-body">'+marketingPlanListHtml()+'</div>'+
+    '</div>'+
+    '<div class="card" style="margin-bottom:16px">'+
+      '<div class="card-hdr"><span class="card-title">Marketing Calendar</span></div>'+
+      '<div id="mkt-cal-body"></div>'+
     '</div>';
 
   var connectBtn = $('fb-connect-btn');
@@ -13601,7 +13628,168 @@ function renderMarketing(){
     render();
   });
 
+  var mktPlanAddBtn = $('mkt-plan-add-btn');
+  if(mktPlanAddBtn) mktPlanAddBtn.addEventListener('click', function(){ openMarketingPlanForm(); });
+  document.querySelectorAll('.mkt-plan-title[data-id]').forEach(function(el){
+    el.addEventListener('click', function(){ openMarketingPlanForm(el.dataset.id); });
+  });
+  document.querySelectorAll('.mkt-plan-del[data-id]').forEach(function(el){
+    el.addEventListener('click', function(e){ e.stopPropagation(); delMarketingPlanItem(el.dataset.id); });
+  });
+  renderMarketingCalendar();
+
   if(fbToken) loadFacebookCampaigns(fbToken);
+}
+// Marketing Plan (db.marketingPlan, 'MP' ids) — a lightweight scheduled-
+// activity list (title/channel/date/status/notes), separate from the
+// Planner's client/trip/vendor-linked tasks since a marketing item isn't
+// tied to any one client. Every item with a date shows up on the Marketing
+// Calendar below via the shared MARKETING_CHANNEL_COLORS coding, so adding
+// an item to the plan is the only step needed to also put it on the
+// calendar — there's no separate "add to calendar" action.
+function marketingPlanListHtml(){
+  var sorted = [].concat(db.marketingPlan).sort(function(a,b){ return (a.date||'').localeCompare(b.date||''); });
+  if(!sorted.length) return '<div class="empty">No marketing plan items yet — add one to start scheduling campaigns.</div>';
+  var statusColors = {
+    'Planned':     {bg:'#dbeafe', text:'#1e40af'},
+    'In Progress': {bg:'#fef9c3', text:'#854d0e'},
+    'Done':        {bg:'#dcfce7', text:'#166534'},
+    'Cancelled':   {bg:'#fee2e2', text:'#991b1b'}
+  };
+  return '<div class="tbl-wrap"><table><thead><tr><th>Date</th><th>Title</th><th>Channel</th><th>Status</th><th></th></tr></thead><tbody>'+
+    sorted.map(function(item){
+      var chColors = MARKETING_CHANNEL_COLORS[item.channel] || MARKETING_CHANNEL_COLORS.Other;
+      var stColors = statusColors[item.status] || {bg:'#f3f4f6', text:'#4b5563'};
+      return '<tr>'+
+        '<td style="white-space:nowrap">'+(item.date?fmtDate(item.date):'—')+'</td>'+
+        '<td class="mkt-plan-title" data-id="'+item.id+'" style="cursor:pointer;color:#2563eb;text-decoration:underline">'+escHtml(item.title||'')+'</td>'+
+        '<td><span style="background:'+chColors.bg+';color:'+chColors.text+';padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">'+escHtml(item.channel||'')+'</span></td>'+
+        '<td><span style="background:'+stColors.bg+';color:'+stColors.text+';padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">'+escHtml(item.status||'')+'</span></td>'+
+        '<td><button class="icon-btn mkt-plan-del" data-id="'+item.id+'" style="color:#dc2626" title="Delete">&#128465;&#65039;</button></td>'+
+      '</tr>';
+    }).join('')+
+  '</tbody></table></div>';
+}
+function openMarketingPlanForm(id){
+  var d = id ? (db.marketingPlan.find(function(x){return x.id===id;})||{}) : {};
+  $('modal').innerHTML =
+    '<div class="modal-hdr"><div class="modal-title">'+(id?'Edit Plan Item':'Add Plan Item')+'</div><button class="close-btn" id="modal-close">&#x2715;</button></div>'+
+    '<div class="fg">'+
+      fld('Title', inp('mp-title','text',d.title,'e.g. Fall Cruise Sale — Email Blast'), true)+
+      fld('Channel', sel('mp-channel', MARKETING_CHANNELS, d.channel||'Email'))+
+      fld('Date', inp('mp-date','date',d.date))+
+      fld('Status', sel('mp-status', MARKETING_PLAN_STATUSES, d.status||'Planned'))+
+      fld('Notes', '<textarea id="mp-notes" rows="3">'+(d.notes||'')+'</textarea>', true)+
+    '</div>'+
+    '<div class="form-actions form-actions-sticky">'+
+      '<button class="cancel-btn" id="modal-cancel">Cancel</button>'+
+      (id?'<button class="cancel-btn" id="mp-delete" style="color:#dc2626;border-color:#fca5a5">Delete</button>':'')+
+      '<button class="save-btn" id="mp-save" data-id="'+(id||'')+'">Save</button>'+
+    '</div>';
+  $('modal').classList.add('modal-wide');
+  $('overlay').classList.add('open');
+  $('modal-close').addEventListener('click', closeModal);
+  $('modal-cancel').addEventListener('click', closeModal);
+  $('mp-save').addEventListener('click', function(){ saveMarketingPlanItem(this.dataset.id); });
+  var delBtn = $('mp-delete');
+  if(delBtn) delBtn.addEventListener('click', function(){ delMarketingPlanItem(id); });
+}
+function saveMarketingPlanItem(id){
+  var title = gv('mp-title');
+  if(!title){ toast('Title is required','err'); return; }
+  var date = gv('mp-date');
+  if(!date){ toast('Date is required','err'); return; }
+  snapshot(id?'Edit marketing plan item':'Add marketing plan item');
+  var data = { title:title, channel:gv('mp-channel')||'Other', date:date, status:gv('mp-status')||'Planned', notes:gv('mp-notes') };
+  if(id){
+    db.marketingPlan = db.marketingPlan.map(function(x){return x.id===id?Object.assign({},x,data):x;});
+    toast('Plan item updated');
+  } else {
+    data.id = newId('MP', db.marketingPlan);
+    db.marketingPlan.push(data);
+    toast('Plan item added');
+  }
+  saveDB(); closeModal(); render();
+}
+function delMarketingPlanItem(id){
+  var item = db.marketingPlan.find(function(x){return x.id===id;});
+  if(!item || !confirm('Delete "'+(item.title||'(untitled)')+'"?')) return;
+  snapshot('Delete marketing plan item');
+  db.marketingPlan = db.marketingPlan.filter(function(x){return x.id!==id;});
+  saveDB(); closeModal(); toast('Plan item deleted'); render();
+}
+// Month-grid calendar scoped to the Marketing tab, same layout as the main
+// Calendar page's trip grid but keyed off db.marketingPlan instead of
+// db.trips. Deliberately re-renders only its own #mkt-cal-body container on
+// month nav (window._mktCalDate, separate from the main Calendar's own
+// window._calDate) rather than the whole Marketing tab, so clicking Prev/
+// Next doesn't re-fire the Facebook campaigns fetch every time.
+function renderMarketingCalendar(){
+  var container = $('mkt-cal-body');
+  if(!container) return;
+  var now = window._mktCalDate || new Date();
+  window._mktCalDate = now;
+  var year = now.getFullYear();
+  var month = now.getMonth();
+  var monthName = now.toLocaleDateString('en-US',{month:'long',year:'numeric'});
+  var todayStr = today();
+
+  var firstDay = new Date(year, month, 1);
+  var lastDay  = new Date(year, month+1, 0);
+  var startDow = firstDay.getDay();
+
+  var itemMap = {};
+  db.marketingPlan.forEach(function(item){
+    if(!item.date) return;
+    if(!itemMap[item.date]) itemMap[item.date] = [];
+    itemMap[item.date].push(item);
+  });
+
+  var days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  var headerCells = days.map(function(d){return '<div class="cal-header-cell">'+d+'</div>';}).join('');
+
+  var cells = '';
+  for(var i=0;i<startDow;i++){
+    var prevDate = new Date(year, month, -startDow+i+1);
+    cells += '<div class="cal-cell other-month"><div class="cal-day-num">'+prevDate.getDate()+'</div></div>';
+  }
+  for(var d=1; d<=lastDay.getDate(); d++){
+    var dateStr = year+'-'+String(month+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+    var isToday = dateStr===todayStr;
+    var items = itemMap[dateStr]||[];
+    var dayNumHtml = isToday ? '<div class="cal-day-num today-num">'+d+'</div>' : '<div class="cal-day-num">'+d+'</div>';
+    var itemsHtml = items.slice(0,3).map(function(it){
+      var colors = MARKETING_CHANNEL_COLORS[it.channel] || MARKETING_CHANNEL_COLORS.Other;
+      return '<div class="mkt-cal-item" data-id="'+it.id+'" style="background:'+colors.bg+';color:'+colors.text+';border-radius:3px;padding:1px 4px;font-size:10px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer" title="'+escHtml(it.title||'')+'">'+escHtml(it.title||'')+'</div>';
+    }).join('');
+    if(items.length>3) itemsHtml += '<div style="font-size:9px;color:#888">+'+(items.length-3)+' more</div>';
+    cells += '<div class="cal-cell'+(isToday?' today':'')+'" data-date="'+dateStr+'">'+dayNumHtml+itemsHtml+'</div>';
+  }
+  var totalCells = startDow + lastDay.getDate();
+  var endPad = totalCells % 7 === 0 ? 0 : 7-(totalCells%7);
+  for(var i=1;i<=endPad;i++){
+    cells += '<div class="cal-cell other-month"><div class="cal-day-num">'+i+'</div></div>';
+  }
+
+  container.innerHTML =
+    '<div class="cal-nav" style="margin-bottom:8px">'+
+      '<button class="cal-nav-btn" id="mkt-cal-prev">&#8592; Prev</button>'+
+      '<div class="cal-month-label">'+monthName+'</div>'+
+      '<button class="cal-nav-btn" id="mkt-cal-next">Next &#8594;</button>'+
+      '<button class="cal-nav-btn" id="mkt-cal-today">Today</button>'+
+    '</div>'+
+    '<div class="cal-grid">'+headerCells+cells+'</div>';
+
+  $('mkt-cal-prev').addEventListener('click', function(){ window._mktCalDate=new Date(year,month-1,1); renderMarketingCalendar(); });
+  $('mkt-cal-next').addEventListener('click', function(){ window._mktCalDate=new Date(year,month+1,1); renderMarketingCalendar(); });
+  $('mkt-cal-today').addEventListener('click', function(){ window._mktCalDate=new Date(); renderMarketingCalendar(); });
+
+  document.querySelectorAll('.mkt-cal-item[data-id]').forEach(function(el){
+    el.addEventListener('click', function(e){
+      e.stopPropagation();
+      openMarketingPlanForm(el.dataset.id);
+    });
+  });
 }
 // daily_budget/lifetime_budget are documented by Meta as the account's
 // minor currency unit (cents for USD), so divided by 100 here;
