@@ -598,12 +598,16 @@ const GA4_PROPERTY_ID = '362931402';
 // several act_{id} endpoints don't reliably send CORS headers to a direct
 // browser fetch.
 const FB_APP_ID       = '1037570602213729';
-// pages_show_list/pages_read_engagement/read_insights added so the
-// Analytics tab's "Page Performance (organic, non-ads)" section can fetch
-// the connected Page's own access token (via /me/accounts) and query its
-// Insights — ads_management/ads_read alone don't cover organic Page data,
-// Facebook requires a page-scoped token for that, not the user token.
-const FB_SCOPE        = 'ads_management,ads_read,business_management,pages_show_list,pages_read_engagement,read_insights';
+// TEMPORARY DIAGNOSTIC REVERT (2026-08-19): reconnecting with the Page
+// permissions added below (pages_show_list/pages_read_engagement/
+// read_insights) hits Facebook's own "Feature Unavailable — Facebook
+// Login is currently unavailable for this app" error at the login dialog
+// itself, even after Business Verification completed. Reverted to the
+// original ads-only scope to isolate whether it's specifically these
+// three permissions causing the block, or something account/app-wide —
+// restore the fuller scope (commented out below) once that's confirmed.
+const FB_SCOPE        = 'ads_management,ads_read,business_management';
+// const FB_SCOPE        = 'ads_management,ads_read,business_management,pages_show_list,pages_read_engagement,read_insights';
 const FB_REDIRECT     = 'https://milesmaneric.github.io/milesman-crm/';
 const FB_AUTH_SERVER  = 'https://milesman-auth.vercel.app';
 const FB_AD_ACCOUNT   = 'act_1285326830438388';
