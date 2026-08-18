@@ -556,7 +556,13 @@ function bootApp(){
 const MS_CLIENT_ID     = 'f59cebe9-632b-4361-bdab-71dda33c174c';
 const MS_TENANT_ID     = 'a9346e69-975d-4abb-861a-dea6e2464642';
 const MS_AUTH_SERVER   = 'https://milesman-auth.vercel.app'; // no secret in browser code
-const MS_SCOPE         = 'https://graph.microsoft.com/Mail.Read offline_access';
+// Mail.Send added so the daily analytics email digest (sent server-side
+// via api/daily-analytics-email.js, using a refresh token copied from
+// mm_ms_refresh into Vercel as MS_SERVER_REFRESH_TOKEN) can use this same
+// Outlook connection to actually send mail, not just read it. Reconnect
+// Outlook once after this change — an existing mm_ms_refresh token
+// predating this scope doesn't retroactively gain it.
+const MS_SCOPE         = 'https://graph.microsoft.com/Mail.Read https://graph.microsoft.com/Mail.Send offline_access';
 const MS_REDIRECT      = 'https://milesmaneric.github.io/milesman-crm';
 const DRIVE_CLIENT_ID  = '1055867383042-an9l58o1qg22pt7o4ak8vaneeftv54ib.apps.googleusercontent.com';
 // "openid email" alongside drive.file so the same token exchange/refresh
