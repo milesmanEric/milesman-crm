@@ -14490,17 +14490,26 @@ function loadFacebookPageAnalytics(bodyId){
     var pageToken = page.access_token;
 
     Promise.all([
-      fbGraph('/'+page.id+'/insights', {token:pageToken, query:{metric:'page_follows', period:'lifetime'}}),
+      // Page Likes deliberately comes from the Page object's own
+      // followers_count field, not an Insights metric — confirmed live
+      // that page_follows (like page_impressions before it) returns a
+      // totally empty {data:[]} for this Page, most likely because Meta
+      // suppresses Page Insights data below some audience/activity
+      // threshold. followers_count isn't an Insights metric at all, so
+      // it isn't subject to that same suppression.
+      fbGraph('/'+page.id, {token:pageToken, query:{fields:'followers_count'}}),
       // page_impressions/page_impressions_unique were deprecated by Meta
       // (confirmed live against a real connected Page — both return "(#100)
       // The value must be a valid insights metric") — page_media_view and
       // page_total_media_view_unique are the documented replacements,
-      // also confirmed live.
+      // also confirmed live. Even with valid names, this Page's Insights
+      // data may still come back as an empty {data:[]} (see above) — that
+      // isn't an error, just Meta having nothing to report for this Page.
       fbGraph('/'+page.id+'/insights', {token:pageToken, query:{metric:'page_views_total,page_media_view,page_total_media_view_unique,page_post_engagements', period:'days_28'}})
     ]).then(function(results){
       if(!body) return;
       var fansResp = results[0], statsResp = results[1];
-      if(fansResp.error){ fbLogGraphError('page follows fetch', fansResp.error); body.innerHTML = '<div class="empty">'+escHtml(fansResp.error.message||'Failed to load Page stats')+'</div>'; return; }
+      if(fansResp.error){ fbLogGraphError('page followers_count fetch', fansResp.error); body.innerHTML = '<div class="empty">'+escHtml(fansResp.error.message||'Failed to load Page stats')+'</div>'; return; }
       if(statsResp.error){ fbLogGraphError('page insights fetch', statsResp.error); body.innerHTML = '<div class="empty">'+escHtml(statsResp.error.message||'Failed to load Page stats')+'</div>'; return; }
 
       function latestValue(metricData){
@@ -14508,8 +14517,8 @@ function loadFacebookPageAnalytics(bodyId){
         return vals.length ? vals[vals.length-1].value : undefined;
       }
       var byName = {};
-      (fansResp.data||[]).concat(statsResp.data||[]).forEach(function(m){ byName[m.name] = m; });
-      var fans = latestValue(byName.page_follows);
+      (statsResp.data||[]).forEach(function(m){ byName[m.name] = m; });
+      var fans = fansResp.followers_count;
       var views = latestValue(byName.page_views_total);
       var impressions = latestValue(byName.page_media_view);
       var reach = latestValue(byName.page_total_media_view_unique);
