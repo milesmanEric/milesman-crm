@@ -1551,6 +1551,22 @@ function loadDB(){
       saveDB();
       console.log('[CRM] Migrated '+bookmarkCatMigrated+' bookmark(s) from "Tool" to "Award Tools" category');
     }
+    // Backfills a Planner task for any Marketing Plan item that predates
+    // syncMarketingPlanTask() (added after items could already exist) —
+    // safe to run repeatedly since it only creates one for an item with
+    // no task linked yet (checked by marketingPlanId), never touches an
+    // already-synced item.
+    var mpTasksBackfilled=0;
+    db.marketingPlan.forEach(function(item){
+      if(!db.planner.some(function(t){return t.marketingPlanId===item.id;})){
+        syncMarketingPlanTask(item);
+        mpTasksBackfilled++;
+      }
+    });
+    if(mpTasksBackfilled>0){
+      saveDB();
+      console.log('[CRM] Created '+mpTasksBackfilled+' Planner task(s) for existing Marketing Plan items');
+    }
   }catch(e){db={clients:[],trips:[],vendors:[],planner:[]};}
 }
 
@@ -13747,6 +13763,13 @@ function renderPlanner(){
       var tr=db.trips.find(function(x){return x.id===t.tripId;});
       if(tr) out.push('<span class="badge b-amber planner-trip-link" data-id="'+tr.id+'" style="cursor:pointer" title="Open trip">&#9992;&#65039; '+(tr.destination||'Trip')+'</span>');
     }
+    if(t.marketingPlanId){
+      var mp=db.marketingPlan.find(function(x){return x.id===t.marketingPlanId;});
+      if(mp){
+        var chColors = MARKETING_CHANNEL_COLORS[mp.channel] || MARKETING_CHANNEL_COLORS.Other;
+        out.push('<span class="badge planner-marketing-link" data-id="'+mp.id+'" style="cursor:pointer;background:'+chColors.bg+';color:'+chColors.text+'" title="Open marketing plan item">&#128227; '+escHtml(mp.channel||'Marketing')+'</span>');
+      }
+    }
     return out.join(' ');
   }
 
@@ -13901,6 +13924,13 @@ function renderPlanner(){
       e.stopPropagation();
       var tid=this.dataset.id;
       go('trips'); setTimeout(function(){openTripForm(tid);},100);
+    });
+  });
+  document.querySelectorAll('.planner-marketing-link').forEach(function(el){
+    el.addEventListener('click', function(e){
+      e.stopPropagation();
+      var mpid=this.dataset.id;
+      go('marketing'); setTimeout(function(){openMarketingPlanForm(mpid);},100);
     });
   });
   document.querySelectorAll('.edit-task').forEach(function(btn){
@@ -14090,6 +14120,32 @@ function openMarketingPlanForm(id){
   var delBtn = $('mp-delete');
   if(delBtn) delBtn.addEventListener('click', function(){ delMarketingPlanItem(id); });
 }
+// Keeps one Planner task in sync with a Marketing Plan item — upserted by
+// marketingPlanId rather than created fresh each save, so editing an
+// item's title/date updates its existing task instead of leaving a stale
+// duplicate behind. Deliberately doesn't touch `done` on an existing
+// task (a Planned/In Progress/Done marketing status isn't forced onto
+// the task's own completion state, which the user may have already
+// checked off independently) — only a newly-created task starts open.
+function syncMarketingPlanTask(item){
+  var existing = db.planner.find(function(t){return t.marketingPlanId===item.id;});
+  var taskData = {
+    title: '['+item.channel+'] '+item.title,
+    dueDate: item.date,
+    marketingPlanId: item.id,
+    desc: item.notes||''
+  };
+  if(existing){
+    db.planner = db.planner.map(function(t){return t.id===existing.id?Object.assign({},t,taskData):t;});
+  } else {
+    taskData.id = newId('PL', db.planner);
+    taskData.done = false;
+    taskData.clientId = ''; taskData.clientIds = []; taskData.vendorId = ''; taskData.tripId = '';
+    taskData.completionNoteType = 'General';
+    taskData.createdAt = today();
+    db.planner.push(taskData);
+  }
+}
 function saveMarketingPlanItem(id){
   var title = gv('mp-title');
   if(!title){ toast('Title is required','err'); return; }
@@ -14098,6 +14154,7 @@ function saveMarketingPlanItem(id){
   snapshot(id?'Edit marketing plan item':'Add marketing plan item');
   var data = { title:title, channel:gv('mp-channel')||'Other', date:date, status:gv('mp-status')||'Planned', notes:gv('mp-notes') };
   if(id){
+    data.id = id;
     db.marketingPlan = db.marketingPlan.map(function(x){return x.id===id?Object.assign({},x,data):x;});
     toast('Plan item updated');
   } else {
@@ -14105,6 +14162,7 @@ function saveMarketingPlanItem(id){
     db.marketingPlan.push(data);
     toast('Plan item added');
   }
+  syncMarketingPlanTask(data);
   saveDB(); closeModal(); render();
 }
 function delMarketingPlanItem(id){
@@ -14112,6 +14170,7 @@ function delMarketingPlanItem(id){
   if(!item || !confirm('Delete "'+(item.title||'(untitled)')+'"?')) return;
   snapshot('Delete marketing plan item');
   db.marketingPlan = db.marketingPlan.filter(function(x){return x.id!==id;});
+  db.planner = db.planner.filter(function(t){return t.marketingPlanId!==id;});
   saveDB(); closeModal(); toast('Plan item deleted'); render();
 }
 // Month-grid calendar scoped to the Marketing tab, same layout as the main
