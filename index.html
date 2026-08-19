@@ -13683,6 +13683,15 @@ function taskContactInfo(t){
   if(vc) return {type:'supplier', badgeCls:'b-green', badgeLabel:'Supplier', phone:vc.contact.phone, email:vc.contact.email};
   var bvc = t.bizVendorContactId ? findBizVendorContact(t.bizVendorContactId) : null;
   if(bvc) return {type:'vendor', badgeCls:'b-amber', badgeLabel:'Vendor', phone:bvc.contact.phone, email:bvc.contact.email};
+  // A Linked Supplier with no specific contact chosen still means this
+  // task is about that Supplier, not (just) whatever client also happens
+  // to be tagged on it — same precedence-over-client treatment a Supplier
+  // Contact gets above, just with no specific person's phone/email to
+  // surface (the Supplier record itself has no contact-level info).
+  if(t.vendorId){
+    var v = db.vendors.find(function(x){return x.id===t.vendorId;});
+    if(v) return {type:'supplier', badgeCls:'b-green', badgeLabel:'Supplier', phone:'', email:''};
+  }
   if(taskClients(t).length) return {type:'client', badgeCls:'b-blue', badgeLabel:'Client', phone:'', email:''};
   return {type:'none', badgeCls:'b-gray', badgeLabel:'—', phone:'', email:''};
 }
@@ -14440,12 +14449,92 @@ function fbLabeledSelect(id, options, selected){
     return '<option value="'+o.value+'"'+(o.value===selected?' selected':'')+'>'+escHtml(o.label)+'</option>';
   }).join('')+'</select>';
 }
+// Reusable "search Meta's own database, add as a removable chip" picker —
+// backs both Detailed Targeting (interests) and Languages below. Unlike
+// most pickers elsewhere in this app (which filter an already-loaded
+// local list), this searches live against Meta's own /search endpoint as
+// you type, since the interest/locale universe is far too large to ever
+// load client-side. Deliberately updates only its own chips/results
+// containers via direct DOM writes rather than a full renderFbWizard()
+// re-render, so typing in this field (or any other field on the same
+// step) never loses focus or in-progress input elsewhere on the page.
+function fbTagChipsHtml(items){
+  if(!items.length) return '';
+  return items.map(function(it){
+    return '<span class="fbw-tag-chip" data-id="'+escHtml(it.id)+'" style="display:inline-flex;align-items:center;gap:4px;background:#eff6ff;color:#1e40af;padding:3px 8px;border-radius:12px;font-size:12px;margin:2px 4px 2px 0">'+
+      escHtml(it.name)+' <span class="fbw-tag-remove" data-id="'+escHtml(it.id)+'" style="cursor:pointer;font-weight:700">&times;</span>'+
+    '</span>';
+  }).join('');
+}
+function fbTagPickerHtml(fieldKey, label, placeholder, items){
+  return '<div class="field full">'+
+    '<label>'+escHtml(label)+'</label>'+
+    '<input type="text" class="fbw-tag-search" data-field="'+fieldKey+'" placeholder="'+escHtml(placeholder)+'" autocomplete="off">'+
+    '<div class="fbw-tag-results" data-field="'+fieldKey+'" style="border:1px solid #e5e7eb;border-radius:6px;margin-top:2px;max-height:160px;overflow-y:auto;display:none;background:#fff;position:relative;z-index:5"></div>'+
+    '<div class="fbw-tag-chips" data-field="'+fieldKey+'" style="margin-top:6px">'+fbTagChipsHtml(items)+'</div>'+
+  '</div>';
+}
+// Wires the search-as-you-type behavior for every .fbw-tag-search input
+// currently in the DOM — debounced so it doesn't fire a Graph API search
+// on every keystroke, and reads/writes straight from window._fbWizard.adset
+// (interests/languages) rather than routing through fbWizardSaveStepFields(),
+// since chip add/remove needs to persist immediately, not just on Next.
+function fbBindTagPickers(){
+  var searchType = {interests:'adinterest', languages:'adlocale'};
+  document.querySelectorAll('.fbw-tag-search').forEach(function(input){
+    var fieldKey = input.dataset.field;
+    var resultsEl = document.querySelector('.fbw-tag-results[data-field="'+fieldKey+'"]');
+    var debounceTimer = null;
+    input.addEventListener('input', function(){
+      var q = input.value.trim();
+      clearTimeout(debounceTimer);
+      if(!q){ resultsEl.style.display='none'; resultsEl.innerHTML=''; return; }
+      debounceTimer = setTimeout(function(){
+        fbGraph('/search', {query:{type:searchType[fieldKey], q:q, limit:'8'}}).then(function(resp){
+          if(resp.error){ resultsEl.innerHTML = '<div style="padding:6px 10px;font-size:12px;color:#dc2626">'+escHtml(resp.error.message)+'</div>'; resultsEl.style.display='block'; return; }
+          var results = resp.data||[];
+          var already = window._fbWizard.adset[fieldKey].map(function(it){return it.id;});
+          results = results.filter(function(r){ return already.indexOf(r.id)===-1; });
+          if(!results.length){ resultsEl.innerHTML = '<div style="padding:6px 10px;font-size:12px;color:#888">No matches</div>'; resultsEl.style.display='block'; return; }
+          resultsEl.innerHTML = results.map(function(r){
+            return '<div class="fbw-tag-result" data-field="'+fieldKey+'" data-id="'+escHtml(r.id)+'" data-name="'+escHtml(r.name)+'" style="padding:6px 10px;font-size:13px;cursor:pointer;border-bottom:1px solid #f3f4f6">'+escHtml(r.name)+(r.audience_size_lower_bound?' <span style="color:#aaa;font-size:11px">('+fmt(r.audience_size_lower_bound)+'+ people)</span>':'')+'</div>';
+          }).join('');
+          resultsEl.style.display='block';
+          resultsEl.querySelectorAll('.fbw-tag-result').forEach(function(row){
+            row.addEventListener('click', function(){
+              window._fbWizard.adset[fieldKey].push({id:row.dataset.id, name:row.dataset.name});
+              input.value = '';
+              resultsEl.style.display='none'; resultsEl.innerHTML='';
+              var chipsEl = document.querySelector('.fbw-tag-chips[data-field="'+fieldKey+'"]');
+              if(chipsEl){ chipsEl.innerHTML = fbTagChipsHtml(window._fbWizard.adset[fieldKey]); fbBindTagChipRemovers(); }
+            });
+          });
+        }).catch(function(e){
+          resultsEl.innerHTML = '<div style="padding:6px 10px;font-size:12px;color:#dc2626">'+escHtml(e.message)+'</div>';
+          resultsEl.style.display='block';
+        });
+      }, 300);
+    });
+  });
+  fbBindTagChipRemovers();
+}
+function fbBindTagChipRemovers(){
+  document.querySelectorAll('.fbw-tag-remove').forEach(function(x){
+    x.addEventListener('click', function(){
+      var chipsEl = x.closest('.fbw-tag-chips');
+      var fieldKey = chipsEl.dataset.field;
+      window._fbWizard.adset[fieldKey] = window._fbWizard.adset[fieldKey].filter(function(it){ return it.id!==x.dataset.id; });
+      chipsEl.innerHTML = fbTagChipsHtml(window._fbWizard.adset[fieldKey]);
+      fbBindTagChipRemovers();
+    });
+  });
+}
 
 function openFbCampaignWizard(){
   window._fbWizard = {
     step: 1,
     campaign: {objective:'OUTCOME_TRAFFIC', specialAdCategory:'NONE'},
-    adset: {budget:'25', startDate:today(), countries:'US', ageMin:'18', ageMax:'65', gender:'all'},
+    adset: {budget:'25', startDate:today(), countries:'US', excludedCountries:'', ageMin:'18', ageMax:'65', gender:'all', interests:[], languages:[], placementMode:'automatic', platforms:['facebook','instagram'], deviceType:'all'},
     creative: {cta:'LEARN_MORE', url:'https://themilesman.com'},
     pages: null
   };
@@ -14470,9 +14559,16 @@ function fbWizardSaveStepFields(){
     w.adset.startDate = ($('fbw-start')||{}).value || w.adset.startDate;
     w.adset.endDate = ($('fbw-end')||{}).value || '';
     w.adset.countries = ($('fbw-countries')||{}).value || w.adset.countries;
+    w.adset.excludedCountries = ($('fbw-excluded-countries')||{}).value || '';
     w.adset.ageMin = ($('fbw-age-min')||{}).value || w.adset.ageMin;
     w.adset.ageMax = ($('fbw-age-max')||{}).value || w.adset.ageMax;
     w.adset.gender = ($('fbw-gender')||{}).value || w.adset.gender;
+    // interests/languages are already kept live in w.adset by
+    // fbBindTagPickers()'s add/remove handlers, nothing to read here.
+    w.adset.placementMode = ($('fbw-placement-mode')||{}).value || w.adset.placementMode;
+    var platformCbs = document.querySelectorAll('.fbw-platform-cb:checked');
+    if(platformCbs.length) w.adset.platforms = Array.from(platformCbs).map(function(cb){return cb.value;});
+    w.adset.deviceType = ($('fbw-device-type')||{}).value || w.adset.deviceType;
   } else if(w.step===3){
     w.creative.pageId = ($('fbw-page')||{}).value || w.creative.pageId;
     w.creative.adName = ($('fbw-ad-name')||{}).value || w.creative.adName;
@@ -14514,10 +14610,31 @@ function renderFbWizard(){
       fld('Start Date', inp('fbw-start','date',w.adset.startDate), true)+
       fld('End Date (optional)', inp('fbw-end','date',w.adset.endDate||''), true)+
       fld('Countries (comma-separated 2-letter codes)', inp('fbw-countries','text',w.adset.countries,'e.g. US,CA'), true)+
+      fld('Excluded Countries (optional)', inp('fbw-excluded-countries','text',w.adset.excludedCountries,'e.g. CU,IR'), true)+
       fld('Age Min', inp('fbw-age-min','number',w.adset.ageMin))+
       fld('Age Max', inp('fbw-age-max','number',w.adset.ageMax))+
       '<div class="field"><label>Gender</label><select id="fbw-gender">'+
         ['all','men','women'].map(function(g){return '<option value="'+g+'"'+(g===w.adset.gender?' selected':'')+'>'+(g==='all'?'All':g==='men'?'Men only':'Women only')+'</option>';}).join('')+
+      '</select></div>'+
+      fbTagPickerHtml('interests', 'Detailed Targeting — Interests (optional)', 'Search interests, e.g. Cruises, Travel', w.adset.interests)+
+      fbTagPickerHtml('languages', 'Languages (optional — leave blank for all)', 'Search languages, e.g. Spanish', w.adset.languages)+
+      '<div class="field full"><label>Placements</label>'+
+        '<select id="fbw-placement-mode">'+
+          '<option value="automatic"'+(w.adset.placementMode==='automatic'?' selected':'')+'>Advantage+ (automatic — Meta optimizes where your ad shows)</option>'+
+          '<option value="manual"'+(w.adset.placementMode==='manual'?' selected':'')+'>Manual — choose platforms below</option>'+
+        '</select>'+
+      '</div>'+
+      (w.adset.placementMode==='manual' ?
+        '<div class="field full"><label>Platforms</label><div style="display:flex;gap:14px;flex-wrap:wrap">'+
+          [['facebook','Facebook'],['instagram','Instagram'],['messenger','Messenger'],['audience_network','Audience Network']].map(function(p){
+            var checked = w.adset.platforms.indexOf(p[0])!==-1;
+            return '<label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" class="fbw-platform-cb" value="'+p[0]+'" '+(checked?'checked':'')+' style="width:14px;height:14px"> '+p[1]+'</label>';
+          }).join('')+
+        '</div></div>' : '')+
+      '<div class="field"><label>Devices</label><select id="fbw-device-type">'+
+        [['all','All Devices'],['mobile','Mobile Only'],['desktop','Desktop Only']].map(function(d){
+          return '<option value="'+d[0]+'"'+(d[0]===w.adset.deviceType?' selected':'')+'>'+d[1]+'</option>';
+        }).join('')+
       '</select></div>';
   } else if(w.step===3){
     var pageOpts = (w.pages||[]).map(function(p){return {value:p.id, label:p.name};});
@@ -14548,7 +14665,13 @@ function renderFbWizard(){
     var objLabel = (FB_OBJECTIVES.find(function(o){return o.value===w.campaign.objective;})||{}).label || w.campaign.objective;
     body =
       '<div class="field full"><label>Campaign</label><div>'+escHtml(w.campaign.name)+' &middot; '+escHtml(objLabel)+'</div></div>'+
-      '<div class="field full"><label>Ad Set</label><div>'+escHtml(w.adset.name)+' &middot; $'+money(Number(w.adset.budget)||0)+'/day &middot; '+escHtml(w.adset.countries)+' &middot; ages '+escHtml(w.adset.ageMin)+'-'+escHtml(w.adset.ageMax)+' &middot; '+escHtml(w.adset.gender)+'</div></div>'+
+      '<div class="field full"><label>Ad Set</label><div>'+escHtml(w.adset.name)+' &middot; $'+money(Number(w.adset.budget)||0)+'/day &middot; '+escHtml(w.adset.countries)+
+        (w.adset.excludedCountries?' (excl. '+escHtml(w.adset.excludedCountries)+')':'')+' &middot; ages '+escHtml(w.adset.ageMin)+'-'+escHtml(w.adset.ageMax)+' &middot; '+escHtml(w.adset.gender)+
+        (w.adset.interests.length?' &middot; interests: '+w.adset.interests.map(function(i){return i.name;}).join(', '):'')+
+        (w.adset.languages.length?' &middot; languages: '+w.adset.languages.map(function(l){return l.name;}).join(', '):'')+
+        ' &middot; '+(w.adset.placementMode==='automatic'?'Advantage+ placements':'placements: '+w.adset.platforms.join(', '))+
+        (w.adset.deviceType!=='all'?' &middot; '+w.adset.deviceType+' only':'')+
+      '</div></div>'+
       '<div class="field full"><label>Ad</label><div>'+escHtml(w.creative.adName||'')+' on '+escHtml(pageMatch?pageMatch.name:(w.creative.pageId||''))+(w.creative.imageDataUrl?' &middot; image attached':' &middot; <span style="color:#dc2626">no image selected</span>')+'</div></div>'+
       '<div class="field full" style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px;font-size:12px;color:#92400e">This creates everything as <b>Paused</b> — nothing spends money until you explicitly activate it (from the campaign list on the Marketing tab, or in Ads Manager).</div>'+
       '<div id="fbw-progress" class="field full"></div>';
@@ -14566,6 +14689,14 @@ function renderFbWizard(){
 
   $('modal-close').addEventListener('click', closeModal);
   $('modal-cancel').addEventListener('click', closeModal);
+  if(w.step===2){
+    fbBindTagPickers();
+    var placementModeSel = $('fbw-placement-mode');
+    if(placementModeSel) placementModeSel.addEventListener('change', function(){
+      fbWizardSaveStepFields();
+      renderFbWizard();
+    });
+  }
   var backBtn = $('fbw-back');
   if(backBtn) backBtn.addEventListener('click', function(){ fbWizardSaveStepFields(); w.step--; renderFbWizard(); });
   var nextBtn = $('fbw-next');
@@ -14637,6 +14768,17 @@ async function fbWizardLaunch(){
     };
     if(w.adset.gender==='men') targeting.genders = [1];
     if(w.adset.gender==='women') targeting.genders = [2];
+    var excludedCountries = (w.adset.excludedCountries||'').split(',').map(function(s){return s.trim().toUpperCase();}).filter(Boolean);
+    if(excludedCountries.length) targeting.excluded_geo_locations = { countries: excludedCountries };
+    // A single flexible_spec group ORs every picked interest together
+    // (targets people interested in ANY of them) — the intuitive default
+    // for a simple picker; Meta's API also supports multiple groups ANDed
+    // together, not exposed here since that's a much less common need.
+    if(w.adset.interests.length) targeting.flexible_spec = [{ interests: w.adset.interests.map(function(i){return {id:i.id, name:i.name};}) }];
+    if(w.adset.languages.length) targeting.locales = w.adset.languages.map(function(l){return Number(l.id);});
+    if(w.adset.placementMode==='manual' && w.adset.platforms.length) targeting.publisher_platforms = w.adset.platforms;
+    if(w.adset.deviceType==='mobile') targeting.device_platforms = ['mobile'];
+    if(w.adset.deviceType==='desktop') targeting.device_platforms = ['desktop'];
 
     fbWizardProgress('Creating ad set…');
     var adsetBody = {
