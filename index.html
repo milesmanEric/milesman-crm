@@ -87,15 +87,14 @@ nav{padding:10px 8px}
   .tbl-wrap table tr td:nth-child(5):before{content:'Joined'}
 
   /* Planner table mobile labels (overrides the client labels above by class specificity).
-     Column order: checkbox, Client, Type, Phone, Email, Supplier, Task, Due Date, Trip, (actions, unlabeled) —
-     re-numbered here since adding the Supplier column shifted everything after Email by one; the previous
-     mapping had also been stale since the Type column was added (skipped straight to 'Phone' at nth-child(3)). */
+     Column order: checkbox, Client, Supplier, Type, Phone, Email, Task, Due Date, Trip, (actions, unlabeled) —
+     re-numbered again since Supplier moved from after Email to right after Client. */
   .tbl-wrap table.tbl-planner tr td:nth-child(1):before{content:none}
   .tbl-wrap table.tbl-planner tr td:nth-child(2):before{content:'Client'}
-  .tbl-wrap table.tbl-planner tr td:nth-child(3):before{content:'Type'}
-  .tbl-wrap table.tbl-planner tr td:nth-child(4):before{content:'Phone'}
-  .tbl-wrap table.tbl-planner tr td:nth-child(5):before{content:'Email'}
-  .tbl-wrap table.tbl-planner tr td:nth-child(6):before{content:'Supplier'}
+  .tbl-wrap table.tbl-planner tr td:nth-child(3):before{content:'Supplier'}
+  .tbl-wrap table.tbl-planner tr td:nth-child(4):before{content:'Type'}
+  .tbl-wrap table.tbl-planner tr td:nth-child(5):before{content:'Phone'}
+  .tbl-wrap table.tbl-planner tr td:nth-child(6):before{content:'Email'}
   .tbl-wrap table.tbl-planner tr td:nth-child(7):before{content:'Task'}
   .tbl-wrap table.tbl-planner tr td:nth-child(8):before{content:'Due Date'}
   .tbl-wrap table.tbl-planner tr td:nth-child(9):before{content:'Trip'}
@@ -194,6 +193,7 @@ tr:last-child td{border-bottom:none}
 .b-blue{background:#dbeafe;color:#1e40af}
 .b-red{background:#fee2e2;color:#991b1b}
 .b-gray{background:#f3f4f6;color:#374151}
+.b-purple{background:#ede9fe;color:#5b21b6}
 .av{width:30px;height:30px;border-radius:50%;background:#dbeafe;color:#1e40af;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0}
 .search-row{display:flex;gap:8px;margin-bottom:14px}
 .search-row input,.search-row select{padding:8px 12px;border-radius:8px;border:1px solid #d1d5db;font-size:13px;font-family:inherit;color:#111;background:#fff}
@@ -13695,6 +13695,13 @@ function plannerSortArrow(col){
 // Hoisted out of renderPlanner() so the Dashboard's own planner-tasks
 // widget can apply the same Supplier > Vendor > Client phone precedence.
 function taskContactInfo(t){
+  // Checked first since it's the most exclusive/unambiguous indicator —
+  // syncMarketingPlanTask() never links a client/vendor/trip alongside
+  // marketingPlanId, so there's no real precedence conflict with the
+  // checks below, just a natural place for it.
+  if(t.marketingPlanId && db.marketingPlan.some(function(x){return x.id===t.marketingPlanId;})){
+    return {type:'marketing', badgeCls:'b-purple', badgeLabel:'Marketing Plan', phone:'', email:''};
+  }
   var vc = t.vendorContactId ? findVendorContact(t.vendorContactId) : null;
   if(vc) return {type:'supplier', badgeCls:'b-green', badgeLabel:'Supplier', phone:vc.contact.phone, email:vc.contact.email};
   var bvc = t.bizVendorContactId ? findBizVendorContact(t.bizVendorContactId) : null;
@@ -13709,11 +13716,15 @@ function taskContactInfo(t){
     if(v) return {type:'supplier', badgeCls:'b-green', badgeLabel:'Supplier', phone:'', email:''};
   }
   if(taskClients(t).length) return {type:'client', badgeCls:'b-blue', badgeLabel:'Client', phone:'', email:''};
-  return {type:'none', badgeCls:'b-gray', badgeLabel:'—', phone:'', email:''};
+  // A task with no client/supplier/vendor/marketing-plan link is treated
+  // as general Admin work (e.g. a standalone reminder or internal chore)
+  // rather than left unlabeled.
+  return {type:'admin', badgeCls:'b-gray', badgeLabel:'Admin', phone:'', email:''};
 }
 function renderPlanner(){
   var statusFilter = window._plannerStatus||'';
   var dateFilter = window._plannerDateFilter!==undefined?window._plannerDateFilter:'today-overdue';
+  var typeFilter = window._plannerTypeFilter||'';
   var plannerSortCol = window._plannerSortCol || 'dueDate';
   var plannerSortDir = window._plannerSortDir || 'asc';
   var tasks = db.planner.filter(function(t){
@@ -13722,6 +13733,7 @@ function renderPlanner(){
     if(statusFilter==='done'){ if(!t.done) return false; }
     else if(t.done) return false;
     if(dateFilter==='today-overdue' && !(t.dueDate && t.dueDate<=today())) return false;
+    if(typeFilter && taskContactInfo(t).type!==typeFilter) return false;
     return true;
   }).sort(function(a,b){
     if(!!a.done !== !!b.done) return a.done ? 1 : -1;
@@ -13793,14 +13805,22 @@ function renderPlanner(){
         '<option value=""'+(dateFilter===''?' selected':'')+'>All Dates</option>'+
         '<option value="today-overdue"'+(dateFilter==='today-overdue'?' selected':'')+'>Today &amp; Overdue</option>'+
       '</select>'+
+      '<select id="planner-type-filter">'+
+        '<option value=""'+(typeFilter===''?' selected':'')+'>All Types</option>'+
+        '<option value="client"'+(typeFilter==='client'?' selected':'')+'>Client</option>'+
+        '<option value="supplier"'+(typeFilter==='supplier'?' selected':'')+'>Supplier</option>'+
+        '<option value="vendor"'+(typeFilter==='vendor'?' selected':'')+'>Vendor</option>'+
+        '<option value="marketing"'+(typeFilter==='marketing'?' selected':'')+'>Marketing Plan</option>'+
+        '<option value="admin"'+(typeFilter==='admin'?' selected':'')+'>Admin</option>'+
+      '</select>'+
     '</div>'+
     (tasks.length ? '<div class="tbl-wrap"><table class="tbl-planner"><thead><tr>'+
       '<th style="width:32px"></th>'+
       '<th class="sort-th-pl" data-sort="client" style="cursor:pointer">Client'+plannerSortArrow('client')+'</th>'+
+      '<th>Supplier</th>'+
       '<th>Type</th>'+
       '<th>Phone</th>'+
       '<th>Email</th>'+
-      '<th>Supplier</th>'+
       '<th class="sort-th-pl" data-sort="title" style="cursor:pointer">Task'+plannerSortArrow('title')+'</th>'+
       '<th class="sort-th-pl" data-sort="dueDate" style="cursor:pointer">Due Date'+plannerSortArrow('dueDate')+'</th>'+
       '<th>Trip</th>'+
@@ -13838,10 +13858,10 @@ function renderPlanner(){
       return '<tr data-task-id="'+t.id+'">'+
         '<td style="width:32px"><input type="checkbox" class="task-done-cb" data-id="'+t.id+'" '+(t.done?'checked':'')+' style="width:15px;height:15px"></td>'+
         '<td>'+clientLinksHtml(t)+'</td>'+
+        '<td>'+(supplierName?escHtml(supplierName):'<span style="color:#aaa">—</span>')+'</td>'+
         '<td><span class="badge '+info.badgeCls+'">'+info.badgeLabel+'</span></td>'+
         '<td style="white-space:nowrap">'+(cPhone||'<span style="color:#aaa">—</span>')+'</td>'+
         '<td style="white-space:nowrap">'+(displayEmail?('<a href="mailto:'+mailtoAddr(displayEmail)+'" style="font-size:12px;color:#2563eb;text-decoration:none" title="Email in Outlook">&#9993;&#65039; '+displayEmail+'</a>'):'<span style="color:#aaa">—</span>')+'</td>'+
-        '<td>'+(supplierName?escHtml(supplierName):'<span style="color:#aaa">—</span>')+'</td>'+
         '<td>'+
           '<div class="task-title-link" data-id="'+t.id+'" style="font-size:14px;font-weight:600;color:'+(t.done?'#aaa':'#2563eb')+';cursor:pointer;text-decoration:'+(t.done?'line-through':'underline')+'">'+t.title+'</div>'+
           (t.desc ? '<div style="margin-top:4px;font-size:12px;color:#666">'+t.desc+'</div>' : '')+
@@ -13877,6 +13897,7 @@ function renderPlanner(){
   });
   $('planner-status-filter').addEventListener('change', function(){ window._plannerStatus=this.value; renderPlanner(); });
   $('planner-date-filter').addEventListener('change', function(){ window._plannerDateFilter=this.value; renderPlanner(); });
+  $('planner-type-filter').addEventListener('change', function(){ window._plannerTypeFilter=this.value; renderPlanner(); });
   document.querySelectorAll('.sort-th-pl').forEach(function(th){
     th.addEventListener('click', function(){
       var col = th.dataset.sort;
@@ -14539,7 +14560,13 @@ function fbTagPickerHtml(fieldKey, label, placeholder, items){
 // (interests/languages) rather than routing through fbWizardSaveStepFields(),
 // since chip add/remove needs to persist immediately, not just on Next.
 function fbBindTagPickers(){
-  var searchType = {interests:'adinterest', languages:'adlocale'};
+  // regions/cities both search against the same adgeolocation type,
+  // narrowed by location_types; Meta's search results key geo items by
+  // "key" while interest/locale results key theirs by "id" — resultId()
+  // below tries both so one code path covers all four fields.
+  var searchType = {interests:'adinterest', languages:'adlocale', regions:'adgeolocation', cities:'adgeolocation'};
+  var locationTypes = {regions:'["region"]', cities:'["city"]'};
+  function resultId(r){ return r.id!=null ? r.id : r.key; }
   document.querySelectorAll('.fbw-tag-search').forEach(function(input){
     var fieldKey = input.dataset.field;
     var resultsEl = document.querySelector('.fbw-tag-results[data-field="'+fieldKey+'"]');
@@ -14549,14 +14576,17 @@ function fbBindTagPickers(){
       clearTimeout(debounceTimer);
       if(!q){ resultsEl.style.display='none'; resultsEl.innerHTML=''; return; }
       debounceTimer = setTimeout(function(){
-        fbGraph('/search', {query:{type:searchType[fieldKey], q:q, limit:'8'}}).then(function(resp){
+        var query = {type:searchType[fieldKey], q:q, limit:'8'};
+        if(locationTypes[fieldKey]) query.location_types = locationTypes[fieldKey];
+        fbGraph('/search', {query:query}).then(function(resp){
           if(resp.error){ resultsEl.innerHTML = '<div style="padding:6px 10px;font-size:12px;color:#dc2626">'+escHtml(resp.error.message)+'</div>'; resultsEl.style.display='block'; return; }
           var results = resp.data||[];
           var already = window._fbWizard.adset[fieldKey].map(function(it){return it.id;});
-          results = results.filter(function(r){ return already.indexOf(r.id)===-1; });
+          results = results.filter(function(r){ return already.indexOf(String(resultId(r)))===-1; });
           if(!results.length){ resultsEl.innerHTML = '<div style="padding:6px 10px;font-size:12px;color:#888">No matches</div>'; resultsEl.style.display='block'; return; }
           resultsEl.innerHTML = results.map(function(r){
-            return '<div class="fbw-tag-result" data-field="'+fieldKey+'" data-id="'+escHtml(r.id)+'" data-name="'+escHtml(r.name)+'" style="padding:6px 10px;font-size:13px;cursor:pointer;border-bottom:1px solid #f3f4f6">'+escHtml(r.name)+(r.audience_size_lower_bound?' <span style="color:#aaa;font-size:11px">('+fmt(r.audience_size_lower_bound)+'+ people)</span>':'')+'</div>';
+            var label = r.name + (r.region ? ', '+r.region : '') + (r.country_name && fieldKey!=='regions' ? ', '+r.country_name : '');
+            return '<div class="fbw-tag-result" data-field="'+fieldKey+'" data-id="'+escHtml(String(resultId(r)))+'" data-name="'+escHtml(label)+'" style="padding:6px 10px;font-size:13px;cursor:pointer;border-bottom:1px solid #f3f4f6">'+escHtml(label)+(r.audience_size_lower_bound?' <span style="color:#aaa;font-size:11px">('+fmt(r.audience_size_lower_bound)+'+ people)</span>':'')+'</div>';
           }).join('');
           resultsEl.style.display='block';
           resultsEl.querySelectorAll('.fbw-tag-result').forEach(function(row){
@@ -14593,7 +14623,7 @@ function openFbCampaignWizard(){
   window._fbWizard = {
     step: 1,
     campaign: {objective:'OUTCOME_TRAFFIC', specialAdCategory:'NONE'},
-    adset: {budget:'25', startDate:today(), countries:'US', excludedCountries:'', ageMin:'18', ageMax:'65', gender:'all', interests:[], languages:[], placementMode:'automatic', platforms:['facebook','instagram'], deviceType:'all'},
+    adset: {budget:'25', startDate:today(), countries:'US', excludedCountries:'', ageMin:'18', ageMax:'65', gender:'all', interests:[], languages:[], regions:[], cities:[], placementMode:'automatic', platforms:['facebook','instagram'], deviceType:'all'},
     creative: {cta:'LEARN_MORE', url:'https://themilesman.com'},
     pages: null
   };
@@ -14670,6 +14700,8 @@ function renderFbWizard(){
       fld('End Date (optional)', inp('fbw-end','date',w.adset.endDate||''), true)+
       fld('Countries (comma-separated 2-letter codes)', inp('fbw-countries','text',w.adset.countries,'e.g. US,CA'), true)+
       fld('Excluded Countries (optional)', inp('fbw-excluded-countries','text',w.adset.excludedCountries,'e.g. CU,IR'), true)+
+      fbTagPickerHtml('regions', 'States / Regions (optional — narrows within the countries above)', 'Search states/regions, e.g. New Jersey', w.adset.regions)+
+      fbTagPickerHtml('cities', 'Cities (optional — narrows further, 10mi radius each)', 'Search cities, e.g. Westfield', w.adset.cities)+
       fld('Age Min', inp('fbw-age-min','number',w.adset.ageMin))+
       fld('Age Max', inp('fbw-age-max','number',w.adset.ageMax))+
       '<div class="field"><label>Gender</label><select id="fbw-gender">'+
@@ -14725,7 +14757,10 @@ function renderFbWizard(){
     body =
       '<div class="field full"><label>Campaign</label><div>'+escHtml(w.campaign.name)+' &middot; '+escHtml(objLabel)+'</div></div>'+
       '<div class="field full"><label>Ad Set</label><div>'+escHtml(w.adset.name)+' &middot; $'+money(Number(w.adset.budget)||0)+'/day &middot; '+escHtml(w.adset.countries)+
-        (w.adset.excludedCountries?' (excl. '+escHtml(w.adset.excludedCountries)+')':'')+' &middot; ages '+escHtml(w.adset.ageMin)+'-'+escHtml(w.adset.ageMax)+' &middot; '+escHtml(w.adset.gender)+
+        (w.adset.excludedCountries?' (excl. '+escHtml(w.adset.excludedCountries)+')':'')+
+        (w.adset.regions.length?' &middot; regions: '+w.adset.regions.map(function(r){return r.name;}).join(', '):'')+
+        (w.adset.cities.length?' &middot; cities: '+w.adset.cities.map(function(c){return c.name;}).join(', ')+' (10mi)':'')+
+        ' &middot; ages '+escHtml(w.adset.ageMin)+'-'+escHtml(w.adset.ageMax)+' &middot; '+escHtml(w.adset.gender)+
         (w.adset.interests.length?' &middot; interests: '+w.adset.interests.map(function(i){return i.name;}).join(', '):'')+
         (w.adset.languages.length?' &middot; languages: '+w.adset.languages.map(function(l){return l.name;}).join(', '):'')+
         ' &middot; '+(w.adset.placementMode==='automatic'?'Advantage+ placements':'placements: '+w.adset.platforms.join(', '))+
@@ -14829,6 +14864,13 @@ async function fbWizardLaunch(){
     if(w.adset.gender==='women') targeting.genders = [2];
     var excludedCountries = (w.adset.excludedCountries||'').split(',').map(function(s){return s.trim().toUpperCase();}).filter(Boolean);
     if(excludedCountries.length) targeting.excluded_geo_locations = { countries: excludedCountries };
+    // Regions/cities narrow within geo_locations.countries (AND'd, not a
+    // replacement) — Meta's own spec is just {key:...} for a region, and
+    // {key:..., radius:.., distance_unit:..} for a city. A single fixed
+    // 10mi radius is applied to every picked city rather than exposing a
+    // per-city radius input, to keep the picker itself simple.
+    if(w.adset.regions.length) targeting.geo_locations.regions = w.adset.regions.map(function(r){return {key:r.id};});
+    if(w.adset.cities.length) targeting.geo_locations.cities = w.adset.cities.map(function(c){return {key:c.id, radius:10, distance_unit:'mile'};});
     // A single flexible_spec group ORs every picked interest together
     // (targets people interested in ANY of them) — the intuitive default
     // for a simple picker; Meta's API also supports multiple groups ANDed
