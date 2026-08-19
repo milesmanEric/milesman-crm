@@ -15908,7 +15908,7 @@ function linkedClientPhonesStr(clientId, additionalIds){
   }).filter(Boolean).join(', ');
 }
 function openTaskForm(id){
-  var d = id ? (db.planner.find(function(t){return t.id===id;})||{}) : {};
+  var d = id ? (db.planner.find(function(t){return t.id===id;})||{}) : {dueDate:today()};
   // Existing tasks linked to a client before this task ever had its own
   // Email field (or ones the client dropdown was never re-touched on)
   // otherwise show up with a blank Email despite being linked — fall back
