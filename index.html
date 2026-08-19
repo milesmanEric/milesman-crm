@@ -13727,6 +13727,26 @@ function renderPlanner(){
   var typeFilter = window._plannerTypeFilter||'';
   var plannerSortCol = window._plannerSortCol || 'dueDate';
   var plannerSortDir = window._plannerSortDir || 'asc';
+  // Shared by both the sort comparator below and the row-rendering map()
+  // further down, so a column's sort order always matches what it
+  // actually displays — computing these separately in each place risked
+  // exactly the "duplicated logic drifts apart" bug already hit a couple
+  // of times elsewhere in this app (e.g. the Email tab's client sort).
+  function supplierNameForTask(t){
+    if(taskClientId(t) || !t.vendorId) return '';
+    var sup = db.vendors.find(function(v){return v.id===t.vendorId;});
+    return sup ? sup.name : '';
+  }
+  function phoneForTask(t){
+    var info = taskContactInfo(t);
+    var cid = taskClientId(t);
+    var linkedClient = cid ? db.clients.find(function(x){return x.id===cid;}) : null;
+    return info.phone || (linkedClient ? linkedClient.phone : '');
+  }
+  function emailForTask(t){
+    var info = taskContactInfo(t);
+    return info.email || (t.email || linkedClientEmailsStr(t.clientId, t.clientIds));
+  }
   var tasks = db.planner.filter(function(t){
     // Marking a task done removes it from the planner view entirely — the
     // only way to see completed tasks is explicitly picking the Done filter.
@@ -13741,6 +13761,18 @@ function renderPlanner(){
     if(plannerSortCol==='client'){
       av=(clientName(a)||'').toLowerCase();
       bv=(clientName(b)||'').toLowerCase();
+    } else if(plannerSortCol==='supplier'){
+      av=supplierNameForTask(a).toLowerCase();
+      bv=supplierNameForTask(b).toLowerCase();
+    } else if(plannerSortCol==='type'){
+      av=taskContactInfo(a).badgeLabel.toLowerCase();
+      bv=taskContactInfo(b).badgeLabel.toLowerCase();
+    } else if(plannerSortCol==='phone'){
+      av=phoneForTask(a).toLowerCase();
+      bv=phoneForTask(b).toLowerCase();
+    } else if(plannerSortCol==='email'){
+      av=emailForTask(a).toLowerCase();
+      bv=emailForTask(b).toLowerCase();
     } else {
       av=(a[plannerSortCol]||'').toString().toLowerCase();
       bv=(b[plannerSortCol]||'').toString().toLowerCase();
@@ -13817,10 +13849,10 @@ function renderPlanner(){
     (tasks.length ? '<div class="tbl-wrap"><table class="tbl-planner"><thead><tr>'+
       '<th style="width:32px"></th>'+
       '<th class="sort-th-pl" data-sort="client" style="cursor:pointer">Client'+plannerSortArrow('client')+'</th>'+
-      '<th>Supplier</th>'+
-      '<th>Type</th>'+
-      '<th>Phone</th>'+
-      '<th>Email</th>'+
+      '<th class="sort-th-pl" data-sort="supplier" style="cursor:pointer">Supplier'+plannerSortArrow('supplier')+'</th>'+
+      '<th class="sort-th-pl" data-sort="type" style="cursor:pointer">Type'+plannerSortArrow('type')+'</th>'+
+      '<th class="sort-th-pl" data-sort="phone" style="cursor:pointer">Phone'+plannerSortArrow('phone')+'</th>'+
+      '<th class="sort-th-pl" data-sort="email" style="cursor:pointer">Email'+plannerSortArrow('email')+'</th>'+
       '<th class="sort-th-pl" data-sort="title" style="cursor:pointer">Task'+plannerSortArrow('title')+'</th>'+
       '<th class="sort-th-pl" data-sort="dueDate" style="cursor:pointer">Due Date'+plannerSortArrow('dueDate')+'</th>'+
       '<th>Trip</th>'+
@@ -14461,7 +14493,12 @@ function loadFacebookPageAnalytics(bodyId){
 
     Promise.all([
       fbGraph('/'+page.id+'/insights', {token:pageToken, query:{metric:'page_fans', period:'lifetime'}}),
-      fbGraph('/'+page.id+'/insights', {token:pageToken, query:{metric:'page_views_total,page_impressions,page_impressions_unique,page_post_engagements', period:'days_28'}})
+      // page_impressions/page_impressions_unique were deprecated by Meta
+      // (confirmed live against a real connected Page — both return "(#100)
+      // The value must be a valid insights metric") — page_media_view and
+      // page_total_media_view_unique are the documented replacements,
+      // also confirmed live.
+      fbGraph('/'+page.id+'/insights', {token:pageToken, query:{metric:'page_views_total,page_media_view,page_total_media_view_unique,page_post_engagements', period:'days_28'}})
     ]).then(function(results){
       if(!body) return;
       var fansResp = results[0], statsResp = results[1];
@@ -14476,8 +14513,8 @@ function loadFacebookPageAnalytics(bodyId){
       (fansResp.data||[]).concat(statsResp.data||[]).forEach(function(m){ byName[m.name] = m; });
       var fans = latestValue(byName.page_fans);
       var views = latestValue(byName.page_views_total);
-      var impressions = latestValue(byName.page_impressions);
-      var reach = latestValue(byName.page_impressions_unique);
+      var impressions = latestValue(byName.page_media_view);
+      var reach = latestValue(byName.page_total_media_view_unique);
       var engagements = latestValue(byName.page_post_engagements);
 
       body.innerHTML = '<div style="font-size:11px;color:#888;margin-bottom:8px">'+escHtml(page.name||'')+' &middot; last 28 days (Page Likes is all-time)</div>'+
@@ -15034,14 +15071,16 @@ function fetchYesterdayFacebookPage(dateStr){
     if(pagesResp.error) throw new Error(pagesResp.error.message);
     var page = (pagesResp.data||[])[0];
     if(!page) throw new Error('no managed Page found');
-    return fbGraph('/'+page.id+'/insights', {token:page.access_token, query:{metric:'page_views_total,page_impressions,page_post_engagements', period:'day', since:dateStr, until:dateStr}}).then(function(resp){
+    // page_impressions deprecated by Meta — page_media_view is the
+    // confirmed-live replacement (see loadFacebookPageAnalytics above).
+    return fbGraph('/'+page.id+'/insights', {token:page.access_token, query:{metric:'page_views_total,page_media_view,page_post_engagements', period:'day', since:dateStr, until:dateStr}}).then(function(resp){
       if(resp.error) throw new Error(resp.error.message);
       var byName = {};
       (resp.data||[]).forEach(function(m){ byName[m.name] = (m.values||[])[0]; });
       return {
         pageName: page.name,
         views: byName.page_views_total?byName.page_views_total.value:0,
-        impressions: byName.page_impressions?byName.page_impressions.value:0,
+        impressions: byName.page_media_view?byName.page_media_view.value:0,
         engagements: byName.page_post_engagements?byName.page_post_engagements.value:0
       };
     });
