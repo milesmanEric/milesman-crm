@@ -303,6 +303,7 @@ tr:last-child td{border-bottom:none}
       <button class="menu-toggle-btn" data-menu="menu-email">&#9993;&#65039; Email <span class="menu-caret">&#9656;</span></button>
       <div class="menu-group" id="menu-email" style="display:none">
         <button class="sync-btn" id="outlook-btn">&#128424; Sync Outlook Emails</button>
+        <button class="sync-btn" id="btn-sync-texts" style="color:#0891b2;border-color:#67e8f9">&#128241; Sync Texts</button>
         <button class="sync-btn" id="btn-log-mailchimp" style="color:#7c3aed;border-color:#c4b5fd">&#128226; Log Mailchimp Campaign</button>
         <button class="sync-btn" id="btn-sync-mailchimp" style="color:#7c3aed;border-color:#c4b5fd">&#128260; Sync Mailchimp Activity</button>
         <button class="sync-btn" id="btn-ms-signout" style="color:#888;border-color:#ddd;font-size:11px">&#128274; Reset Outlook Login</button>
@@ -1971,6 +1972,96 @@ async function syncOutlook(){
     debugLog('FATAL ERROR: '+e.message);
     console.error('Outlook sync error:',e);
     toast('Sync failed: '+e.message,'err');
+    btn.textContent=orig;
+  }
+  btn.disabled=false;
+}
+
+const SMS_QUEUE_FILENAME = 'milesman-sms-queue.json';
+// Compares by last-10-digits so E.164-formatted incoming numbers (from the
+// phone-forwarder app, e.g. "+15551234567") match however a client's phone
+// happens to be stored ("(555) 123-4567", "555.123.4567", etc.).
+function last10Digits(phone){
+  return (phone||'').replace(/\D/g,'').slice(-10);
+}
+async function findSmsQueueFile(token){
+  const q=encodeURIComponent("name='"+SMS_QUEUE_FILENAME+"' and trashed=false");
+  const r=await fetch('https://www.googleapis.com/drive/v3/files?q='+q+'&orderBy=modifiedTime desc&fields=files(id,name,modifiedTime)',{
+    headers:{Authorization:'Bearer '+token}
+  });
+  const d=await r.json();
+  return (d.files||[])[0]||null;
+}
+async function syncTexts(){
+  const btn=$('btn-sync-texts');
+  const orig=btn.textContent;
+  btn.textContent='Syncing...'; btn.disabled=true;
+  debugLog('=== Text Sync Started ===');
+  try{
+    localStorage.setItem('mm_drive_action','pending');
+    const token=await getDriveToken();
+    if(!token){
+      debugLog('No Drive token — redirecting to Google login');
+      btn.textContent=orig;btn.disabled=false;return;
+    }
+    debugLog('Text sync: token OK, searching for queue file...');
+    const file=await findSmsQueueFile(token);
+    if(!file){
+      debugLog('Text sync: no queue file found — no texts have been forwarded yet');
+      toast('No texts found — check your phone-forwarding app is set up','info');
+      btn.textContent=orig;btn.disabled=false;return;
+    }
+    const dr=await fetch('https://www.googleapis.com/drive/v3/files/'+file.id+'?alt=media',{
+      headers:{Authorization:'Bearer '+token}
+    });
+    if(!dr.ok){ throw new Error('Drive returned '+dr.status+' downloading queue file'); }
+    let queue;
+    try{ queue=JSON.parse(await dr.text()); }catch(e){ throw new Error('Queue file was not valid JSON'); }
+    if(!Array.isArray(queue)) queue=[];
+    debugLog('Text sync: '+queue.length+' queued message(s)');
+    if(!queue.length){
+      toast('No new texts to sync','ok');
+      btn.textContent=orig;btn.disabled=false;return;
+    }
+
+    const clientsByLast10={};
+    db.clients.forEach(function(c){
+      const key=last10Digits(c.phone);
+      if(key) clientsByLast10[key]=c;
+    });
+
+    let totalNew=0, unmatched=0;
+    queue.forEach(function(msg){
+      const key=last10Digits(msg.from);
+      const client=key && clientsByLast10[key];
+      if(!client){ unmatched++; debugLog('Text sync: no client match for '+msg.from); return; }
+      const dt=msg.receivedAt?new Date(msg.receivedAt):new Date();
+      const ts=dt.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})+' '+dt.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+      const note={ts:ts,text:msg.text||'',source:'sms',noteType:'Text Message Received'};
+      db.clients=db.clients.map(function(c){
+        if(c.id!==client.id) return c;
+        const notesLog=[...(c.notesLog||[]),note].sort(function(a,b){return new Date(a.ts)-new Date(b.ts);});
+        return Object.assign({},c,{notesLog:notesLog});
+      });
+      totalNew++;
+    });
+
+    // Clear the queue now that every message has been logged (or counted as
+    // unmatched) — leaving it un-cleared would re-log the same texts as new
+    // notes on every future sync.
+    const cr=await fetch('https://www.googleapis.com/upload/drive/v3/files/'+file.id+'?uploadType=media&fields=id',{
+      method:'PATCH',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:'[]'
+    });
+    if(!cr.ok){ debugLog('Text sync: WARNING — failed to clear queue file (status '+cr.status+'), next sync may re-log these'); }
+
+    saveDB();render();
+    btn.textContent=orig;btn.style.color='#059669';btn.style.borderColor='#6ee7b7';
+    debugLog('=== Text Sync Complete: '+totalNew+' new notes, '+unmatched+' unmatched ===');
+    toast(totalNew?('Synced '+totalNew+' text'+(totalNew===1?'':'s')+(unmatched?', '+unmatched+' from unknown number'+(unmatched===1?'':'s'):'')):('No matching clients for '+unmatched+' text'+(unmatched===1?'':'s')),totalNew?'ok':'err');
+  }catch(e){
+    debugLog('Text sync FATAL ERROR: '+e.message);
+    console.error('Text sync error:',e);
+    toast('Text sync failed: '+e.message,'err');
     btn.textContent=orig;
   }
   btn.disabled=false;
@@ -16376,6 +16467,7 @@ function bindClick(id, handler){
   bindClick('nb-ccconsulting', function(){go('ccconsulting');closeMobileNav();});
   bindClick('nb-referrals', function(){go('referrals');closeMobileNav();});
   bindClick('outlook-btn', syncOutlook);
+  bindClick('btn-sync-texts', syncTexts);
   bindClick('drive-btn', driveBackup);
   bindClick('drive-restore-btn', driveRestore);
   bindClick('secure-sync-backup-btn', secureSyncBackup);
