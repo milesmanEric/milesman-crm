@@ -8891,7 +8891,7 @@ function importVendorsCSV(){
 
 // ── Vendor helpers ───────────────────────────────────────────────────────
 const VENDOR_TYPES = ['Supplier','Referral Partner','DMC'];
-const VENDOR_CATS  = ['Airline','Hotel','Cruise Line','Car Rental','Tour Operator','Other'];
+const VENDOR_CATS  = ['Airline','Hotel','Cruise Line','Car Rental','Tour Operator','Train','Insurance','Financial','Other'];
 
 // A supplier can have any number of contacts (id VC001, VC002... globally
 // unique across every vendor's contacts array, not just within one vendor —
@@ -9159,6 +9159,10 @@ function renderVendors(){
     '</div>'+
     '<div class="search-row">'+
       '<input id="supplier-search" placeholder="Search suppliers..."/>'+
+      '<select id="supplier-category-filter" style="padding:7px 10px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#374151;cursor:pointer;font-size:12px;font-family:inherit">'+
+        '<option value=""'+(window._supplierCategoryFilter?'':' selected')+'>All Categories</option>'+
+        VENDOR_CATS.map(function(c){return '<option value="'+c+'"'+(window._supplierCategoryFilter===c?' selected':'')+'>'+c+'</option>';}).join('')+
+      '</select>'+
       '<button id="btn-select-all-suppliers" style="padding:7px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#555;cursor:pointer;font-size:12px;font-family:inherit">Select All</button>'+
       '<button id="btn-delete-checked-suppliers" style="display:none;padding:7px 14px;border-radius:7px;border:none;background:#dc2626;color:#fff;cursor:pointer;font-size:12px;font-family:inherit">&#128465; Delete Selected</button>'+
     '</div>'+
@@ -9166,7 +9170,7 @@ function renderVendors(){
       var stats = getVendorStats(v);
       var typeCls = v.type==='Referral Partner' ? 'vendor-type-referral' : 'vendor-type-supplier';
       var clientList = stats.clients.slice(0,3).join(', ')+(stats.clients.length>3?' +' +(stats.clients.length-3)+' more':'');
-      return '<div class="vendor-card" id="vc-'+v.id+'">'+
+      return '<div class="vendor-card" id="vc-'+v.id+'" data-category="'+escHtml(v.category||'')+'">'+
         '<div style="display:flex;justify-content:space-between;align-items:flex-start">'+
           '<div style="display:flex;align-items:flex-start;gap:10px">'+
             '<input type="checkbox" class="supplier-row-cb" data-id="'+v.id+'" style="width:14px;height:14px;margin-top:4px">'+
@@ -9189,6 +9193,19 @@ function renderVendors(){
           (v.phone?'<span>&#128222; '+v.phone+'</span>':'')+
         '</div>':'')+
         (v.website?'<div style="font-size:12px;margin-top:8px"><a href="'+(v.website.indexOf('http')===0?v.website:'https://'+v.website)+'" target="_blank" style="color:#2563eb;text-decoration:none">&#127760; '+escHtml(v.website)+'</a></div>':'')+
+        '<div style="margin-top:10px;border-top:1px solid #f0f0f0;padding-top:8px">'+
+          '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'+
+            '<div style="font-size:11px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:.05em">Contacts'+((v.contacts||[]).length?' ('+v.contacts.length+')':'')+'</div>'+
+            '<button type="button" class="supplier-add-contact-btn" data-vendor-id="'+v.id+'" style="padding:2px 8px;border-radius:6px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:11px;font-family:inherit">+ Add Contact</button>'+
+          '</div>'+
+          ((v.contacts||[]).length ? v.contacts.map(function(c){
+            return '<div class="supplier-contact-link" data-vendor-id="'+v.id+'" data-contact-id="'+c.id+'" style="cursor:pointer;padding:5px 8px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;margin-bottom:4px">'+
+              '<span style="font-size:12px;font-weight:600;color:#2563eb;text-decoration:underline">'+escHtml(c.name||'(no name)')+'</span>'+
+              (c.title?' <span style="font-size:11px;color:#888">&mdash; '+escHtml(c.title)+'</span>':'')+
+              '<div style="font-size:11px;color:#888">'+([c.email,c.phone].filter(Boolean).map(escHtml).join(' &middot; ')||'&nbsp;')+'</div>'+
+            '</div>';
+          }).join('') : '<div style="color:#aaa;font-size:12px;padding:2px 0">No contacts yet.</div>')+
+        '</div>'+
         '<div style="margin-top:8px">'+
           '<span class="vendor-stat">&#9992;&#65039; '+stats.trips+' trips</span>'+
           '<span class="vendor-stat">&#128176; $'+money(stats.revenue)+' revenue</span>'+
@@ -9196,8 +9213,14 @@ function renderVendors(){
         '</div>'+
         (stats.clients.length?'<div style="font-size:11px;color:#888;margin-top:6px">'+clientList+'</div>':'')+
         (stats.tripList.length?
-          '<div style="margin-top:10px;border-top:1px solid #f0f0f0;padding-top:10px">'+
-            '<div style="font-size:11px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Trips</div>'+
+          (function(){
+            var tripsOpen = !!(window._vendorTripsOpen||{})[v.id];
+            return '<div style="margin-top:10px;border-top:1px solid #f0f0f0;padding-top:10px">'+
+            '<div class="vendor-trips-toggle" data-vendor-id="'+v.id+'" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center">'+
+              '<span style="font-size:11px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Trips ('+stats.tripList.length+')</span>'+
+              '<span class="vendor-trips-caret" style="display:inline-block;transition:transform .15s;transform:rotate('+(tripsOpen?'90':'0')+'deg);color:#888;font-size:11px">&#9656;</span>'+
+            '</div>'+
+            (tripsOpen ? (
             '<table style="width:100%;border-collapse:collapse">'+
             '<thead><tr>'+
               '<th style="text-align:left;font-size:10px;color:#aaa;font-weight:600;padding:3px 8px;text-transform:uppercase">Client</th>'+
@@ -9225,8 +9248,10 @@ function renderVendors(){
             var moreRow = (stats.tripList.length>10?'<tr><td colspan="5" style="font-size:11px;color:#2563eb;padding:5px 8px;cursor:pointer;text-decoration:underline" class="vendor-toggle-more" data-vendor-id="'+v.id+'">'+(vendorExpanded?'Show less':'+ '+(stats.tripList.length-10)+' more trips')+'</td></tr>':'');
             return rowsHtml+moreRow;
             })()+
-            '</tbody></table>'+
-          '</div>'
+            '</tbody></table>'
+            ) : '')+
+          '</div>';
+          })()
         :'')+
         (v.notes?'<div style="font-size:12px;color:#666;margin-top:8px;border-top:1px solid #f0f0f0;padding-top:8px">'+v.notes+'</div>':'')+
       '</div>';
@@ -9257,12 +9282,21 @@ function renderVendors(){
       return {cells:[name,(c&&c.email)||''],onClick:function(){ if(c) openClientForm(c.id); }};
     }));
   });
-  $('supplier-search').addEventListener('input', function(){
-    var q = this.value.toLowerCase();
+  function applySupplierFilters(){
+    var q = ($('supplier-search').value||'').toLowerCase();
+    var cat = window._supplierCategoryFilter||'';
     document.querySelectorAll('.vendor-card').forEach(function(el){
       var txt = el.textContent.toLowerCase();
-      el.style.display = !q||txt.includes(q) ? '' : 'none';
+      var matchesSearch = !q||txt.includes(q);
+      var matchesCategory = !cat||el.dataset.category===cat;
+      el.style.display = (matchesSearch && matchesCategory) ? '' : 'none';
     });
+  }
+  applySupplierFilters();
+  $('supplier-search').addEventListener('input', applySupplierFilters);
+  $('supplier-category-filter').addEventListener('change', function(){
+    window._supplierCategoryFilter = this.value;
+    applySupplierFilters();
   });
   document.querySelectorAll('.edit-vendor').forEach(function(btn){
     btn.addEventListener('click', function(){openVendorForm(btn.dataset.id);});
@@ -9295,6 +9329,26 @@ function renderVendors(){
       if(!window._expandedVendors) window._expandedVendors={};
       window._expandedVendors[el.dataset.vendorId] = !window._expandedVendors[el.dataset.vendorId];
       renderVendors();
+    });
+  });
+  document.querySelectorAll('.vendor-trips-toggle').forEach(function(el){
+    el.addEventListener('click', function(e){
+      e.stopPropagation();
+      if(!window._vendorTripsOpen) window._vendorTripsOpen={};
+      window._vendorTripsOpen[el.dataset.vendorId] = !window._vendorTripsOpen[el.dataset.vendorId];
+      renderVendors();
+    });
+  });
+  document.querySelectorAll('.supplier-add-contact-btn').forEach(function(btn){
+    btn.addEventListener('click', function(e){
+      e.stopPropagation();
+      openVendorContactForm(btn.dataset.vendorId, null, true);
+    });
+  });
+  document.querySelectorAll('.supplier-contact-link').forEach(function(el){
+    el.addEventListener('click', function(e){
+      e.stopPropagation();
+      openVendorContactForm(el.dataset.vendorId, el.dataset.contactId, true);
     });
   });
 
@@ -9598,7 +9652,7 @@ function saveVendor(id){
 // openClientForm, since that wiring lives inline there rather than in a
 // reusable function, and touching that already-working code isn't worth the
 // risk for what's otherwise a straight copy.
-function openVendorContactForm(vendorId, contactId){
+function openVendorContactForm(vendorId, contactId, returnToList){
   var vendor = db.vendors.find(function(v){return v.id===vendorId;});
   if(!vendor){ toast('Supplier not found','err'); return; }
   var d = contactId ? ((vendor.contacts||[]).find(function(c){return c.id===contactId;})||{}) : {};
@@ -9676,11 +9730,11 @@ function openVendorContactForm(vendorId, contactId){
     '<div class="form-actions form-actions-sticky"><button class="cancel-btn" id="modal-cancel">Cancel</button><button class="save-btn" id="modal-save-vendor-contact" data-vendor-id="'+vendorId+'" data-contact-id="'+(contactId||'')+'">Save Contact</button></div>';
 
   $('overlay').classList.add('open');
-  $('modal-close').addEventListener('click', function(){ openVendorForm(vendorId); });
-  $('modal-cancel').addEventListener('click', function(){ openVendorForm(vendorId); });
+  $('modal-close').addEventListener('click', function(){ if(returnToList){ closeModal(); } else { openVendorForm(vendorId); } });
+  $('modal-cancel').addEventListener('click', function(){ if(returnToList){ closeModal(); } else { openVendorForm(vendorId); } });
   $('btn-add-note').addEventListener('click', addNoteEntry);
   $('modal-save-vendor-contact').addEventListener('click', function(){
-    saveVendorContact(this.dataset.vendorId, this.dataset.contactId||null);
+    saveVendorContact(this.dataset.vendorId, this.dataset.contactId||null, returnToList);
   });
   document.querySelectorAll('.vendor-contact-task-row').forEach(function(row){
     row.addEventListener('click', function(){ openTaskForm(row.dataset.taskId); });
@@ -9756,7 +9810,7 @@ function openVendorContactForm(vendorId, contactId){
     });
   }
 }
-function saveVendorContact(vendorId, contactId){
+function saveVendorContact(vendorId, contactId, returnToList){
   var name = gv('vc-name');
   if(!name){ toast('Contact name is required','err'); return null; }
   var noteEntryEls = Array.from(document.querySelectorAll('.note-entry'));
@@ -9784,7 +9838,7 @@ function saveVendorContact(vendorId, contactId){
   });
   saveDB();
   toast(contactId?'Contact updated':'Contact added');
-  openVendorForm(vendorId);
+  if(returnToList){ closeModal(); render(); } else { openVendorForm(vendorId); }
   return resultId;
 }
 
