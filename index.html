@@ -12936,7 +12936,7 @@ function hotelEntryRowInnerHtml(entry){
     '</div>'+
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
       '<div class="field"><label>Hotel</label><select class="hotel-entry-brand"><option value="">-- Select --</option>'+selOpts(HOTELS,entry.hotelBrand)+'</select></div>'+
-      '<div class="field"><label>Property</label><select class="hotel-entry-property">'+hotelPropertyOptionsHtml(entry.hotelBrand,entry.property)+'</select></div>'+
+      '<div class="field"><label>Property</label>'+searchableSelectWrap('<select class="hotel-entry-property">'+hotelPropertyOptionsHtml(entry.hotelBrand,entry.property)+'</select>','Search properties...')+'</div>'+
       '<div class="field"><label>Confirmation Number</label><input class="hotel-entry-conf" type="text" value="'+(entry.confirmationNumber||'').toString().replace(/"/g,'&quot;')+'"></div>'+
       '<div class="field"><label>Check-in Date</label><input class="hotel-entry-checkin" type="date" value="'+(entry.checkInDate||'')+'"></div>'+
       '<div class="field"><label>Nights</label><input class="hotel-entry-nights" type="number" value="'+(entry.nights||'')+'"></div>'+
@@ -13502,7 +13502,11 @@ function bindBookedTripDetailsListeners(){
       if(!sel) return;
       var row = sel.closest('.hotel-entry-row');
       var propSel = row && row.querySelector('.hotel-entry-property');
-      if(propSel) propSel.innerHTML = hotelPropertyOptionsHtml(sel.value, '');
+      if(propSel){
+        propSel.innerHTML = hotelPropertyOptionsHtml(sel.value, '');
+        var propWrap = propSel.closest('.searchable-select');
+        if(propWrap) ssSyncInputToSelect(propWrap);
+      }
     });
     // Each hotel entry has its own nested Points Used list (unlike every
     // other section's single, section-level list) — delegated here at the
