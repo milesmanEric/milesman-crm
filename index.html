@@ -1534,6 +1534,24 @@ function loadDB(){
       saveDB();
       console.log('[CRM] Migrated '+statusMigrated+' trips from "In Process" to "Planning"');
     }
+    // Revenue-import-created trips (identifiable by having invoiceNum set —
+    // only that import path writes it) used to be hardcoded to "Completed"
+    // regardless of travel date, hiding genuinely-upcoming bookings from
+    // the Trips tab for anyone filtering out Completed. Only re-checks
+    // trips actually created by that path, so manually-entered trips
+    // (which never have invoiceNum) are untouched (safe to run repeatedly
+    // — a trip whose date has since passed just won't match anymore).
+    var importedStatusMigrated=0;
+    db.trips.forEach(function(t){
+      if(t.invoiceNum && t.status==='Completed' && t.departDate && t.departDate>today()){
+        t.status='Confirmed';
+        importedStatusMigrated++;
+      }
+    });
+    if(importedStatusMigrated>0){
+      saveDB();
+      console.log('[CRM] Migrated '+importedStatusMigrated+' revenue-imported trip(s) from "Completed" to "Confirmed" (travel date is still in the future)');
+    }
     // The generic 'Tool' bookmark category was renamed to 'Award Tools'
     // (it was only ever used for Seats.aero/ExpertFlyer/Point.me/
     // AwardWallet) — renaming BOOKMARK_CATEGORIES/DEFAULT_BOOKMARKS alone
@@ -5762,10 +5780,20 @@ function importRevenueRowForClient(row, cid, seenInBatch){
     try{const d=new Date(row.date);if(!isNaN(d))invoiceDate=d.toISOString().slice(0,10);}catch(e){}
   }
 
+  // A revenue report line means the commission/payment has already been
+  // received, but that doesn't mean the trip itself has happened yet — a
+  // cruise fare commission is often paid out well before the sailing date.
+  // Hardcoding 'Completed' regardless of tripDate made every such booking
+  // permanently invisible on the Trips tab for anyone who filters out
+  // Completed trips to reduce clutter, even though it was still genuinely
+  // upcoming — the client's own trip list showed "Upcoming" correctly
+  // (tripLifecycleCategory() re-derives that from the date), but the Trips
+  // tab's own visibility filter checks the raw stored status directly.
+  const importedStatus = tripDate>today() ? 'Confirmed' : 'Completed';
   db.trips.push({
     id:tripId,clientId:cid,clientName:client.name,
     destination:dest,origin:'',departDate:tripDate,returnDate:tripDate,invoiceDate:invoiceDate,
-    status:'Completed',type:'Leisure',airline:'',flightClass:'',hotel:'',
+    status:importedStatus,type:'Leisure',airline:'',flightClass:'',hotel:'',
     hotelNights:0,pointsUsed:0,cashPaid:row.amt,totalValue:row.amt,
     bookingRef:row.invoiceNum||'',notes:row.memo||'',product:row.product||'',
     supplierId:row.supplierId||'',supplierName:row.supplierName||'',
