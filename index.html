@@ -15989,7 +15989,13 @@ function openBookmarkForm(id){
   // Audience swaps the Category options to match, same as bookmarkSectionHtml
   // groups them on the list page.
   $('bm-audience').addEventListener('change', function(){
-    document.getElementById('bm-category').innerHTML = bookmarkCategoryOptionsHtml(this.value, '');
+    // Preserve whatever category was already picked when it's still valid
+    // for the new audience's list (Consumer and Travel Agent share the same
+    // BOOKMARK_CATEGORIES list) — previously this always reset to blank,
+    // silently discarding a made category choice even when switching
+    // between two audiences that use the identical category options.
+    var currentCat = document.getElementById('bm-category').value;
+    document.getElementById('bm-category').innerHTML = bookmarkCategoryOptionsHtml(this.value, currentCat);
   });
 }
 function bookmarkCategoryOptionsHtml(audience, selected){
