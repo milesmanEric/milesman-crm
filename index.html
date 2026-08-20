@@ -9541,23 +9541,31 @@ function renderVendors(){
 // hotel entry (see hotelEntryRowInnerHtml), keyed live off this same list
 // rather than a duplicated constant, so editing it here is the single
 // source of truth.
-function vendorPropertyRowInnerHtml(p){
-  p = p || {};
-  return '<input type="text" class="vendor-property-name" value="'+escHtml(p.name||'')+'" placeholder="e.g. JW Marriott Desert Ridge Resort &amp; Spa" style="flex:1;padding:6px 8px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;font-family:inherit">'+
-    '<button type="button" class="del-vendor-property-btn" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:14px">&#128465;&#65039;</button>';
-}
-function vendorPropertyRowHtml(p){
-  return '<div class="vendor-property-row" style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'+vendorPropertyRowInnerHtml(p)+'</div>';
-}
+// A single scrollable multi-select listbox instead of one input row per
+// property — with brands now carrying hundreds of properties (Hyatt alone
+// has 326), a row-per-property list was unusable. IDs are just re-numbered
+// sequentially on save (see readVendorProperties) rather than tracked
+// through add/remove, since nothing else keys off a property's id — the
+// Booked Trip Details Property picklist matches on name, not id.
 function vendorPropertiesListHtml(properties){
-  return properties.length ? properties.map(vendorPropertyRowHtml).join('') : '<div id="vendor-properties-empty" style="color:#aaa;font-size:12px;padding:4px 0 8px">No properties yet.</div>';
+  var optsHtml = properties.map(function(p){
+    return '<option>'+escHtml(p.name)+'</option>';
+  }).join('');
+  return '<div style="font-size:11px;color:#888;margin-bottom:4px">'+properties.length+' propert'+(properties.length===1?'y':'ies')+'</div>'+
+    '<input type="text" id="vendor-properties-filter" placeholder="Filter properties..." style="width:100%;padding:6px 8px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;font-family:inherit;margin-bottom:6px;box-sizing:border-box">'+
+    '<select id="vendor-properties-select" multiple size="8" style="width:100%;padding:4px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;font-family:inherit;box-sizing:border-box">'+optsHtml+'</select>'+
+    '<div style="display:flex;gap:6px;margin-top:6px">'+
+      '<input type="text" id="vendor-property-new" placeholder="Add a property..." style="flex:1;padding:6px 8px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;font-family:inherit;box-sizing:border-box">'+
+      '<button type="button" id="btn-add-vendor-property" style="padding:5px 12px;border-radius:6px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:11px;font-family:inherit;white-space:nowrap">+ Add</button>'+
+      '<button type="button" id="btn-remove-vendor-property" style="padding:5px 12px;border-radius:6px;border:1px solid #d1d5db;background:#fff;color:#dc2626;cursor:pointer;font-size:11px;font-family:inherit;white-space:nowrap">Remove Selected</button>'+
+    '</div>';
 }
 function readVendorProperties(){
-  var el = document.getElementById('vendor-properties-list');
-  if(!el) return null; // form wasn't showing a Properties section (not a Hotel supplier)
-  return Array.from(el.querySelectorAll('.vendor-property-row')).map(function(row, i){
-    return {id:'HP'+(i+1), name:(row.querySelector('.vendor-property-name')||{}).value||''};
-  }).filter(function(p){ return p.name; });
+  var sel = document.getElementById('vendor-properties-select');
+  if(!sel) return null; // form wasn't showing a Properties section (not a Hotel supplier)
+  return Array.from(sel.options).map(function(o, i){
+    return {id:'HP'+(i+1), name:o.textContent};
+  });
 }
 function openVendorForm(id){
   var d = id ? (db.vendors.find(function(v){return v.id===id;}) || {}) : {};
@@ -9663,10 +9671,7 @@ function openVendorForm(id){
       })()+
     '</div>'+
     (d.category==='Hotel' ? '<div style="margin-top:16px;border-top:1px solid #e5e7eb;padding-top:16px">'+
-      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">'+
-        '<div style="font-size:13px;font-weight:600;color:#374151">Properties</div>'+
-        '<button type="button" id="btn-add-vendor-property" style="padding:3px 10px;border-radius:6px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:11px;font-family:inherit">+ Add Property</button>'+
-      '</div>'+
+      '<div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:10px">Properties</div>'+
       '<div id="vendor-properties-list">'+vendorPropertiesListHtml(d.properties||[])+'</div>'+
     '</div>' : '')+
     '<div style="margin-top:16px;border-top:1px solid #e5e7eb;padding-top:16px">'+
@@ -9788,28 +9793,39 @@ function openVendorForm(id){
       openVendorForm(id);
     });
   });
-  var addPropertyBtn = $('btn-add-vendor-property');
   var propertiesListEl = $('vendor-properties-list');
-  if(addPropertyBtn && propertiesListEl){
-    addPropertyBtn.addEventListener('click', function(){
-      var empty = document.getElementById('vendor-properties-empty');
-      if(empty) empty.remove();
-      var div = document.createElement('div');
-      div.className = 'vendor-property-row';
-      div.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:6px';
-      div.innerHTML = vendorPropertyRowInnerHtml({});
-      propertiesListEl.appendChild(div);
-      div.querySelector('.vendor-property-name').focus();
-    });
-    propertiesListEl.addEventListener('click', function(e){
-      var btn = e.target.closest ? e.target.closest('.del-vendor-property-btn') : null;
-      if(!btn) return;
-      var row = btn.closest('.vendor-property-row');
-      if(row) row.remove();
-      if(!propertiesListEl.querySelector('.vendor-property-row')){
-        propertiesListEl.innerHTML = '<div id="vendor-properties-empty" style="color:#aaa;font-size:12px;padding:4px 0 8px">No properties yet.</div>';
-      }
-    });
+  if(propertiesListEl){
+    var propFilterInput = document.getElementById('vendor-properties-filter');
+    var propSelect = document.getElementById('vendor-properties-select');
+    if(propFilterInput && propSelect){
+      propFilterInput.addEventListener('input', function(){
+        var q = this.value.toLowerCase();
+        Array.from(propSelect.options).forEach(function(o){
+          o.style.display = (!q || o.textContent.toLowerCase().indexOf(q)!==-1) ? '' : 'none';
+        });
+      });
+    }
+    var addPropBtn = document.getElementById('btn-add-vendor-property');
+    var newPropInput = document.getElementById('vendor-property-new');
+    if(addPropBtn && newPropInput && propSelect){
+      var addPropertyFromInput = function(){
+        var name = newPropInput.value.trim();
+        if(!name) return;
+        var opt = document.createElement('option');
+        opt.textContent = name;
+        propSelect.appendChild(opt);
+        newPropInput.value = '';
+        newPropInput.focus();
+      };
+      addPropBtn.addEventListener('click', addPropertyFromInput);
+      newPropInput.addEventListener('keydown', function(e){ if(e.key==='Enter'){ e.preventDefault(); addPropertyFromInput(); } });
+    }
+    var removePropBtn = document.getElementById('btn-remove-vendor-property');
+    if(removePropBtn && propSelect){
+      removePropBtn.addEventListener('click', function(){
+        Array.from(propSelect.selectedOptions).forEach(function(o){ o.remove(); });
+      });
+    }
   }
 }
 
