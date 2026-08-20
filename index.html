@@ -642,7 +642,7 @@ const BACKUP_FILENAME  = 'milesman-crm-backup.json';
 const LS_KEY           = 'milesman_crm_v2';
 
 const AIRLINES = ['American','United','Delta','Southwest','JetBlue','Qatar Airways','ANA','Emirates','Lufthansa','British Airways','Air France','Virgin Atlantic','Qantas','Etihad','JAL','Air Canada','Frontier','Alaska/Hawaiian Air'];
-const HOTELS   = ['Marriott','Disney','Hilton','Hyatt','IHG','Wyndham','Four Seasons','Ritz-Carlton','W Hotels','Kimpton','Conrad'];
+const HOTELS   = ['Marriott','Disney','Hilton','Hyatt','Accor','IHG','Wyndham','Four Seasons','Ritz-Carlton','W Hotels','Kimpton','Conrad'];
 // Curated (not exhaustive) flagship/major properties for each Hotel brand —
 // used to seed each matching Supplier record's own editable `properties`
 // list (see the one-time seed in loadDB()) and, from there, to populate the
@@ -1637,6 +1637,15 @@ function loadDB(){
     if(propsUpgraded>0){
       saveDB();
       console.log('[CRM] Upgraded '+propsUpgraded+' Hotel supplier(s) to comprehensive properties list');
+    }
+    // One-time add: Accor requested as a Hotel supplier alongside the
+    // existing Marriott/Disney/Hilton/Hyatt — only creates it if no vendor
+    // of that name exists yet, so it won't recreate one someone later
+    // deletes on purpose (safe to run repeatedly).
+    if(!db.vendors.some(function(v){return v.name==='Accor';})){
+      db.vendors.push({id:newId('V',db.vendors), name:'Accor', type:'Supplier', category:'Hotel', notesLog:[]});
+      saveDB();
+      console.log('[CRM] Added Accor as a Hotel supplier');
     }
     // The generic 'Tool' bookmark category was renamed to 'Award Tools'
     // (it was only ever used for Seats.aero/ExpertFlyer/Point.me/
