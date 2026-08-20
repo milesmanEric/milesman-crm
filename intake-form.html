@@ -366,9 +366,9 @@
           </div>
           <div class="field">
             <label>Hotel Brand</label>
-            <select class="pref-other-sel" name="Hotel Brand">
+            <select class="pref-other-sel" id="hotel-brand-select" name="Hotel Brand">
               <option value="">No preference</option>
-              <option>Marriott</option><option>Hilton</option><option>Hyatt</option><option>IHG</option>
+              <option>Marriott</option><option>Disney</option><option>Hilton</option><option>Hyatt</option><option>IHG</option>
               <option>Wyndham</option><option>Four Seasons</option><option>Ritz-Carlton</option>
               <option>W Hotels</option><option>Kimpton</option><option>Conrad</option>
               <option>Other</option>
@@ -377,6 +377,12 @@
           <div class="field pref-other-wrap" style="display:none">
             <label>Please specify hotel brand</label>
             <input type="text" class="pref-other-input" name="Hotel Brand Other">
+          </div>
+          <div class="field">
+            <label>Property <span class="hint">(if known)</span></label>
+            <select id="hotel-property-select" name="Hotel Property">
+              <option value="">No preference</option>
+            </select>
           </div>
           <div class="field">
             <label>Check-in Date</label>
@@ -598,6 +604,15 @@
   // "Import Formspree Submissions" importer expects.
   var AIRLINES = ['American','United','Delta','Southwest','JetBlue','Qatar Airways','ANA','Emirates','Lufthansa','British Airways','Air France','Virgin Atlantic','Qantas','Etihad','JAL','Air Canada','Frontier','Alaska/Hawaiian Air'];
   var HOTELS = ['Marriott','Hilton','Hyatt','IHG','Wyndham','Four Seasons','Ritz-Carlton','W Hotels','Kimpton','Conrad'];
+  // Mirrors HOTEL_PROPERTY_SEEDS in the CRM's index.html — keep in sync by
+  // hand. Only covers brands the CRM has curated properties for; any other
+  // brand just shows "No preference" with nothing else to pick.
+  var HOTEL_PROPERTIES = {
+    'Marriott': ['JW Marriott Desert Ridge Resort & Spa','JW Marriott Marco Island Beach Resort','Marriott Marquis San Diego Marina','Marriott Marquis New York','Orlando World Center Marriott','Gaylord Opryland Resort & Convention Center','Gaylord National Resort & Convention Center','Grand Chateau Marriott Vacation Club (Las Vegas)'],
+    'Disney': ["Disney's Grand Floridian Resort & Spa","Disney's Polynesian Village Resort","Disney's Contemporary Resort","Disney's Animal Kingdom Lodge","Disney's Beach Club Resort","Disney's Yacht Club Resort","Disney's BoardWalk Inn","Disney's Wilderness Lodge","Aulani, A Disney Resort & Spa (Hawaii)","Disneyland Hotel"],
+    'Hilton': ['Hilton Hawaiian Village Waikiki Beach Resort','Hilton Orlando Bonnet Creek','Hilton San Diego Bayfront','Hilton Waikoloa Village','Caribe Hilton (San Juan)','Hilton Sandestin Beach Golf Resort & Spa'],
+    'Hyatt': ['Grand Hyatt Kauai Resort & Spa','Hyatt Regency Maui Resort & Spa','Park Hyatt New York','Grand Hyatt New York','Hyatt Regency Chicago','Hyatt Ziva Cancun','Hyatt Regency Coconut Point Resort & Spa']
+  };
   var CREDIT_CARDS = ['Chase Sapphire Preferred','Chase Sapphire Reserve','Chase Ink Business Preferred','Amex Platinum','Amex Gold','Amex Business Platinum','Amex Business Gold','Capital One Venture X','Citi Premier','Citi Prestige','Bilt Mastercard'];
   // Mirrors AIRLINE_CREDIT_CARDS in the CRM's index.html — keep in sync by
   // hand. A plain has/doesn't-have checklist, unrelated to the balance
@@ -906,6 +921,13 @@
           var input = wrap.querySelector('.pref-other-input');
           if(input) input.value='';
         }
+      }
+    }
+    if(e.target.id==='hotel-brand-select'){
+      var propSel = document.getElementById('hotel-property-select');
+      if(propSel){
+        var props = HOTEL_PROPERTIES[e.target.value]||[];
+        propSel.innerHTML = '<option value="">No preference</option>'+props.map(function(name){return '<option>'+name+'</option>';}).join('');
       }
     }
   });

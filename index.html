@@ -642,7 +642,19 @@ const BACKUP_FILENAME  = 'milesman-crm-backup.json';
 const LS_KEY           = 'milesman_crm_v2';
 
 const AIRLINES = ['American','United','Delta','Southwest','JetBlue','Qatar Airways','ANA','Emirates','Lufthansa','British Airways','Air France','Virgin Atlantic','Qantas','Etihad','JAL','Air Canada','Frontier','Alaska/Hawaiian Air'];
-const HOTELS   = ['Marriott','Hilton','Hyatt','IHG','Wyndham','Four Seasons','Ritz-Carlton','W Hotels','Kimpton','Conrad'];
+const HOTELS   = ['Marriott','Disney','Hilton','Hyatt','IHG','Wyndham','Four Seasons','Ritz-Carlton','W Hotels','Kimpton','Conrad'];
+// Curated (not exhaustive) flagship/major properties for each Hotel brand —
+// used to seed each matching Supplier record's own editable `properties`
+// list (see the one-time seed in loadDB()) and, from there, to populate the
+// per-brand Property picklist on a Booked Trip Details hotel entry. Plain
+// factual property names, not logos/images, so the same free-license
+// sourcing concern that applies to CRUISE_LOGOS doesn't apply here.
+const HOTEL_PROPERTY_SEEDS = {
+  'Marriott': ['JW Marriott Desert Ridge Resort & Spa','JW Marriott Marco Island Beach Resort','Marriott Marquis San Diego Marina','Marriott Marquis New York','Orlando World Center Marriott','Gaylord Opryland Resort & Convention Center','Gaylord National Resort & Convention Center','Grand Chateau Marriott Vacation Club (Las Vegas)'],
+  'Disney': ["Disney's Grand Floridian Resort & Spa","Disney's Polynesian Village Resort","Disney's Contemporary Resort","Disney's Animal Kingdom Lodge","Disney's Beach Club Resort","Disney's Yacht Club Resort","Disney's BoardWalk Inn","Disney's Wilderness Lodge","Aulani, A Disney Resort & Spa (Hawaii)","Disneyland Hotel"],
+  'Hilton': ['Hilton Hawaiian Village Waikiki Beach Resort','Hilton Orlando Bonnet Creek','Hilton San Diego Bayfront','Hilton Waikoloa Village','Caribe Hilton (San Juan)','Hilton Sandestin Beach Golf Resort & Spa'],
+  'Hyatt': ['Grand Hyatt Kauai Resort & Spa','Hyatt Regency Maui Resort & Spa','Park Hyatt New York','Grand Hyatt New York','Hyatt Regency Chicago','Hyatt Ziva Cancun','Hyatt Regency Coconut Point Resort & Spa']
+};
 const CAR_RENTALS = ['Hertz','Avis','Enterprise','National','Budget','Alamo','Sixt','Europcar','Thrifty','Dollar'];
 const CREDIT_CARDS = ['Chase Sapphire Preferred','Chase Sapphire Reserve','Chase Ink Business Preferred','Amex Platinum','Amex Gold','Amex Business Platinum','Amex Business Gold','Capital One Venture X','Citi Premier','Citi Prestige','Bilt Mastercard'];
 // Real airline-branded co-branded credit cards, grouped by airline — a
@@ -1573,6 +1585,22 @@ function loadDB(){
     if(linkFixed){
       saveDB();
       console.log('[CRM] Severed erroneous T074<->T115 trip link (was hiding the Garth/Sorrentino group from the Trips tab)');
+    }
+    // One-time seed: pre-populate each existing Hotel-category Supplier's
+    // own `properties` list with curated flagship properties for that brand
+    // (see HOTEL_PROPERTY_SEEDS) — only fills a supplier that has no
+    // properties yet, so it won't clobber anything manually added/edited
+    // since (safe to run repeatedly — nothing left to seed once populated).
+    var propsSeeded=0;
+    db.vendors.forEach(function(v){
+      if(v.category==='Hotel' && !(v.properties&&v.properties.length) && HOTEL_PROPERTY_SEEDS[v.name]){
+        v.properties = HOTEL_PROPERTY_SEEDS[v.name].map(function(name,i){ return {id:'HP'+(i+1), name:name}; });
+        propsSeeded++;
+      }
+    });
+    if(propsSeeded>0){
+      saveDB();
+      console.log('[CRM] Seeded properties list for '+propsSeeded+' Hotel supplier(s)');
     }
     // The generic 'Tool' bookmark category was renamed to 'Award Tools'
     // (it was only ever used for Seats.aero/ExpertFlyer/Point.me/
@@ -6227,6 +6255,7 @@ function processTripFormRow(getVal, counters){
   addLine('Non-Stop Flights Only', getVal('Non-Stop Flights Only'));
   addLine('Hotel Location', getVal('Hotel Location'));
   addLine('Hotel Brand', hotelBrand);
+  addLine('Hotel Property', getVal('Hotel Property'));
   addLine('Hotel Check-in Date', getVal('Hotel Check-in Date'));
   addLine('Hotel Nights', getVal('Hotel Nights'));
   addLine('Room Type', getVal('Room Type'));
@@ -6451,7 +6480,7 @@ function buildTripFormFieldLabels(){
   labels.push('Need - Airline','Need - Hotel','Need - Tours','Need - Cruise','Need - Car Rental','Need - Theme Park Tickets','Need - Train','Need - Bus',
     'Airline','Airline Other','Origin','Destination','Trip Direction','Depart Date','Return Date','Class of Service','Non-Stop Flights Only','Trip Type',
     'Cruise Line','Cruise Line Other','Ship Name','Cruise Nights','Sailing Date','Departure Port','Cabin Type','People In Cabin','Cruise Loyalty Number','Cruisetour',
-    'Hotel Location','Hotel Brand','Hotel Brand Other','Hotel Check-in Date','Hotel Nights','Room Type','People Per Room','Number of Rooms',
+    'Hotel Location','Hotel Brand','Hotel Brand Other','Hotel Property','Hotel Check-in Date','Hotel Nights','Room Type','People Per Room','Number of Rooms',
     'Car Rental Company','Car Rental Company Other','Car Size','Pickup Location','Dropoff Location','Pickup Date','Dropoff Date','Pickup Time','Dropoff Time',
     'Theme Park','Theme Park Ticket Type','Tour Vendor','Tour Vendor Other',
     'Train Departure Date','Train Return Date','Train Departure City','Train Arrival City','Train Class of Service',
@@ -9453,6 +9482,31 @@ function renderVendors(){
   }
 }
 
+// A Hotel-category Supplier's own editable list of properties (see
+// HOTEL_PROPERTY_SEEDS for the curated starter data) — plain name + delete,
+// no separate edit modal needed since there's nothing else to store per
+// property. Also drives the Property picklist on a Booked Trip Details
+// hotel entry (see hotelEntryRowInnerHtml), keyed live off this same list
+// rather than a duplicated constant, so editing it here is the single
+// source of truth.
+function vendorPropertyRowInnerHtml(p){
+  p = p || {};
+  return '<input type="text" class="vendor-property-name" value="'+escHtml(p.name||'')+'" placeholder="e.g. JW Marriott Desert Ridge Resort &amp; Spa" style="flex:1;padding:6px 8px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;font-family:inherit">'+
+    '<button type="button" class="del-vendor-property-btn" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:14px">&#128465;&#65039;</button>';
+}
+function vendorPropertyRowHtml(p){
+  return '<div class="vendor-property-row" style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'+vendorPropertyRowInnerHtml(p)+'</div>';
+}
+function vendorPropertiesListHtml(properties){
+  return properties.length ? properties.map(vendorPropertyRowHtml).join('') : '<div id="vendor-properties-empty" style="color:#aaa;font-size:12px;padding:4px 0 8px">No properties yet.</div>';
+}
+function readVendorProperties(){
+  var el = document.getElementById('vendor-properties-list');
+  if(!el) return null; // form wasn't showing a Properties section (not a Hotel supplier)
+  return Array.from(el.querySelectorAll('.vendor-property-row')).map(function(row, i){
+    return {id:'HP'+(i+1), name:(row.querySelector('.vendor-property-name')||{}).value||''};
+  }).filter(function(p){ return p.name; });
+}
 function openVendorForm(id){
   var d = id ? (db.vendors.find(function(v){return v.id===id;}) || {}) : {};
 
@@ -9556,6 +9610,13 @@ function openVendorForm(id){
         }).join('');
       })()+
     '</div>'+
+    (d.category==='Hotel' ? '<div style="margin-top:16px;border-top:1px solid #e5e7eb;padding-top:16px">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">'+
+        '<div style="font-size:13px;font-weight:600;color:#374151">Properties</div>'+
+        '<button type="button" id="btn-add-vendor-property" style="padding:3px 10px;border-radius:6px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:11px;font-family:inherit">+ Add Property</button>'+
+      '</div>'+
+      '<div id="vendor-properties-list">'+vendorPropertiesListHtml(d.properties||[])+'</div>'+
+    '</div>' : '')+
     '<div style="margin-top:16px;border-top:1px solid #e5e7eb;padding-top:16px">'+
       '<div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:10px">Clients with Bookings</div>'+
       (function(){
@@ -9675,6 +9736,29 @@ function openVendorForm(id){
       openVendorForm(id);
     });
   });
+  var addPropertyBtn = $('btn-add-vendor-property');
+  var propertiesListEl = $('vendor-properties-list');
+  if(addPropertyBtn && propertiesListEl){
+    addPropertyBtn.addEventListener('click', function(){
+      var empty = document.getElementById('vendor-properties-empty');
+      if(empty) empty.remove();
+      var div = document.createElement('div');
+      div.className = 'vendor-property-row';
+      div.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:6px';
+      div.innerHTML = vendorPropertyRowInnerHtml({});
+      propertiesListEl.appendChild(div);
+      div.querySelector('.vendor-property-name').focus();
+    });
+    propertiesListEl.addEventListener('click', function(e){
+      var btn = e.target.closest ? e.target.closest('.del-vendor-property-btn') : null;
+      if(!btn) return;
+      var row = btn.closest('.vendor-property-row');
+      if(row) row.remove();
+      if(!propertiesListEl.querySelector('.vendor-property-row')){
+        propertiesListEl.innerHTML = '<div id="vendor-properties-empty" style="color:#aaa;font-size:12px;padding:4px 0 8px">No properties yet.</div>';
+      }
+    });
+  }
 }
 
 function saveVendor(id){
@@ -9698,6 +9782,11 @@ function saveVendor(id){
     notesLog:notesLog, contactName:gv('vcn'), email:gv('vem'), phone:gv('vph'),
     website:gv('vwb'), notes:gv('vno'), clientIds:clientIds
   };
+  // Only present on a Hotel-category supplier's form — null (not an empty
+  // array) when the section wasn't shown at all, so switching a supplier's
+  // Category away from Hotel and saving doesn't wipe out its properties.
+  var properties = readVendorProperties();
+  if(properties!==null) data.properties = properties;
   if(id){
     db.vendors = db.vendors.map(function(v){return v.id===id ? Object.assign({},v,data) : v;});
     toast('Vendor updated');
@@ -12827,6 +12916,19 @@ function bindPointsEntriesListeners(containerId, addBtnId){
 // no ids to keep in sync — and added/removed as real DOM nodes (not a
 // full-list re-render) so typing in one row is never disturbed by editing
 // another, the same technique the client-notes editor already uses.
+// Options for a hotel entry's Property picklist, sourced live from that
+// brand's matching Supplier record's own `properties` list (see
+// vendorPropertiesListHtml) rather than a separate constant, so editing
+// properties on the Supplier form is the single source of truth. Empty
+// (just "-- Select --") when no brand is chosen yet or that brand has no
+// properties recorded.
+function hotelPropertyOptionsHtml(hotelBrand, selected){
+  var vendor = hotelBrand ? db.vendors.find(function(v){ return v.name===hotelBrand; }) : null;
+  var props = (vendor && vendor.properties) || [];
+  return '<option value="">-- Select --</option>'+props.map(function(p){
+    return '<option value="'+escHtml(p.name)+'"'+(p.name===selected?' selected':'')+'>'+escHtml(p.name)+'</option>';
+  }).join('');
+}
 function hotelEntryRowInnerHtml(entry){
   entry = entry || {};
   return '<div style="display:flex;justify-content:flex-end;margin-bottom:4px">'+
@@ -12834,6 +12936,7 @@ function hotelEntryRowInnerHtml(entry){
     '</div>'+
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
       '<div class="field"><label>Hotel</label><select class="hotel-entry-brand"><option value="">-- Select --</option>'+selOpts(HOTELS,entry.hotelBrand)+'</select></div>'+
+      '<div class="field"><label>Property</label><select class="hotel-entry-property">'+hotelPropertyOptionsHtml(entry.hotelBrand,entry.property)+'</select></div>'+
       '<div class="field"><label>Confirmation Number</label><input class="hotel-entry-conf" type="text" value="'+(entry.confirmationNumber||'').toString().replace(/"/g,'&quot;')+'"></div>'+
       '<div class="field"><label>Check-in Date</label><input class="hotel-entry-checkin" type="date" value="'+(entry.checkInDate||'')+'"></div>'+
       '<div class="field"><label>Nights</label><input class="hotel-entry-nights" type="number" value="'+(entry.nights||'')+'"></div>'+
@@ -12855,6 +12958,7 @@ function readHotelEntries(){
   return Array.from(document.querySelectorAll('#tb-hotel-entries .hotel-entry-row')).map(function(row){
     return {
       hotelBrand: (row.querySelector('.hotel-entry-brand')||{}).value||'',
+      property: (row.querySelector('.hotel-entry-property')||{}).value||'',
       confirmationNumber: (row.querySelector('.hotel-entry-conf')||{}).value||'',
       checkInDate: (row.querySelector('.hotel-entry-checkin')||{}).value||'',
       nights: Number((row.querySelector('.hotel-entry-nights')||{}).value)||0,
@@ -12863,7 +12967,7 @@ function readHotelEntries(){
       notes: (row.querySelector('.hotel-entry-notes')||{}).value||''
     };
   }).filter(function(e){
-    return e.hotelBrand||e.confirmationNumber||e.checkInDate||e.nights||e.price||(e.pts&&e.pts.length)||e.notes;
+    return e.hotelBrand||e.property||e.confirmationNumber||e.checkInDate||e.nights||e.price||(e.pts&&e.pts.length)||e.notes;
   });
 }
 // Tour entries are the same dynamic add/remove pattern as hotel entries
@@ -13392,6 +13496,13 @@ function bindBookedTripDetailsListeners(){
       if(!hotelEntriesEl.querySelector('.hotel-entry-row')){
         hotelEntriesEl.innerHTML = '<div id="tb-hotel-entries-empty" style="color:#aaa;font-size:12px;padding:6px 0">No hotels added yet</div>';
       }
+    });
+    hotelEntriesEl.addEventListener('change', function(e){
+      var sel = e.target.closest ? e.target.closest('.hotel-entry-brand') : null;
+      if(!sel) return;
+      var row = sel.closest('.hotel-entry-row');
+      var propSel = row && row.querySelector('.hotel-entry-property');
+      if(propSel) propSel.innerHTML = hotelPropertyOptionsHtml(sel.value, '');
     });
     // Each hotel entry has its own nested Points Used list (unlike every
     // other section's single, section-level list) — delegated here at the
