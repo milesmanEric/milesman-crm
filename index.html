@@ -1833,6 +1833,18 @@ function escHtml(v){
 function mailtoAddr(email){
   return (email||'').replace(/\s+/g,'');
 }
+// Shared email·phone summary line for a contact-style record (Supplier
+// Contact, Vendor Contact) — used wherever those show up nested inside a
+// clickable row (the row itself opens the contact's edit form), so the
+// email is a real mailto: link with a `.contact-mailto-link` class the
+// caller must wire to stopPropagation, or clicking it would also trigger
+// the parent row's click handler.
+function contactEmailPhoneLine(c){
+  var parts=[];
+  if(c.email) parts.push('<a href="mailto:'+mailtoAddr(c.email)+'" class="contact-mailto-link" style="color:#2563eb;text-decoration:underline" title="Send email">'+escHtml(c.email)+'</a>');
+  if(c.phone) parts.push(escHtml(c.phone));
+  return parts.length ? parts.join(' &middot; ') : '&nbsp;';
+}
 function emailToNote(msg){
   const dt=new Date(msg.receivedDateTime);
   const ts=dt.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})+' '+dt.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
@@ -9202,7 +9214,7 @@ function renderVendors(){
             return '<div class="supplier-contact-link" data-vendor-id="'+v.id+'" data-contact-id="'+c.id+'" style="cursor:pointer;padding:5px 8px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;margin-bottom:4px">'+
               '<span style="font-size:12px;font-weight:600;color:#2563eb;text-decoration:underline">'+escHtml(c.name||'(no name)')+'</span>'+
               (c.title?' <span style="font-size:11px;color:#888">&mdash; '+escHtml(c.title)+'</span>':'')+
-              '<div style="font-size:11px;color:#888">'+([c.email,c.phone].filter(Boolean).map(escHtml).join(' &middot; ')||'&nbsp;')+'</div>'+
+              '<div style="font-size:11px;color:#888">'+contactEmailPhoneLine(c)+'</div>'+
             '</div>';
           }).join('') : '<div style="color:#aaa;font-size:12px;padding:2px 0">No contacts yet.</div>')+
         '</div>'+
@@ -9351,6 +9363,9 @@ function renderVendors(){
       openVendorContactForm(el.dataset.vendorId, el.dataset.contactId, true);
     });
   });
+  document.querySelectorAll('.contact-mailto-link').forEach(function(el){
+    el.addEventListener('click', function(e){ e.stopPropagation(); });
+  });
 
   // Checkbox bulk select / delete for suppliers
   var selBtnS = document.getElementById('btn-select-all-suppliers');
@@ -9484,7 +9499,7 @@ function openVendorForm(id){
           return '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:6px">'+
             '<div class="vendor-contact-link" data-contact-id="'+c.id+'" style="cursor:pointer">'+
               '<div style="font-size:13px;font-weight:600;color:#2563eb;text-decoration:underline">'+escHtml(c.name||'(no name)')+(c.title?' <span style="font-weight:400;color:#888">&mdash; '+escHtml(c.title)+'</span>':'')+'</div>'+
-              '<div style="font-size:11px;color:#888">'+([c.email,c.phone].filter(Boolean).map(escHtml).join(' &middot; ')||'&nbsp;')+'</div>'+
+              '<div style="font-size:11px;color:#888">'+contactEmailPhoneLine(c)+'</div>'+
             '</div>'+
             '<button class="del-vendor-contact-btn" data-contact-id="'+c.id+'" title="Delete contact" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:14px">&#128465;&#65039;</button>'+
           '</div>';
@@ -9593,6 +9608,9 @@ function openVendorForm(id){
   });
   document.querySelectorAll('.vendor-contact-link').forEach(function(el){
     el.addEventListener('click', function(){ openVendorContactForm(id, el.dataset.contactId); });
+  });
+  document.querySelectorAll('.contact-mailto-link').forEach(function(el){
+    el.addEventListener('click', function(e){ e.stopPropagation(); });
   });
   document.querySelectorAll('.del-vendor-contact-btn').forEach(function(btn){
     btn.addEventListener('click', function(e){
@@ -9940,7 +9958,7 @@ function openBizVendorForm(id){
           return '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:6px">'+
             '<div class="bizvendor-contact-link" data-contact-id="'+c.id+'" style="cursor:pointer">'+
               '<div style="font-size:13px;font-weight:600;color:#2563eb;text-decoration:underline">'+escHtml(c.name||'(no name)')+(c.title?' <span style="font-weight:400;color:#888">&mdash; '+escHtml(c.title)+'</span>':'')+'</div>'+
-              '<div style="font-size:11px;color:#888">'+([c.email,c.phone].filter(Boolean).map(escHtml).join(' &middot; ')||'&nbsp;')+'</div>'+
+              '<div style="font-size:11px;color:#888">'+contactEmailPhoneLine(c)+'</div>'+
             '</div>'+
             '<button class="del-bizvendor-contact-btn" data-contact-id="'+c.id+'" title="Delete contact" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:14px">&#128465;&#65039;</button>'+
           '</div>';
@@ -9963,6 +9981,9 @@ function openBizVendorForm(id){
   });
   document.querySelectorAll('.bizvendor-contact-link').forEach(function(el){
     el.addEventListener('click', function(){ openBizVendorContactForm(id, el.dataset.contactId); });
+  });
+  document.querySelectorAll('.contact-mailto-link').forEach(function(el){
+    el.addEventListener('click', function(e){ e.stopPropagation(); });
   });
   document.querySelectorAll('.del-bizvendor-contact-btn').forEach(function(btn){
     btn.addEventListener('click', function(e){
