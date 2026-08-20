@@ -1552,6 +1552,28 @@ function loadDB(){
       saveDB();
       console.log('[CRM] Migrated '+importedStatusMigrated+' revenue-imported trip(s) from "Completed" to "Confirmed" (travel date is still in the future)');
     }
+    // One-time data fix: trip T074 (Gartenberg, 2025) was mistakenly cross-
+    // linked to T115 (Sorrentino, 2027 — legitimately linked to Garth's trip
+    // group), pulling that whole 2027 group's lifecycle category back to
+    // "past" based on T074's stale date and hiding it from the Trips tab's
+    // Upcoming section entirely. T074's own separate link to T073 is correct
+    // and untouched — only the T074<->T115 edge is severed (safe to run
+    // repeatedly — a no-op once removed).
+    var linkFixed=false;
+    var t074=db.trips.find(function(t){return t.id==='T074';});
+    var t115=db.trips.find(function(t){return t.id==='T115';});
+    if(t074 && Array.isArray(t074.linkedTripIds) && t074.linkedTripIds.indexOf('T115')!==-1){
+      t074.linkedTripIds=t074.linkedTripIds.filter(function(id){return id!=='T115';});
+      linkFixed=true;
+    }
+    if(t115 && Array.isArray(t115.linkedTripIds) && t115.linkedTripIds.indexOf('T074')!==-1){
+      t115.linkedTripIds=t115.linkedTripIds.filter(function(id){return id!=='T074';});
+      linkFixed=true;
+    }
+    if(linkFixed){
+      saveDB();
+      console.log('[CRM] Severed erroneous T074<->T115 trip link (was hiding the Garth/Sorrentino group from the Trips tab)');
+    }
     // The generic 'Tool' bookmark category was renamed to 'Award Tools'
     // (it was only ever used for Seats.aero/ExpertFlyer/Point.me/
     // AwardWallet) — renaming BOOKMARK_CATEGORIES/DEFAULT_BOOKMARKS alone
