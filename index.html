@@ -1686,6 +1686,29 @@ function loadDB(){
       saveDB();
       console.log('[CRM] Filled travel-agent portal URL for '+portalsFilled+' Hotel supplier(s)');
     }
+    // One-time backfill: clients auto-created by the revenue importer never
+    // had isPayingClient set (fixed at the creation site too, but that only
+    // helps future imports) — payingClientPicklist() (the Add Task/Trip
+    // client dropdown) filters to isPayingClient-only, so any client with a
+    // real trip on file but no flag was silently invisible there. Only sets
+    // the flag for a client who actually has a trip; never unsets it (safe
+    // to run repeatedly).
+    var payingFlagsFixed=0;
+    var clientIdsWithTrips = {};
+    db.trips.forEach(function(t){
+      if(t.clientId) clientIdsWithTrips[t.clientId]=true;
+      (t.clientIds||[]).forEach(function(cid){ if(cid) clientIdsWithTrips[cid]=true; });
+    });
+    db.clients.forEach(function(c){
+      if(!c.isPayingClient && clientIdsWithTrips[c.id]){
+        c.isPayingClient = true;
+        payingFlagsFixed++;
+      }
+    });
+    if(payingFlagsFixed>0){
+      saveDB();
+      console.log('[CRM] Marked '+payingFlagsFixed+' client(s) with existing trips as Paying Client');
+    }
     // The generic 'Tool' bookmark category was renamed to 'Award Tools'
     // (it was only ever used for Seats.aero/ExpertFlyer/Point.me/
     // AwardWallet) — renaming BOOKMARK_CATEGORIES/DEFAULT_BOOKMARKS alone
@@ -5784,7 +5807,7 @@ function showImportMatchModal(name){
 
   $('import-match-add').onclick=function(){
     const newCid=newId('C',db.clients);
-    db.clients.push({id:newCid,name:cleanNewClientName(name),email:'',phone:'',location:'',preferredAirline:'',preferredHotel:'',notesLog:[],joined:today(),totalTrips:0,totalRevenue:0});
+    db.clients.push({id:newCid,name:cleanNewClientName(name),email:'',phone:'',location:'',preferredAirline:'',preferredHotel:'',notesLog:[],joined:today(),totalTrips:0,totalRevenue:0,isPayingClient:true});
     saveDB();
     if(isTruncatedSeg(getFirstName(name))||isTruncatedSeg(getLastName(name))) window._importState.incompleteNameCount=(window._importState.incompleteNameCount||0)+1;
     window._importState.resolutions[name]=newCid;
@@ -6050,7 +6073,7 @@ function openPendingImportMatchesModal(){
       if(!pm) return;
       snapshot('Add client from pending import match');
       var newCid = newId('C', db.clients);
-      db.clients.push({id:newCid, name:cleanNewClientName(pm.name), email:'', phone:'', location:'', preferredAirline:'', preferredHotel:'', notesLog:[], joined:today(), totalTrips:0, totalRevenue:0});
+      db.clients.push({id:newCid, name:cleanNewClientName(pm.name), email:'', phone:'', location:'', preferredAirline:'', preferredHotel:'', notesLog:[], joined:today(), totalTrips:0, totalRevenue:0, isPayingClient:true});
       resolvePendingImportMatch(btn.dataset.id, newCid, true);
     });
   });
