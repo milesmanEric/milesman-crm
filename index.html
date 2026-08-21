@@ -7584,6 +7584,7 @@ function render(){
   $('nc-clients').textContent=db.clients.length;
   $('nc-trips').textContent=db.trips.length;
   var ncv=$('nc-vendors'); if(ncv) ncv.textContent=db.vendors.length;
+  var ncbv=$('nc-bizvendors'); if(ncbv) ncbv.textContent=db.bizVendors.length;
   var ncp=$('nc-planner'); if(ncp) ncp.textContent=db.planner.filter(function(t){return !t.done;}).length;
   var ncg=$('nc-groups'); if(ncg) ncg.textContent=db.groups.length;
   var ncpim=$('nc-pending-import-matches'); if(ncpim) ncpim.textContent=db.pendingImportMatches.length;
