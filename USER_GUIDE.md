@@ -44,6 +44,8 @@ The Dashboard also has a **Revenue by Section** card that splits the headline To
 
 **X Followers** shows your X (Twitter) follower count, with the change since the last time it checked shown underneath (e.g. "+23 since Aug 21"). Unlike the other tiles, this one only checks X **once a day** — X charges per lookup, so the CRM deliberately reuses the day's saved number instead of asking again every time you open a page. Click it to jump to the X card on the Analytics tab.
 
+**TikTok Followers** shows your TikTok follower count, updated every time you open the page (TikTok's API is free, unlike X, so there's no reason to hold it back). Click it to jump to the TikTok card on the Analytics tab.
+
 At the very top of the Dashboard, **Quick Search** lets you jump straight to a Client, Supplier, or Vendor by typing part of their name (or a client's email) — results show up live as you type, each labeled and color-coded by type (blue Client, green Supplier, amber Vendor), and clicking one opens that record right away.
 
 The Dashboard also has a **Planner tasks — today & overdue** card: your 10 most pressing open tasks (whatever's due today or already past due, most-overdue first), each showing its linked client(s) and due date. Click a task to open it, click a client name to open their record instead (a task linked to more than one client lists each of them separately), or hit **View all** to jump to the full Planner list filtered the same way.
@@ -260,7 +262,7 @@ If the page shows an error like **"API Access Blocked"** instead of your campaig
 
 ## Analytics
 
-Several cards, in this order: your **WordPress.com/Jetpack** blog stats, your **Google Analytics (GA4)** website traffic, your **Facebook** (Ads, Page, and Instagram) performance, your **X** account, your **Mailchimp** audience, and an **SEO (Yoast)** audit of your site's posts and pages.
+Several cards, in this order: your **WordPress.com/Jetpack** blog stats, your **Google Analytics (GA4)** website traffic, your **Facebook** (Ads, Page, and Instagram) performance, your **X** account, your **TikTok** account, your **Mailchimp** audience, and an **SEO (Yoast)** audit of your site's posts and pages.
 
 **WordPress.com / Jetpack Stats** — click **Connect WordPress.com** the first time; after that it shows visitors and views (today, yesterday, and all-time), your blog's follower count, your single best day ever, and a day-by-day table for the last 30 days. **Disconnect** clears the connection if you ever need to reset it. Click the **Blog Followers** number itself and it jumps you straight down to the full follower list below.
 
@@ -277,6 +279,10 @@ Several cards, in this order: your **WordPress.com/Jetpack** blog stats, your **
 The Follower History table costs nothing at all — it's built from the daily numbers already saved on your computer, not from new lookups. It needs a couple of days of the CRM being opened before there's a trend to show. **Disconnecting X keeps that history** — you won't lose the trend you've paid to build up if you reconnect later.
 
 Setting X up is a one-time job for whoever maintains the CRM: it needs an app created in X's Developer Portal and two small files added to the Vercel helper project (both are already written and waiting in the `vercel-endpoints` folder of the CRM's code repository). Until that's done, the Connect X button will tell you it isn't configured yet rather than sending you to a broken login page.
+
+**TikTok** — Followers, Following, Likes, and Videos, refreshed every time you open the page. Unlike X, TikTok's API doesn't charge per lookup, so there's no need to save yesterday's number — it always shows the current count.
+
+**Setting up TikTok is a one-time job for whoever maintains the CRM**, and it needs one extra step beyond X's setup: after creating the app in TikTok's Developer Portal and deploying the two proxy files (already written and waiting in the `vercel-endpoints` folder, same as X's), the app also has to go through **TikTok's own review process** before it will return your real account's numbers — a fresh app only works with test accounts you've specifically approved for testing, not your actual account, until TikTok signs off (typically some days to a few weeks). Until that review is done, connecting may fail or only show test data, not something wrong with the CRM.
 
 **Mailchimp** — Subscribers, **Unsubscribed Yesterday**, Total Unsubscribed, Campaigns Sent, Avg Open Rate, Avg Click Rate. **Total Unsubscribed is a running lifetime total, not "since yesterday"** — Mailchimp itself doesn't offer a "how many unsubscribed on this specific day" number directly, so that tile can only ever go up and was previously mislabeled "Unsubscribed" in a way that read as if it were a daily figure. **Unsubscribed Yesterday** is the real one for that — it's actually computed by checking each unsubscribed member's own unsubscribe date and counting the ones that fall on yesterday. Click either Unsubscribed tile to see the full list, sorted with the most recent unsubscribes at the top.
 
