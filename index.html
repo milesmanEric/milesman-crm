@@ -660,6 +660,30 @@ const X_CLIENT_ID     = '';  // fill in from the X Developer Portal app (OAuth 2
 const X_SCOPE         = 'tweet.read users.read offline.access';
 const X_REDIRECT      = 'https://milesmaneric.github.io/milesman-crm/';
 const X_AUTH_SERVER   = 'https://milesman-auth.vercel.app';
+// TikTok for Developers — Display API (Login Kit). Free (no per-request
+// billing, unlike X, §4.10) but gated behind TikTok's own App Review: a
+// freshly-created app only works for "sandbox target users" the developer
+// explicitly whitelists in the TikTok Developer Portal, not for the real
+// connected account, until the app's scopes are approved for production
+// (TikTok's own guidance: sandbox is hours, production review is days to
+// weeks). Needs api/tiktok-token.js (holds TT_CLIENT_SECRET) and
+// api/tiktok-api.js (CORS relay) on the milesman-auth Vercel proxy — see
+// vercel-endpoints/tiktok-token.js and tiktok-api.js in this repo.
+// No PKCE: unlike Canva/X, TikTok only requires it for desktop/iOS/Android
+// (public clients with no way to hold a secret) — web apps are treated as
+// confidential clients since the secret stays server-side here, same plain
+// authorization-code shape as Facebook/WordPress below.
+// follower_count/following_count/likes_count/video_count used to be part
+// of the base user.info.basic scope; TikTok split them out in a Feb 2024
+// migration into a separate scope (named user.info.stats here, matching
+// their own naming convention, but not confirmed against a live app — the
+// exact name wasn't independently verifiable while building this, so a
+// wrong guess will show TikTok's own scope_not_authorized error verbatim
+// rather than failing silently).
+const TT_CLIENT_KEY   = '';  // fill in from the TikTok Developer Portal app (Client Key, not Client Secret)
+const TT_SCOPE         = 'user.info.basic,user.info.stats';
+const TT_REDIRECT      = 'https://milesmaneric.github.io/milesman-crm/';
+const TT_AUTH_SERVER   = 'https://milesman-auth.vercel.app';
 const CANVA_CLIENT_ID  = 'OC-AaAU8P8p6wvR';
 const CANVA_SCOPE      = 'design:meta:read design:content:read';
 const CANVA_REDIRECT   = 'https://milesmaneric.github.io/milesman-crm/';
@@ -2746,6 +2770,122 @@ function xHistoryTableHtml(history){
       return '<tr><td style="white-space:nowrap">'+fmtDate(h.date)+'</td><td>'+(h.followers!=null?fmt(h.followers):'—')+'</td><td>'+diffHtml+'</td><td>'+(h.posts!=null?fmt(h.posts):'—')+'</td></tr>';
     }).join('')+
     '</tbody></table></div></div>';
+}
+// ── TikTok Analytics ─────────────────────────────────────────────────────
+function tiktokLogin(){
+  if(!TT_CLIENT_KEY){
+    toast('TikTok isn\'t set up yet — TT_CLIENT_KEY is blank in index.html (see the setup notes above it)','err');
+    return;
+  }
+  const params = new URLSearchParams({
+    client_key:    TT_CLIENT_KEY,
+    redirect_uri:  TT_REDIRECT,
+    response_type: 'code',
+    scope:         TT_SCOPE,
+    state:         'tt_auth'
+  });
+  debugLog('Redirecting to TikTok login...');
+  window.location.href = 'https://www.tiktok.com/v2/auth/authorize/?'+params.toString();
+}
+function checkTikTokRedirect(){
+  const params = new URLSearchParams(window.location.search);
+  const code  = params.get('code');
+  const state = params.get('state');
+  if(!code || state !== 'tt_auth') return;
+
+  window.history.replaceState({},'',window.location.pathname);
+  debugLog('TikTok auth code received, exchanging...');
+
+  fetch(TT_AUTH_SERVER+'/api/tiktok-token',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({ code: code, redirect_uri: TT_REDIRECT })
+  }).then(function(r){return r.json();}).then(function(d){
+    if(d.access_token){
+      localStorage.setItem('mm_tiktok_token', d.access_token);
+      localStorage.setItem('mm_tiktok_refresh_token', d.refresh_token||'');
+      localStorage.setItem('mm_tiktok_token_expires', String(Date.now() + (Number(d.expires_in)||86400)*1000));
+      debugLog('TikTok token obtained successfully');
+      toast('TikTok connected!','ok');
+      go('analytics');
+    } else {
+      debugLog('TikTok token exchange failed: '+JSON.stringify(d.error||d));
+      var msg = d.error_description || d.error || 'unknown error';
+      toast('TikTok auth failed: '+msg,'err');
+    }
+  }).catch(function(e){
+    debugLog('TikTok token exchange error: '+e.message);
+    toast('TikTok auth error: '+e.message,'err');
+  });
+}
+// TikTok access tokens last 24h, refresh tokens last a year — refreshes
+// ahead of expiry the same way getCanvaAccessToken()/getXAccessToken() do.
+function getTikTokAccessToken(){
+  var token = localStorage.getItem('mm_tiktok_token');
+  if(!token) return Promise.resolve(null);
+  var expires = Number(localStorage.getItem('mm_tiktok_token_expires')||0);
+  if(Date.now() < expires - 60000) return Promise.resolve(token);
+  var refreshToken = localStorage.getItem('mm_tiktok_refresh_token');
+  if(!refreshToken) return Promise.resolve(token);
+  return fetch(TT_AUTH_SERVER+'/api/tiktok-token',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({ grant_type:'refresh_token', refresh_token: refreshToken })
+  }).then(function(r){return r.json();}).then(function(d){
+    if(d.access_token){
+      localStorage.setItem('mm_tiktok_token', d.access_token);
+      if(d.refresh_token) localStorage.setItem('mm_tiktok_refresh_token', d.refresh_token);
+      localStorage.setItem('mm_tiktok_token_expires', String(Date.now() + (Number(d.expires_in)||86400)*1000));
+      return d.access_token;
+    }
+    debugLog('TikTok token refresh failed: '+JSON.stringify(d.error||d));
+    return token;
+  }).catch(function(e){
+    debugLog('TikTok token refresh error: '+e.message);
+    return token;
+  });
+}
+function tiktokApi(path, opts){
+  opts = opts || {};
+  return getTikTokAccessToken().then(function(token){
+    if(!token) return Promise.reject(new Error('Not connected to TikTok'));
+    var qs = opts.query ? '&'+new URLSearchParams(opts.query).toString() : '';
+    var url = TT_AUTH_SERVER+'/api/tiktok-api?path='+encodeURIComponent(path)+qs;
+    return fetch(url, { headers: { Authorization: 'Bearer '+token } }).then(function(r){ return r.json(); });
+  });
+}
+// TikTok's own error convention wraps everything (including success) in
+// {data:{...}, error:{code,message,log_id}} — error.code is the literal
+// string 'ok' on success, not absent, so this checks that rather than just
+// truthiness. Free (no per-request cost like X), so this fetches on every
+// render the same way Instagram/WordPress's follower tiles do — no daily
+// cache needed here.
+function tiktokUserInfoValue(resp){
+  if(resp.error && resp.error.code && resp.error.code!=='ok'){
+    throw new Error(resp.error.message||resp.error.code);
+  }
+  return resp.data && resp.data.user;
+}
+function loadTiktokAnalytics(bodyId){
+  var body = $(bodyId);
+  if(!body) return;
+  tiktokApi('/v2/user/info/', {query:{fields:'display_name,follower_count,following_count,likes_count,video_count'}}).then(function(resp){
+    if(!body) return;
+    var u;
+    try{ u = tiktokUserInfoValue(resp); }
+    catch(e){ body.innerHTML = '<div class="empty">'+escHtml(e.message)+'</div>'; return; }
+    if(!u){ body.innerHTML = '<div class="empty">TikTok returned no account data</div>'; return; }
+    body.innerHTML = '<div style="font-size:11px;color:#888;margin-bottom:8px">'+escHtml(u.display_name||'')+'</div>'+
+      '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">'+
+        '<div class="stat"><div class="stat-lbl">Followers</div><div class="stat-val">'+(u.follower_count!=null?fmt(u.follower_count):'—')+'</div></div>'+
+        '<div class="stat"><div class="stat-lbl">Following</div><div class="stat-val">'+(u.following_count!=null?fmt(u.following_count):'—')+'</div></div>'+
+        '<div class="stat"><div class="stat-lbl">Likes</div><div class="stat-val">'+(u.likes_count!=null?fmt(u.likes_count):'—')+'</div></div>'+
+        '<div class="stat"><div class="stat-lbl">Videos</div><div class="stat-val">'+(u.video_count!=null?fmt(u.video_count):'—')+'</div></div>'+
+      '</div>';
+  }).catch(function(e){
+    debugLog('TikTok analytics failed — '+e.message);
+    if(body) body.innerHTML = '<div class="empty">Failed to load: '+escHtml(e.message)+'</div>';
+  });
 }
 // ── Canva Connect (design picker for Facebook ad images) ────────────────
 // PKCE is mandatory for Canva's OAuth flow, unlike Facebook/WordPress's
@@ -11164,6 +11304,7 @@ function renderDash(){
       '<div class="stat" id="stat-dash-followers" style="cursor:pointer" title="Click to view blog followers"><div class="stat-lbl">Blog Followers</div><div class="stat-val" id="dash-followers-val">—</div></div>'+
       '<div class="stat" id="stat-dash-ig-followers" style="cursor:pointer" title="Click to view Instagram analytics"><div class="stat-lbl">Instagram Followers</div><div class="stat-val" id="dash-ig-followers-val">—</div></div>'+
       '<div class="stat" id="stat-dash-x-followers" style="cursor:pointer" title="Click to view X analytics"><div class="stat-lbl">X Followers</div><div class="stat-val" id="dash-x-followers-val">—</div><div id="dash-x-followers-delta"></div></div>'+
+      '<div class="stat" id="stat-dash-tiktok-followers" style="cursor:pointer" title="Click to view TikTok analytics"><div class="stat-lbl">TikTok Followers</div><div class="stat-val" id="dash-tiktok-followers-val">—</div></div>'+
     '</div>'+
     '<div class="card" style="margin-bottom:16px">'+
       '<div class="card-hdr"><span class="card-title">Revenue by Section</span></div>'+
@@ -11370,6 +11511,24 @@ function renderDash(){
       if(el && res.snapshot.followers!=null) el.textContent = fmt(res.snapshot.followers);
       var deltaEl = document.getElementById('dash-x-followers-delta');
       if(deltaEl) deltaEl.innerHTML = xDeltaHtml(res.snapshot, xPreviousSnapshot(res.history, res.snapshot.date));
+    }).catch(function(){});
+  }
+
+  // TikTok Followers tile — same independent-fetch-on-render pattern as
+  // Instagram Followers above (free API, unlike X, so no daily cache
+  // needed here — loadTiktokAnalytics() targets the Analytics page's own
+  // #tiktok-analytics-body, not this one-number Dashboard tile).
+  var statDashTiktokFollowers = $('stat-dash-tiktok-followers');
+  if(statDashTiktokFollowers) statDashTiktokFollowers.addEventListener('click', function(){
+    go('analytics');
+    var el = document.getElementById('tiktok-analytics-body');
+    if(el) el.scrollIntoView({behavior:'smooth', block:'center'});
+  });
+  if(localStorage.getItem('mm_tiktok_token')){
+    tiktokApi('/v2/user/info/', {query:{fields:'follower_count'}}).then(function(resp){
+      var u = tiktokUserInfoValue(resp);
+      var el = document.getElementById('dash-tiktok-followers-val');
+      if(el && u && u.follower_count!=null) el.textContent = fmt(u.follower_count);
     }).catch(function(){});
   }
 
@@ -16271,6 +16430,16 @@ function dailyCompilationHtml(results, dateStr){
       ['Reach', fmt(ig.reach||0)], ['Views', fmt(ig.views||0)], ['Profile Views', fmt(ig.profileViews||0)]
     ]));
   }
+  // TikTok deliberately has no block here: the Display API's /v2/user/info/
+  // only exposes current, all-time totals (follower_count etc.), the same
+  // as Instagram's Followers/Posts tile — but unlike Instagram, TikTok has
+  // no day-specific Insights-style endpoint alongside it, so there's no
+  // genuinely "yesterday" TikTok number to show. Every other block in this
+  // "Yesterday's Analytics" compilation is real day-specific activity;
+  // adding an all-time total here framed the same way would repeat the
+  // exact mislabeling the Mailchimp Total Unsubscribed fix (§3) corrected —
+  // see the TikTok card itself (loadTiktokAnalytics(), §3) for the same
+  // numbers honestly presented as current totals instead.
   if(!blocks.length) return '<div class="empty">No connected analytics sources yet.</div>';
   return '<div style="font-size:11px;color:#888;margin-bottom:10px">'+fmtDate(dateStr)+'</div>'+blocks.join('');
 }
@@ -16350,6 +16519,7 @@ function renderAnalytics(){
   var wpToken = localStorage.getItem('mm_wp_token');
   var fbToken = localStorage.getItem('mm_fb_token');
   var xToken = localStorage.getItem('mm_x_token');
+  var tiktokToken = localStorage.getItem('mm_tiktok_token');
   var jetpackSubConfigured = !!getJetpackSubCreds();
   $('main').innerHTML =
     '<div class="page-hdr"><div class="page-title">Analytics</div></div>'+
@@ -16411,6 +16581,15 @@ function renderAnalytics(){
         ? '<div id="x-analytics-body"><div class="empty">Loading…</div></div>'
         : '<div style="padding:8px 0"><button class="add-btn" id="x-connect-btn">Connect X</button>'+
           '<div style="font-size:11px;color:#888;margin-top:6px">X charges per API read (no free tier since Feb 2026), so this fetches one snapshot per day and caches it — see the User Guide before connecting.</div></div>')+
+    '</div>'+
+    '<div class="card" style="margin-bottom:16px">'+
+      '<div class="card-hdr"><span class="card-title">TikTok</span>'+
+        (tiktokToken ? '<button class="cancel-btn" id="tiktok-disconnect">Disconnect</button>' : '')+
+      '</div>'+
+      (tiktokToken
+        ? '<div id="tiktok-analytics-body"><div class="empty">Loading…</div></div>'
+        : '<div style="padding:8px 0"><button class="add-btn" id="tiktok-connect-btn">Connect TikTok</button>'+
+          '<div style="font-size:11px;color:#888;margin-top:6px">Requires a TikTok Developer app approved for production use — see the User Guide before connecting.</div></div>')+
     '</div>'+
     '<div class="card" style="margin-bottom:16px">'+
       '<div class="card-hdr"><span class="card-title">Mailchimp</span></div>'+
@@ -16483,6 +16662,17 @@ function renderAnalytics(){
     render();
   });
   if(xToken) loadXAnalytics('x-analytics-body');
+
+  var tiktokConnectBtn = $('tiktok-connect-btn');
+  if(tiktokConnectBtn) tiktokConnectBtn.addEventListener('click', tiktokLogin);
+  var tiktokDisconnectBtn = $('tiktok-disconnect');
+  if(tiktokDisconnectBtn) tiktokDisconnectBtn.addEventListener('click', function(){
+    localStorage.removeItem('mm_tiktok_token');
+    localStorage.removeItem('mm_tiktok_refresh_token');
+    localStorage.removeItem('mm_tiktok_token_expires');
+    render();
+  });
+  if(tiktokToken) loadTiktokAnalytics('tiktok-analytics-body');
 
   loadMailchimpAnalytics('mc-analytics-body');
   if(!analyticsSectionCollapsed('mc-campaigns')) loadMailchimpCampaignsReport('mc-campaigns-body');
@@ -18007,6 +18197,7 @@ checkWordpressRedirect();
 checkFacebookRedirect();
 checkCanvaRedirect();
 checkXRedirect();
+checkTikTokRedirect();
 updateSyncStatusDisplay();
 console.log('[CRM] Ready. Clients:', db.clients.length, 'Trips:', db.trips.length);
 } // end bootApp()
