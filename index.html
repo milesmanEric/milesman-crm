@@ -643,6 +643,23 @@ const FB_AD_ACCOUNT   = 'act_1285326830438388';
 // registered (canva.com/developers) — not a secret, safe to hardcode like
 // FB_APP_ID above, but connecting will fail with "Invalid Client" until a
 // real ID replaces this placeholder.
+// X (Twitter) API v2 — OAuth 2.0 with PKCE (mandatory, same as Canva
+// below; unlike Facebook/WordPress's plain authorization-code flow).
+// Needs api/x-token.js (holds X_CLIENT_SECRET, does the code exchange and
+// refresh) and api/x-api.js (CORS relay) on the milesman-auth Vercel proxy
+// — see wordpress-snippets/vercel-x-endpoints/ in this repo for both files.
+//
+// COST WARNING: X has no usable free tier as of Feb 2026 — it's pay-per-use,
+// and a user-scoped read (which is what /2/users/me is) runs ~$0.010 each.
+// That's why xFollowerSnapshot() caches to localStorage once per calendar
+// day rather than fetching on every render the way the Instagram/WordPress
+// follower tiles do: the Dashboard tile and the Analytics card share that
+// one cached snapshot, so a day of normal use costs one read, not dozens.
+// Don't "optimize" that cache away without understanding it bills real money.
+const X_CLIENT_ID     = '';  // fill in from the X Developer Portal app (OAuth 2.0 Client ID)
+const X_SCOPE         = 'tweet.read users.read offline.access';
+const X_REDIRECT      = 'https://milesmaneric.github.io/milesman-crm/';
+const X_AUTH_SERVER   = 'https://milesman-auth.vercel.app';
 const CANVA_CLIENT_ID  = 'OC-AaAU8P8p6wvR';
 const CANVA_SCOPE      = 'design:meta:read design:content:read';
 const CANVA_REDIRECT   = 'https://milesmaneric.github.io/milesman-crm/';
@@ -2531,6 +2548,204 @@ function fbGraph(path, opts){
     fetchOpts.body = JSON.stringify(opts.body||{});
   }
   return fetch(url, fetchOpts).then(function(r){ return r.json(); });
+}
+// ── X (Twitter) Analytics ───────────────────────────────────────────────
+// Same PKCE shape as Canva below (X mandates PKCE too) — the two helpers
+// there are reused rather than duplicated, since the code_verifier/
+// code_challenge math is identical and provider-agnostic.
+function xLogin(){
+  if(!X_CLIENT_ID){
+    toast('X isn\'t set up yet — X_CLIENT_ID is blank in index.html (see the setup notes above it)','err');
+    return;
+  }
+  var verifier = canvaGenerateCodeVerifier();
+  localStorage.setItem('mm_x_code_verifier', verifier);
+  canvaCodeChallenge(verifier).then(function(challenge){
+    const params = new URLSearchParams({
+      response_type:         'code',
+      client_id:             X_CLIENT_ID,
+      redirect_uri:          X_REDIRECT,
+      scope:                 X_SCOPE,
+      state:                 'x_auth',
+      code_challenge:        challenge,
+      code_challenge_method: 'S256'
+    });
+    debugLog('Redirecting to X login...');
+    window.location.href = 'https://x.com/i/oauth2/authorize?'+params.toString();
+  });
+}
+function checkXRedirect(){
+  const params = new URLSearchParams(window.location.search);
+  const code  = params.get('code');
+  const state = params.get('state');
+  if(!code || state !== 'x_auth') return;
+
+  window.history.replaceState({},'',window.location.pathname);
+  var verifier = localStorage.getItem('mm_x_code_verifier');
+  localStorage.removeItem('mm_x_code_verifier');
+  debugLog('X auth code received, exchanging...');
+
+  fetch(X_AUTH_SERVER+'/api/x-token',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({ code: code, redirect_uri: X_REDIRECT, code_verifier: verifier })
+  }).then(function(r){return r.json();}).then(function(d){
+    if(d.access_token){
+      localStorage.setItem('mm_x_token', d.access_token);
+      localStorage.setItem('mm_x_refresh_token', d.refresh_token||'');
+      localStorage.setItem('mm_x_token_expires', String(Date.now() + (Number(d.expires_in)||7200)*1000));
+      debugLog('X token obtained successfully');
+      toast('X connected!','ok');
+      go('analytics');
+    } else {
+      debugLog('X token exchange failed: '+JSON.stringify(d.error||d));
+      var msg = d.error_description || d.error || 'unknown error';
+      toast('X auth failed: '+msg,'err');
+    }
+  }).catch(function(e){
+    debugLog('X token exchange error: '+e.message);
+    toast('X auth error: '+e.message,'err');
+  });
+}
+// X access tokens last ~2 hours, so this refreshes ahead of expiry the same
+// way getCanvaAccessToken() does. Resolves null when never connected, so
+// callers can tell "not connected" apart from "connected but the fetch failed."
+function getXAccessToken(){
+  var token = localStorage.getItem('mm_x_token');
+  if(!token) return Promise.resolve(null);
+  var expires = Number(localStorage.getItem('mm_x_token_expires')||0);
+  if(Date.now() < expires - 60000) return Promise.resolve(token);
+  var refreshToken = localStorage.getItem('mm_x_refresh_token');
+  if(!refreshToken) return Promise.resolve(token);
+  return fetch(X_AUTH_SERVER+'/api/x-token',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({ grant_type:'refresh_token', refresh_token: refreshToken })
+  }).then(function(r){return r.json();}).then(function(d){
+    if(d.access_token){
+      localStorage.setItem('mm_x_token', d.access_token);
+      if(d.refresh_token) localStorage.setItem('mm_x_refresh_token', d.refresh_token);
+      localStorage.setItem('mm_x_token_expires', String(Date.now() + (Number(d.expires_in)||7200)*1000));
+      return d.access_token;
+    }
+    debugLog('X token refresh failed: '+JSON.stringify(d.error||d));
+    return token;
+  }).catch(function(e){
+    debugLog('X token refresh error: '+e.message);
+    return token;
+  });
+}
+function xApi(path, opts){
+  opts = opts || {};
+  return getXAccessToken().then(function(token){
+    if(!token) return Promise.reject(new Error('Not connected to X'));
+    var qs = opts.query ? '&'+new URLSearchParams(opts.query).toString() : '';
+    var url = X_AUTH_SERVER+'/api/x-api?path='+encodeURIComponent(path)+qs;
+    return fetch(url, { headers: { Authorization: 'Bearer '+token } }).then(function(r){ return r.json(); });
+  });
+}
+const X_HISTORY_KEY = 'mm_x_follower_history';
+function xHistory(){
+  try{ return JSON.parse(localStorage.getItem(X_HISTORY_KEY)||'[]'); }catch(e){ return []; }
+}
+// One paid read per calendar day, shared by the Dashboard tile and the
+// Analytics card (see the cost note by X_CLIENT_ID). Every snapshot is also
+// appended to a local history array, which is what makes the day-over-day
+// follower delta free — it's computed from two cached snapshots rather than
+// a second API call, since X offers no account-level "yesterday" endpoint
+// the way Instagram does. force:true bypasses the cache for the Refresh
+// button, and deliberately costs a read.
+function xFollowerSnapshot(force){
+  var hist = xHistory();
+  var todayStr = today();
+  var cached = hist.find(function(h){ return h.date===todayStr; });
+  if(cached && !force) return Promise.resolve({snapshot:cached, history:hist, cached:true});
+  return xApi('/2/users/me', {query:{'user.fields':'public_metrics,username,name'}}).then(function(resp){
+    if(resp.errors && resp.errors.length) throw new Error(resp.errors[0].detail||resp.errors[0].title||'X API error');
+    if(resp.error) throw new Error(resp.error_description||resp.error);
+    var d = resp.data;
+    if(!d) throw new Error('X returned no account data');
+    var pm = d.public_metrics||{};
+    var snap = {
+      date: todayStr,
+      username: d.username||'',
+      name: d.name||'',
+      followers: pm.followers_count,
+      following: pm.following_count,
+      posts: pm.tweet_count,
+      listed: pm.listed_count
+    };
+    var next = hist.filter(function(h){ return h.date!==todayStr; });
+    next.push(snap);
+    // 400 days is plenty for a year-over-year look and keeps this well
+    // clear of localStorage's size limits, which the whole CRM shares.
+    next.sort(function(a,b){ return a.date.localeCompare(b.date); });
+    if(next.length>400) next = next.slice(next.length-400);
+    localStorage.setItem(X_HISTORY_KEY, JSON.stringify(next));
+    debugLog('X: fetched follower snapshot for '+todayStr+' (billable read)');
+    return {snapshot:snap, history:next, cached:false};
+  });
+}
+// Most recent snapshot strictly before the current one — not necessarily
+// literally yesterday, since a day with the CRM never opened records no
+// snapshot at all. The label says which date it's actually comparing
+// against rather than claiming "yesterday" for what might be a week ago.
+function xPreviousSnapshot(history, currentDate){
+  var earlier = (history||[]).filter(function(h){ return h.date < currentDate; });
+  return earlier.length ? earlier[earlier.length-1] : null;
+}
+function xDeltaHtml(current, prev){
+  if(!prev || prev.followers==null || current.followers==null) return '';
+  var diff = current.followers - prev.followers;
+  var color = diff>0 ? '#059669' : (diff<0 ? '#dc2626' : '#888');
+  var sign = diff>0 ? '+' : '';
+  return '<div style="font-size:11px;color:'+color+';margin-top:2px">'+sign+fmt(diff)+' since '+fmtDate(prev.date)+'</div>';
+}
+function loadXAnalytics(bodyId){
+  var body = $(bodyId);
+  if(!body) return;
+  xFollowerSnapshot(false).then(function(res){
+    if(!body) return;
+    var s = res.snapshot;
+    var prev = xPreviousSnapshot(res.history, s.date);
+    body.innerHTML =
+      '<div style="font-size:11px;color:#888;margin-bottom:8px">@'+escHtml(s.username||'')+
+        ' &middot; snapshot from '+fmtDate(s.date)+(res.cached?' (cached — X bills per read, so this refreshes once a day)':'')+
+        ' <button class="cancel-btn" id="x-refresh-btn" style="margin-left:8px;font-size:11px;padding:2px 8px" title="Fetches a fresh snapshot from X — costs one billable read">&#128260; Refresh now</button>'+
+      '</div>'+
+      '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">'+
+        '<div class="stat"><div class="stat-lbl">Followers</div><div class="stat-val">'+(s.followers!=null?fmt(s.followers):'—')+'</div>'+xDeltaHtml(s,prev)+'</div>'+
+        '<div class="stat"><div class="stat-lbl">Following</div><div class="stat-val">'+(s.following!=null?fmt(s.following):'—')+'</div></div>'+
+        '<div class="stat"><div class="stat-lbl">Posts</div><div class="stat-val">'+(s.posts!=null?fmt(s.posts):'—')+'</div></div>'+
+        '<div class="stat"><div class="stat-lbl">Listed</div><div class="stat-val">'+(s.listed!=null?fmt(s.listed):'—')+'</div></div>'+
+      '</div>'+
+      xHistoryTableHtml(res.history);
+    var refreshBtn = $('x-refresh-btn');
+    if(refreshBtn) refreshBtn.addEventListener('click', function(){
+      body.innerHTML = '<div class="empty">Fetching…</div>';
+      xFollowerSnapshot(true).then(function(){ loadXAnalytics(bodyId); }).catch(function(e){
+        body.innerHTML = '<div class="empty">Failed to refresh: '+escHtml(e.message)+'</div>';
+      });
+    });
+  }).catch(function(e){
+    debugLog('X analytics failed — '+e.message);
+    if(body) body.innerHTML = '<div class="empty">Failed to load: '+escHtml(e.message)+'</div>';
+  });
+}
+// Built entirely from locally-cached snapshots — no API calls, no cost.
+function xHistoryTableHtml(history){
+  var rows = (history||[]).slice().reverse().slice(0,30);
+  if(rows.length<2) return '<div style="font-size:11px;color:#888;margin-top:10px">Follower history builds up as you open the CRM on different days — check back tomorrow for a trend.</div>';
+  return '<div style="margin-top:12px"><div style="font-size:11px;color:#888;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">Follower History</div>'+
+    '<div class="tbl-wrap" style="max-height:260px;overflow-y:auto"><table><thead><tr><th>Date</th><th>Followers</th><th>Change</th><th>Posts</th></tr></thead><tbody>'+
+    rows.map(function(h,i){
+      var older = rows[i+1];
+      var diff = (older && h.followers!=null && older.followers!=null) ? h.followers-older.followers : null;
+      var diffHtml = diff===null ? '<span style="color:#aaa">—</span>' :
+        '<span style="color:'+(diff>0?'#059669':(diff<0?'#dc2626':'#888'))+'">'+(diff>0?'+':'')+fmt(diff)+'</span>';
+      return '<tr><td style="white-space:nowrap">'+fmtDate(h.date)+'</td><td>'+(h.followers!=null?fmt(h.followers):'—')+'</td><td>'+diffHtml+'</td><td>'+(h.posts!=null?fmt(h.posts):'—')+'</td></tr>';
+    }).join('')+
+    '</tbody></table></div></div>';
 }
 // ── Canva Connect (design picker for Facebook ad images) ────────────────
 // PKCE is mandatory for Canva's OAuth flow, unlike Facebook/WordPress's
@@ -10948,6 +11163,7 @@ function renderDash(){
       '<div class="stat" id="stat-dash-pts"><div class="stat-lbl">Points deployed</div><div class="stat-val">'+fmt(s.pts)+'</div></div>'+
       '<div class="stat" id="stat-dash-followers" style="cursor:pointer" title="Click to view blog followers"><div class="stat-lbl">Blog Followers</div><div class="stat-val" id="dash-followers-val">—</div></div>'+
       '<div class="stat" id="stat-dash-ig-followers" style="cursor:pointer" title="Click to view Instagram analytics"><div class="stat-lbl">Instagram Followers</div><div class="stat-val" id="dash-ig-followers-val">—</div></div>'+
+      '<div class="stat" id="stat-dash-x-followers" style="cursor:pointer" title="Click to view X analytics"><div class="stat-lbl">X Followers</div><div class="stat-val" id="dash-x-followers-val">—</div><div id="dash-x-followers-delta"></div></div>'+
     '</div>'+
     '<div class="card" style="margin-bottom:16px">'+
       '<div class="card-hdr"><span class="card-title">Revenue by Section</span></div>'+
@@ -11135,6 +11351,25 @@ function renderDash(){
     }).then(function(d){
       var el = document.getElementById('dash-ig-followers-val');
       if(el && d.followers_count!=null) el.textContent = fmt(d.followers_count);
+    }).catch(function(){});
+  }
+
+  // X Followers tile — shares xFollowerSnapshot()'s once-per-calendar-day
+  // cache with the Analytics tab's own X card, so having both open in a day
+  // still only costs the one billable read (see the cost note by X_CLIENT_ID).
+  // The delta under the number is computed from cached snapshots, free.
+  var statDashXFollowers = $('stat-dash-x-followers');
+  if(statDashXFollowers) statDashXFollowers.addEventListener('click', function(){
+    go('analytics');
+    var el = document.getElementById('x-analytics-body');
+    if(el) el.scrollIntoView({behavior:'smooth', block:'center'});
+  });
+  if(localStorage.getItem('mm_x_token')){
+    xFollowerSnapshot(false).then(function(res){
+      var el = document.getElementById('dash-x-followers-val');
+      if(el && res.snapshot.followers!=null) el.textContent = fmt(res.snapshot.followers);
+      var deltaEl = document.getElementById('dash-x-followers-delta');
+      if(deltaEl) deltaEl.innerHTML = xDeltaHtml(res.snapshot, xPreviousSnapshot(res.history, res.snapshot.date));
     }).catch(function(){});
   }
 
@@ -16114,6 +16349,7 @@ function loadDailySummary(force){
 function renderAnalytics(){
   var wpToken = localStorage.getItem('mm_wp_token');
   var fbToken = localStorage.getItem('mm_fb_token');
+  var xToken = localStorage.getItem('mm_x_token');
   var jetpackSubConfigured = !!getJetpackSubCreds();
   $('main').innerHTML =
     '<div class="page-hdr"><div class="page-title">Analytics</div></div>'+
@@ -16166,6 +16402,15 @@ function renderAnalytics(){
           '<div style="font-size:11px;color:#888;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin:16px 0 6px;border-top:1px solid #f0f0f0;padding-top:12px">Instagram (via connected Page)</div>'+
           '<div id="ig-analytics-body"><div class="empty">Loading…</div></div>'
         : '<div style="padding:8px 0"><button class="add-btn" id="fb-analytics-connect-btn">Connect Facebook</button></div>')+
+    '</div>'+
+    '<div class="card" style="margin-bottom:16px">'+
+      '<div class="card-hdr"><span class="card-title">X</span>'+
+        (xToken ? '<button class="cancel-btn" id="x-disconnect">Disconnect</button>' : '')+
+      '</div>'+
+      (xToken
+        ? '<div id="x-analytics-body"><div class="empty">Loading…</div></div>'
+        : '<div style="padding:8px 0"><button class="add-btn" id="x-connect-btn">Connect X</button>'+
+          '<div style="font-size:11px;color:#888;margin-top:6px">X charges per API read (no free tier since Feb 2026), so this fetches one snapshot per day and caches it — see the User Guide before connecting.</div></div>')+
     '</div>'+
     '<div class="card" style="margin-bottom:16px">'+
       '<div class="card-hdr"><span class="card-title">Mailchimp</span></div>'+
@@ -16224,6 +16469,20 @@ function renderAnalytics(){
     loadFacebookPageAnalytics('fb-page-analytics-body');
     loadInstagramAnalytics('ig-analytics-body');
   }
+
+  var xConnectBtn = $('x-connect-btn');
+  if(xConnectBtn) xConnectBtn.addEventListener('click', xLogin);
+  var xDisconnectBtn = $('x-disconnect');
+  if(xDisconnectBtn) xDisconnectBtn.addEventListener('click', function(){
+    // Deliberately keeps mm_x_follower_history — that's locally-collected
+    // data that cost real money to gather, and reconnecting later should
+    // pick the trend back up rather than start from nothing.
+    localStorage.removeItem('mm_x_token');
+    localStorage.removeItem('mm_x_refresh_token');
+    localStorage.removeItem('mm_x_token_expires');
+    render();
+  });
+  if(xToken) loadXAnalytics('x-analytics-body');
 
   loadMailchimpAnalytics('mc-analytics-body');
   if(!analyticsSectionCollapsed('mc-campaigns')) loadMailchimpCampaignsReport('mc-campaigns-body');
@@ -17747,6 +18006,7 @@ checkDriveRedirect();
 checkWordpressRedirect();
 checkFacebookRedirect();
 checkCanvaRedirect();
+checkXRedirect();
 updateSyncStatusDisplay();
 console.log('[CRM] Ready. Clients:', db.clients.length, 'Trips:', db.trips.length);
 } // end bootApp()
