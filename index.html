@@ -622,7 +622,14 @@ const FB_APP_ID       = '1037570602213729';
 // developer-account hold, which is why removing just the Page scopes
 // back then didn't fix it.) Page Insights itself won't work without this
 // permission — re-add it once Advanced Access is granted.
-const FB_SCOPE        = 'ads_management,ads_read,business_management,pages_show_list,pages_read_engagement';
+// instagram_basic/instagram_manage_insights added for the Analytics tab's
+// Instagram section (loadInstagramAnalytics) — same Development Mode risk
+// as read_insights above applies here too, unconfirmed against a live
+// login as of when this was added. If connecting ever starts failing with
+// a scope/"Feature Unavailable" error again, these two are the first
+// suspects — remove them and see if login recovers, the same way
+// read_insights was diagnosed.
+const FB_SCOPE        = 'ads_management,ads_read,business_management,pages_show_list,pages_read_engagement,instagram_basic,instagram_manage_insights';
 const FB_REDIRECT     = 'https://milesmaneric.github.io/milesman-crm/';
 const FB_AUTH_SERVER  = 'https://milesman-auth.vercel.app';
 const FB_AD_ACCOUNT   = 'act_1285326830438388';
@@ -10940,6 +10947,7 @@ function renderDash(){
       '<div class="stat" id="stat-dash-value"><div class="stat-lbl">Total Revenue</div><div class="stat-val">$'+money(s.value)+'</div></div>'+
       '<div class="stat" id="stat-dash-pts"><div class="stat-lbl">Points deployed</div><div class="stat-val">'+fmt(s.pts)+'</div></div>'+
       '<div class="stat" id="stat-dash-followers" style="cursor:pointer" title="Click to view blog followers"><div class="stat-lbl">Blog Followers</div><div class="stat-val" id="dash-followers-val">—</div></div>'+
+      '<div class="stat" id="stat-dash-ig-followers" style="cursor:pointer" title="Click to view Instagram analytics"><div class="stat-lbl">Instagram Followers</div><div class="stat-val" id="dash-ig-followers-val">—</div></div>'+
     '</div>'+
     '<div class="card" style="margin-bottom:16px">'+
       '<div class="card-hdr"><span class="card-title">Revenue by Section</span></div>'+
@@ -11106,6 +11114,27 @@ function renderDash(){
     }).then(function(r){ return r.json(); }).then(function(d){
       var el = document.getElementById('dash-followers-val');
       if(el && d.stats) el.textContent = fmt(d.stats.followers_blog);
+    }).catch(function(){});
+  }
+
+  // Instagram Followers tile — same independent-fetch pattern as Blog
+  // Followers above (loadInstagramAnalytics() targets the Analytics
+  // page's own #ig-analytics-body, not this one-number Dashboard tile).
+  // Clicking it jumps to the Analytics tab's Facebook card, where the
+  // Instagram section lives (Instagram piggybacks on the same connected
+  // Facebook Page, not a separate login — see FB_SCOPE).
+  var statDashIgFollowers = $('stat-dash-ig-followers');
+  if(statDashIgFollowers) statDashIgFollowers.addEventListener('click', function(){
+    go('analytics');
+    var el = document.getElementById('ig-analytics-body');
+    if(el) el.scrollIntoView({behavior:'smooth', block:'center'});
+  });
+  if(localStorage.getItem('mm_fb_token')){
+    fetchInstagramAccountId().then(function(acct){
+      return fbGraph('/'+acct.igId, {token:acct.pageToken, query:{fields:'followers_count'}});
+    }).then(function(d){
+      var el = document.getElementById('dash-ig-followers-val');
+      if(el && d.followers_count!=null) el.textContent = fmt(d.followers_count);
     }).catch(function(){});
   }
 
@@ -15267,6 +15296,91 @@ function loadFacebookPageAnalytics(bodyId){
     if(body) body.innerHTML = '<div class="empty">Failed to load: '+e.message+'</div>';
   });
 }
+// Instagram Business/Creator accounts are only reachable through the same
+// connected Facebook Page as loadFacebookPageAnalytics() above — Meta
+// requires an IG professional account to be linked to a Page, and serves
+// its data through that Page's own access token, not a separate IG login.
+function fetchInstagramAccountId(){
+  return fbGraph('/me/accounts', {query:{fields:'id,name,access_token,instagram_business_account'}}).then(function(pagesResp){
+    if(pagesResp.error) throw new Error(pagesResp.error.message);
+    var pages = pagesResp.data||[];
+    var withIg = pages.find(function(p){ return p.instagram_business_account && p.instagram_business_account.id; });
+    if(!withIg) throw new Error('No Instagram Business/Creator account is linked to your connected Facebook Page — link one in Meta Business Suite first.');
+    return { pageId: withIg.id, pageName: withIg.name, pageToken: withIg.access_token, igId: withIg.instagram_business_account.id };
+  });
+}
+// Pulls total_value out of a returned Insights metric regardless of which
+// of the two response shapes Meta sends back for it — some Instagram
+// Insights metrics return metric_type:'total_value' as a single aggregate
+// object, others still return the older values:[{value}] time-series
+// shape, and which one applies to which metric/period combo isn't
+// consistently documented — so this defensively checks both rather than
+// assuming one.
+function igInsightValue(m){
+  if(m.total_value) return m.total_value.value;
+  return ((m.values||[])[0]||{}).value;
+}
+// Followers/media count come from the IG account object itself, not
+// Insights, so they're never subject to the low-activity Insights data
+// suppression seen on the Facebook Page card above (loadFacebookPageAnalytics).
+// Meta deprecated the "impressions" Insights metric across the whole
+// Instagram Graph API in April 2025, replaced by "views" — this uses the
+// current metric names (reach/views/profile_views), not yet confirmed
+// against a live response the way the Facebook Page metrics above are, so
+// any wrong guess here shows Meta's own error message verbatim
+// (fbLogGraphError) rather than failing silently. Insights failing is
+// treated as non-fatal — the account info (Followers/Posts) still renders
+// even if Instagram has nothing to report for the period, or the account
+// doesn't have Insights access at all.
+function loadInstagramAnalytics(bodyId){
+  var body = $(bodyId);
+  if(!body) return;
+  fetchInstagramAccountId().then(function(acct){
+    if(!body) return;
+    Promise.all([
+      fbGraph('/'+acct.igId, {token:acct.pageToken, query:{fields:'username,followers_count,media_count'}}),
+      fbGraph('/'+acct.igId+'/insights', {token:acct.pageToken, query:{metric:'reach,views,profile_views', period:'days_28', metric_type:'total_value'}})
+    ]).then(function(results){
+      if(!body) return;
+      var infoResp = results[0], insightsResp = results[1];
+      if(infoResp.error){ fbLogGraphError('instagram account fetch', infoResp.error); body.innerHTML = '<div class="empty">'+escHtml(infoResp.error.message||'Failed to load Instagram account')+'</div>'; return; }
+      var byName = {};
+      if(insightsResp.error){
+        fbLogGraphError('instagram insights fetch (non-fatal)', insightsResp.error);
+      } else {
+        (insightsResp.data||[]).forEach(function(m){ byName[m.name] = igInsightValue(m); });
+      }
+      body.innerHTML = '<div style="font-size:11px;color:#888;margin-bottom:8px">@'+escHtml(infoResp.username||'')+' &middot; Followers/Posts are all-time, the rest is last 28 days</div>'+
+        '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px">'+
+          '<div class="stat"><div class="stat-lbl">Followers</div><div class="stat-val">'+(infoResp.followers_count!=null?fmt(infoResp.followers_count):'—')+'</div></div>'+
+          '<div class="stat"><div class="stat-lbl">Posts</div><div class="stat-val">'+(infoResp.media_count!=null?fmt(infoResp.media_count):'—')+'</div></div>'+
+          '<div class="stat"><div class="stat-lbl">Reach</div><div class="stat-val">'+(byName.reach!=null?fmt(byName.reach):'—')+'</div></div>'+
+          '<div class="stat"><div class="stat-lbl">Views</div><div class="stat-val">'+(byName.views!=null?fmt(byName.views):'—')+'</div></div>'+
+          '<div class="stat"><div class="stat-lbl">Profile Views</div><div class="stat-val">'+(byName.profile_views!=null?fmt(byName.profile_views):'—')+'</div></div>'+
+        '</div>';
+    }).catch(function(e){
+      debugLog('Instagram analytics: insights request failed before any response — '+e.message);
+      if(body) body.innerHTML = '<div class="empty">Failed to load: '+e.message+'</div>';
+    });
+  }).catch(function(e){
+    debugLog('Instagram analytics: account lookup failed — '+e.message);
+    if(body) body.innerHTML = '<div class="empty">'+escHtml(e.message)+'</div>';
+  });
+}
+// Same-shaped fetch as fetchYesterdayFacebookPage() above, feeding the
+// Daily Summary / "Yesterday's Analytics" compilation instead of the
+// Analytics tab's own Instagram card.
+function fetchYesterdayInstagram(dateStr){
+  if(!localStorage.getItem('mm_fb_token')) return Promise.reject(new Error('Facebook not connected'));
+  return fetchInstagramAccountId().then(function(acct){
+    return fbGraph('/'+acct.igId+'/insights', {token:acct.pageToken, query:{metric:'reach,views,profile_views', period:'day', since:dateStr, until:dateStr}}).then(function(resp){
+      if(resp.error) throw new Error(resp.error.message);
+      var byName = {};
+      (resp.data||[]).forEach(function(m){ byName[m.name] = igInsightValue(m); });
+      return { reach: byName.reach||0, views: byName.views||0, profileViews: byName.profile_views||0 };
+    });
+  });
+}
 // ── Facebook Campaign Creation Wizard ───────────────────────────────────
 // 4-step flow: Campaign -> Ad Set (budget/audience) -> Creative (page/copy/
 // image) -> Review & Launch. Every object is created with status:'PAUSED'
@@ -15916,6 +16030,12 @@ function dailyCompilationHtml(results, dateStr){
       ['Click Rate', mc.clickRate!=null?(Math.round(mc.clickRate*10)/10)+'%':'—']
     ]));
   }
+  if(results.instagram){
+    var ig = results.instagram;
+    blocks.push(compSourceBlock('Instagram', [
+      ['Reach', fmt(ig.reach||0)], ['Views', fmt(ig.views||0)], ['Profile Views', fmt(ig.profileViews||0)]
+    ]));
+  }
   if(!blocks.length) return '<div class="empty">No connected analytics sources yet.</div>';
   return '<div style="font-size:11px;color:#888;margin-bottom:10px">'+fmtDate(dateStr)+'</div>'+blocks.join('');
 }
@@ -15940,7 +16060,7 @@ function loadDailySummary(force){
 
   var results = {};
   var failures = [];
-  var labelByKey = {ga4:'Google Analytics (GA4)', wordpress:'WordPress.com / Jetpack', facebookAds:'Facebook Ads', facebookPage:'Facebook Page (organic)', mailchimp:'Mailchimp'};
+  var labelByKey = {ga4:'Google Analytics (GA4)', wordpress:'WordPress.com / Jetpack', facebookAds:'Facebook Ads', facebookPage:'Facebook Page (organic)', mailchimp:'Mailchimp', instagram:'Instagram'};
   function tryFetch(key, fn){
     return fn().then(function(result){ results[key] = result; }).catch(function(e){
       failures.push(labelByKey[key]+': '+(e&&e.message||e));
@@ -15951,7 +16071,8 @@ function loadDailySummary(force){
     tryFetch('wordpress', function(){ return fetchYesterdayWordPress(yesterday); }),
     tryFetch('facebookAds', function(){ return fetchYesterdayFacebookAds(yesterday); }),
     tryFetch('facebookPage', function(){ return fetchYesterdayFacebookPage(yesterday); }),
-    tryFetch('mailchimp', function(){ return fetchYesterdayMailchimpSummary(); })
+    tryFetch('mailchimp', function(){ return fetchYesterdayMailchimpSummary(); }),
+    tryFetch('instagram', function(){ return fetchYesterdayInstagram(yesterday); })
   ]).then(function(){
     localStorage.setItem(compKey, JSON.stringify(results));
     if(compBody) compBody.innerHTML = dailyCompilationHtml(results, yesterday);
@@ -16041,7 +16162,9 @@ function renderAnalytics(){
           '<div id="fb-analytics-body"><div class="empty">Loading…</div></div>'+
           analyticsSectionHtml('fb-ads-daily','Daily Spend & Performance (30 days)')+
           '<div style="font-size:11px;color:#888;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin:16px 0 6px;border-top:1px solid #f0f0f0;padding-top:12px">Page Performance (organic, non-ads)</div>'+
-          '<div id="fb-page-analytics-body"><div class="empty">Loading…</div></div>'
+          '<div id="fb-page-analytics-body"><div class="empty">Loading…</div></div>'+
+          '<div style="font-size:11px;color:#888;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin:16px 0 6px;border-top:1px solid #f0f0f0;padding-top:12px">Instagram (via connected Page)</div>'+
+          '<div id="ig-analytics-body"><div class="empty">Loading…</div></div>'
         : '<div style="padding:8px 0"><button class="add-btn" id="fb-analytics-connect-btn">Connect Facebook</button></div>')+
     '</div>'+
     '<div class="card" style="margin-bottom:16px">'+
@@ -16099,6 +16222,7 @@ function renderAnalytics(){
     loadFacebookAdsAnalytics(fbToken);
     if(!analyticsSectionCollapsed('fb-ads-daily')) loadFacebookAdsDaily(fbToken, 'fb-ads-daily-body');
     loadFacebookPageAnalytics('fb-page-analytics-body');
+    loadInstagramAnalytics('ig-analytics-body');
   }
 
   loadMailchimpAnalytics('mc-analytics-body');
