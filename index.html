@@ -12518,6 +12518,10 @@ function openClientForm(id){
         '<option value="Event"'+(d.referredBy==='Event'?' selected':'')+'>Event</option>'+
         '<option value="Person"'+(d.referredBy==='Person'?' selected':'')+'>Person</option>'+
         '<option value="Outbound Solicit"'+(d.referredBy==='Outbound Solicit'?' selected':'')+'>Outbound Solicit</option>'+
+        '<option value="ChatGPT"'+(d.referredBy==='ChatGPT'?' selected':'')+'>ChatGPT</option>'+
+        '<option value="Claude"'+(d.referredBy==='Claude'?' selected':'')+'>Claude</option>'+
+        '<option value="CoPilot"'+(d.referredBy==='CoPilot'?' selected':'')+'>CoPilot</option>'+
+        '<option value="Gemini"'+(d.referredBy==='Gemini'?' selected':'')+'>Gemini</option>'+
         '<option value="Other"'+(d.referredBy==='Other'?' selected':'')+'>Other</option>'+
       '</select>')+
       '<div class="field" id="fref-detail-wrap" style="display:'+(REF_DETAIL_TYPES.indexOf(d.referredBy)!==-1?'flex':'none')+'">'+
