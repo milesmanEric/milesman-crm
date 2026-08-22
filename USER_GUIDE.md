@@ -70,7 +70,7 @@ Each mileage/points section (Mileage Balances, Hotel Point Balances, Cruise Line
 
 **Tasks**: a client's own Planner tasks show right on their record — title, due date, and Open/Done status — with **+ Add Task** to add a new one linked to them. This includes tasks where the client is only one of several linked (see [Planner](#planner)), not just tasks where they're the primary contact. Clicking a task opens the full task editor (same one Planner uses), so you can change its due date, description, or anything else without leaving the client record.
 
-**Paying Client / Subscriber**: two checkboxes on the client record, useful for filtering your list down to real clients vs. newsletter-only contacts.
+**Paying Client / Subscriber**: two checkboxes on the client record, useful for filtering your list down to real clients vs. newsletter-only contacts. Checking **Subscriber** — whether at creation or later — automatically pushes that client into Mailchimp and (once set up, see [Mailchimp](#mailchimp) below) into your Jetpack subscriber list too. Unchecking it later does not remove them from either — you'd need to do that manually in Mailchimp/Jetpack.
 
 **Attachments**: paste Google Drive links directly, or use "Browse Google Drive" to pick a file without leaving the CRM.
 
@@ -299,6 +299,22 @@ If you back up from two devices without restoring in between, the CRM will warn 
 ## Mailchimp
 
 If you send a newsletter/campaign through Mailchimp, **Sync Mailchimp Activity** checks which of your clients actually received the most recent campaign and logs it to their notes automatically. **Log Mailchimp Campaign** is the manual fallback if you'd rather just note that a campaign went out without connecting to Mailchimp's API.
+
+**Any client marked "Subscriber"** (at creation or later) gets pushed into your Mailchimp audience automatically — no extra step needed, as long as you've used Sync/Log Mailchimp Activity at least once so the CRM knows which audience to use.
+
+---
+
+## Auto-subscribing to Jetpack too
+
+Jetpack (your website's blog-follower/newsletter system) doesn't offer any way for an outside tool to add a subscriber automatically — Jetpack itself only supports a manual CSV upload. To get the same "automatic" behavior as Mailchimp, this CRM talks to a small helper endpoint installed directly on the website, one time, by whoever manages the WordPress site:
+
+1. They install the snippet in `wordpress-snippets/jetpack-subscribe-endpoint.php` (in this repo) — full instructions are in that file's comments; it's a few minutes with the free "Code Snippets" plugin.
+2. They create a WordPress **Application Password** (a special login just for this, separate from your real password) and give you the username + Application Password.
+3. In the CRM: **Analytics** tab → **WordPress.com / Jetpack Stats** card → **Set Up Auto-Subscribe**, enter those two values once.
+
+After that, any client marked "Subscriber" is registered with Jetpack automatically too. One thing that never changes: **Jetpack always sends its own confirmation email** to the person before they're an active subscriber — that's built into Jetpack itself, not something this integration can skip, so a new subscriber still needs to click that link.
+
+If it's never set up, nothing breaks — the CRM just quietly skips the Jetpack push and keeps doing the Mailchimp one.
 
 ---
 
