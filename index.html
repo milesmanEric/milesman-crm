@@ -6299,14 +6299,16 @@ function processTripFormRow(getVal, counters){
   function resolveOther(value, otherValue){
     return value==='Other' && otherValue ? otherValue : value;
   }
-  // Reads the "Discount - <type>" checkboxes the intake form's Discounts
-  // section submits — a flat has/doesn't-have list (unlike extractCardChecklist
-  // above, DISCOUNT_TYPES isn't grouped by brand), plus the separate
-  // "Discount - Other" checkbox/"Discount - Other Detail" free text pair.
-  function extractDiscounts(){
+  // Reads the "<prefix> - <type>" checkboxes the intake form's Discounts/
+  // Interests sections submit — a flat has/doesn't-have list (unlike
+  // extractCardChecklist above, these types lists aren't grouped by brand),
+  // plus the separate "<prefix> - Other" checkbox/"<prefix> - Other Detail"
+  // free text pair. Shared by Discounts (DISCOUNT_TYPES) and Interests
+  // (INTEREST_TYPES) since both are the same shape.
+  function extractChecklistWithOther(types, prefix){
     var out = [];
-    DISCOUNT_TYPES.forEach(function(dt){ if(getVal('Discount - '+dt)) out.push(dt); });
-    if(getVal('Discount - Other')) out.push('Other');
+    types.forEach(function(t){ if(getVal(prefix+' - '+t)) out.push(t); });
+    if(getVal(prefix+' - Other')) out.push('Other');
     return out;
   }
 
@@ -6323,8 +6325,10 @@ function processTripFormRow(getVal, counters){
   var countryOfBirth = getVal('Country of Birth');
   var referredBy = getVal('Referred By');
   var referredByDetail = getVal('Referred By Detail');
-  var discounts = extractDiscounts();
+  var discounts = extractChecklistWithOther(DISCOUNT_TYPES, 'Discount');
   var discountOther = getVal('Discount - Other Detail');
+  var interests = extractChecklistWithOther(INTEREST_TYPES, 'Interest');
+  var interestOther = getVal('Interest - Other Detail');
   var preferredAirline = resolveOther(getVal('Preferred Airline'), getVal('Preferred Airline Other'));
   var preferredHotel = resolveOther(getVal('Preferred Hotel'), getVal('Preferred Hotel Other'));
   var preferredCruiseLine = resolveOther(getVal('Preferred Cruise Line'), getVal('Preferred Cruise Line Other'));
@@ -6346,19 +6350,25 @@ function processTripFormRow(getVal, counters){
 
   if(client){
     var filled=[];
-    if(email && !client.email){client.email=email;filled.push('email');}
-    if(phone && !client.phone){client.phone=phone;filled.push('phone');}
-    if(streetAddress && !client.streetAddress){client.streetAddress=streetAddress;filled.push('streetAddress');}
-    if(city && !client.city){client.city=city;filled.push('city');}
-    if(state && !client.state){client.state=state;filled.push('state');}
-    if(zip && !client.zip){client.zip=zip;filled.push('zip');}
-    if(birthdate && !client.birthdate){client.birthdate=birthdate;filled.push('birthdate');}
-    if(countryOfCitizenship && !client.countryOfCitizenship){client.countryOfCitizenship=countryOfCitizenship;filled.push('countryOfCitizenship');}
-    if(countryOfBirth && !client.countryOfBirth){client.countryOfBirth=countryOfBirth;filled.push('countryOfBirth');}
-    if(referredBy && !client.referredBy){client.referredBy=referredBy;client.referredByDetail=referredByDetail;filled.push('referredBy');}
-    if(preferredAirline && !client.preferredAirline){client.preferredAirline=preferredAirline;filled.push('preferredAirline');}
-    if(preferredHotel && !client.preferredHotel){client.preferredHotel=preferredHotel;filled.push('preferredHotel');}
-    if(preferredCruiseLine && !client.preferredCruiseLine){client.preferredCruiseLine=preferredCruiseLine;filled.push('preferredCruiseLine');}
+    // A present value on the new submission that differs from what's on file
+    // updates the record (the client's own latest self-report is trusted over
+    // a possibly-stale existing value) — but a field left blank on this
+    // particular submission never overwrites or clears an existing value,
+    // since a blank just means "not repeated here," not "now empty."
+    if(email && email!==client.email){client.email=email;filled.push('email');}
+    if(phone && phone!==client.phone){client.phone=phone;filled.push('phone');}
+    if(streetAddress && streetAddress!==client.streetAddress){client.streetAddress=streetAddress;filled.push('streetAddress');}
+    if(city && city!==client.city){client.city=city;filled.push('city');}
+    if(state && state!==client.state){client.state=state;filled.push('state');}
+    if(zip && zip!==client.zip){client.zip=zip;filled.push('zip');}
+    if(birthdate && birthdate!==client.birthdate){client.birthdate=birthdate;filled.push('birthdate');}
+    if(countryOfCitizenship && countryOfCitizenship!==client.countryOfCitizenship){client.countryOfCitizenship=countryOfCitizenship;filled.push('countryOfCitizenship');}
+    if(countryOfBirth && countryOfBirth!==client.countryOfBirth){client.countryOfBirth=countryOfBirth;filled.push('countryOfBirth');}
+    if(referredBy && referredBy!==client.referredBy){client.referredBy=referredBy;filled.push('referredBy');}
+    if(referredByDetail && referredByDetail!==client.referredByDetail){client.referredByDetail=referredByDetail;filled.push('referredByDetail');}
+    if(preferredAirline && preferredAirline!==client.preferredAirline){client.preferredAirline=preferredAirline;filled.push('preferredAirline');}
+    if(preferredHotel && preferredHotel!==client.preferredHotel){client.preferredHotel=preferredHotel;filled.push('preferredHotel');}
+    if(preferredCruiseLine && preferredCruiseLine!==client.preferredCruiseLine){client.preferredCruiseLine=preferredCruiseLine;filled.push('preferredCruiseLine');}
     if(mileageBalances){
       var mm=mergeBalanceObjects(client.mileageBalances,mileageBalances);
       if(mm.added.length){client.mileageBalances=mm.merged;filled.push('mileageBalances ('+mm.added.join(', ')+')');}
@@ -6391,13 +6401,18 @@ function processTripFormRow(getVal, counters){
       var dcm=mergeCardChecklist(client.discounts,discounts);
       if(dcm.added.length){client.discounts=dcm.merged;filled.push('discounts ('+dcm.added.join(', ')+')');}
     }
-    if(discountOther && !client.discountOther){client.discountOther=discountOther;filled.push('discountOther');}
+    if(discountOther && discountOther!==client.discountOther){client.discountOther=discountOther;filled.push('discountOther');}
+    if(interests.length){
+      var icm=mergeCardChecklist(client.interests,interests);
+      if(icm.added.length){client.interests=icm.merged;filled.push('interests ('+icm.added.join(', ')+')');}
+    }
+    if(interestOther && interestOther!==client.interestOther){client.interestOther=interestOther;filled.push('interestOther');}
     if(filled.length) counters.enriched++;
   } else {
     client = {id:newId('C',db.clients), name:toLastFirst(name), email:email, phone:phone,
       streetAddress:streetAddress, city:city, state:state, zip:zip,
       birthdate:birthdate, countryOfCitizenship:countryOfCitizenship, countryOfBirth:countryOfBirth, referredBy:referredBy, referredByDetail:referredByDetail,
-      discounts:discounts, discountOther:discountOther,
+      discounts:discounts, discountOther:discountOther, interests:interests, interestOther:interestOther,
       preferredAirline:preferredAirline, preferredHotel:preferredHotel, preferredCruiseLine:preferredCruiseLine,
       mileageBalances:mileageBalances||{}, hotelBalances:hotelBalances||{}, cruiseBalances:cruiseBalances||{}, carRentalBalances:carRentalBalances||{}, creditCardBalances:creditCardBalances||{}, airlineCreditCards:airlineCreditCards||[], hotelCreditCards:hotelCreditCards||[],
       notes:'', joined:today(), totalTrips:0, notesLog:[]};
@@ -6523,12 +6538,12 @@ function processTripFormRow(getVal, counters){
 
     if(tClient){
       var tFilled=[];
-      if(tBirthdate && !tClient.birthdate){tClient.birthdate=tBirthdate;tFilled.push('birthdate');}
-      if(tCountryOfCitizenship && !tClient.countryOfCitizenship){tClient.countryOfCitizenship=tCountryOfCitizenship;tFilled.push('countryOfCitizenship');}
-      if(tCountryOfBirth && !tClient.countryOfBirth){tClient.countryOfBirth=tCountryOfBirth;tFilled.push('countryOfBirth');}
-      if(tAirline && !tClient.preferredAirline){tClient.preferredAirline=tAirline;tFilled.push('preferredAirline');}
-      if(tHotel && !tClient.preferredHotel){tClient.preferredHotel=tHotel;tFilled.push('preferredHotel');}
-      if(tCruise && !tClient.preferredCruiseLine){tClient.preferredCruiseLine=tCruise;tFilled.push('preferredCruiseLine');}
+      if(tBirthdate && tBirthdate!==tClient.birthdate){tClient.birthdate=tBirthdate;tFilled.push('birthdate');}
+      if(tCountryOfCitizenship && tCountryOfCitizenship!==tClient.countryOfCitizenship){tClient.countryOfCitizenship=tCountryOfCitizenship;tFilled.push('countryOfCitizenship');}
+      if(tCountryOfBirth && tCountryOfBirth!==tClient.countryOfBirth){tClient.countryOfBirth=tCountryOfBirth;tFilled.push('countryOfBirth');}
+      if(tAirline && tAirline!==tClient.preferredAirline){tClient.preferredAirline=tAirline;tFilled.push('preferredAirline');}
+      if(tHotel && tHotel!==tClient.preferredHotel){tClient.preferredHotel=tHotel;tFilled.push('preferredHotel');}
+      if(tCruise && tCruise!==tClient.preferredCruiseLine){tClient.preferredCruiseLine=tCruise;tFilled.push('preferredCruiseLine');}
       if(tAirlineBal){var tmm=mergeBalanceObjects(tClient.mileageBalances,tAirlineBal); if(tmm.added.length){tClient.mileageBalances=tmm.merged;tFilled.push('mileageBalances');}}
       if(tHotelBal){var thm=mergeBalanceObjects(tClient.hotelBalances,tHotelBal); if(thm.added.length){tClient.hotelBalances=thm.merged;tFilled.push('hotelBalances');}}
       if(tCruiseBal){var tcbm=mergeBalanceObjects(tClient.cruiseBalances,tCruiseBal); if(tcbm.added.length){tClient.cruiseBalances=tcbm.merged;tFilled.push('cruiseBalances');}}
@@ -6592,7 +6607,7 @@ function processTripFormRow(getVal, counters){
       cruiseLine:cruiseLine, shipName:getVal('Ship Name'),
       pointsUsed:0, cashPaid:0, totalValue:0, bookingRef:'', product:'',
       supplierId:primarySupplier?primarySupplier.id:'', supplierName:primarySupplier?primarySupplier.name:'',
-      discounts:discounts, discountOther:discountOther,
+      discounts:discounts, discountOther:discountOther, interests:interests, interestOther:interestOther,
       notes: tripLines.join('\n')
     });
     counters.tripsCreated++;
@@ -6661,6 +6676,7 @@ function buildTripFormFieldLabels(){
   var labels = ['Full Name','Email','Phone','Street Address','City','State','Zip Code','Number of Travelers',
     'Birthdate','Country of Citizenship','Country of Birth','Referred By','Referred By Detail',
     'Discount - Military','Discount - AAA','Discount - First Responder','Discount - Educator','Discount - Other','Discount - Other Detail',
+    'Interest - Beach','Interest - Skiing','Interest - Boating','Interest - Fishing','Interest - Snorkeling','Interest - Horseback Riding','Interest - Adventure','Interest - Other','Interest - Other Detail',
     'Preferred Airline','Preferred Airline Other','Preferred Hotel','Preferred Hotel Other',
     'Preferred Cruise Line','Preferred Cruise Line Other'];
   function addBalanceLabels(prefix, list, includeStatus){
@@ -7642,7 +7658,7 @@ async function importTripFormPDF(){
         if(existing){
           const filled=[];
           Object.keys(fieldsToFill).forEach(function(k){
-            if(fieldsToFill[k] && !existing[k]){existing[k]=fieldsToFill[k];filled.push(k);}
+            if(fieldsToFill[k] && fieldsToFill[k]!==existing[k]){existing[k]=fieldsToFill[k];filled.push(k);}
           });
           if(mileageBalances){
             const merge=mergeBalanceObjects(existing.mileageBalances,mileageBalances);
@@ -12536,6 +12552,43 @@ function bindDiscountOtherToggle(idPrefix){
     if(!this.checked){ var inp = document.getElementById(idPrefix+'-discount-other-detail'); if(inp) inp.value=''; }
   });
 }
+
+// Interests checklist — same shape and same idPrefix-per-form convention as
+// the Discounts checklist above (client.interests/trip.interests array,
+// client.interestOther/trip.interestOther free text for the Other entry).
+const INTEREST_TYPES=['Beach','Skiing','Boating','Fishing','Snorkeling','Horseback Riding','Adventure'];
+function interestsFieldHtml(idPrefix, interests, otherText){
+  interests = interests || [];
+  var hasOther = interests.indexOf('Other')!==-1;
+  return '<div class="field full"><label>Interests <span class="hint" style="text-transform:none;font-weight:400">(check any that apply)</span></label>'+
+    '<div style="display:flex;flex-wrap:wrap;gap:14px;border:1px solid #e5e7eb;border-radius:8px;padding:10px;background:#fafafa">'+
+      INTEREST_TYPES.map(function(it){
+        var checked = interests.indexOf(it)!==-1;
+        return '<label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#374151;cursor:pointer"><input type="checkbox" class="'+idPrefix+'-interest-cb" value="'+it+'" '+(checked?'checked':'')+' style="width:14px;height:14px"> '+it+'</label>';
+      }).join('')+
+      '<label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#374151;cursor:pointer"><input type="checkbox" id="'+idPrefix+'-interest-other-cb" class="'+idPrefix+'-interest-cb" value="Other" '+(hasOther?'checked':'')+' style="width:14px;height:14px"> Other</label>'+
+    '</div>'+
+  '</div>'+
+  '<div class="field full" id="'+idPrefix+'-interest-other-wrap" style="display:'+(hasOther?'flex':'none')+'">'+
+    '<label>Please specify interest</label>'+
+    '<input id="'+idPrefix+'-interest-other-detail" type="text" value="'+(otherText||'').toString().replace(/"/g,'&quot;')+'" placeholder="e.g. Golf, Wine Tasting, Photography">'+
+  '</div>';
+}
+function readInterests(idPrefix){
+  var checked = Array.from(document.querySelectorAll('.'+idPrefix+'-interest-cb:checked')).map(function(cb){return cb.value;});
+  var otherEl = document.getElementById(idPrefix+'-interest-other-detail');
+  var otherText = (checked.indexOf('Other')!==-1 && otherEl) ? otherEl.value : '';
+  return { interests: checked, interestOther: otherText };
+}
+function bindInterestOtherToggle(idPrefix){
+  var cb = document.getElementById(idPrefix+'-interest-other-cb');
+  var wrap = document.getElementById(idPrefix+'-interest-other-wrap');
+  if(!cb || !wrap) return;
+  cb.addEventListener('change', function(){
+    wrap.style.display = this.checked ? 'flex' : 'none';
+    if(!this.checked){ var inp = document.getElementById(idPrefix+'-interest-other-detail'); if(inp) inp.value=''; }
+  });
+}
 // One row of the Referral Credits section (client form) — referred person's
 // name, the certificate number (if this row was issued a certificate —
 // system-assigned, read-only, carried through save via a hidden input), the
@@ -12615,6 +12668,7 @@ function openClientForm(id){
         '<input id="frefdetail" type="text" value="'+(d.referredByDetail||'').toString().replace(/"/g,'&quot;')+'" placeholder="Enter name">'+
       '</div>'+
       discountsFieldHtml('fdis', d.discounts, d.discountOther)+
+      interestsFieldHtml('fint', d.interests, d.interestOther)+
       fld('Preferred Airline',sel('fpa',AIRLINES,d.preferredAirline))+fld('Preferred Hotel',sel('fph',HOTELS,d.preferredHotel))+fld('Preferred Cruise Line',sel('fpc',CRUISE_LINES,d.preferredCruiseLine))+
       balanceGrid('Mileage Balances','mb',AIRLINES,d.mileageBalances,AIRLINE_STATUS)+
       balanceGrid('Hotel Point Balances','hb',HOTELS,d.hotelBalances,HOTEL_STATUS)+
@@ -12818,6 +12872,7 @@ function openClientForm(id){
     }
   });
   bindDiscountOtherToggle('fdis');
+  bindInterestOtherToggle('fint');
 
   // Attachments — stored as name + URL links (e.g. Google Drive share links)
   var clientAttachments = Array.isArray(d.attachments) ? d.attachments.slice() : [];
@@ -13998,6 +14053,7 @@ function openTripForm(id){
       fld('Total Value ($)',inp('tva','number',d.totalValue||0))+fld('Invoice Number',inp('tbr','text',d.bookingRef,'e.g. INV-10234'))+
       fld('Invoice Date',inp('tinv','date',d.invoiceDate))+
       discountsFieldHtml('tdis', d.discounts, d.discountOther)+
+      interestsFieldHtml('tint', d.interests, d.interestOther)+
       fld('Product',inp('tpr','text',d.product,'e.g. Airline Booking:Roundtrip Intl Business'))+
       '<div id="trip-balance-sections">'+tripBalanceSectionsHtml(initCid)+'</div>'+
       fld('Notes','<textarea id="tno">'+(d.notes||'')+'</textarea>',true)+
@@ -14065,6 +14121,7 @@ function openTripForm(id){
   bindTripBalanceListeners();
   bindBookedTripDetailsListeners();
   bindDiscountOtherToggle('tdis');
+  bindInterestOtherToggle('tint');
   $('modal').scrollTop = 0;
 }
 
@@ -14108,6 +14165,7 @@ function saveClient(id){
   const referredBy=gv('fref');
   const referredByDetail=REF_DETAIL_TYPES.indexOf(referredBy)!==-1?gv('frefdetail'):'';
   const discountData=readDiscounts('fdis');
+  const interestData=readInterests('fint');
   const referralCredits=Array.from(document.querySelectorAll('.ref-credit-row')).map(function(row){
     var certRaw=(row.querySelector('.ref-credit-certnum')||{}).value;
     return {
@@ -14118,7 +14176,7 @@ function saveClient(id){
       certNumber:certRaw?Number(certRaw):undefined
     };
   }).filter(function(rc){return rc.referredName;});
-  const data={name:name,email:email,phone:gv('fp'),streetAddress:gv('fst'),city:gv('fcty'),state:gv('fstate'),zip:gv('fzip'),birthdate:gv('fbd'),countryOfCitizenship:gv('fcoc'),countryOfBirth:gv('fcob'),referredBy:referredBy,referredByDetail:referredByDetail,discounts:discountData.discounts,discountOther:discountData.discountOther,preferredAirline:gv('fpa'),preferredHotel:gv('fph'),preferredCruiseLine:gv('fpc'),mileageBalances:mileageBalances,hotelBalances:hotelBalances,cruiseBalances:cruiseBalances,carRentalBalances:carRentalBalances,creditCardBalances:creditCardBalances,airlineCreditCards:airlineCreditCards,hotelCreditCards:hotelCreditCards,notesLog:notesLog,isPayingClient:document.getElementById('f-paying')?document.getElementById('f-paying').checked:false,isSubscriber:document.getElementById('f-subscriber')?document.getElementById('f-subscriber').checked:false,attachments:window._currentClientAttachments||[],referralCredits:referralCredits};
+  const data={name:name,email:email,phone:gv('fp'),streetAddress:gv('fst'),city:gv('fcty'),state:gv('fstate'),zip:gv('fzip'),birthdate:gv('fbd'),countryOfCitizenship:gv('fcoc'),countryOfBirth:gv('fcob'),referredBy:referredBy,referredByDetail:referredByDetail,discounts:discountData.discounts,discountOther:discountData.discountOther,interests:interestData.interests,interestOther:interestData.interestOther,preferredAirline:gv('fpa'),preferredHotel:gv('fph'),preferredCruiseLine:gv('fpc'),mileageBalances:mileageBalances,hotelBalances:hotelBalances,cruiseBalances:cruiseBalances,carRentalBalances:carRentalBalances,creditCardBalances:creditCardBalances,airlineCreditCards:airlineCreditCards,hotelCreditCards:hotelCreditCards,notesLog:notesLog,isPayingClient:document.getElementById('f-paying')?document.getElementById('f-paying').checked:false,isSubscriber:document.getElementById('f-subscriber')?document.getElementById('f-subscriber').checked:false,attachments:window._currentClientAttachments||[],referralCredits:referralCredits};
   var resultId = id;
   if(id){
     db.clients=db.clients.map(function(c){return c.id===id?Object.assign({},c,data):c;});
@@ -14175,7 +14233,8 @@ function saveTrip(id){
   // "before" state for the linkedTripIds two-way sync at the end of this function.
   const oldLinkedTripIds=id?((db.trips.find(function(t){return t.id===id;})||{}).linkedTripIds||[]):[];
   const tripDiscountData=readDiscounts('tdis');
-  const data={clientId:clientId,clientName:client?client.name:'',clientIds:additionalClientIds,linkedTripIds:linkedTripIds,supplierId:supplierId,supplierName:supplier?supplier.name:'',origin:gv('tor'),destination:dest,departDate:gv('tdd'),returnDate:gv('trd'),status:gv('tst')||'Planning',type:gv('tty')||'Leisure',airline:gv('tai'),flightClass:gv('tcl')||'Economy',hotel:gv('tho'),hotelProperty:gv('thp'),hotelNights:gn('thn'),cruiseLine:gv('tcr'),shipName:gv('tship'),vvVoucherExpiry:gv('tvv-exp'),pointsUsed:gn('tpu'),cashPaid:gn('tcp'),totalValue:gn('tva'),bookingRef:gv('tbr'),invoiceDate:gv('tinv'),discounts:tripDiscountData.discounts,discountOther:tripDiscountData.discountOther,product:gv('tpr'),notes:gv('tno'),booked:readBookedTripDetails()};
+  const tripInterestData=readInterests('tint');
+  const data={clientId:clientId,clientName:client?client.name:'',clientIds:additionalClientIds,linkedTripIds:linkedTripIds,supplierId:supplierId,supplierName:supplier?supplier.name:'',origin:gv('tor'),destination:dest,departDate:gv('tdd'),returnDate:gv('trd'),status:gv('tst')||'Planning',type:gv('tty')||'Leisure',airline:gv('tai'),flightClass:gv('tcl')||'Economy',hotel:gv('tho'),hotelProperty:gv('thp'),hotelNights:gn('thn'),cruiseLine:gv('tcr'),shipName:gv('tship'),vvVoucherExpiry:gv('tvv-exp'),pointsUsed:gn('tpu'),cashPaid:gn('tcp'),totalValue:gn('tva'),bookingRef:gv('tbr'),invoiceDate:gv('tinv'),discounts:tripDiscountData.discounts,discountOther:tripDiscountData.discountOther,interests:tripInterestData.interests,interestOther:tripInterestData.interestOther,product:gv('tpr'),notes:gv('tno'),booked:readBookedTripDetails()};
   if(client){
     client.mileageBalances=readBalanceGrid('mb',AIRLINES,AIRLINE_STATUS);
     client.hotelBalances=readBalanceGrid('hb',HOTELS,HOTEL_STATUS);

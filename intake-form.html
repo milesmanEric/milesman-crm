@@ -144,6 +144,23 @@
         <label>Please specify discount</label>
         <input type="text" id="discount-other-detail" name="Discount - Other Detail" placeholder="e.g. Senior, AARP, Teacher Union">
       </div>
+      <div class="field full">
+        <label>Interests <span class="hint">(check any that apply)</span></label>
+        <div class="radio-row">
+          <label><input type="checkbox" name="Interest - Beach" value="Yes"> Beach</label>
+          <label><input type="checkbox" name="Interest - Skiing" value="Yes"> Skiing</label>
+          <label><input type="checkbox" name="Interest - Boating" value="Yes"> Boating</label>
+          <label><input type="checkbox" name="Interest - Fishing" value="Yes"> Fishing</label>
+          <label><input type="checkbox" name="Interest - Snorkeling" value="Yes"> Snorkeling</label>
+          <label><input type="checkbox" name="Interest - Horseback Riding" value="Yes"> Horseback Riding</label>
+          <label><input type="checkbox" name="Interest - Adventure" value="Yes"> Adventure</label>
+          <label><input type="checkbox" id="interest-other-cb" name="Interest - Other" value="Yes"> Other</label>
+        </div>
+      </div>
+      <div class="field full" id="interest-other-wrap" style="display:none">
+        <label>Please specify interest</label>
+        <input type="text" id="interest-other-detail" name="Interest - Other Detail" placeholder="e.g. Golf, Wine Tasting, Photography">
+      </div>
       <div class="field">
         <label for="pref-airline-select">Preferred Airline</label>
         <select class="pref-other-sel" id="pref-airline-select" name="Preferred Airline">
@@ -897,6 +914,17 @@
     } else {
       discountOtherWrap.style.display = 'none';
       document.getElementById('discount-other-detail').value = '';
+    }
+  });
+
+  var interestOtherCb = document.getElementById('interest-other-cb');
+  var interestOtherWrap = document.getElementById('interest-other-wrap');
+  interestOtherCb.addEventListener('change', function(){
+    if(this.checked){
+      interestOtherWrap.style.display = 'flex';
+    } else {
+      interestOtherWrap.style.display = 'none';
+      document.getElementById('interest-other-detail').value = '';
     }
   });
 
