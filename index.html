@@ -12391,7 +12391,7 @@ function bindBalanceGridToggles(){
     if(!target) return;
     var arrow = toggle.querySelector('.balance-grid-arrow');
     var isOpen = target.style.display !== 'none';
-    target.style.display = isOpen ? 'none' : 'grid';
+    target.style.display = isOpen ? 'none' : (toggle.dataset.openDisplay || 'grid');
     if(arrow) arrow.style.transform = 'rotate('+(isOpen?'0':'90')+'deg)';
   });
 }
@@ -12400,10 +12400,23 @@ function bindBalanceGridToggles(){
 // of card name strings (client.airlineCreditCards / client.hotelCreditCards).
 // Shared by both the airline- and hotel-branded card checklists below —
 // cardsByBrand groups card names under their brand (airline or hotel chain).
+// Collapsed by default, same convention and same delegated click handler
+// (bindBalanceGridToggles()) as balanceGrid() above — this used to have no
+// collapse at all, unlike every balanceGrid() section next to it, which
+// read as "credit card sections don't collapse" since Credit Card Point
+// Balances (a balanceGrid) collapses right above these two. The one
+// difference from balanceGrid(): this list isn't a CSS grid, so its toggle
+// carries data-open-display="block" rather than the shared handler's
+// 'grid' default.
 function brandedCardsChecklist(label, idPrefix, cardsByBrand, checkedList){
   checkedList = checkedList || [];
-  return '<div class="field full"><label>'+label+' <span class="hint" style="text-transform:none;font-weight:400">(which '+label.toLowerCase()+' does this client hold)</span></label>'+
-    '<div style="border:1px solid #e5e7eb;border-radius:8px;padding:10px;max-height:240px;overflow-y:auto;background:#fafafa">'+
+  var gridId = idPrefix+'-cc-grid';
+  return '<div class="field full">'+
+    '<label class="balance-grid-toggle" data-target="'+gridId+'" data-open-display="block" style="cursor:pointer;user-select:none;display:flex;align-items:center;gap:6px">'+
+      '<span class="balance-grid-arrow" style="display:inline-block;font-size:10px;transition:transform .15s;transform:rotate(0deg)">&#9656;</span>'+
+      label+' <span class="hint" style="text-transform:none;font-weight:400">(which '+label.toLowerCase()+' does this client hold)</span>'+
+    '</label>'+
+    '<div id="'+gridId+'" style="display:none;border:1px solid #e5e7eb;border-radius:8px;padding:10px;max-height:240px;overflow-y:auto;background:#fafafa">'+
       Object.keys(cardsByBrand).map(function(brand){
         return '<div style="margin-bottom:8px">'+
           '<div style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.03em;margin-bottom:3px">'+brand+'</div>'+
