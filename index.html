@@ -3362,6 +3362,83 @@ function autoSyncSubscriberToMailchimp(client){
   });
 }
 
+// ── Jetpack Auto-Subscribe ──────────────────────────────────────────────────
+// WordPress.com/Jetpack's public API has no documented endpoint for adding
+// an individual email subscriber — the WP_SCOPE='stats' OAuth connection
+// above is read-only, and the only officially supported way to add
+// subscribers is a manual CSV upload in WP Admin (Jetpack → Newsletter →
+// Subscribers). To get a real automatic sync instead, this calls a small
+// custom REST route added directly to the WordPress site itself (see
+// wordpress-snippets/jetpack-subscribe-endpoint.php for the PHP to install),
+// authenticated with a WordPress Application Password (WP Admin → Users →
+// your profile → Application Passwords) rather than OAuth, since it's a
+// route this file's author controls rather than a public WordPress.com API.
+// Configure once via "Set Up Auto-Subscribe" on the Analytics tab's
+// WordPress.com / Jetpack card — independent of the Stats OAuth connection.
+const JETPACK_SUB_USER_KEY = 'mm_jetpack_sub_user';
+const JETPACK_SUB_PASS_KEY = 'mm_jetpack_sub_pass';
+function jetpackSubEndpoint(){
+  return 'https://'+WP_SITE+'/wp-json/milesman/v1/subscribers';
+}
+function getJetpackSubCreds(){
+  var user = localStorage.getItem(JETPACK_SUB_USER_KEY);
+  var pass = localStorage.getItem(JETPACK_SUB_PASS_KEY);
+  return (user && pass) ? {user:user, pass:pass} : null;
+}
+function promptJetpackSubSetup(){
+  var user = prompt('WordPress admin username (the account the Application Password belongs to):', localStorage.getItem(JETPACK_SUB_USER_KEY)||'');
+  if(user===null) return;
+  var pass = prompt('Application Password (WP Admin → Users → your profile → Application Passwords — NOT your login password):', '');
+  if(pass===null) return;
+  if(!user.trim() || !pass.trim()){ toast('Both fields are required — auto-subscribe not saved','err'); return; }
+  localStorage.setItem(JETPACK_SUB_USER_KEY, user.trim());
+  localStorage.setItem(JETPACK_SUB_PASS_KEY, pass.trim());
+  toast('Jetpack auto-subscribe connected');
+  render();
+}
+function disconnectJetpackSub(){
+  localStorage.removeItem(JETPACK_SUB_USER_KEY);
+  localStorage.removeItem(JETPACK_SUB_PASS_KEY);
+  toast('Jetpack auto-subscribe disconnected');
+  render();
+}
+async function syncClientToJetpack(client){
+  if(!client.email) return;
+  var creds = getJetpackSubCreds();
+  if(!creds) throw new Error('Jetpack auto-subscribe not set up yet — use "Set Up Auto-Subscribe" on the Analytics tab first');
+  const r = await fetch(jetpackSubEndpoint(), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Basic '+btoa(creds.user+':'+creds.pass)
+    },
+    body: JSON.stringify({ email: client.email.trim() })
+  });
+  const d = await r.json().catch(function(){ return {}; });
+  if(!r.ok){
+    var err = new Error((d && d.message) || ('Jetpack subscribe endpoint returned '+r.status));
+    err.status = r.status;
+    throw err;
+  }
+  return d;
+}
+// Auto-sync entry point — same trigger points as autoSyncSubscriberToMailchimp
+// (a client newly marked Subscriber, either at creation or via the Sub
+// checkbox toggle later). Jetpack Subscriptions sends its own confirmation
+// email to the address before it counts as an active subscriber — this call
+// only registers the pending sign-up, it can't skip that confirmation step.
+function autoSyncSubscriberToJetpack(client){
+  syncClientToJetpack(client).then(function(){
+    debugLog('Jetpack: subscribe request sent for '+client.email);
+  }).catch(function(e){
+    var msg = (e&&e.message)||String(e);
+    debugLog('Jetpack: auto-sync failed for '+client.email+' — '+msg);
+    if(msg.indexOf('not set up yet')===-1){
+      toast('Jetpack sync failed for '+client.email+': '+msg,'err');
+    }
+  });
+}
+
 async function pickMailchimpList(){
   const d = await mailchimpProxyGet('/lists?count=100');
   const lists = d.lists||[];
@@ -11143,7 +11220,10 @@ function renderClients(){
         c.isSubscriber = cb.checked;
         saveDB();
         toast(c.name+(cb.checked?' marked as subscriber':' unmarked as subscriber'),'ok');
-        if(cb.checked && !wasSubscriber) autoSyncSubscriberToMailchimp(c);
+        if(cb.checked && !wasSubscriber){
+          autoSyncSubscriberToMailchimp(c);
+          autoSyncSubscriberToJetpack(c);
+        }
       }
     });
   });
@@ -13956,8 +14036,13 @@ function saveClient(id){
     toast('Client updated');
   }else{
     resultId = newId('C',db.clients);
-    db.clients.push(Object.assign({},data,{id:resultId,joined:today(),totalTrips:0}));
+    var newClient = Object.assign({},data,{id:resultId,joined:today(),totalTrips:0});
+    db.clients.push(newClient);
     toast('Client added');
+    if(newClient.isSubscriber){
+      autoSyncSubscriberToMailchimp(newClient);
+      autoSyncSubscriberToJetpack(newClient);
+    }
   }
   syncReferralCreditUsedAcrossClients(resultId, referralCredits);
   saveDB();closeModal();render();
@@ -15709,6 +15794,7 @@ function loadDailySummary(force){
 function renderAnalytics(){
   var wpToken = localStorage.getItem('mm_wp_token');
   var fbToken = localStorage.getItem('mm_fb_token');
+  var jetpackSubConfigured = !!getJetpackSubCreds();
   $('main').innerHTML =
     '<div class="page-hdr"><div class="page-title">Analytics</div></div>'+
     '<div class="card" style="margin-bottom:16px">'+
@@ -15731,6 +15817,13 @@ function renderAnalytics(){
           analyticsSectionHtml('wp-search-terms','Search Terms (30 days)')+
           analyticsSectionHtml('wp-followers','Blog Followers')
         : '<div style="padding:8px 0"><button class="add-btn" id="wp-connect-btn">Connect WordPress.com</button></div>')+
+      '<div style="margin-top:12px;padding-top:12px;border-top:1px solid #f0f0f0;font-size:12px">'+
+        '<div style="font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">Auto-Subscribe New Clients</div>'+
+        (jetpackSubConfigured
+          ? '<span style="color:#166534">&#9989; Connected</span> &nbsp; <button class="cancel-btn" id="jetpack-sub-change">Change</button> <button class="cancel-btn" id="jetpack-sub-disconnect">Disconnect</button>'
+          : '<button class="add-btn" id="jetpack-sub-setup">Set Up Auto-Subscribe</button>')+
+        '<div style="color:#888;margin-top:6px">Requires a small snippet installed on the WordPress site (see wordpress-snippets/jetpack-subscribe-endpoint.php) since Jetpack has no public API for adding subscribers. Clients checked "Subscriber" get pushed here automatically — they still get Jetpack\'s own confirmation email before it counts as active.</div>'+
+      '</div>'+
     '</div>'+
     '<div class="card" style="margin-bottom:16px">'+
       '<div class="card-hdr"><span class="card-title">Google Analytics (GA4)</span></div>'+
@@ -15780,6 +15873,12 @@ function renderAnalytics(){
     localStorage.removeItem('mm_wp_token');
     render();
   });
+  var jsSetupBtn = $('jetpack-sub-setup');
+  if(jsSetupBtn) jsSetupBtn.addEventListener('click', promptJetpackSubSetup);
+  var jsChangeBtn = $('jetpack-sub-change');
+  if(jsChangeBtn) jsChangeBtn.addEventListener('click', promptJetpackSubSetup);
+  var jsDisconnectBtn = $('jetpack-sub-disconnect');
+  if(jsDisconnectBtn) jsDisconnectBtn.addEventListener('click', disconnectJetpackSub);
   if(wpToken){
     loadWordpressStats(wpToken);
     syncBlogFollowersToClients(wpToken);
