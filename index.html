@@ -3503,8 +3503,13 @@ function loadMailchimpAnalytics(bodyId){
     });
     return;
   }
-  mailchimpProxyGet('/lists/'+listId).then(function(list){
+  var yesterday = addDaysToDateStr(today(), -1);
+  Promise.all([
+    mailchimpProxyGet('/lists/'+listId),
+    countMailchimpUnsubscribesOnDate(listId, yesterday).catch(function(){ return null; })
+  ]).then(function(results){
     if(!body) return;
+    var list = results[0], unsubscribedYesterday = results[1];
     var stats = list.stats || {};
     // Confirmed live: List stats' open_rate/click_rate are already
     // percentages (e.g. 49.56 meaning 49.56%), not a fraction of 1 —
@@ -3513,9 +3518,10 @@ function loadMailchimpAnalytics(bodyId){
     // endpoints, so don't assume the same math applies to both.
     function pct(rate){ return rate!=null ? (Math.round(rate*10)/10)+'%' : '—'; }
     body.innerHTML = '<div style="font-size:11px;color:#888;margin-bottom:8px">'+escHtml(list.name||'')+'</div>'+
-      '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px">'+
+      '<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px">'+
         '<div class="stat" id="mc-tile-subscribers" style="cursor:pointer" title="Click to see subscribers"><div class="stat-lbl">Subscribers</div><div class="stat-val">'+fmt(stats.member_count||0)+'</div></div>'+
-        '<div class="stat" id="mc-tile-unsubscribed" style="cursor:pointer" title="Click to see unsubscribed"><div class="stat-lbl">Unsubscribed</div><div class="stat-val">'+fmt(stats.unsubscribe_count||0)+'</div></div>'+
+        '<div class="stat" id="mc-tile-unsub-yesterday" style="cursor:pointer" title="Click to see recent unsubscribes (sorted newest first)"><div class="stat-lbl">Unsubscribed Yesterday</div><div class="stat-val">'+(unsubscribedYesterday!=null?fmt(unsubscribedYesterday):'—')+'</div></div>'+
+        '<div class="stat" id="mc-tile-unsubscribed" style="cursor:pointer" title="Click to see unsubscribed"><div class="stat-lbl">Total Unsubscribed</div><div class="stat-val">'+fmt(stats.unsubscribe_count||0)+'</div></div>'+
         '<div class="stat mc-tile-to-campaigns" style="cursor:pointer" title="Click to see campaigns below"><div class="stat-lbl">Campaigns Sent</div><div class="stat-val">'+fmt(stats.campaign_count||0)+'</div></div>'+
         '<div class="stat mc-tile-to-campaigns" style="cursor:pointer" title="Click to see per-campaign rates below"><div class="stat-lbl">Avg Open Rate</div><div class="stat-val">'+pct(stats.open_rate)+'</div></div>'+
         '<div class="stat mc-tile-to-campaigns" style="cursor:pointer" title="Click to see per-campaign rates below"><div class="stat-lbl">Avg Click Rate</div><div class="stat-val">'+pct(stats.click_rate)+'</div></div>'+
@@ -3524,6 +3530,8 @@ function loadMailchimpAnalytics(bodyId){
     if(subsTile) subsTile.addEventListener('click', function(){ openMailchimpMembersModal(listId, 'subscribed', 'Subscribers'); });
     var unsubsTile = $('mc-tile-unsubscribed');
     if(unsubsTile) unsubsTile.addEventListener('click', function(){ openMailchimpMembersModal(listId, 'unsubscribed', 'Unsubscribed'); });
+    var unsubYesterdayTile = $('mc-tile-unsub-yesterday');
+    if(unsubYesterdayTile) unsubYesterdayTile.addEventListener('click', function(){ openMailchimpMembersModal(listId, 'unsubscribed', 'Unsubscribed'); });
     // Campaigns Sent / Avg Open Rate / Avg Click Rate are all aggregates
     // over the same per-campaign data the Recent Campaigns section below
     // already breaks out — same expand+scroll pattern the WordPress card's
@@ -15811,12 +15819,44 @@ function fetchYesterdayFacebookPage(dateStr){
     });
   });
 }
+// Mailchimp's List stats endpoint (stats.unsubscribe_count, used below and
+// in loadMailchimpAnalytics()) only ever returns a cumulative, all-time
+// total — there's no date-range parameter on it, so showing that number
+// under "yesterday" was misleading: it never actually reflected the prior
+// day's activity, only ever grew. This instead counts members whose
+// unsubscribe actually happened on a given date, using the same
+// /members?status=unsubscribed + last_changed field the Unsubscribed
+// tile's own drill-down (openMailchimpMembersModal) already displays and
+// sorts by — sorted newest-first, so this can stop scanning as soon as it
+// passes the target date. count=1000 mirrors that drill-down's own page
+// size; a list with more than 1000 unsubscribes since the target date
+// would need pagination this doesn't do, but that's far beyond what a
+// single day's worth of unsubscribes would produce for a travel agency's
+// list.
+function countMailchimpUnsubscribesOnDate(listId, dateStr){
+  return mailchimpProxyGet('/lists/'+listId+'/members?status=unsubscribed&count=1000&sort_field=last_changed&sort_dir=DESC').then(function(resp){
+    if(resp.error) throw new Error(resp.error.message||resp.detail||'Failed to load unsubscribed members');
+    var members = resp.members||[];
+    var count = 0;
+    for(var i=0;i<members.length;i++){
+      var d = (members[i].last_changed||'').slice(0,10);
+      if(d===dateStr) count++;
+      else if(d && d<dateStr) break; // sorted newest-first — once we're past the target date, nothing further can match
+    }
+    return count;
+  });
+}
 function fetchYesterdayMailchimpSummary(){
   var listId = localStorage.getItem(MAILCHIMP_LIST_KEY);
   if(!listId) return Promise.reject(new Error('no audience chosen yet'));
-  return mailchimpProxyGet('/lists/'+listId).then(function(list){
+  var yesterday = addDaysToDateStr(today(), -1);
+  return Promise.all([
+    mailchimpProxyGet('/lists/'+listId),
+    countMailchimpUnsubscribesOnDate(listId, yesterday)
+  ]).then(function(results){
+    var list = results[0], unsubscribedYesterday = results[1];
     var stats = list.stats||{};
-    return {listName:list.name, subscribers:stats.member_count, unsubscribed:stats.unsubscribe_count, openRate:stats.open_rate, clickRate:stats.click_rate};
+    return {listName:list.name, subscribers:stats.member_count, unsubscribedTotal:stats.unsubscribe_count, unsubscribedYesterday:unsubscribedYesterday, openRate:stats.open_rate, clickRate:stats.click_rate};
   });
 }
 function dailySummaryHtml(text){
@@ -15869,7 +15909,9 @@ function dailyCompilationHtml(results, dateStr){
     // percentages (e.g. 49.56 meaning 49.56%), same convention already
     // confirmed live and handled in loadMailchimpAnalytics().
     blocks.push(compSourceBlock('Mailchimp — '+escHtml(mc.listName||''), [
-      ['Subscribers', fmt(mc.subscribers||0)], ['Unsubscribed', fmt(mc.unsubscribed||0)],
+      ['Subscribers', fmt(mc.subscribers||0)],
+      ['Unsubscribed Yesterday', fmt(mc.unsubscribedYesterday||0)],
+      ['Total Unsubscribed', fmt(mc.unsubscribedTotal||0)],
       ['Open Rate', mc.openRate!=null?(Math.round(mc.openRate*10)/10)+'%':'—'],
       ['Click Rate', mc.clickRate!=null?(Math.round(mc.clickRate*10)/10)+'%':'—']
     ]));

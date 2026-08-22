@@ -256,13 +256,15 @@ If the page shows an error like **"API Access Blocked"** instead of your campaig
 
 ## Analytics
 
-Three cards, in this order: your **WordPress.com/Jetpack** blog stats, your **Google Analytics (GA4)** website traffic, and an **SEO (Yoast)** audit of your site's posts and pages.
+Several cards, in this order: your **WordPress.com/Jetpack** blog stats, your **Google Analytics (GA4)** website traffic, an **SEO (Yoast)** audit of your site's posts and pages, and your **Mailchimp** audience.
 
 **WordPress.com / Jetpack Stats** — click **Connect WordPress.com** the first time; after that it shows visitors and views (today, yesterday, and all-time), your blog's follower count, your single best day ever, and a day-by-day table for the last 30 days. **Disconnect** clears the connection if you ever need to reset it. Click the **Blog Followers** number itself and it jumps you straight down to the full follower list below.
 
 **Google Analytics (GA4)** — no separate login needed here; it rides along on the same Google sign-in you already use for Drive backup. If you haven't connected Drive yet, or connected it before this feature existed, you'll see a **Connect**/**Reconnect Google Drive** button — click it once and you're set going forward. Once connected, it shows active users, page views, and sessions over the last 30 days, plus a daily breakdown table.
 
 **SEO (Yoast)** — no connecting needed at all; this loads automatically since it's reading publicly-available data straight from your website. Four summary numbers up top (Posts & Pages / Missing Description / Noindexed / Missing OG Image), then two collapsible sections, **Posts** and **Pages** — expand either to see every post or page with its SEO title, meta description, whether it's set to be hidden from search engines ("Noindex"), and whether it has a social-share image, each flagged if it's missing or runs long. This checks the same Yoast SEO plugin data your website already has — it isn't the green/yellow/red score you'd see inside WordPress itself (that score only shows up in the WordPress admin, this app has no way to read it), just a plain checklist of the same kind of things that score looks at.
+
+**Mailchimp** — Subscribers, **Unsubscribed Yesterday**, Total Unsubscribed, Campaigns Sent, Avg Open Rate, Avg Click Rate. **Total Unsubscribed is a running lifetime total, not "since yesterday"** — Mailchimp itself doesn't offer a "how many unsubscribed on this specific day" number directly, so that tile can only ever go up and was previously mislabeled "Unsubscribed" in a way that read as if it were a daily figure. **Unsubscribed Yesterday** is the real one for that — it's actually computed by checking each unsubscribed member's own unsubscribe date and counting the ones that fall on yesterday. Click either Unsubscribed tile to see the full list, sorted with the most recent unsubscribes at the top.
 
 **Drill down further**: under each of the first two cards, click any collapsed section header (▸) to expand it and load the detail — nothing loads until you actually open a section, so the page stays quick even though there's a lot available:
 - **WordPress**: Top Posts & Pages, Referrers, Views by Country, Search Terms, Blog Followers.
