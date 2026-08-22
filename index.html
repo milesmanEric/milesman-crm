@@ -69,8 +69,10 @@ nav{padding:10px 8px}
   #sidebar{position:fixed;left:-220px;top:0;bottom:0;z-index:1150;transition:left .2s ease;box-shadow:4px 0 20px rgba(0,0,0,.15);overflow-y:auto}
   #sidebar.open{left:0}
   #sidebar-overlay.open{display:block}
-  #main{padding:56px 14px 80px;width:100%}
+  #main{padding:56px 14px 80px;width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
   #app{flex-direction:column}
+  .modal{-webkit-overflow-scrolling:touch}
+  .email-preview{-webkit-overflow-scrolling:touch}
 
   /* Stack tables on mobile */
   table,thead,tbody,th,td,tr{display:block}
@@ -142,7 +144,7 @@ nav{padding:10px 8px}
 .template-card:hover,.template-card.selected{border-color:#2563eb;background:#eff6ff}
 .template-card-name{font-size:13px;font-weight:600;color:#111}
 .template-card-desc{font-size:11px;color:#888;margin-top:2px}
-.email-preview{border:1px solid #e5e7eb;border-radius:8px;padding:16px;background:#fafafa;font-size:13px;line-height:1.7;white-space:pre-wrap;min-height:120px;color:#111}
+.email-preview{border:1px solid #e5e7eb;border-radius:8px;padding:16px;background:#fafafa;font-size:13px;line-height:1.7;white-space:pre-wrap;min-height:120px;color:#111;overflow-x:auto}
 .email-two-col{display:grid;grid-template-columns:260px 1fr;gap:16px;align-items:start}
 .vendor-card{border:1px solid #e5e7eb;border-radius:10px;padding:16px;margin-bottom:10px;background:#fff}
 .vendor-card:hover{border-color:#2563eb;box-shadow:0 2px 8px rgba(37,99,235,.08)}
