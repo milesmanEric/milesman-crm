@@ -7551,13 +7551,24 @@ function extractCreditCardBalances(text){
 // of wiping out a real number the client just didn't re-enter. Shared by
 // mileageBalances/hotelBalances/cruiseBalances/carRentalBalances
 // ({balance,status} objects).
+// Field-level merge, not a wholesale replace — a returning client who fills
+// in a new balance but leaves the status dropdown untouched (or vice versa)
+// used to have merged[name]=incoming replace the *entire* {balance,status}
+// entry, silently blanking out whichever sub-field wasn't resubmitted even
+// though that field itself had no new data. Each sub-field now only
+// overwrites the existing one when the incoming submission actually
+// provided it.
 function mergeBalanceObjects(existingBalances,newBalances){
   const merged=Object.assign({},existingBalances||{});
   const added=[];
   Object.keys(newBalances||{}).forEach(function(name){
     var incoming=newBalances[name];
-    if(incoming&&incoming.balance){
-      merged[name]=incoming;
+    if(incoming&&(incoming.balance||incoming.status)){
+      var existing=merged[name]||{};
+      merged[name]={
+        balance: incoming.balance ? incoming.balance : (existing.balance||0),
+        status: incoming.status ? incoming.status : (existing.status||'')
+      };
       added.push(name);
     }
   });
