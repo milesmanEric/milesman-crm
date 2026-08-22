@@ -130,6 +130,20 @@
         <label id="ref-detail-label">Details</label>
         <input type="text" id="ref-detail" name="Referred By Detail" placeholder="Event or person's name">
       </div>
+      <div class="field full">
+        <label>Discounts <span class="hint">(check any that apply)</span></label>
+        <div class="radio-row">
+          <label><input type="checkbox" name="Discount - Military" value="Yes"> Military</label>
+          <label><input type="checkbox" name="Discount - AAA" value="Yes"> AAA</label>
+          <label><input type="checkbox" name="Discount - First Responder" value="Yes"> First Responder</label>
+          <label><input type="checkbox" name="Discount - Educator" value="Yes"> Educator</label>
+          <label><input type="checkbox" id="discount-other-cb" name="Discount - Other" value="Yes"> Other</label>
+        </div>
+      </div>
+      <div class="field full" id="discount-other-wrap" style="display:none">
+        <label>Please specify discount</label>
+        <input type="text" id="discount-other-detail" name="Discount - Other Detail" placeholder="e.g. Senior, AARP, Teacher Union">
+      </div>
       <div class="field">
         <label for="pref-airline-select">Preferred Airline</label>
         <select class="pref-other-sel" id="pref-airline-select" name="Preferred Airline">
@@ -872,6 +886,17 @@
     } else {
       refWrap.style.display = 'none';
       refDetail.value = '';
+    }
+  });
+
+  var discountOtherCb = document.getElementById('discount-other-cb');
+  var discountOtherWrap = document.getElementById('discount-other-wrap');
+  discountOtherCb.addEventListener('change', function(){
+    if(this.checked){
+      discountOtherWrap.style.display = 'flex';
+    } else {
+      discountOtherWrap.style.display = 'none';
+      document.getElementById('discount-other-detail').value = '';
     }
   });
 
