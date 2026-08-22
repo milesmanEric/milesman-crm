@@ -2771,6 +2771,22 @@ function xHistoryTableHtml(history){
     }).join('')+
     '</tbody></table></div></div>';
 }
+// Feeds the Daily Summary compilation (loadDailySummary()) — reuses
+// xFollowerSnapshot()'s existing once-per-calendar-day cache (force:false),
+// so this never triggers a second billable X read on its own; opening the
+// Dashboard, the Analytics tab, and the Daily Summary in the same day still
+// costs exactly one read total. The change figure is the same
+// strictly-most-recent-prior-snapshot delta the X card's own line shows —
+// see xPreviousSnapshot()'s comment for why it isn't necessarily literally
+// "yesterday."
+function fetchYesterdayX(){
+  if(!localStorage.getItem('mm_x_token')) return Promise.reject(new Error('X not connected'));
+  return xFollowerSnapshot(false).then(function(res){
+    var prev = xPreviousSnapshot(res.history, res.snapshot.date);
+    var change = (prev && res.snapshot.followers!=null && prev.followers!=null) ? res.snapshot.followers-prev.followers : null;
+    return { followersTotal: res.snapshot.followers, followersChange: change, changeSinceDate: prev?prev.date:null };
+  });
+}
 // ── TikTok Analytics ─────────────────────────────────────────────────────
 function tiktokLogin(){
   if(!TT_CLIENT_KEY){
@@ -2885,6 +2901,19 @@ function loadTiktokAnalytics(bodyId){
   }).catch(function(e){
     debugLog('TikTok analytics failed — '+e.message);
     if(body) body.innerHTML = '<div class="empty">Failed to load: '+escHtml(e.message)+'</div>';
+  });
+}
+// Feeds the Daily Summary compilation (loadDailySummary()) — TikTok's
+// Display API only ever returns current, all-time totals, the same
+// limitation the TikTok card itself has (no day-specific Insights-style
+// endpoint exists), so the field names spell "Total" explicitly rather
+// than leaving it ambiguous whether this is "yesterday's" activity.
+function fetchYesterdayTiktok(){
+  if(!localStorage.getItem('mm_tiktok_token')) return Promise.reject(new Error('TikTok not connected'));
+  return tiktokApi('/v2/user/info/', {query:{fields:'follower_count,likes_count,video_count'}}).then(function(resp){
+    var u = tiktokUserInfoValue(resp);
+    if(!u) throw new Error('TikTok returned no account data');
+    return { followersTotal: u.follower_count, likesTotal: u.likes_count, videosTotal: u.video_count };
   });
 }
 // ── Canva Connect (design picker for Facebook ad images) ────────────────
@@ -16430,16 +16459,39 @@ function dailyCompilationHtml(results, dateStr){
       ['Reach', fmt(ig.reach||0)], ['Views', fmt(ig.views||0)], ['Profile Views', fmt(ig.profileViews||0)]
     ]));
   }
-  // TikTok deliberately has no block here: the Display API's /v2/user/info/
-  // only exposes current, all-time totals (follower_count etc.), the same
-  // as Instagram's Followers/Posts tile — but unlike Instagram, TikTok has
-  // no day-specific Insights-style endpoint alongside it, so there's no
-  // genuinely "yesterday" TikTok number to show. Every other block in this
-  // "Yesterday's Analytics" compilation is real day-specific activity;
-  // adding an all-time total here framed the same way would repeat the
-  // exact mislabeling the Mailchimp Total Unsubscribed fix (§3) corrected —
-  // see the TikTok card itself (loadTiktokAnalytics(), §3) for the same
-  // numbers honestly presented as current totals instead.
+  if(results.x){
+    var x = results.x;
+    // followersChange is a real day-over-day figure (from cached
+    // snapshots, §4.10) — but changeSinceDate isn't necessarily literally
+    // yesterday (see xPreviousSnapshot()'s comment), so the label names
+    // the actual comparison date rather than assuming "yesterday."
+    var xChangeLabel = x.followersChange!=null
+      ? (x.followersChange>0?'+':'')+fmt(x.followersChange)+(x.changeSinceDate?' since '+fmtDate(x.changeSinceDate):'')
+      : '—';
+    blocks.push(compSourceBlock('X', [
+      ['Followers', fmt(x.followersTotal||0)], ['Change', xChangeLabel]
+    ]));
+  }
+  // TikTok and SEO are both current-state snapshots, not day-specific
+  // activity — TikTok's Display API has no Insights-style endpoint the way
+  // Instagram does, and the SEO block is a completeness audit of whatever
+  // posts/pages exist right now. Framing either as "yesterday" would
+  // repeat the exact mislabeling the Mailchimp Total Unsubscribed fix (§3)
+  // corrected, so their block titles and field names say "current
+  // totals"/"site audit" rather than implying daily activity.
+  if(results.tiktok){
+    var tt = results.tiktok;
+    blocks.push(compSourceBlock('TikTok (current totals)', [
+      ['Followers', fmt(tt.followersTotal||0)], ['Likes', fmt(tt.likesTotal||0)], ['Videos', fmt(tt.videosTotal||0)]
+    ]));
+  }
+  if(results.seo){
+    var seo = results.seo;
+    blocks.push(compSourceBlock('SEO (Yoast) — site audit', [
+      ['Posts &amp; Pages', fmt(seo.totalPostsAndPages||0)], ['Missing Description', fmt(seo.missingDescription||0)],
+      ['Noindexed', fmt(seo.noindexed||0)], ['Missing OG Image', fmt(seo.missingOgImage||0)]
+    ]));
+  }
   if(!blocks.length) return '<div class="empty">No connected analytics sources yet.</div>';
   return '<div style="font-size:11px;color:#888;margin-bottom:10px">'+fmtDate(dateStr)+'</div>'+blocks.join('');
 }
@@ -16464,7 +16516,7 @@ function loadDailySummary(force){
 
   var results = {};
   var failures = [];
-  var labelByKey = {ga4:'Google Analytics (GA4)', wordpress:'WordPress.com / Jetpack', facebookAds:'Facebook Ads', facebookPage:'Facebook Page (organic)', mailchimp:'Mailchimp', instagram:'Instagram'};
+  var labelByKey = {ga4:'Google Analytics (GA4)', wordpress:'WordPress.com / Jetpack', facebookAds:'Facebook Ads', facebookPage:'Facebook Page (organic)', mailchimp:'Mailchimp', instagram:'Instagram', x:'X', tiktok:'TikTok (current totals, not day-specific)', seo:'SEO (Yoast) site audit, not day-specific'};
   function tryFetch(key, fn){
     return fn().then(function(result){ results[key] = result; }).catch(function(e){
       failures.push(labelByKey[key]+': '+(e&&e.message||e));
@@ -16476,7 +16528,10 @@ function loadDailySummary(force){
     tryFetch('facebookAds', function(){ return fetchYesterdayFacebookAds(yesterday); }),
     tryFetch('facebookPage', function(){ return fetchYesterdayFacebookPage(yesterday); }),
     tryFetch('mailchimp', function(){ return fetchYesterdayMailchimpSummary(); }),
-    tryFetch('instagram', function(){ return fetchYesterdayInstagram(yesterday); })
+    tryFetch('instagram', function(){ return fetchYesterdayInstagram(yesterday); }),
+    tryFetch('x', function(){ return fetchYesterdayX(); }),
+    tryFetch('tiktok', function(){ return fetchYesterdayTiktok(); }),
+    tryFetch('seo', function(){ return fetchSeoAuditSummary(); })
   ]).then(function(){
     localStorage.setItem(compKey, JSON.stringify(results));
     if(compBody) compBody.innerHTML = dailyCompilationHtml(results, yesterday);
@@ -16486,12 +16541,17 @@ function loadDailySummary(force){
       if(summaryBody) summaryBody.innerHTML = '<div class="empty">No connected analytics sources yet — connect WordPress, Google Drive, Facebook, or Mailchimp below to get a daily summary.</div>';
       return;
     }
+    // Each source's own label (labelByKey) already flags the two
+    // current-totals-only sources (TikTok, SEO) in the label text itself,
+    // not just in the system prompt below — belt-and-suspenders against
+    // the model narrating a cumulative total as if it were something that
+    // happened yesterday.
     var statsText = sourceKeys.map(function(k){ return labelByKey[k]+':\n'+JSON.stringify(results[k], null, 2); }).join('\n\n');
     return fetch(DRIVE_AUTH_SERVER+'/api/claude-messages', {
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body: JSON.stringify({
-        system: 'You write short, plain-English daily marketing analytics summaries for a small travel agency owner (Miles Man Travel) who is not a data analyst. Given raw stats for one day, write: (1) a 2-3 sentence plain-English summary of what happened, (2) 2-4 bullet-point observations worth noting (good or bad, only if genuinely notable — do not manufacture insight from noise in small numbers), (3) 1-3 concrete, specific recommended actions for today. No fluff, no generic advice like "keep posting consistently." If a data source is missing, just skip it silently rather than commenting on the gap.',
+        system: 'You write short, plain-English daily marketing analytics summaries for a small travel agency owner (Miles Man Travel) who is not a data analyst. Given raw stats for one day, write: (1) a 2-3 sentence plain-English summary of what happened, (2) 2-4 bullet-point observations worth noting (good or bad, only if genuinely notable — do not manufacture insight from noise in small numbers), (3) 1-3 concrete, specific recommended actions for today. No fluff, no generic advice like "keep posting consistently." If a data source is missing, just skip it silently rather than commenting on the gap. Some sources are labeled "current totals, not day-specific" or "site audit, not day-specific" — those are cumulative/point-in-time figures, not something that happened specifically yesterday, so never phrase them as "yesterday you gained/lost X" or similar; describe them as the current state instead (e.g. "your TikTok following now stands at X").',
         messages: [{role:'user', content:'Yesterday ('+yesterday+') stats:\n\n'+statsText}]
       })
     }).then(function(r){ return r.json(); }).then(function(data){
@@ -16760,6 +16820,36 @@ function yoastSeoTableHtml(items){
 // sections is currently expanded — mirrors analyticsSectionHtml()'s
 // existing collapsed-by-default pattern instead of one combined table with
 // a Type column.
+// Feeds the Daily Summary compilation (loadDailySummary()) — same counting
+// logic loadYoastSeoAudit() uses for its own summary tiles, kept as a
+// separate small fetch rather than refactored to share code, since that
+// function's own fetchType() also pulls link/title/type fields this one
+// doesn't need. No connection/token required (Yoast data is public, §4.9),
+// so this always attempts to run regardless of what else is connected. This
+// is a completeness *audit* of current posts/pages, not something that
+// happened "yesterday" — same non-daily nature as the TikTok totals above,
+// so it's presented as a snapshot, never framed as day-specific activity.
+function fetchSeoAuditSummary(){
+  var fields = 'yoast_head_json.description,yoast_head_json.og_description,yoast_head_json.robots,yoast_head_json.og_image';
+  function fetchType(type){
+    var path = '/wp/v2/'+type;
+    return fetch(WP_AUTH_SERVER+'/api/wordpress-stats?site=1&path='+encodeURIComponent(path)+'&per_page=100&_fields='+encodeURIComponent(fields))
+      .then(function(r){ return r.json(); });
+  }
+  return Promise.all([fetchType('posts'), fetchType('pages')]).then(function(results){
+    var allItems = results.filter(function(r){ return Array.isArray(r); }).reduce(function(a,b){ return a.concat(b); }, []);
+    if(!allItems.length) throw new Error('No posts or pages found');
+    var noindexCount=0, noDescCount=0, noImageCount=0;
+    allItems.forEach(function(p){
+      var yh = p.yoast_head_json || {};
+      var desc = yh.description || yh.og_description || '';
+      if(yh.robots && yh.robots.index==='noindex') noindexCount++;
+      if(!desc) noDescCount++;
+      if(!(yh.og_image && yh.og_image.length)) noImageCount++;
+    });
+    return { totalPostsAndPages: allItems.length, missingDescription: noDescCount, noindexed: noindexCount, missingOgImage: noImageCount };
+  });
+}
 function loadYoastSeoAudit(){
   var summaryEl = $('yoast-seo-summary');
   if(!summaryEl) return;
