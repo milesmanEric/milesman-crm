@@ -639,10 +639,14 @@ const FB_AUTH_SERVER  = 'https://milesman-auth.vercel.app';
 const FB_AD_ACCOUNT   = 'act_1285326830438388';
 // Canva Connect API — lets the Facebook Ads wizard's Creative step pull an
 // ad image straight from a Canva design instead of only a local file. Uses
-// its own Vercel proxy (api/canva-token.js for the OAuth/PKCE exchange,
-// api/canva-api.js for the CORS-blocked Connect API calls) — same reason
-// Facebook/WordPress need one: Canva's own CORS policy explicitly blocks
-// authenticated browser fetches, not just an oversight to work around.
+// its own Vercel proxy (api/canva.js — one merged file handling both the
+// OAuth/PKCE exchange via ?path=/x-token and the CORS-blocked Connect API
+// calls via ?path=<anything else>, combined into a single serverless
+// function purely to stay under Vercel Hobby's 12-function-per-deployment
+// cap; it used to be two separate files, api/canva-token.js/api/canva-api.js)
+// — same reason Facebook/WordPress need a proxy at all: Canva's own CORS
+// policy explicitly blocks authenticated browser fetches, not just an
+// oversight to work around.
 // CANVA_CLIENT_ID is filled in once a Canva Developer Portal integration is
 // registered (canva.com/developers) — not a secret, safe to hardcode like
 // FB_APP_ID above, but connecting will fail with "Invalid Client" until a
@@ -2973,7 +2977,7 @@ function checkCanvaRedirect(){
   localStorage.removeItem('mm_canva_code_verifier');
   debugLog('Canva auth code received, exchanging...');
 
-  fetch(CANVA_AUTH_SERVER+'/api/canva-token',{
+  fetch(CANVA_AUTH_SERVER+'/api/canva?path='+encodeURIComponent('/x-token'),{
     method:'POST',
     headers:{'Content-Type':'application/json'},
     body:JSON.stringify({ code: code, redirect_uri: CANVA_REDIRECT, code_verifier: verifier })
@@ -3009,7 +3013,7 @@ function getCanvaAccessToken(){
   if(Date.now() < expires - 60000) return Promise.resolve(token);
   var refreshToken = localStorage.getItem('mm_canva_refresh_token');
   if(!refreshToken) return Promise.resolve(token);
-  return fetch(CANVA_AUTH_SERVER+'/api/canva-token',{
+  return fetch(CANVA_AUTH_SERVER+'/api/canva?path='+encodeURIComponent('/x-token'),{
     method:'POST',
     headers:{'Content-Type':'application/json'},
     body:JSON.stringify({ grant_type:'refresh_token', refresh_token: refreshToken })
@@ -3032,7 +3036,7 @@ function canvaApi(path, opts){
   return getCanvaAccessToken().then(function(token){
     if(!token) return Promise.reject(new Error('Not connected to Canva'));
     var qs = opts.query ? '&'+new URLSearchParams(opts.query).toString() : '';
-    var url = CANVA_AUTH_SERVER+'/api/canva-api?path='+encodeURIComponent(path)+qs;
+    var url = CANVA_AUTH_SERVER+'/api/canva?path='+encodeURIComponent(path)+qs;
     var fetchOpts = { headers: { Authorization: 'Bearer '+token } };
     if(opts.method === 'POST'){
       fetchOpts.method = 'POST';
