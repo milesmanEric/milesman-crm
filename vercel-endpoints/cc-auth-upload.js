@@ -65,6 +65,7 @@ const DRIVE_CLIENT_ID = '1055867383042-an9l58o1qg22pt7o4ak8vaneeftv54ib.apps.goo
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const DRIVE_FILES_URL = 'https://www.googleapis.com/drive/v3/files';
 const DRIVE_UPLOAD_URL = 'https://www.googleapis.com/upload/drive/v3/files';
+const PARENT_FOLDER_NAME = 'Miles Man';
 const FOLDER_NAME = 'Credit Card Authorization Forms';
 const MAX_BYTES = 8 * 1024 * 1024;
 const PDF_MAGIC = Buffer.from('%PDF');
@@ -92,12 +93,15 @@ async function getServerDriveAccessToken() {
   return data.access_token;
 }
 
-// Finds the shared upload folder, creating it the first time this runs.
-// Safe to call on every request — Drive API list/create calls are cheap,
-// and there's no local state a serverless function could cache this in
-// between cold starts anyway.
-async function getOrCreateFolder(accessToken) {
-  const q = "mimeType='application/vnd.google-apps.folder' and name='" + FOLDER_NAME + "' and trashed=false";
+// Finds a folder by name under a given parent, creating it the first time
+// this runs. Safe to call on every request — Drive API list/create calls
+// are cheap, and there's no local state a serverless function could cache
+// this in between cold starts anyway. parentId is always required and
+// explicit (rather than letting Drive default an unspecified parent to
+// root) so a same-named folder living somewhere else in the account can
+// never be matched by accident.
+async function getOrCreateFolder(accessToken, name, parentId) {
+  const q = "mimeType='application/vnd.google-apps.folder' and name='" + name + "' and trashed=false and '" + parentId + "' in parents";
   const listUrl = DRIVE_FILES_URL + '?q=' + encodeURIComponent(q) + '&fields=' + encodeURIComponent('files(id,name)');
   const listRes = await fetch(listUrl, { headers: { Authorization: 'Bearer ' + accessToken } });
   const listData = await listRes.json();
@@ -107,13 +111,23 @@ async function getOrCreateFolder(accessToken) {
   const createRes = await fetch(DRIVE_FILES_URL + '?fields=id', {
     method: 'POST',
     headers: { Authorization: 'Bearer ' + accessToken, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name: FOLDER_NAME, mimeType: 'application/vnd.google-apps.folder' })
+    body: JSON.stringify({ name: name, mimeType: 'application/vnd.google-apps.folder', parents: [parentId] })
   });
   const createData = await createRes.json();
   if (!createRes.ok || !createData.id) {
-    throw new Error('drive_folder_failed: ' + (createData.error && createData.error.message || 'could not create the upload folder'));
+    throw new Error('drive_folder_failed: ' + (createData.error && createData.error.message || 'could not create the "' + name + '" folder'));
   }
   return createData.id;
+}
+
+// Resolves (creating if needed) My Drive / Miles Man / Credit Card
+// Authorization Forms — nested under the same top-level "Miles Man" folder
+// the account already uses, rather than a new folder loose at the Drive
+// root. "Miles Man" itself is looked up directly under 'root' so it can't
+// accidentally match a same-named folder living somewhere else.
+async function getUploadFolderId(accessToken) {
+  const milesManId = await getOrCreateFolder(accessToken, PARENT_FOLDER_NAME, 'root');
+  return getOrCreateFolder(accessToken, FOLDER_NAME, milesManId);
 }
 
 // Keeps the filename readable and safe for Drive/downstream tools without
@@ -171,7 +185,7 @@ module.exports = async (req, res) => {
 
   try {
     const accessToken = await getServerDriveAccessToken();
-    const folderId = await getOrCreateFolder(accessToken);
+    const folderId = await getUploadFolderId(accessToken);
 
     const namePart = sanitizeForFilename(clientName) || 'Unknown Client';
     const idPart = sanitizeForFilename(clientId) || 'no-id';
