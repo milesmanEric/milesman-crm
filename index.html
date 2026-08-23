@@ -587,6 +587,10 @@ const DRIVE_CLIENT_ID  = '1055867383042-an9l58o1qg22pt7o4ak8vaneeftv54ib.apps.go
 const DRIVE_SCOPE      = 'https://www.googleapis.com/auth/drive.file openid email https://www.googleapis.com/auth/analytics.readonly';
 const DRIVE_REDIRECT   = 'https://milesmaneric.github.io/milesman-crm/';
 const DRIVE_AUTH_SERVER = 'https://milesman-auth.vercel.app';
+// Public, standalone page (§4.12) a client uploads their completed credit
+// card authorization PDF to — cid/name in the query string are how the
+// upload gets labeled/foldered without the client ever logging in.
+const CC_AUTH_UPLOAD_URL = 'https://milesmaneric.github.io/milesman-crm/cc-auth-upload.html';
 // WordPress.com OAuth2 (Jetpack Stats access for the Analytics tab) — see
 // https://developer.wordpress.com/docs/oauth2/. Unlike Drive/Outlook, this
 // flow needs no PKCE (WordPress.com's Authorization Code Grant is a
@@ -13155,6 +13159,12 @@ function openClientForm(id){
         '<button type="button" id="btn-add-attachment" style="padding:5px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit">+ Add Attachment Link</button>'+
         '<button type="button" id="btn-browse-drive" style="padding:5px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit;margin-left:8px">&#128193; Browse Google Drive...</button>'+
       '</div>'+
+      (id ? '<div class="field full"><label>Credit Card Authorization Form <span class="hint" style="text-transform:none;font-weight:400">(secure upload link for this client)</span></label>'+
+        '<div style="border:1px solid #e5e7eb;border-radius:8px;padding:10px;background:#fafafa;font-size:12px;color:#555">'+
+          'Sends the client to a page where they upload their completed, signed authorization PDF directly to a private Google Drive folder — it never passes through this app or gets stored in the browser. Once uploaded, attach it here the normal way (&#128193; Browse Google Drive above) once you\'ve reviewed it.'+
+        '</div>'+
+        '<button type="button" id="btn-copy-cc-auth-link" data-cid="'+id+'" style="padding:5px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit;margin-top:8px">&#128274; Copy Upload Link</button>'+
+      '</div>' : '')+
       '<div class="field full"><label>Referral Credits</label>'+
         '<div id="ref-credits-log" style="border:1px solid #e5e7eb;border-radius:8px;padding:10px;background:#fafafa;margin-bottom:8px">'+
           ((d.referralCredits&&d.referralCredits.length) ? d.referralCredits.map(refCreditRowHtml).join('') : '<div id="ref-credits-empty" style="color:#aaa;font-size:12px">No referral credits yet</div>')+
@@ -13388,6 +13398,19 @@ function openClientForm(id){
     });
   }
   window._currentClientAttachments = clientAttachments; // exposed for saveClient to read
+
+  var copyCcAuthBtn = document.getElementById('btn-copy-cc-auth-link');
+  if(copyCcAuthBtn){
+    copyCcAuthBtn.addEventListener('click', function(){
+      var cid = this.dataset.cid;
+      var link = CC_AUTH_UPLOAD_URL+'?cid='+encodeURIComponent(cid)+'&name='+encodeURIComponent(d.name||'');
+      navigator.clipboard.writeText(link).then(function(){
+        toast('Upload link copied — send it to the client by email or text','ok');
+      }).catch(function(){
+        toast('Could not copy automatically — link: '+link,'err');
+      });
+    });
+  }
 
   // Referral Credits — rows read straight from the DOM at save time (see
   // saveClient), so add/delete here just manipulate the DOM directly.
