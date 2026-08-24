@@ -1082,7 +1082,7 @@ const DEFAULT_BOOKMARKS = [
   {name:'AwardWallet', url:'https://www.awardwallet.com', category:'Award Tools', audience:'Travel Agent', notes:'tracks client mileage/points balances across programs'}
 ];
 
-let db = {clients:[],trips:[],vendors:[],bizVendors:[],planner:[],bookmarks:[],savedReports:[],groups:[],marketingPlan:[],pendingImportMatches:[]};
+let db = {clients:[],trips:[],vendors:[],bizVendors:[],planner:[],bookmarks:[],savedReports:[],groups:[],marketingPlan:[],pendingImportMatches:[],jetpackRemovalQueue:[]};
 const UNDO_STACK = [];
 const MAX_UNDO = 20;
 function snapshot(label){
@@ -1614,6 +1614,10 @@ function loadDB(){
     db.groups=Array.isArray(d.groups)?d.groups:[];
     db.marketingPlan=Array.isArray(d.marketingPlan)?d.marketingPlan:[];
     db.pendingImportMatches=Array.isArray(d.pendingImportMatches)?d.pendingImportMatches:[];
+    // Clients unmarked as Subscriber that still need manual removal in WP
+    // Admin — see the "Jetpack Manual-Removal Queue" comment near
+    // flagJetpackManualRemoval() for why this can't be automated.
+    db.jetpackRemovalQueue=Array.isArray(d.jetpackRemovalQueue)?d.jetpackRemovalQueue:[];
     // Always normalize client names to 'Last, First' format on every load
     // (safe to run repeatedly since it skips names that already have a comma)
     var migrated=0;
@@ -3796,6 +3800,49 @@ function autoSyncSubscriberToMailchimp(client){
     }
   });
 }
+// Unlike syncClientToMailchimp() (which only ever sets status_if_new, so it
+// never overrides someone who unsubscribed directly through Mailchimp),
+// this is a deliberate CRM-driven status change — set both `status` and
+// `status_if_new` so it takes effect whether or not the member already
+// exists in the audience.
+async function setMailchimpSubscriberStatus(client, status){
+  if(!client.email) return;
+  var listId = localStorage.getItem(MAILCHIMP_LIST_KEY);
+  if(!listId) throw new Error('No Mailchimp audience selected yet — use "Sync Mailchimp Activity" once first');
+  var hash = md5hex(client.email.trim().toLowerCase());
+  var nameParts = (client.name||'').trim().split(/\s+/);
+  await mailchimpProxyPut('/lists/'+listId+'/members/'+hash, {
+    email_address: client.email.trim(),
+    status: status,
+    status_if_new: status,
+    merge_fields: { FNAME: nameParts[0]||'', LNAME: nameParts.slice(1).join(' ')||'' }
+  });
+}
+// Shared push for deliberate, user-driven status changes (the manual Sub
+// checkbox, and applying a Sync Subscribers review) — as opposed to
+// autoSyncSubscriberToMailchimp() above, which is only for background
+// auto-add flows (blog-follower sync, new-client creation) and deliberately
+// never overrides someone who unsubscribed directly through Mailchimp.
+// Here the CRM change (a person explicitly checking or unchecking the box)
+// IS the source of truth for the change, so it forces `status` both ways.
+function pushMailchimpSubscriberChange(client, status){
+  setMailchimpSubscriberStatus(client, status).then(function(){
+    debugLog('Mailchimp: set '+client.email+' to '+status);
+  }).catch(function(e){
+    var msg = (e&&e.message)||String(e);
+    debugLog('Mailchimp: push failed for '+client.email+' — '+msg);
+    if(msg.indexOf('No Mailchimp audience selected')===-1){
+      toast('Mailchimp sync failed for '+client.email+': '+msg,'err');
+    }
+  });
+}
+// Real push for the other direction of two-way sync: called when a client
+// is unmarked as Subscriber on the Clients page. Mailchimp's unsubscribe
+// API is standard and documented, so — unlike Jetpack below — this is a
+// genuine automatic removal, not just a flag for manual follow-up.
+function autoUnsubscribeFromMailchimp(client){
+  pushMailchimpSubscriberChange(client, 'unsubscribed');
+}
 
 // ── Jetpack Auto-Subscribe ──────────────────────────────────────────────────
 // WordPress.com/Jetpack's public API has no documented endpoint for adding
@@ -3872,6 +3919,142 @@ function autoSyncSubscriberToJetpack(client){
       toast('Jetpack sync failed for '+client.email+': '+msg,'err');
     }
   });
+}
+
+// ── Jetpack Manual-Removal Queue ────────────────────────────────────────────
+// Jetpack/WordPress.com has no documented API — public or internal — for
+// removing a subscriber by email. Jetpack_Subscriptions (the class the
+// custom subscribe endpoint above calls into) only has subscribe(), no
+// unsubscribe(); WordPress.com's REST API only exposes self-service
+// per-account unsubscribe endpoints, not an admin-driven one keyed by
+// arbitrary email. The only confirmed way to remove someone is by hand in
+// WP Admin (Jetpack → Subscribers → the row's ⋯ menu → Remove). So unlike
+// Mailchimp, unsubscribing here can't be a real automatic push — this just
+// queues the name/email so it isn't lost, and surfaces it until someone
+// checks it off after doing the manual removal.
+function flagJetpackManualRemoval(client){
+  if(!client.email) return;
+  var already = db.jetpackRemovalQueue.some(function(q){ return q.clientId===client.id; });
+  if(already) return;
+  db.jetpackRemovalQueue.push({clientId:client.id, name:client.name, email:client.email, flaggedAt:new Date().toLocaleString()});
+  saveDB();
+}
+function clearJetpackRemovalFlag(clientId){
+  db.jetpackRemovalQueue = db.jetpackRemovalQueue.filter(function(q){ return q.clientId!==clientId; });
+  saveDB();
+}
+
+// ── Subscriber Reconciliation ("Sync Subscribers" button on Clients page) ──
+// Real-time push (the Sub checkbox → Mailchimp/Jetpack) only catches
+// changes made IN the CRM. This catches the other direction too — someone
+// who unsubscribed directly through a Mailchimp email link, or was added/
+// removed as a Jetpack follower outside the CRM — by pulling both external
+// subscriber lists and diffing them against every client's Sub checkbox.
+// By design this never applies anything silently: it always surfaces a
+// review list first and waits for the user to choose an action per row.
+function reconcileSubscribers(){
+  var listId = localStorage.getItem(MAILCHIMP_LIST_KEY);
+  var wpToken = localStorage.getItem('mm_wp_token');
+  if(!listId && !wpToken){
+    toast('Connect Mailchimp ("Sync Mailchimp Activity") or WordPress/Jetpack (Analytics tab) first','err');
+    return;
+  }
+  toast('Checking Mailchimp and Jetpack subscriber lists…');
+  Promise.all([
+    listId ? mailchimpProxyGet('/lists/'+listId+'/members?status=subscribed&count=1000&fields=members.email_address').catch(function(e){ debugLog('Sync Subscribers: Mailchimp fetch failed — '+e.message); return null; }) : Promise.resolve(null),
+    wpToken ? fetchAllWordpressFollowerPages(wpToken, 'email').catch(function(e){ debugLog('Sync Subscribers: Jetpack fetch failed — '+e.message); return null; }) : Promise.resolve(null)
+  ]).then(function(results){
+    var mcResp = results[0], jpResp = results[1];
+    var mcConfigured = !!listId, jpConfigured = !!wpToken;
+    var mcEmails = mcResp && !mcResp.error ? new Set((mcResp.members||[]).map(function(m){ return (m.email_address||'').toLowerCase(); })) : null;
+    var jpEmails = jpResp && !jpResp.error ? new Set((jpResp.subscribers||[]).map(function(s){ return (s.label||'').toLowerCase(); })) : null;
+    if(mcConfigured && !mcEmails) toast('Mailchimp subscriber list could not be loaded — see Debug Log','err');
+    if(jpConfigured && !jpEmails) toast('Jetpack subscriber list could not be loaded — see Debug Log','err');
+    var rows = [];
+    db.clients.forEach(function(c){
+      if(!c.email) return;
+      var email = c.email.trim().toLowerCase();
+      var crmSub = !!c.isSubscriber;
+      var mcSub = mcEmails ? mcEmails.has(email) : null;
+      var jpSub = jpEmails ? jpEmails.has(email) : null;
+      var known = [crmSub, mcSub, jpSub].filter(function(v){ return v!==null; });
+      var allAgree = known.every(function(v){ return v===known[0]; });
+      if(!allAgree){
+        rows.push({clientId:c.id, name:c.name, email:c.email, crmSub:crmSub, mcSub:mcSub, jpSub:jpSub, suggested: known.some(function(v){ return v===true; })});
+      }
+    });
+    if(!rows.length){
+      toast('All subscriber lists already match — nothing to review','ok');
+      return;
+    }
+    openSubscriberReconcileModal(rows, mcConfigured, jpConfigured);
+  });
+}
+function subStatusBadge(val){
+  if(val===true) return '<span style="color:#166534">&#9989; Sub</span>';
+  if(val===false) return '<span style="color:#991b1b">Not sub</span>';
+  return '<span style="color:#aaa">—</span>';
+}
+function openSubscriberReconcileModal(rows, mcConfigured, jpConfigured){
+  $('modal').innerHTML =
+    '<div class="modal-hdr"><div class="modal-title">Review Subscriber Mismatches ('+rows.length+')</div><button class="close-btn" id="modal-close">&#x2715;</button></div>'+
+    '<div class="fg">'+
+      '<div style="font-size:12px;color:#666;margin-bottom:10px">These clients don\'t agree across CRM'+(mcConfigured?', Mailchimp':'')+(jpConfigured?', Jetpack/WordPress':'')+'. Pick an action for each row, then Apply. Jetpack removals can\'t be pushed automatically (no API for it) — they\'re queued for manual removal in WP Admin instead.</div>'+
+      '<div class="tbl-wrap" style="max-height:420px;overflow-y:auto"><table><thead><tr><th>Client</th><th>CRM</th>'+(mcConfigured?'<th>Mailchimp</th>':'')+(jpConfigured?'<th>Jetpack</th>':'')+'<th>Action</th></tr></thead><tbody>'+
+      rows.map(function(r,i){
+        return '<tr>'+
+          '<td>'+escHtml(r.name||'')+'<div style="font-size:10px;color:#aaa">'+escHtml(r.email)+'</div></td>'+
+          '<td>'+subStatusBadge(r.crmSub)+'</td>'+
+          (mcConfigured?'<td>'+subStatusBadge(r.mcSub)+'</td>':'')+
+          (jpConfigured?'<td>'+subStatusBadge(r.jpSub)+'</td>':'')+
+          '<td><select class="sub-reconcile-action" data-idx="'+i+'" style="font-size:12px;padding:3px">'+
+            '<option value="subscribe"'+(r.suggested?' selected':'')+'>Mark Subscribed</option>'+
+            '<option value="unsubscribe"'+(!r.suggested?' selected':'')+'>Mark Unsubscribed</option>'+
+            '<option value="skip">Skip</option>'+
+          '</select></td>'+
+        '</tr>';
+      }).join('')+
+      '</tbody></table></div>'+
+    '</div>'+
+    '<div class="form-actions form-actions-sticky"><button class="cancel-btn" id="modal-cancel">Close</button><button class="save-btn" id="sub-reconcile-apply">Apply</button></div>';
+  $('modal').classList.add('modal-wide');
+  $('overlay').classList.add('open');
+  $('modal-close').addEventListener('click', closeModal);
+  $('modal-cancel').addEventListener('click', closeModal);
+  $('sub-reconcile-apply').addEventListener('click', function(){
+    var actions = [];
+    document.querySelectorAll('.sub-reconcile-action').forEach(function(sel){
+      actions.push({row: rows[parseInt(sel.dataset.idx,10)], action: sel.value});
+    });
+    closeModal();
+    applySubscriberReconciliation(actions);
+  });
+}
+function applySubscriberReconciliation(actions){
+  var toApply = actions.filter(function(a){ return a.action!=='skip'; });
+  if(!toApply.length){ toast('No changes applied'); return; }
+  snapshot('Sync subscribers');
+  var subscribedCount=0, unsubscribedCount=0, removalQueued=0;
+  toApply.forEach(function(a){
+    var c = db.clients.find(function(x){ return x.id===a.row.clientId; });
+    if(!c) return;
+    if(a.action==='subscribe'){
+      if(!c.isSubscriber){ c.isSubscriber = true; subscribedCount++; }
+      pushMailchimpSubscriberChange(c, 'subscribed');
+      if(a.row.jpSub!==true) autoSyncSubscriberToJetpack(c);
+    } else if(a.action==='unsubscribe'){
+      if(c.isSubscriber){ c.isSubscriber = false; unsubscribedCount++; }
+      pushMailchimpSubscriberChange(c, 'unsubscribed');
+      if(a.row.jpSub===true){ flagJetpackManualRemoval(c); removalQueued++; }
+    }
+  });
+  saveDB();
+  render();
+  var parts = [];
+  if(subscribedCount) parts.push(subscribedCount+' marked subscribed');
+  if(unsubscribedCount) parts.push(unsubscribedCount+' marked unsubscribed');
+  if(removalQueued) parts.push(removalQueued+' queued for manual Jetpack removal');
+  toast(parts.length?parts.join(', '):'Subscriber statuses pushed','ok');
 }
 
 async function pickMailchimpList(){
@@ -11690,6 +11873,7 @@ function renderClients(){
       '<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#555;white-space:nowrap;cursor:pointer"><input type="checkbox" id="client-hide-sub-only" '+(fHideSubOnly?'checked':'')+' style="width:14px;height:14px;cursor:pointer">Hide subscriber-only (no name on file)</label>'+
       '<button id="btn-select-all-clients" style="padding:7px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#555;cursor:pointer;font-size:12px;font-family:inherit">Select All</button>'+
       '<button id="btn-delete-checked-clients" style="display:none;padding:7px 14px;border-radius:7px;border:none;background:#dc2626;color:#fff;cursor:pointer;font-size:12px;font-family:inherit">&#128465; Delete Selected</button>'+
+      '<button id="btn-sync-subscribers" style="padding:7px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#555;cursor:pointer;font-size:12px;font-family:inherit" title="Compare the Sub column against Mailchimp and Jetpack/WordPress and review any mismatches">&#128260; Sync Subscribers'+(db.jetpackRemovalQueue.length?' <span style="background:#dc2626;color:#fff;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px">'+db.jetpackRemovalQueue.length+'</span>':'')+'</button>'+
     '</div>'+
     '<div class="tbl-wrap"><table><thead><tr>'+
       '<th style="width:32px"><input type="checkbox" id="client-check-all" style="width:14px;height:14px"></th>'+
@@ -11795,12 +11979,17 @@ function renderClients(){
         saveDB();
         toast(c.name+(cb.checked?' marked as subscriber':' unmarked as subscriber'),'ok');
         if(cb.checked && !wasSubscriber){
-          autoSyncSubscriberToMailchimp(c);
+          pushMailchimpSubscriberChange(c, 'subscribed');
           autoSyncSubscriberToJetpack(c);
+        } else if(!cb.checked && wasSubscriber){
+          autoUnsubscribeFromMailchimp(c);
+          flagJetpackManualRemoval(c);
         }
       }
     });
   });
+  var syncSubsBtn = document.getElementById('btn-sync-subscribers');
+  if(syncSubsBtn) syncSubsBtn.addEventListener('click', reconcileSubscribers);
 
   // Checkbox bulk select / delete
   var checkAllC = document.getElementById('client-check-all');
@@ -16694,6 +16883,18 @@ function renderAnalytics(){
           : '<button class="add-btn" id="jetpack-sub-setup">Set Up Auto-Subscribe</button>')+
         '<div style="color:#888;margin-top:6px">Requires a small snippet installed on the WordPress site (see wordpress-snippets/jetpack-subscribe-endpoint.php) since Jetpack has no public API for adding subscribers. Clients checked "Subscriber" get pushed here automatically — they still get Jetpack\'s own confirmation email before it counts as active.</div>'+
       '</div>'+
+      (db.jetpackRemovalQueue.length ? (
+        '<div style="margin-top:12px;padding-top:12px;border-top:1px solid #f0f0f0;font-size:12px">'+
+          '<div style="font-weight:700;color:#991b1b;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">Needs Manual Removal in WordPress ('+db.jetpackRemovalQueue.length+')</div>'+
+          '<div style="color:#888;margin-bottom:8px">Jetpack has no API to remove a subscriber — these clients were unmarked as "Subscriber" in the CRM and still need to be removed by hand in <a href="https://'+WP_SITE+'/wp-admin/admin.php?page=jetpack" target="_blank" rel="noopener">WP Admin → Jetpack → Subscribers</a> (⋯ menu → Remove). Click Done once removed.</div>'+
+          db.jetpackRemovalQueue.map(function(q){
+            return '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:4px 0;border-top:1px solid #f7f7f7">'+
+              '<span>'+escHtml(q.name||'')+' &mdash; '+escHtml(q.email)+'</span>'+
+              '<button class="cancel-btn jetpack-removal-done" data-id="'+q.clientId+'" style="padding:3px 10px">Done</button>'+
+            '</div>';
+          }).join('')+
+        '</div>'
+      ) : '')+
     '</div>'+
     '<div class="card" style="margin-bottom:16px">'+
       '<div class="card-hdr"><span class="card-title">Google Analytics (GA4)</span></div>'+
@@ -16769,6 +16970,13 @@ function renderAnalytics(){
   if(jsChangeBtn) jsChangeBtn.addEventListener('click', promptJetpackSubSetup);
   var jsDisconnectBtn = $('jetpack-sub-disconnect');
   if(jsDisconnectBtn) jsDisconnectBtn.addEventListener('click', disconnectJetpackSub);
+  document.querySelectorAll('.jetpack-removal-done').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      clearJetpackRemovalFlag(btn.dataset.id);
+      toast('Removed from the manual-removal list','ok');
+      render();
+    });
+  });
   if(wpToken){
     loadWordpressStats(wpToken);
     syncBlogFollowersToClients(wpToken);
