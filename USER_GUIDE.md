@@ -82,7 +82,7 @@ Each mileage/points section (Mileage Balances, Hotel Point Balances, Cruise Line
 
 **Tasks**: a client's own Planner tasks show right on their record — title, due date, and Open/Done status — with **+ Add Task** to add a new one linked to them. This includes tasks where the client is only one of several linked (see [Planner](#planner)), not just tasks where they're the primary contact. Clicking a task opens the full task editor (same one Planner uses), so you can change its due date, description, or anything else without leaving the client record.
 
-**Paying Client / Subscriber**: two checkboxes on the client record, useful for filtering your list down to real clients vs. newsletter-only contacts. Checking **Subscriber** — whether at creation or later — automatically pushes that client into Mailchimp and (once set up, see [Mailchimp](#mailchimp) below) into your Jetpack subscriber list too. Unchecking it later does not remove them from either — you'd need to do that manually in Mailchimp/Jetpack.
+**Paying Client / Subscriber**: two checkboxes on the client record, useful for filtering your list down to real clients vs. newsletter-only contacts. Checking **Subscriber** — whether at creation or later — automatically pushes that client into Mailchimp and (once set up, see [Mailchimp](#mailchimp) below) into your Jetpack subscriber list too. **Unchecking it now really does unsubscribe them from Mailchimp** — a real removal, not just a CRM change. Jetpack is different: there's no way for this CRM (or any outside tool) to remove a Jetpack subscriber automatically, so unchecking a client who's on Jetpack instead adds them to a "Needs Manual Removal in WordPress" list on the Analytics tab, for you to remove by hand in a couple of clicks. See [Keeping subscriber counts in sync](#keeping-subscriber-counts-in-sync) below for the full picture, including how to catch changes made directly in Mailchimp or WordPress rather than in the CRM.
 
 **Attachments**: paste Google Drive links directly, or use "Browse Google Drive" to pick a file without leaving the CRM.
 
@@ -343,7 +343,7 @@ If you back up from two devices without restoring in between, the CRM will warn 
 
 If you send a newsletter/campaign through Mailchimp, **Sync Mailchimp Activity** checks which of your clients actually received the most recent campaign and logs it to their notes automatically. **Log Mailchimp Campaign** is the manual fallback if you'd rather just note that a campaign went out without connecting to Mailchimp's API.
 
-**Any client marked "Subscriber"** (at creation or later) gets pushed into your Mailchimp audience automatically — no extra step needed, as long as you've used Sync/Log Mailchimp Activity at least once so the CRM knows which audience to use.
+**Any client marked "Subscriber"** (at creation or later) gets pushed into your Mailchimp audience automatically — no extra step needed, as long as you've used Sync/Log Mailchimp Activity at least once so the CRM knows which audience to use. **Unchecking Subscriber unsubscribes them for real** — the CRM tells Mailchimp to mark them unsubscribed, the same as if they'd clicked the unsubscribe link at the bottom of one of your emails.
 
 ---
 
@@ -358,6 +358,23 @@ Jetpack (your website's blog-follower/newsletter system) doesn't offer any way f
 After that, any client marked "Subscriber" is registered with Jetpack automatically too. One thing that never changes: **Jetpack always sends its own confirmation email** to the person before they're an active subscriber — that's built into Jetpack itself, not something this integration can skip, so a new subscriber still needs to click that link.
 
 If it's never set up, nothing breaks — the CRM just quietly skips the Jetpack push and keeps doing the Mailchimp one.
+
+**Removing a subscriber from Jetpack can't be automated** — Jetpack simply doesn't offer any way, for this CRM or any other outside tool, to remove a subscriber by email. The only way to remove someone is by hand: WP Admin → Jetpack → Subscribers → find them → the **⋯** menu → **Remove**. So when you uncheck Subscriber for someone who's on Jetpack, the CRM adds them to a **"Needs Manual Removal in WordPress"** list on the Analytics tab instead of pretending it removed them — do the removal yourself in WP Admin, then click **Done** on that row to clear it.
+
+---
+
+## Keeping subscriber counts in sync
+
+The Subscriber checkbox, your Mailchimp audience, and your Jetpack follower list are three separate lists, and normally they stay in sync automatically: checking or unchecking Subscriber on a client pushes that change out to Mailchimp (a real subscribe/unsubscribe) and to Jetpack (subscribe automatically; unsubscribe gets queued for the manual step above).
+
+What that automatic push **can't** catch is a change made on the *other* end — someone clicking "unsubscribe" at the bottom of a Mailchimp email, or being added/removed as a Jetpack follower some other way. For that, use **Sync Subscribers**, the button on the Clients page toolbar:
+
+1. Click it. It checks your current Mailchimp and Jetpack subscriber lists against every client's Sub checkbox (you need at least one of Mailchimp or WordPress connected for this to have anything to compare against).
+2. If everything already matches, it just tells you so — nothing to do.
+3. If anything's out of sync, it opens a review list: one row per client who doesn't match, showing where they stand in the CRM, Mailchimp, and Jetpack, with a suggested action already picked for each row (leaning toward keeping someone subscribed rather than accidentally dropping them, since that's the safer default). **Nothing changes until you click Apply** — review each row, change any action you disagree with (Mark Subscribed / Mark Unsubscribed / Skip), then apply.
+4. Applying pushes the real changes the same way the checkbox does — including queuing any Jetpack removals for the manual step, if that's what a row needs.
+
+The Clients page also shows a small red count on the Sync Subscribers button whenever there are pending manual Jetpack removals waiting, so it's hard to miss that step.
 
 ---
 
