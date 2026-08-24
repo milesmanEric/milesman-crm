@@ -17450,9 +17450,18 @@ function openTaskForm(id){
         '</div>'+
       '</div>'+
       fld('Linked Supplier','<select id="tk-vendor"><option value="">None</option>'+vendorOpts+'</select>')+
-      fld('Supplier Contact',searchableSelectWrap('<select id="tk-vendor-contact"><option value="">None</option>'+vendorContactOpts+'</select>','Search contacts...'))+
-      fld('Vendor Contact',searchableSelectWrap('<select id="tk-bizvendor-contact"><option value="">None</option>'+bizVendorContactOpts+'</select>','Search contacts...'))+
-      fld('Linked Trip',searchableSelectWrap('<select id="tk-trip"><option value="">None</option>'+tripOpts+'</select>','Search trips...'))+
+      fld('Supplier Contact','<div style="display:flex;align-items:center;gap:10px">'+
+        searchableSelectWrap('<select id="tk-vendor-contact"><option value="">None</option>'+vendorContactOpts+'</select>','Search contacts...')+
+        '<span id="tk-vendor-contact-link"></span>'+
+      '</div>')+
+      fld('Vendor Contact','<div style="display:flex;align-items:center;gap:10px">'+
+        searchableSelectWrap('<select id="tk-bizvendor-contact"><option value="">None</option>'+bizVendorContactOpts+'</select>','Search contacts...')+
+        '<span id="tk-bizvendor-contact-link"></span>'+
+      '</div>')+
+      fld('Linked Trip','<div style="display:flex;align-items:center;gap:10px">'+
+        searchableSelectWrap('<select id="tk-trip"><option value="">None</option>'+tripOpts+'</select>','Search trips...')+
+        '<span id="tk-trip-link"></span>'+
+      '</div>')+
       fld('Description', '<textarea id="tk-desc" rows="3">'+(d.desc||'')+'</textarea>', true)+
     '</div>'+
     '<div class="form-actions form-actions-sticky">'+
@@ -17489,8 +17498,14 @@ function openTaskForm(id){
   });
   $('tk-vendor-contact').addEventListener('change', refreshTaskEmailFromVendorContact);
   $('tk-vendor-contact').addEventListener('change', refreshTaskPhoneFromVendorContact);
+  $('tk-vendor-contact').addEventListener('change', refreshTaskVendorContactLinkDisplay);
+  refreshTaskVendorContactLinkDisplay();
   $('tk-bizvendor-contact').addEventListener('change', refreshTaskEmailFromBizVendorContact);
   $('tk-bizvendor-contact').addEventListener('change', refreshTaskPhoneFromBizVendorContact);
+  $('tk-bizvendor-contact').addEventListener('change', refreshTaskBizVendorContactLinkDisplay);
+  refreshTaskBizVendorContactLinkDisplay();
+  $('tk-trip').addEventListener('change', refreshTaskTripLinkDisplay);
+  refreshTaskTripLinkDisplay();
 }
 // Linking clients on the task form also carries over their email(s) — the
 // primary Linked Client plus every checked Additional Client — so the
@@ -17595,17 +17610,75 @@ function updateTaskEmailLinkDisplay(){
 // always freshly created here — never reused across calls — so binding a
 // fresh click listener on it each time is safe with no stacking risk,
 // same reasoning documented on bindBalanceGridToggles() above.
+// Shared markup for every "View X ->" link below — factored out since
+// Linked Client/Linked Trip/Supplier Contact/Vendor Contact all need the
+// identical shape, just a different label, target select, and open call.
+function taskLinkedRecordSpanHtml(btnId, label){
+  return '<span id="'+btnId+'" style="color:#2563eb;cursor:pointer;font-size:12px;font-weight:600;text-decoration:underline;white-space:nowrap">'+label+' &rarr;</span>';
+}
 function refreshTaskClientLinkDisplay(){
   var clientSelect = document.getElementById('tk-client');
   var linkSpan = document.getElementById('tk-client-link');
   if(!clientSelect || !linkSpan) return;
   var cid = clientSelect.value;
   if(!cid){ linkSpan.innerHTML=''; return; }
-  linkSpan.innerHTML = '<span id="tk-client-open-btn" style="color:#2563eb;cursor:pointer;font-size:12px;font-weight:600;text-decoration:underline;white-space:nowrap">View Client &rarr;</span>';
+  linkSpan.innerHTML = taskLinkedRecordSpanHtml('tk-client-open-btn','View Client');
   var btn = document.getElementById('tk-client-open-btn');
   if(btn) btn.addEventListener('click', function(){
     closeModal();
     openClientForm(cid);
+  });
+}
+// Same freshly-created-element-every-time approach as
+// refreshTaskClientLinkDisplay() above — called once right after the task
+// form renders (covering an existing task reopened with a trip already
+// linked) and again on tk-trip's own change event.
+function refreshTaskTripLinkDisplay(){
+  var tripSelect = document.getElementById('tk-trip');
+  var linkSpan = document.getElementById('tk-trip-link');
+  if(!tripSelect || !linkSpan) return;
+  var tid = tripSelect.value;
+  if(!tid){ linkSpan.innerHTML=''; return; }
+  linkSpan.innerHTML = taskLinkedRecordSpanHtml('tk-trip-open-btn','View Trip');
+  var btn = document.getElementById('tk-trip-open-btn');
+  if(btn) btn.addEventListener('click', function(){
+    closeModal();
+    openTripForm(tid);
+  });
+}
+// A Supplier Contact isn't its own top-level record — it's nested inside a
+// Vendor's own `contacts` array (findVendorContact(), §... Vendors) — so
+// "opening" one means opening that specific contact's own editor
+// (openVendorContactForm(vendorId, contactId)), the same call the Vendor's
+// own contact list uses, not the Vendor record itself.
+function refreshTaskVendorContactLinkDisplay(){
+  var contactSelect = document.getElementById('tk-vendor-contact');
+  var linkSpan = document.getElementById('tk-vendor-contact-link');
+  if(!contactSelect || !linkSpan) return;
+  var contactId = contactSelect.value;
+  var found = contactId ? findVendorContact(contactId) : null;
+  if(!found){ linkSpan.innerHTML=''; return; }
+  linkSpan.innerHTML = taskLinkedRecordSpanHtml('tk-vendor-contact-open-btn','View Contact');
+  var btn = document.getElementById('tk-vendor-contact-open-btn');
+  if(btn) btn.addEventListener('click', function(){
+    closeModal();
+    openVendorContactForm(found.vendor.id, found.contact.id);
+  });
+}
+// Same as refreshTaskVendorContactLinkDisplay() above but for a Vendor
+// Contact (db.bizVendors — non-travel operational vendors, §... Vendors).
+function refreshTaskBizVendorContactLinkDisplay(){
+  var contactSelect = document.getElementById('tk-bizvendor-contact');
+  var linkSpan = document.getElementById('tk-bizvendor-contact-link');
+  if(!contactSelect || !linkSpan) return;
+  var contactId = contactSelect.value;
+  var found = contactId ? findBizVendorContact(contactId) : null;
+  if(!found){ linkSpan.innerHTML=''; return; }
+  linkSpan.innerHTML = taskLinkedRecordSpanHtml('tk-bizvendor-contact-open-btn','View Contact');
+  var btn = document.getElementById('tk-bizvendor-contact-open-btn');
+  if(btn) btn.addEventListener('click', function(){
+    closeModal();
+    openBizVendorContactForm(found.vendor.id, found.contact.id);
   });
 }
 // Saves the current task as-is, then opens a fresh blank task form for the
