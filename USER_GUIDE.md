@@ -178,7 +178,7 @@ If you've filled in a **Website** on a Supplier, it now shows on the card as a c
 
 A separate directory from Suppliers, for the non-travel businesses you deal with — a printer, a web host, an accountant, whoever isn't actually a travel booking partner. Each Vendor has a Name, a Category (Printing, Web/Hosting, Accounting, Legal, Marketing, Insurance, Office/Supplies, Software, Other), a Phone number, a Website, and Notes — no trip or revenue tracking, since these aren't bookings.
 
-**Contacts work exactly like Supplier Contacts** — open a Vendor and scroll to its own **Contacts** section: **+ Add Contact** opens that person's own record with a filterable Notes Log and a Tasks list with **+ Add Task**, same as everywhere else. Delete a contact with the trash icon on its row, no need to open it first.
+**Contacts work exactly like Supplier Contacts** — open a Vendor and scroll to its own **Contacts** section: **+ Add Contact** opens that person's own record with a filterable Notes Log and a Tasks list with **+ Add Task**, same as everywhere else. Delete a contact with the trash icon on its row, no need to open it first. Every contact is also clickable right on the plain Vendors list page itself — no need to open the vendor record first — each one listed under its vendor's card, along with its own **+ Add Contact** button.
 
 **Set a Website on a Vendor and it shows up in Bookmarks automatically** — no need to add it twice. It lands in the Bookmarks page's **Vendors** section, filed under the same category you picked for the vendor. Update the website (or the vendor's name/category) and the bookmark updates to match; clear the website out and the bookmark disappears.
 
