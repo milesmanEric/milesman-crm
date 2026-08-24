@@ -17440,7 +17440,10 @@ function openTaskForm(id){
       fld('Time', inp('tk-time','time',d.dueTime))+
       fld('Status','<select id="tk-done"><option value="0"'+(!d.done?' selected':'')+'>Open</option><option value="1"'+(d.done?' selected':'')+'>Done</option></select>')+
       fld('Completion Note Type', sel('tk-note-type', NOTE_TYPES, d.completionNoteType||'General'))+
-      fld('Linked Client',searchableSelectWrap('<select id="tk-client"><option value="">None</option>'+clientOpts+'</select>','Search clients...'))+
+      fld('Linked Client','<div style="display:flex;align-items:center;gap:10px">'+
+        searchableSelectWrap('<select id="tk-client"><option value="">None</option>'+clientOpts+'</select>','Search clients...')+
+        '<span id="tk-client-link"></span>'+
+      '</div>')+
       '<div class="field full"><label>Additional Clients <span class="hint" style="text-transform:none;font-weight:400">(if more than one client is tied to this task)</span></label>'+
         '<div style="border:1px solid #e5e7eb;border-radius:8px;padding:10px;max-height:180px;overflow-y:auto;background:#fafafa">'+
           (additionalClientChecks || '<div style="color:#aaa;font-size:12px">No clients yet</div>')+
@@ -17459,7 +17462,17 @@ function openTaskForm(id){
     '</div>';
 
   $('modal').classList.add('modal-wide');
-  delete $('modal').dataset.balanceTogglesBound;
+  // Deliberately does NOT clear dataset.balanceTogglesBound here, unlike
+  // openTripForm() — the Task form has no balance-grid sections at all, so
+  // there's nothing to rebind. Clearing it anyway used to leave the flag
+  // falsely unset (this form never turns it back on, since it never calls
+  // bindBalanceGridToggles()), so the next Client form opened after any
+  // Task form would bind a SECOND click listener on top of the one still
+  // attached from earlier — two listeners firing per click toggled a
+  // balance section open then immediately shut again, which looked like
+  // "expanding doesn't work," and only after a Task form had been opened
+  // at some point first, which is why it was intermittent rather than
+  // reliably broken.
   $('overlay').classList.add('open');
   $('modal-close').addEventListener('click', closeModal);
   $('modal-cancel').addEventListener('click', closeModal);
@@ -17468,6 +17481,8 @@ function openTaskForm(id){
   $('tk-email').addEventListener('input', updateTaskEmailLinkDisplay);
   $('tk-client').addEventListener('change', refreshTaskEmailFromLinkedClients);
   $('tk-client').addEventListener('change', refreshTaskPhoneFromLinkedClients);
+  $('tk-client').addEventListener('change', refreshTaskClientLinkDisplay);
+  refreshTaskClientLinkDisplay();
   document.querySelectorAll('.task-client-cb').forEach(function(cb){
     cb.addEventListener('change', refreshTaskEmailFromLinkedClients);
     cb.addEventListener('change', refreshTaskPhoneFromLinkedClients);
@@ -17569,6 +17584,29 @@ function updateTaskEmailLinkDisplay(){
   if(!emailInput || !linkSpan) return;
   var val = emailInput.value.trim();
   linkSpan.innerHTML = val ? '<a href="mailto:'+mailtoAddr(val)+'" title="Email in Outlook" style="color:#2563eb;text-decoration:none;font-size:16px;flex-shrink:0">&#9993;&#65039;</a>' : '';
+}
+// Mirrors updateTaskEmailLinkDisplay() above but for the Linked Client
+// field — lets someone jump straight to that client's own record from
+// inside the task they're editing, rather than closing out and searching
+// for them on the Clients page. Called once right after the task form
+// renders (so it also covers the initial state for an existing task,
+// rather than needing the link baked into the original HTML string too)
+// and again on tk-client's own change event. The link element itself is
+// always freshly created here — never reused across calls — so binding a
+// fresh click listener on it each time is safe with no stacking risk,
+// same reasoning documented on bindBalanceGridToggles() above.
+function refreshTaskClientLinkDisplay(){
+  var clientSelect = document.getElementById('tk-client');
+  var linkSpan = document.getElementById('tk-client-link');
+  if(!clientSelect || !linkSpan) return;
+  var cid = clientSelect.value;
+  if(!cid){ linkSpan.innerHTML=''; return; }
+  linkSpan.innerHTML = '<span id="tk-client-open-btn" style="color:#2563eb;cursor:pointer;font-size:12px;font-weight:600;text-decoration:underline;white-space:nowrap">View Client &rarr;</span>';
+  var btn = document.getElementById('tk-client-open-btn');
+  if(btn) btn.addEventListener('click', function(){
+    closeModal();
+    openClientForm(cid);
+  });
 }
 // Saves the current task as-is, then opens a fresh blank task form for the
 // user to schedule next — carrying forward the same client/supplier/trip
