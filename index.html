@@ -1432,15 +1432,49 @@ function taskClientIds(t){
 function taskClients(t){
   return taskClientIds(t).map(function(cid){return db.clients.find(function(c){return c.id===cid;});}).filter(Boolean);
 }
+// Counts how many distinct "things" this client's own db.trips records
+// actually represent — matching what the Trips page itself would show as
+// separate collapsed rows if filtered down to just this client, not a raw
+// per-record count. Two trip records collapse into one count whenever
+// either is true:
+//   - they share the same invoice number (a revenue import can split one
+//     real booking into several line-item trip records, e.g. flight +
+//     hotel) — checked as t.invoiceNum||t.bookingRef, the same fallback
+//     §2's invoiceNum field docs and the Invoices report already use,
+//     since invoiceNum is only ever set by the revenue importer while
+//     bookingRef is the manual trip form's own "Invoice Number" field;
+//     treating only one of the two as authoritative here silently broke
+//     this dedup for every trip that was never revenue-imported
+//   - they're in the same Linked Trips group (tripLinkGroups() — a
+//     multi-city vacation deliberately joined into one cluster, the exact
+//     grouping the Trips page's own collapsed summary lines are built
+//     from), even if their invoice numbers differ or are blank
+// A trip with neither an invoice number nor any Linked Trips membership
+// still counts on its own, same as before this collapsed-group folding
+// was added. Union-find over just this client's own trips, rather than
+// reusing tripGroupKey()/countTripSummaryLines() directly, since those
+// operate on tripLinkGroups() membership alone and don't know about
+// invoice-number sharing at all.
 function countDistinctTrips(clientId){
   var trips = db.trips.filter(function(t){return t.clientId===clientId || (t.clientIds||[]).includes(clientId);});
-  var seen = {};
-  var count = 0;
-  trips.forEach(function(t){
-    var key = t.invoiceNum || t.id; // fall back to trip id if no invoice number
-    if(!seen[key]){ seen[key]=true; count++; }
-  });
-  return count;
+  if(!trips.length) return 0;
+  var linkedGroupOf = tripLinkGroups();
+  var parent = {};
+  trips.forEach(function(t){ parent[t.id] = t.id; });
+  function find(id){ while(parent[id]!==id){ id = parent[id]; } return id; }
+  function union(a,b){ var ra=find(a), rb=find(b); if(ra!==rb) parent[ra]=rb; }
+  for(var i=0;i<trips.length;i++){
+    for(var j=i+1;j<trips.length;j++){
+      var a=trips[i], b=trips[j];
+      var aInv = a.invoiceNum||a.bookingRef, bInv = b.invoiceNum||b.bookingRef;
+      var sameInvoice = aInv && bInv && aInv===bInv;
+      var sameLinkedGroup = (linkedGroupOf[a.id]||[]).some(function(m){return m.id===b.id;});
+      if(sameInvoice || sameLinkedGroup) union(a.id, b.id);
+    }
+  }
+  var roots = {};
+  trips.forEach(function(t){ roots[find(t.id)] = true; });
+  return Object.keys(roots).length;
 }
 function countDistinctInvoicesIn(tripList){
   var seen = {};
