@@ -33,7 +33,6 @@
   button[type="submit"]:hover{background:#1d4ed8}
   button[type="submit"]:disabled{background:#93c5fd;cursor:not-allowed}
   .footnote{text-align:center;font-size:12px;color:#999;margin-top:16px}
-  #no-client-warning{display:none;background:#fffbeb;color:#92400e;border:1px solid #fde68a;border-radius:10px;padding:12px 14px;font-size:12px;margin-bottom:16px}
 </style>
 </head>
 <body>
@@ -52,10 +51,20 @@
       <span>This upload goes straight to a private, internal file store — it is never emailed, never stored in this page, and nobody can view it by guessing this link. Only Miles Man staff can retrieve it.</span>
     </div>
 
-    <div id="no-client-warning">This link is missing your client information, so we can't automatically match your upload to your file. Please request a fresh link, or contact us directly instead of uploading here.</div>
     <div id="error-msg"></div>
 
     <form id="cc-auth-form">
+      <div id="identify-fields" style="display:none">
+        <div class="field">
+          <label>Your Full Name *</label>
+          <input type="text" id="identify-name" placeholder="Jane Smith">
+        </div>
+        <div class="field">
+          <label>Your Email *</label>
+          <div class="hint">So we can match this to the right file if we need to follow up.</div>
+          <input type="email" id="identify-email" placeholder="jane@example.com">
+        </div>
+      </div>
       <div class="field">
         <label>Completed Credit Card Authorization Form (PDF only) *</label>
         <div class="hint">Max file size 8&nbsp;MB. Make sure the form is fully filled out and signed before uploading.</div>
@@ -79,21 +88,23 @@
 
 <script>
   // ── Client identification ────────────────────────────────────────────
-  // Every link is generated per-client from the CRM (index.html's "Copy
-  // Upload Link" button on a client record), embedding cid/name in the
-  // query string — that's the only way this stateless, login-free page
-  // knows whose file this is. A link opened without those params (typo,
-  // forwarded incorrectly, someone guessing the bare URL) still lets the
-  // upload go through server-side, but warns here since staff would have
-  // to match it up by hand afterward.
+  // Two ways this page learns whose upload this is:
+  //  1. A personalized link generated per-client from the CRM (index.html's
+  //     "Copy Upload Link" button on a client record), embedding cid/name
+  //     in the query string — greets by name, no extra typing needed.
+  //  2. This exact bare URL (no query string at all), meant to be posted
+  //     as one static link on the website itself — since there's no client
+  //     record to attach to yet, this page instead asks for name/email
+  //     directly so staff can still match the upload to the right person.
   var params = new URLSearchParams(window.location.search);
   var clientId = (params.get('cid')||'').trim();
   var clientName = (params.get('name')||'').trim();
+  var identifyNameInput = document.getElementById('identify-name');
+  var identifyEmailInput = document.getElementById('identify-email');
   if(clientName){
     document.getElementById('greeting').textContent = 'Hi '+clientName+' — upload your completed, signed authorization form below.';
-  }
-  if(!clientId){
-    document.getElementById('no-client-warning').style.display = 'block';
+  } else {
+    document.getElementById('identify-fields').style.display = 'block';
   }
 
   // ── Same milesman-auth Vercel proxy every other integration in this app
@@ -177,6 +188,22 @@
   form.addEventListener('submit', function(e){
     e.preventDefault();
     clearError();
+
+    // On the generic (no cid) link, name/email typed in here ARE the
+    // client identification — clientName from the query string is empty
+    // in this case, so this becomes what gets sent and what shows up in
+    // the Drive filename for staff to match against.
+    var submittedName = clientName;
+    var submittedEmail = '';
+    if(!clientId){
+      submittedName = (identifyNameInput.value||'').trim();
+      submittedEmail = (identifyEmailInput.value||'').trim();
+      if(!submittedName || !submittedEmail){
+        showError('Please enter your name and email before uploading.');
+        return;
+      }
+    }
+
     if(!selectedFile){
       showError('Please choose the completed PDF first.');
       return;
@@ -189,7 +216,8 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           clientId: clientId,
-          clientName: clientName,
+          clientName: submittedName,
+          clientEmail: submittedEmail,
           filename: selectedFile.name,
           fileBase64: base64
         })

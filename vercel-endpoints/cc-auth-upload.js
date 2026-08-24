@@ -194,6 +194,10 @@ module.exports = async (req, res) => {
   const body = req.body || {};
   const clientId = (body.clientId || '').toString().trim();
   const clientName = (body.clientName || '').toString().trim();
+  // Only ever populated from the generic (no cid) link, where the visitor
+  // typed their own name/email in directly since there's no CRM record to
+  // pull them from yet — see cc-auth-upload.html's identify-fields.
+  const clientEmail = (body.clientEmail || '').toString().trim();
   const filename = (body.filename || '').toString().trim();
   const fileBase64 = body.fileBase64;
 
@@ -232,7 +236,10 @@ module.exports = async (req, res) => {
     const folderId = await getUploadFolderId(accessToken);
 
     const namePart = sanitizeForFilename(clientName) || 'Unknown Client';
-    const idPart = sanitizeForFilename(clientId) || 'no-id';
+    // Prefer the real CRM client id (personalized link); fall back to
+    // whatever email the visitor typed in on the generic link, since
+    // that's a far more useful matching key for staff than "no-id".
+    const idPart = sanitizeForFilename(clientId) || sanitizeForFilename(clientEmail) || 'no-id';
     const stamp = new Date().toISOString().replace(/[:.]/g, '-');
     const driveFilename = 'CC Auth - ' + namePart + ' (' + idPart + ') - ' + stamp + '.pdf';
 
