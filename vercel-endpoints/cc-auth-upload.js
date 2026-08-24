@@ -27,20 +27,21 @@
 //                               same value Secure Sync setup already used)
 // No new env vars needed if Secure Sync (§4.1a) is already configured.
 //
-// WHY UPLOADS SHOULD SHOW UP IN THE CRM'S OWN "Browse Google Drive" PICKER:
-// both this server-side credential and the CRM's own browser-side Drive
-// connection are issued to the same OAuth Client ID (DRIVE_CLIENT_ID,
-// hardcoded below to match index.html) for the same Google account under
-// drive.file scope, which grants access per (app, file) rather than per
-// individual token — in practice this means a folder/file created by one
-// token for that client ID is visible to any other token for the same
-// client ID + account, including the CRM's own picker. This has NOT been
-// independently confirmed against a live upload+browse round trip (the
-// environment this was built in has no way to test a real Drive upload) —
-// if a client's uploaded PDF doesn't turn up in the CRM's Drive picker,
-// check the Google Drive web UI directly (search "Credit Card Authorization
-// Forms") before assuming the upload failed; the file is very likely there
-// even if the picker can't surface it for some scope reason not caught here.
+// WHETHER UPLOADS SHOW UP IN THE CRM'S OWN "Browse Google Drive" PICKER IS
+// GENUINELY UNCERTAIN — treat this with real caution, not optimism. A live
+// test against a real account already confirmed drive.file scope is
+// stricter than hoped: this server-side credential could NOT see a "Miles
+// Man" folder the account owner created by hand in the Drive website (see
+// getUploadFolderId()'s comment below) — only folders it created itself
+// were visible to it. Whether the CRM's own separate browser-side
+// drive.file token (same OAuth Client ID, same account, but a DIFFERENT
+// authorization grant) can see folders THIS credential created is a
+// different question that hasn't been tested either way. If a client's
+// uploaded PDF doesn't turn up in the CRM's Drive picker, that's not
+// necessarily a failed upload — check the Google Drive web UI directly
+// (drive.google.com, under whichever account owns DRIVE_SERVER_REFRESH_TOKEN,
+// search "Credit Card Authorization Forms") before assuming anything went
+// wrong; the file is very likely there regardless of what the picker shows.
 //
 // FILE SIZE: capped at 8MB (MAX_BYTES below), matching cc-auth-upload.html's
 // own client-side cap — keep the two in sync if this is ever changed.
@@ -120,12 +121,55 @@ async function getOrCreateFolder(accessToken, name, parentId) {
   return createData.id;
 }
 
-// Resolves (creating if needed) My Drive / Miles Man / Credit Card
-// Authorization Forms — nested under the same top-level "Miles Man" folder
-// the account already uses, rather than a new folder loose at the Drive
-// root. "Miles Man" itself is looked up directly under 'root' so it can't
-// accidentally match a same-named folder living somewhere else.
+// Finds a folder by name ANYWHERE this credential has access to, with no
+// parent constraint at all. Used only for the one-time "does the upload
+// folder already exist" check below — deliberately looser than
+// getOrCreateFolder()'s parent-scoped lookup, because drive.file scope
+// (§4.1) only grants an app visibility into files/folders it created (or
+// that were explicitly opened with it via a Picker) REGARDLESS of where
+// they currently live in the account. This is what makes a one-time manual
+// re-parenting in the Drive UI (see below) stick permanently, instead of
+// this code re-creating a fresh duplicate on every future request.
+async function findFolderAnywhere(accessToken, name) {
+  const q = "mimeType='application/vnd.google-apps.folder' and name='" + name + "' and trashed=false";
+  const listUrl = DRIVE_FILES_URL + '?q=' + encodeURIComponent(q) + '&fields=' + encodeURIComponent('files(id,name)');
+  const listRes = await fetch(listUrl, { headers: { Authorization: 'Bearer ' + accessToken } });
+  const listData = await listRes.json();
+  if (listRes.ok && listData.files && listData.files.length) {
+    return listData.files[0].id;
+  }
+  return null;
+}
+
+// Resolves the Credit Card Authorization Forms upload folder.
+//
+// CONFIRMED (not just suspected) against a real account: drive.file scope
+// means this server credential cannot see a "Miles Man" folder the account
+// owner created by hand in the Drive website — only folders THIS credential
+// itself created are visible to it, no matter the folder name or location.
+// A naive "find Miles Man under root, then find/create Credit Card
+// Authorization Forms under that" (the original approach) therefore never
+// finds the real, hand-created Miles Man folder and creates a brand new,
+// separate one on every cold start — Drive allows duplicate folder names,
+// so this silently produces a fresh "Miles Man" duplicate (shown in Drive's
+// own UI with a "(1)"/"(2)" disambiguation suffix) instead of erroring.
+//
+// The fix: check for an existing "Credit Card Authorization Forms" folder
+// by name FIRST, with no parent constraint (findFolderAnywhere above) —
+// this finds it wherever it currently lives, including after being moved.
+// Combined with a ONE-TIME manual step (move the folder this credential
+// created into the account's real "Miles Man" folder, then delete the
+// leftover empty duplicate), every future request finds that exact same
+// folder by its Drive file ID and reuses it — moving a file never changes
+// its ID or this credential's access to it, only which folder currently
+// contains it. Only on a true first run (no Credit Card Authorization
+// Forms folder exists anywhere this credential can see) does this fall
+// back to creating a fresh Miles Man + Credit Card Authorization Forms
+// pair from scratch.
 async function getUploadFolderId(accessToken) {
+  const existing = await findFolderAnywhere(accessToken, FOLDER_NAME);
+  if (existing) return existing;
+
   const milesManId = await getOrCreateFolder(accessToken, PARENT_FOLDER_NAME, 'root');
   return getOrCreateFolder(accessToken, FOLDER_NAME, milesManId);
 }
