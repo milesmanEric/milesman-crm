@@ -4879,6 +4879,16 @@ opts.pricingRowsHtml+
 (opts.extraIncludedHtml||'')+
 '</td>'+
 '</tr>'+
+((opts.gratuities||opts.voyageProtection)?(
+'<tr>'+
+'<td style="padding:0 32px;">'+
+'<p style="font-family:\'Times New Roman\',Times,serif; font-size:14px; color:#333333; line-height:1.5; margin:0 0 16px 0;">'+
+(opts.gratuities?'<strong>Gratuities:</strong> $'+escHtml(opts.gratuities)+'<br>':'')+
+(opts.voyageProtection?'<strong>Voyage Protection:</strong> $'+escHtml(opts.voyageProtection):'')+
+'</p>'+
+'</td>'+
+'</tr>'
+):'')+
 (opts.notes?(
 '<tr>'+
 '<td style="padding:0 32px;">'+
@@ -5481,6 +5491,12 @@ function openEmailQuoteModal(){
           '<div style="color:#aaa;font-size:12px">Select a cruise line to build the pricing table</div>'+
         '</div>'+
       '</div>'+
+      '<div class="field full"><label>Gratuities &amp; Voyage Protection <span class="hint" style="text-transform:none;font-weight:400">(optional — one total for the whole quote, shown as its own line rather than per cabin)</span></label>'+
+        '<div style="display:flex;gap:10px">'+
+          inp('eq-gratuities','text','','Gratuities, e.g. 150')+
+          inp('eq-voyage-protection','text','','Voyage Protection, e.g. 129')+
+        '</div>'+
+      '</div>'+
       '<div class="field full"><label>Additional Notes</label><textarea id="eq-notes" rows="3" placeholder="Optional extra details to include in the email"></textarea></div>'+
       '<div class="field full" id="eq-preview-wrap" style="display:none">'+
         '<label>Preview</label>'+
@@ -5560,6 +5576,9 @@ function openEmailQuoteModal(){
     if(adults) guestsParts.push(adults+' Adult'+(adults==='1'?'':'s'));
     if(children && children!=='0') guestsParts.push(children+' Child'+(children==='1'?'':'ren'));
 
+    var gratuities = gv('eq-gratuities');
+    var voyageProtection = gv('eq-voyage-protection');
+
     var meta = {
       clientFirstName: client?getFirstName(client.name):'',
       ship: ship,
@@ -5568,13 +5587,15 @@ function openEmailQuoteModal(){
       returnDate: gv('eq-return-date'),
       nights: computeNights(sailingDate, gv('eq-return-date')),
       guests: guestsParts.join(', '),
+      gratuities: gratuities,
+      voyageProtection: voyageProtection,
       depositAmount: gv('eq-deposit'),
       paymentDeadline: gv('eq-payment-deadline'),
       finalPaymentDate: gv('eq-final-payment'),
       notes: notes
     };
 
-    return {cruiseLine:cruiseLine, ship:ship, sailingDate:sailingDate, client:client, notes:notes, lines:lines, templateEntries:templateEntries, meta:meta};
+    return {cruiseLine:cruiseLine, ship:ship, sailingDate:sailingDate, client:client, notes:notes, lines:lines, templateEntries:templateEntries, gratuities:gratuities, voyageProtection:voyageProtection, meta:meta};
   }
 
   function buildTemplateHtml(d){
@@ -5614,6 +5635,8 @@ function openEmailQuoteModal(){
     var noteBody = ['Cruise Line: '+d.cruiseLine];
     if(d.ship) noteBody.push('Ship: '+d.ship);
     if(d.sailingDate) noteBody.push('Sailing Date: '+d.sailingDate);
+    if(d.gratuities) noteBody.push('Gratuities: $'+d.gratuities);
+    if(d.voyageProtection) noteBody.push('Voyage Protection: $'+d.voyageProtection);
     noteBody.push('');
     noteBody = noteBody.concat(d.lines);
     var note = {ts:ts, text:'Quote: '+subject+'\n'+noteBody.join('\n'), noteType:'Email Sent'};
@@ -5647,6 +5670,8 @@ function openEmailQuoteModal(){
       var bodyParts = ['Cruise Line: '+d.cruiseLine];
       if(d.ship) bodyParts.push('Ship: '+d.ship);
       if(d.sailingDate) bodyParts.push('Sailing Date: '+d.sailingDate);
+      if(d.gratuities) bodyParts.push('Gratuities: $'+d.gratuities);
+      if(d.voyageProtection) bodyParts.push('Voyage Protection: $'+d.voyageProtection);
       bodyParts.push('');
       bodyParts=bodyParts.concat(d.lines);
       if(d.notes){bodyParts.push('');bodyParts.push(d.notes);}
