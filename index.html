@@ -4842,6 +4842,13 @@ function quoteEmailBodyHtml(opts){
 '</table>'+
 '</td>'+
 '</tr>'+
+(opts.optionLabel?(
+'<tr>'+
+'<td style="padding:20px 32px 0 32px;">'+
+'<span style="display:inline-block; font-family:\'Times New Roman\',Times,serif; background-color:#1a1aff; color:#ffffff; font-size:12px; font-weight:bold; padding:4px 12px; border-radius:12px; letter-spacing:.02em;">'+escHtml(opts.optionLabel)+'</span>'+
+'</td>'+
+'</tr>'
+):'')+
 '<tr>'+
 '<td style="padding:32px 32px 8px 32px;">'+
 '<p style="font-family:\'Times New Roman\',Times,serif; font-size:14px; color:#111111; margin:0 0 16px 0;">Hi '+escHtml(opts.clientFirstName||'there')+',</p>'+
@@ -4919,17 +4926,25 @@ opts.pricingRowsHtml+
 '</tr>'+
 '</table>';
 }
-function quoteEmailShellHtml(opts){
+// Shared by quoteEmailShellHtml() (single quote) and the multi-date "Add
+// Another Date" flow in openEmailQuoteModal() (several already-built body
+// blocks concatenated together, wrapped in one shell for the iframe
+// preview) — the doctype/head/body wrapper is identical either way, only
+// what goes inside <body> differs.
+function wrapEmailShell(bodyHtml, docTitle){
   return '<!DOCTYPE html>'+
 '<html lang="en">'+
 '<head>'+
 '<meta charset="UTF-8">'+
-'<title>'+escHtml(opts.docTitle)+'</title>'+
+'<title>'+escHtml(docTitle||'')+'</title>'+
 '</head>'+
 '<body style="margin:0; padding:0; background-color:#f4f5f7; font-family:\'Times New Roman\',Times,serif; font-size:14px;">'+
-quoteEmailBodyHtml(opts)+
+bodyHtml+
 '</body>'+
 '</html>';
+}
+function quoteEmailShellHtml(opts){
+  return wrapEmailShell(quoteEmailBodyHtml(opts), opts.docTitle);
 }
 // entries: array of {cabin, fareType, price, gratuities, protection} (fareType/gratuities/protection optional)
 function virginVoyagesQuoteOpts(entries, meta){
@@ -4969,7 +4984,6 @@ function virginVoyagesQuoteOpts(entries, meta){
       '<li>Soft drinks, coffee, and tea</li>'
   }, meta);
 }
-function virginVoyagesQuoteHtml(entries, meta){ return quoteEmailShellHtml(virginVoyagesQuoteOpts(entries, meta)); }
 function virginVoyagesQuoteBodyHtml(entries, meta){ return quoteEmailBodyHtml(virginVoyagesQuoteOpts(entries, meta)); }
 // entries: array of {cabin, farePackage, price, cancellation, platinum, princessPlus, princessPremier}
 function princessQuoteOpts(entries, meta){
@@ -5047,7 +5061,6 @@ function princessQuoteOpts(entries, meta){
     extraIncludedHtml:extraIncludedHtml
   }, meta);
 }
-function princessQuoteHtml(entries, meta){ return quoteEmailShellHtml(princessQuoteOpts(entries, meta)); }
 function princessQuoteBodyHtml(entries, meta){ return quoteEmailBodyHtml(princessQuoteOpts(entries, meta)); }
 // entries: array of {cabin, price, insurance, addons} (insurance/addons optional) —
 // Royal Caribbean doesn't have named fare packages like Virgin/Princess, so this
@@ -5086,7 +5099,6 @@ function royalCaribbeanQuoteOpts(entries, meta){
       '<li>Stateroom accommodations</li>'
   }, meta);
 }
-function royalCaribbeanQuoteHtml(entries, meta){ return quoteEmailShellHtml(royalCaribbeanQuoteOpts(entries, meta)); }
 function royalCaribbeanQuoteBodyHtml(entries, meta){ return quoteEmailBodyHtml(royalCaribbeanQuoteOpts(entries, meta)); }
 // entries: array of {cabin, price, insurance, addons} (insurance/addons optional) —
 // like Royal Caribbean, none of these three ultra-luxury lines have named fare
@@ -5128,7 +5140,6 @@ function ritzCarltonYachtsQuoteOpts(entries, meta){
       '<li>WiFi</li>'
   }, meta);
 }
-function ritzCarltonYachtsQuoteHtml(entries, meta){ return quoteEmailShellHtml(ritzCarltonYachtsQuoteOpts(entries, meta)); }
 function ritzCarltonYachtsQuoteBodyHtml(entries, meta){ return quoteEmailBodyHtml(ritzCarltonYachtsQuoteOpts(entries, meta)); }
 
 function seabournQuoteOpts(entries, meta){
@@ -5166,7 +5177,6 @@ function seabournQuoteOpts(entries, meta){
       '<li>WiFi</li>'
   }, meta);
 }
-function seabournQuoteHtml(entries, meta){ return quoteEmailShellHtml(seabournQuoteOpts(entries, meta)); }
 function seabournQuoteBodyHtml(entries, meta){ return quoteEmailBodyHtml(seabournQuoteOpts(entries, meta)); }
 
 function exploraJourneysQuoteOpts(entries, meta){
@@ -5204,7 +5214,6 @@ function exploraJourneysQuoteOpts(entries, meta){
       '<li>WiFi</li>'
   }, meta);
 }
-function exploraJourneysQuoteHtml(entries, meta){ return quoteEmailShellHtml(exploraJourneysQuoteOpts(entries, meta)); }
 function exploraJourneysQuoteBodyHtml(entries, meta){ return quoteEmailBodyHtml(exploraJourneysQuoteOpts(entries, meta)); }
 
 // Windstar isn't an all-inclusive line like the three above, so this mirrors
@@ -5244,7 +5253,6 @@ function windstarQuoteOpts(entries, meta){
       '<li>Stateroom accommodations</li>'
   }, meta);
 }
-function windstarQuoteHtml(entries, meta){ return quoteEmailShellHtml(windstarQuoteOpts(entries, meta)); }
 function windstarQuoteBodyHtml(entries, meta){ return quoteEmailBodyHtml(windstarQuoteOpts(entries, meta)); }
 
 // ── Save a quote PDF to Google Drive ────────────────────────────────────
@@ -5491,6 +5499,11 @@ function openEmailQuoteModal(){
           '<div style="color:#aaa;font-size:12px">Select a cruise line to build the pricing table</div>'+
         '</div>'+
       '</div>'+
+      '<div class="field full" id="eq-saved-options" style="display:none"></div>'+
+      '<div class="field full">'+
+        '<button type="button" id="eq-add-date" class="cancel-btn" style="padding:7px 14px">+ Add Another Date to This Quote</button>'+
+        '<div style="color:#888;font-size:11px;margin-top:4px">Saves the Sailing/Return Date and pricing above as one option in this email, then clears just those two so you can enter another date to compare. Everything else (ship, itinerary, notes, etc.) carries over as a starting point — change anything that should differ for the next date before adding it.</div>'+
+      '</div>'+
       '<div class="field full"><label>Gratuities &amp; Voyage Protection <span class="hint" style="text-transform:none;font-weight:400">(optional — one total for the whole quote, shown as its own line rather than per cabin)</span></label>'+
         '<div style="display:flex;gap:10px">'+
           inp('eq-gratuities','text','','Gratuities, e.g. 150')+
@@ -5519,13 +5532,22 @@ function openEmailQuoteModal(){
     document.getElementById('eq-preview-wrap').style.display = 'none';
   });
 
+  // Each entry is a full collectQuoteData() snapshot — "+ Add Another Date"
+  // (below) pushes the form's current state here and clears just the date/
+  // pricing fields, so a single email can carry more than one dated option
+  // for the client to compare (see buildAllOptions()).
+  var savedOptions = [];
+
   // Reads the pricing grid + form fields and builds everything the send/preview
   // actions need: the plain-text summary lines (always) and, for template
   // lines, the {cabin,fareType/farePackage,price,...} entries the HTML
-  // builders expect.
-  function collectQuoteData(){
+  // builders expect. silentIfEmpty suppresses the "Select a cruise line"
+  // toast — used when re-collecting the current form at send/preview time
+  // and there are already saved date options, so an intentionally-blank
+  // trailing form (nothing more to add) doesn't surface a spurious error.
+  function collectQuoteData(silentIfEmpty){
     var cruiseLine = gv('eq-cruise-line');
-    if(!cruiseLine){toast('Select a cruise line','err');return null;}
+    if(!cruiseLine){ if(!silentIfEmpty) toast('Select a cruise line','err'); return null; }
     var ship = gv('eq-ship');
     var sailingDate = gv('eq-sailing-date');
     var clientId = gv('eq-client');
@@ -5598,15 +5620,83 @@ function openEmailQuoteModal(){
     return {cruiseLine:cruiseLine, ship:ship, sailingDate:sailingDate, client:client, notes:notes, lines:lines, templateEntries:templateEntries, gratuities:gratuities, voyageProtection:voyageProtection, meta:meta};
   }
 
-  function buildTemplateHtml(d){
-    if(d.cruiseLine==='Virgin Voyages') return virginVoyagesQuoteHtml(d.templateEntries, d.meta);
-    if(d.cruiseLine==='Royal Caribbean') return royalCaribbeanQuoteHtml(d.templateEntries, d.meta);
-    if(d.cruiseLine==='Ritz Carlton Yachts') return ritzCarltonYachtsQuoteHtml(d.templateEntries, d.meta);
-    if(d.cruiseLine==='Seabourn') return seabournQuoteHtml(d.templateEntries, d.meta);
-    if(d.cruiseLine==='Explora Journeys') return exploraJourneysQuoteHtml(d.templateEntries, d.meta);
-    if(d.cruiseLine==='Windstar') return windstarQuoteHtml(d.templateEntries, d.meta);
-    return princessQuoteHtml(d.templateEntries, d.meta);
+  function renderSavedOptionsList(){
+    var wrap = document.getElementById('eq-saved-options');
+    if(!wrap) return;
+    if(!savedOptions.length){ wrap.innerHTML=''; wrap.style.display='none'; return; }
+    wrap.style.display='block';
+    wrap.innerHTML = '<label>Dates Added to This Quote ('+savedOptions.length+')</label>'+
+      savedOptions.map(function(d,i){
+        return '<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;border:1px solid #e5e7eb;border-radius:6px;margin-bottom:6px;background:#fafafa;font-size:12px">'+
+          '<span>Option '+(i+1)+': '+escHtml(d.cruiseLine)+(d.ship?' — '+escHtml(d.ship):'')+(d.sailingDate?' — '+fmtDate(d.sailingDate):'')+'</span>'+
+          '<button type="button" class="eq-remove-option cancel-btn" data-idx="'+i+'" style="padding:2px 8px">Remove</button>'+
+        '</div>';
+      }).join('');
+    wrap.querySelectorAll('.eq-remove-option').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        savedOptions.splice(parseInt(btn.dataset.idx,10),1);
+        renderSavedOptionsList();
+      });
+    });
   }
+  document.getElementById('eq-add-date').addEventListener('click', function(){
+    var d = collectQuoteData();
+    if(!d) return;
+    savedOptions.push(d);
+    renderSavedOptionsList();
+    document.getElementById('eq-sailing-date').value='';
+    document.getElementById('eq-return-date').value='';
+    document.querySelectorAll('.quote-cell').forEach(function(el){ el.value=''; });
+    document.getElementById('eq-preview-wrap').style.display='none';
+    toast('Added as Option '+savedOptions.length+' — enter the next date below, or send/preview now');
+  });
+  function currentGridHasAnyValue(){
+    var any=false;
+    document.querySelectorAll('.quote-cell').forEach(function(el){ if(el.value.trim()) any=true; });
+    return any;
+  }
+  // Combines every saved date option with whatever's currently on the form
+  // (if it has new pricing entered) into the final list to preview/send.
+  // With no saved options this always falls through to collectQuoteData()'s
+  // own validation/toasting, so a single quote (the common case) behaves
+  // exactly as before "Add Another Date" existed.
+  function buildAllOptions(){
+    var current = null;
+    if(currentGridHasAnyValue() || !savedOptions.length){
+      current = collectQuoteData(savedOptions.length>0);
+      if(!current){
+        if(savedOptions.length>0) return savedOptions.slice();
+        return null;
+      }
+    }
+    var all = savedOptions.concat(current?[current]:[]);
+    if(!all.length){ toast('Add at least one quote','err'); return null; }
+    return all;
+  }
+  // Plain-text summary lines shared by the non-templated cruise-line send
+  // path and the multi-option HTML body (where a plain-line option still
+  // needs to render as one more block alongside any styled-template ones).
+  function plainQuoteBodyParts(d){
+    var bodyParts = d.meta&&d.meta.optionLabel ? ['— '+d.meta.optionLabel+' —', ''] : [];
+    bodyParts.push('Cruise Line: '+d.cruiseLine);
+    if(d.ship) bodyParts.push('Ship: '+d.ship);
+    if(d.sailingDate) bodyParts.push('Sailing Date: '+d.sailingDate);
+    if(d.gratuities) bodyParts.push('Gratuities: $'+d.gratuities);
+    if(d.voyageProtection) bodyParts.push('Voyage Protection: $'+d.voyageProtection);
+    bodyParts.push('');
+    bodyParts = bodyParts.concat(d.lines);
+    if(d.notes){bodyParts.push('');bodyParts.push(d.notes);}
+    return bodyParts;
+  }
+  // One rendered body block per option — a styled template for the seven
+  // QUOTE_TEMPLATE_LINES, the plain fallback box for everything else — set
+  // up to stack cleanly into one combined email when there's more than one.
+  function quoteOptionBodyHtml(d){
+    return QUOTE_TEMPLATE_LINES.indexOf(d.cruiseLine)!==-1
+      ? buildTemplateBodyHtml(d)
+      : plainQuoteBodyHtml(plainQuoteBodyParts(d), d.cruiseLine+' Quote');
+  }
+
   function buildTemplateBodyHtml(d){
     if(d.cruiseLine==='Virgin Voyages') return virginVoyagesQuoteBodyHtml(d.templateEntries, d.meta);
     if(d.cruiseLine==='Royal Caribbean') return royalCaribbeanQuoteBodyHtml(d.templateEntries, d.meta);
@@ -5617,64 +5707,80 @@ function openEmailQuoteModal(){
     return princessQuoteBodyHtml(d.templateEntries, d.meta);
   }
 
+  // Only set (and only rendered — see quoteEmailBodyHtml's opts.optionLabel)
+  // once there's more than one option, so a single quote looks exactly as
+  // it always has — no "Option 1" badge for the common case.
+  function labelOptionsIfMultiple(all){
+    if(all.length<2) return;
+    all.forEach(function(d,i){
+      d.meta.optionLabel = 'Option '+(i+1)+(d.sailingDate?': '+fmtDate(d.sailingDate):'');
+    });
+  }
+
   document.getElementById('eq-preview').addEventListener('click', function(){
-    var d = collectQuoteData();
-    if(!d) return;
-    if(QUOTE_TEMPLATE_LINES.indexOf(d.cruiseLine)===-1){toast('Preview is only available for '+QUOTE_TEMPLATE_LINES.join(', ')+' quotes','err');return;}
-    if(!d.templateEntries.length){toast('Enter a price in at least one row','err');return;}
-    var html = buildTemplateHtml(d);
+    var all = buildAllOptions();
+    if(!all) return;
+    labelOptionsIfMultiple(all);
+    var bodyHtml = all.map(quoteOptionBodyHtml).join('');
     var wrap = document.getElementById('eq-preview-wrap');
     wrap.style.display = 'block';
-    document.getElementById('eq-preview-frame').srcdoc = html;
+    document.getElementById('eq-preview-frame').srcdoc = wrapEmailShell(bodyHtml, 'Quote Preview');
     wrap.scrollIntoView({behavior:'smooth', block:'nearest'});
   });
 
-  function logQuoteNote(d, subject){
-    if(!d.client) return;
+  // Logs ONE note per send (not one per option) — a client comparing three
+  // dates in one email got one email, so it reads as one activity entry too,
+  // each option's own lines set off by an "— Option N —" divider when
+  // there's more than one.
+  function logQuoteNote(all, subject){
+    var client = all[0].client;
+    if(!client) return;
     var ts = tsNow();
-    var noteBody = ['Cruise Line: '+d.cruiseLine];
-    if(d.ship) noteBody.push('Ship: '+d.ship);
-    if(d.sailingDate) noteBody.push('Sailing Date: '+d.sailingDate);
-    if(d.gratuities) noteBody.push('Gratuities: $'+d.gratuities);
-    if(d.voyageProtection) noteBody.push('Voyage Protection: $'+d.voyageProtection);
-    noteBody.push('');
-    noteBody = noteBody.concat(d.lines);
+    var noteBody = [];
+    all.forEach(function(d,i){
+      if(all.length>1) noteBody.push('— Option '+(i+1)+(d.sailingDate?': '+d.sailingDate:'')+' —');
+      noteBody.push('Cruise Line: '+d.cruiseLine);
+      if(d.ship) noteBody.push('Ship: '+d.ship);
+      if(d.sailingDate) noteBody.push('Sailing Date: '+d.sailingDate);
+      if(d.gratuities) noteBody.push('Gratuities: $'+d.gratuities);
+      if(d.voyageProtection) noteBody.push('Voyage Protection: $'+d.voyageProtection);
+      noteBody.push('');
+      noteBody = noteBody.concat(d.lines);
+      noteBody.push('');
+    });
     var note = {ts:ts, text:'Quote: '+subject+'\n'+noteBody.join('\n'), noteType:'Email Sent'};
     db.clients = db.clients.map(function(c){
-      if(c.id!==d.client.id) return c;
+      if(c.id!==client.id) return c;
       var notesLog = Array.isArray(c.notesLog)?c.notesLog.concat([note]):[note];
       return Object.assign({},c,{notesLog:notesLog});
     });
     saveDB(); render();
   }
   document.getElementById('eq-send').addEventListener('click', function(){
-    var d = collectQuoteData();
-    if(!d) return;
-    var subject = d.cruiseLine+' Cruise Quote'+(d.ship?' - '+d.ship:'');
-    var isTemplateLine = QUOTE_TEMPLATE_LINES.indexOf(d.cruiseLine)!==-1;
+    var all = buildAllOptions();
+    if(!all) return;
+    var multi = all.length>1;
+    labelOptionsIfMultiple(all);
+    var sameCruiseLine = all.every(function(d){ return d.cruiseLine===all[0].cruiseLine; });
+    var subject = multi
+      ? (sameCruiseLine?all[0].cruiseLine+' Cruise Quote':'Cruise Quote')+' — '+all.length+' Date Options'
+      : all[0].cruiseLine+' Cruise Quote'+(all[0].ship?' - '+all[0].ship:'');
+    var isSingleTemplateLine = !multi && QUOTE_TEMPLATE_LINES.indexOf(all[0].cruiseLine)!==-1;
 
-    if(isTemplateLine && !d.templateEntries.length){toast('Enter a price in at least one row','err');return;}
-
-    if(isTemplateLine){
-      var bodyHtml = buildTemplateBodyHtml(d);
+    if(multi || isSingleTemplateLine){
+      var bodyHtml = all.map(quoteOptionBodyHtml).join('');
       var copied = copyHtmlToClipboard(bodyHtml);
-      var mailto = 'mailto:'+(d.client&&d.client.email?mailtoAddr(d.client.email):'')+'?subject='+encodeURIComponent(subject);
+      var mailto = 'mailto:'+(all[0].client&&all[0].client.email?mailtoAddr(all[0].client.email):'')+'?subject='+encodeURIComponent(subject);
       window.location.href = mailto;
       if(copied){
-        toast('Quote copied — paste into the email body in Outlook (Ctrl+V)'+(d.client?' for '+d.client.name:''),'ok');
+        toast('Quote copied — paste into the email body in Outlook (Ctrl+V)'+(all[0].client?' for '+all[0].client.name:''),'ok');
       }else{
         toast('Could not copy the quote automatically — click Preview, then select all (Ctrl+A) and copy (Ctrl+C) from there to paste into Outlook','err');
       }
-      saveQuotePdfToDrive(d, bodyHtml, subject);
+      saveQuotePdfToDrive(all[0], bodyHtml, subject);
     }else{
-      var bodyParts = ['Cruise Line: '+d.cruiseLine];
-      if(d.ship) bodyParts.push('Ship: '+d.ship);
-      if(d.sailingDate) bodyParts.push('Sailing Date: '+d.sailingDate);
-      if(d.gratuities) bodyParts.push('Gratuities: $'+d.gratuities);
-      if(d.voyageProtection) bodyParts.push('Voyage Protection: $'+d.voyageProtection);
-      bodyParts.push('');
-      bodyParts=bodyParts.concat(d.lines);
-      if(d.notes){bodyParts.push('');bodyParts.push(d.notes);}
+      var d = all[0];
+      var bodyParts = plainQuoteBodyParts(d);
       var body = bodyParts.join('\n');
       var mailto2 = 'mailto:'+(d.client&&d.client.email?mailtoAddr(d.client.email):'')+'?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(body);
       window.location.href = mailto2;
@@ -5682,7 +5788,7 @@ function openEmailQuoteModal(){
       saveQuotePdfToDrive(d, plainQuoteBodyHtml(bodyParts, subject), subject);
     }
 
-    logQuoteNote(d, subject);
+    logQuoteNote(all, subject);
   });
 }
 // ── Email Itinerary ──────────────────────────────────────────────────────
