@@ -14,7 +14,7 @@ Two things feed it automatically, with no action needed from you:
 
 Both are checked automatically every 5 minutes as long as the CRM tab is open and Outlook is connected (see [Connecting Outlook](#connecting-outlook) below).
 
-**Picking a client or trip from a dropdown**: anywhere you pick a client or trip by name (adding/editing a trip, Email Quote, Email Itinerary, a task's Linked Client/Linked Trip, the Reports filters), just start typing — the list filters as you go instead of making you scroll through everyone. Click a match, or press Enter to pick the top one.
+**Picking a client or trip from a dropdown**: anywhere you pick a client or trip by name (adding/editing a trip, Email Quote, Email Itinerary, a task's Linked Client/Linked Trip, the Reports filters), just start typing — the list filters as you go instead of making you scroll through everyone. Click a match, or press Enter to pick the top one. Names are stored "Last, First," but you can type either order (e.g. "John Curabba" or "Curabba, John") and it'll still find them — the search checks that every word you typed appears somewhere in the name, not that it matches word-for-word in order.
 
 ---
 

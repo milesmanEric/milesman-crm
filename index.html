@@ -13041,7 +13041,15 @@ function ssRenderDropdown(wrap, query){
   var dropdown = wrap.querySelector('.searchable-select-dropdown');
   var q = (query||'').toLowerCase().trim();
   var opts = Array.from(selectEl.options).filter(function(o){return o.value!=='';});
-  var matches = q ? opts.filter(function(o){return o.textContent.toLowerCase().indexOf(q)!==-1;}) : opts;
+  // Matches per-word rather than the whole query as one substring — client/
+  // vendor names are stored "Last, First" (toLastFirst()), so typing a name
+  // in natural "First Last" order (no comma) is never a substring of the
+  // stored "Last, First" text even though every word in it is present.
+  var words = q ? q.split(/\s+/).filter(Boolean) : [];
+  var matches = words.length ? opts.filter(function(o){
+    var text = o.textContent.toLowerCase();
+    return words.every(function(w){ return text.indexOf(w)!==-1; });
+  }) : opts;
   dropdown.innerHTML = matches.length
     ? matches.slice(0,200).map(function(o,i){return '<div class="ss-option'+(i===0?' ss-active':'')+'" data-value="'+o.value.toString().replace(/"/g,'&quot;')+'">'+escHtml(o.textContent)+'</div>';}).join('')
     : '<div class="ss-option-empty">No matches</div>';
