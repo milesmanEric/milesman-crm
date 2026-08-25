@@ -317,7 +317,7 @@ All the detail sections show nicely formatted tables — linked titles/sources/n
 
 Email menu → **Sync Outlook Emails**. This is a one-time login (until you sign out or the token expires) that unlocks:
 - Logging sent/received emails to each client's notes automatically.
-- Logging sent/received emails to each Supplier Contact's own notes automatically too, the same way — as long as that contact has an email address on file.
+- Logging sent/received emails to each Supplier Contact's and Vendor Contact's own notes automatically too, the same way — as long as that contact has an email address on file.
 - Automatically importing Book a Trip form submissions and Contact Form leads every 5 minutes.
 
 **This only runs while the CRM tab is open in your browser** — there's no server running these checks in the background, so if you close the tab, imports pause until you reopen it.
