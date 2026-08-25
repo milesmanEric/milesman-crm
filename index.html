@@ -3166,6 +3166,8 @@ function loadWordpressStats(token){
     }
     var s = d.stats||{};
     var visitRows = (d.visits&&d.visits.data)||[]; // [date, views, visitors], oldest first
+    var mostRecentRow = visitRows.length ? visitRows[visitRows.length-1] : null;
+    var wpDailyCollapsed = analyticsSectionCollapsed('wp-daily-table');
     body.innerHTML =
       '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px">'+
         '<div class="stat"><div class="stat-lbl">Visitors Today</div><div class="stat-val">'+fmt(s.visitors_today)+'</div></div>'+
@@ -3175,13 +3177,17 @@ function loadWordpressStats(token){
         '<div class="stat"><div class="stat-lbl">Total Views</div><div class="stat-val">'+fmt(s.views)+'</div></div>'+
         '<div class="stat" id="stat-wp-followers-tile" style="cursor:pointer" title="Click to see the follower list below"><div class="stat-lbl">Blog Followers</div><div class="stat-val">'+fmt(s.followers_blog)+'</div></div>'+
       '</div>'+
-      (s.views_best_day?'<div style="font-size:12px;color:#666;margin-bottom:16px">Best day: <strong>'+fmtDate(s.views_best_day)+'</strong> — '+fmt(s.views_best_day_total)+' views</div>':'')+
+      (s.views_best_day?'<div style="font-size:12px;color:#666;margin-bottom:8px">Best day: <strong>'+fmtDate(s.views_best_day)+'</strong> — '+fmt(s.views_best_day_total)+' views</div>':'')+
+      (mostRecentRow?'<div style="font-size:12px;color:#666;margin-bottom:8px">Most recent: <strong>'+fmtDate(mostRecentRow[0])+'</strong> — '+fmt(mostRecentRow[1])+' views, '+fmt(mostRecentRow[2])+' visitors</div>':'')+
       (visitRows.length?
-        '<div class="tbl-wrap" style="max-height:320px;overflow-y:auto"><table><thead><tr><th>Date</th><th>Views</th><th>Visitors</th></tr></thead><tbody>'+
-          visitRows.slice().reverse().map(function(row){
-            return '<tr><td>'+fmtDate(row[0])+'</td><td>'+fmt(row[1])+'</td><td>'+fmt(row[2])+'</td></tr>';
-          }).join('')+
-        '</tbody></table></div>'
+        inlineCollapseHeaderHtml('wp-daily-table','Daily Views & Visitors (30 Days)')+
+        (wpDailyCollapsed?'':
+          '<div class="tbl-wrap" style="max-height:320px;overflow-y:auto"><table><thead><tr><th>Date</th><th>Views</th><th>Visitors</th></tr></thead><tbody>'+
+            visitRows.slice().reverse().map(function(row){
+              return '<tr><td>'+fmtDate(row[0])+'</td><td>'+fmt(row[1])+'</td><td>'+fmt(row[2])+'</td></tr>';
+            }).join('')+
+          '</tbody></table></div>'
+        )
       : '');
     var statFollowersTile = $('stat-wp-followers-tile');
     if(statFollowersTile) statFollowersTile.addEventListener('click', function(){
@@ -3191,6 +3197,7 @@ function loadWordpressStats(token){
       var el = document.getElementById('wp-followers-body');
       if(el) el.scrollIntoView({behavior:'smooth', block:'center'});
     });
+    bindInlineCollapseToggle('wp-daily-table', body);
   }).catch(function(e){
     var body = $('wp-stats-body');
     if(body) body.innerHTML = '<div class="empty">Failed to load stats: '+e.message+'</div>';
@@ -3260,17 +3267,25 @@ function loadGA4Stats(token){
     var totalUsers = parsed.reduce(function(a,r){return a+r.users;},0);
     var totalViews = parsed.reduce(function(a,r){return a+r.views;},0);
     var totalSessions = parsed.reduce(function(a,r){return a+r.sessions;},0);
+    var sortedDesc = parsed.slice().sort(function(a,b){return (b.date||'').localeCompare(a.date||'');});
+    var mostRecent = sortedDesc[0]||null;
+    var ga4DailyCollapsed = analyticsSectionCollapsed('ga4-daily-table');
     body.innerHTML =
       '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px">'+
         '<div class="stat"><div class="stat-lbl">Active Users (30d)</div><div class="stat-val">'+fmt(totalUsers)+'</div></div>'+
         '<div class="stat"><div class="stat-lbl">Page Views (30d)</div><div class="stat-val">'+fmt(totalViews)+'</div></div>'+
         '<div class="stat"><div class="stat-lbl">Sessions (30d)</div><div class="stat-val">'+fmt(totalSessions)+'</div></div>'+
       '</div>'+
-      '<div class="tbl-wrap" style="max-height:320px;overflow-y:auto"><table><thead><tr><th>Date</th><th>Users</th><th>Views</th><th>Sessions</th></tr></thead><tbody>'+
-        parsed.slice().sort(function(a,b){return (b.date||'').localeCompare(a.date||'');}).map(function(r){
-          return '<tr><td>'+fmtDate(r.date)+'</td><td>'+fmt(r.users)+'</td><td>'+fmt(r.views)+'</td><td>'+fmt(r.sessions)+'</td></tr>';
-        }).join('')+
-      '</tbody></table></div>';
+      (mostRecent?'<div style="font-size:12px;color:#666;margin-bottom:8px">Most recent: <strong>'+fmtDate(mostRecent.date)+'</strong> — '+fmt(mostRecent.users)+' users, '+fmt(mostRecent.views)+' views, '+fmt(mostRecent.sessions)+' sessions</div>':'')+
+      inlineCollapseHeaderHtml('ga4-daily-table','Daily Users, Views & Sessions (30 Days)')+
+      (ga4DailyCollapsed?'':
+        '<div class="tbl-wrap" style="max-height:320px;overflow-y:auto"><table><thead><tr><th>Date</th><th>Users</th><th>Views</th><th>Sessions</th></tr></thead><tbody>'+
+          sortedDesc.map(function(r){
+            return '<tr><td>'+fmtDate(r.date)+'</td><td>'+fmt(r.users)+'</td><td>'+fmt(r.views)+'</td><td>'+fmt(r.sessions)+'</td></tr>';
+          }).join('')+
+        '</tbody></table></div>'
+      );
+    bindInlineCollapseToggle('ga4-daily-table', body);
   }).catch(function(e){
     var body = $('ga4-stats-body');
     if(body) body.innerHTML = '<div class="empty">Failed to load GA4 data: '+e.message+' (if this is a CORS error, let Claude know — a proxy endpoint will need to be added, same as the WordPress stats card).</div>';
@@ -16551,6 +16566,33 @@ function analyticsSectionHtml(key, title){
     '</div>'+
     (collapsed?'':'<div id="'+key+'-body"><div class="empty">Loading…</div></div>')+
   '</div>';
+}
+// Same collapse header as analyticsSectionHtml() above, but for content
+// that's already in hand (the WordPress/GA4 cards' own daily-breakdown
+// table) rather than something to lazily fetch on expand — so this
+// doesn't render a body div at all, just the toggle header; the caller
+// puts the already-built table markup right after it, gated on
+// analyticsSectionCollapsed(key) itself. Since the caller writes this
+// into a body that's replaced wholesale on each load (wp-stats-body/
+// ga4-stats-body), any listener bound by the one-time delegated
+// .analytics-sec-hdr querySelectorAll in renderAnalytics() misses these
+// headers entirely (they don't exist yet at that point) — bindInlineCollapseToggle()
+// below rebinds one locally each time the card re-renders instead.
+function inlineCollapseHeaderHtml(key, title){
+  var collapsed = analyticsSectionCollapsed(key);
+  return '<div class="analytics-sec-hdr" data-key="'+escHtml(key)+'" style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:.04em;margin:4px 0 6px">'+
+    '<span style="display:inline-block;width:10px">'+(collapsed?'&#9656;':'&#9662;')+'</span>'+
+    escHtml(title)+
+  '</div>';
+}
+function bindInlineCollapseToggle(key, containerEl){
+  var hdr = containerEl.querySelector('.analytics-sec-hdr[data-key="'+key+'"]');
+  if(!hdr) return;
+  hdr.addEventListener('click', function(){
+    window._analyticsCollapsed = window._analyticsCollapsed || {};
+    window._analyticsCollapsed[key] = !analyticsSectionCollapsed(key);
+    render();
+  });
 }
 // "Daily Summary" card at the top of the Analytics tab — gathers
 // yesterday's numbers from whichever sources are connected in THIS
