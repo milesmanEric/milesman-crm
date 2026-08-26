@@ -9613,11 +9613,6 @@ function renderEmail(){
     return (a.name||'').trim().toLowerCase().localeCompare((b.name||'').trim().toLowerCase());
   });
 
-  var clientOpts = '<option value="">Select client...</option>'+
-    sortedClients.map(function(c){
-      return '<option value="'+c.id+'">'+c.name+(c.email?' <'+c.email+'>':'')+'</option>';
-    }).join('');
-
   var templateCards = TEMPLATES.map(function(t){
     return '<div class="template-card" data-template-id="'+t.id+'">'+
       '<div class="template-card-name">'+t.name+'</div>'+
@@ -9625,8 +9620,13 @@ function renderEmail(){
     '</div>';
   }).join('');
 
-  function clientChecklistHtml(cbClass){
-    return sortedClients.map(function(c){
+  // list defaults to every client (the referrer/referred checklists always
+  // pass this default — they're not affected by the Paying/Subscriber
+  // filters below) but the main "Select Client(s)" checklist passes an
+  // already-filtered list instead, both up front and every time
+  // applyEmailFilters() reruns.
+  function clientChecklistHtml(cbClass, list){
+    return (list||sortedClients).map(function(c){
       return '<label style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:13px;cursor:pointer">'+
         '<input type="checkbox" class="'+cbClass+'" value="'+c.id+'" style="width:14px;height:14px">'+
         '<span>'+c.name+(c.email?' <span style="color:#999;font-size:11px">&lt;'+c.email+'&gt;</span>':'')+'</span>'+
@@ -9639,12 +9639,15 @@ function renderEmail(){
     '<div class="page-hdr"><div class="page-title">Email</div></div>'+
     '<div class="email-two-col">'+
       '<div>'+
-        '<div id="email-client-label" style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">1. Select Client</div>'+
+        '<div id="email-client-label" style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">1. Select Client(s)</div>'+
         '<div style="display:flex;gap:14px;margin-bottom:8px">'+
           '<label style="display:flex;align-items:center;gap:5px;font-size:12px;color:#374151;cursor:pointer"><input type="checkbox" id="email-filter-paying" style="width:13px;height:13px"> Paying clients only</label>'+
           '<label style="display:flex;align-items:center;gap:5px;font-size:12px;color:#374151;cursor:pointer"><input type="checkbox" id="email-filter-subscriber" style="width:13px;height:13px"> Subscribers only</label>'+
         '</div>'+
-        '<div style="margin-bottom:16px">'+searchableSelectWrap('<select id="email-client-sel">'+clientOpts+'</select>','Search clients...')+'</div>'+
+        '<div id="email-client-wrap" style="margin-bottom:16px">'+
+          '<div style="margin-bottom:6px"><button type="button" id="email-client-select-all" style="font-size:11px;color:#2563eb;background:none;border:none;cursor:pointer;text-decoration:underline">Select All</button> · <button type="button" id="email-client-select-none" style="font-size:11px;color:#2563eb;background:none;border:none;cursor:pointer;text-decoration:underline">Select None</button></div>'+
+          '<div id="email-client-list" style="'+checklistBoxStyle+'">'+clientChecklistHtml('email-client-cb')+'</div>'+
+        '</div>'+
         '<div id="email-referrers-wrap" style="display:none;margin-bottom:16px">'+
           '<div id="email-referrers-list" style="'+checklistBoxStyle+'">'+clientChecklistHtml('email-referrer-cb')+'</div>'+
         '</div>'+
@@ -9663,7 +9666,7 @@ function renderEmail(){
       '</div>'+
     '</div>';
 
-  var selClient = null;
+  var selClients = [];
   var selTemplate = null;
   var selReferrers = [];
   var selReferredClients = [];
@@ -9729,7 +9732,7 @@ function renderEmail(){
 
   function updatePreview(){
     const area = document.getElementById('email-preview-area');
-    if(!selTemplate || (isReferralTemplate() ? !selReferrers.length : !selClient)){
+    if(!selTemplate || (isReferralTemplate() ? !selReferrers.length : !selClients.length)){
       area.innerHTML='<div style="color:#aaa;font-size:13px;padding:20px;text-align:center">Select a client and template to preview</div>';
       return;
     }
@@ -9748,13 +9751,34 @@ function renderEmail(){
       renderReferralCreditPreview(selReferrers, selReferredClients);
       return;
     }
-    var body = fillTemplate(selTemplate.body, selClient, null);
-    var subject = fillTemplate(selTemplate.subject, selClient, null);
-    renderPreviewArea(selClient.email||'(no email on file)', subject, body, selClient.email?[selClient.email]:[], [selClient]);
+    var body = fillTemplate(selTemplate.body, selClients, null);
+    var subject = fillTemplate(selTemplate.subject, selClients, null);
+    var toDisplay = selClients.map(function(c){return c.email?c.name+' &lt;'+c.email+'&gt;':c.name+' (no email on file)';}).join(', ');
+    var mailtoEmails = selClients.map(function(c){return c.email;}).filter(Boolean);
+    renderPreviewArea(toDisplay, subject, body, mailtoEmails, selClients);
   }
 
-  document.getElementById('email-client-sel').addEventListener('change',function(){
-    selClient = db.clients.find(function(c){return c.id===this.value;},this)||null;
+  function bindClientChecklist(){
+    document.querySelectorAll('.email-client-cb').forEach(function(cb){
+      cb.checked = selClients.some(function(c){return c.id===cb.value;});
+      cb.addEventListener('change',function(){
+        var c = db.clients.find(function(x){return x.id===cb.value;});
+        if(!c) return;
+        if(cb.checked){ if(!selClients.some(function(x){return x.id===c.id;})) selClients.push(c); }
+        else{ selClients = selClients.filter(function(x){return x.id!==c.id;}); }
+        updatePreview();
+      });
+    });
+  }
+  bindClientChecklist();
+  document.getElementById('email-client-select-all').addEventListener('click', function(){
+    document.querySelectorAll('.email-client-cb').forEach(function(cb){cb.checked=true;});
+    selClients = filteredClients().slice();
+    updatePreview();
+  });
+  document.getElementById('email-client-select-none').addEventListener('click', function(){
+    document.querySelectorAll('.email-client-cb').forEach(function(cb){cb.checked=false;});
+    selClients = [];
     updatePreview();
   });
 
@@ -9785,22 +9809,23 @@ function renderEmail(){
   bindReferrerChecklist();
   bindReferredChecklist();
 
-  function applyEmailFilters(){
+  function filteredClients(){
     var payingOnly = document.getElementById('email-filter-paying').checked;
     var subOnly = document.getElementById('email-filter-subscriber').checked;
-    var filtered = sortedClients.filter(function(c){
+    return sortedClients.filter(function(c){
       if(payingOnly && !c.isPayingClient) return false;
       if(subOnly && !c.isSubscriber) return false;
       return true;
     });
-    var sel = document.getElementById('email-client-sel');
-    var prevVal = sel.value;
-    sel.innerHTML = '<option value="">Select client...</option>'+
-      filtered.map(function(c){return '<option value="'+c.id+'">'+c.name+(c.email?' <'+c.email+'>':'')+'</option>';}).join('');
-    // Restore selection if still valid
-    if(filtered.some(function(c){return c.id===prevVal;})) sel.value = prevVal;
-    else { selClient=null; updatePreview(); }
-    resetSearchableSelectInput('email-client-sel');
+  }
+  function applyEmailFilters(){
+    var filtered = filteredClients();
+    document.getElementById('email-client-list').innerHTML = clientChecklistHtml('email-client-cb', filtered);
+    // A client checked before the filter changed but no longer shown (now
+    // filtered out) shouldn't linger as a silent, invisible recipient.
+    selClients = selClients.filter(function(c){ return filtered.some(function(f){return f.id===c.id;}); });
+    bindClientChecklist();
+    updatePreview();
 
     document.getElementById('email-referrers-list').innerHTML = clientChecklistHtml('email-referrer-cb');
     document.getElementById('email-referred-list').innerHTML = clientChecklistHtml('email-referred-cb');
@@ -9819,18 +9844,18 @@ function renderEmail(){
       selTemplate=clicked;
       var referredWrap = document.getElementById('email-referred-wrap');
       var referrersWrap = document.getElementById('email-referrers-wrap');
-      var clientSel = document.getElementById('email-client-sel');
+      var clientWrap = document.getElementById('email-client-wrap');
       var clientLabel = document.getElementById('email-client-label');
       if(isReferralTemplate()){
         referredWrap.style.display='block';
         referrersWrap.style.display='block';
-        clientSel.style.display='none';
+        clientWrap.style.display='none';
         clientLabel.textContent = '1. Select Referrer(s)';
       }else{
         referredWrap.style.display='none';
         referrersWrap.style.display='none';
-        clientSel.style.display='block';
-        clientLabel.textContent = '1. Select Client';
+        clientWrap.style.display='block';
+        clientLabel.textContent = '1. Select Client(s)';
       }
       updatePreview();
     });
