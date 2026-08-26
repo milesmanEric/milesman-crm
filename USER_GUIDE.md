@@ -144,6 +144,18 @@ At the very bottom, a **Summary** section totals everything up live as you fill 
 
 ---
 
+## Groups
+
+A Group is one layer up from a trip's own **Linked Trips**: instead of linking individual legs of one vacation together, it links whole trips (or already-linked vacation clusters) to each other under one name — useful for something like a big multi-family reunion booked as several separate, unrelated trip records that still belong together in spirit.
+
+**+ Add Group**, give it a name, and check off which trips belong in it from the list (there's a search box above the list if it's long). Each group shows up on the Groups page as its own collapsed summary line, same style as the Trips page — name, status/color, date range, trip count, and its combined total revenue across every trip in it — click to expand and see each member trip listed underneath (and each of those still expands/collapses on its own the normal way if it's itself a multi-leg trip).
+
+**Groups sort the same way the Trips page does by default** — whatever's happening now or coming up soonest floats to the top, then Planning, then completed trips, then Cancelled last — rather than alphabetically by name.
+
+**Editing a group**: click the ✏️ icon on its summary line to rename it, change which trips belong to it, or add a note. A note added here logs onto every client and trip linked to the group automatically, the same way a note added on the Trips or Clients page does. The 🗑️ icon deletes the group itself — the member trips and clients are untouched, only the grouping goes away.
+
+---
+
 ## Credit Card Consulting
 
 A separate page for income that isn't really a travel booking — credit card consulting fees and non-cash bonuses. These are still added and edited through the exact same trip form as everything else (**+ Add Record** here opens it), the only thing that matters is what you type in the **Product** field: if it contains "credit card consulting" or "non-cash bonus" anywhere in it (any capitalization, any surrounding words), it automatically shows up on this page instead of the Trips page — nothing else to set. (If the text also happens to contain "referral," it goes to the Referrals page instead — see below.) Search, and the Records/Total Value stats at the top, work the same as everywhere else. There's no linking or collapsing here since these aren't itineraries with legs to group.
