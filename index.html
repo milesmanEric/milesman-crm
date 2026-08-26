@@ -12651,18 +12651,48 @@ function groupSummaryLineHtml(group, collapsed){
   var minDepart = departDates[0];
   var maxReturn = returnDates.length ? returnDates[returnDates.length-1] : departDates[departDates.length-1];
   var dateRange = minDepart ? (fmtDate(minDepart)+(maxReturn&&maxReturn!==minDepart?' – '+fmtDate(maxReturn):'')) : '';
+  // Same totalValue sum the Trips page's own collapsed line uses
+  // (tripSummaryLineInfo) — across every member trip in the group,
+  // regardless of which sub-cluster (tripLinkGroups()) it belongs to.
+  var totalRevenue = trips.reduce(function(a,t){return a+(t.totalValue||0);},0);
   return '<tr class="group-hdr" data-group-id="'+group.id+'" style="background:'+colors.bg+';cursor:pointer">'+
     '<td colspan="12" style="padding:10px 12px;font-size:13px;color:'+colors.text+';font-weight:700">'+
       '<span style="display:inline-block;width:12px">'+(collapsed?'&#9656;':'&#9662;')+'</span>'+
-      '&#128193; '+escHtml(group.name||'(untitled group)')+(statusLabel?' &middot; '+escHtml(statusLabel):'')+(dateRange?' &middot; '+dateRange:'')+' &middot; '+trips.length+' trip'+(trips.length!==1?'s':'')+
+      '&#128193; '+escHtml(group.name||'(untitled group)')+(statusLabel?' &middot; '+escHtml(statusLabel):'')+(dateRange?' &middot; '+dateRange:'')+' &middot; '+trips.length+' trip'+(trips.length!==1?'s':'')+(totalRevenue?' &middot; $'+money(totalRevenue):'')+
       '<span style="float:right;font-weight:400">'+
         '<button type="button" class="icon-btn edit-group" data-id="'+group.id+'" style="color:'+colors.text+'" title="Edit group">&#9999;&#65039;</button>'+
         '<button type="button" class="icon-btn del-group" data-id="'+group.id+'" style="color:#dc2626" title="Delete group">&#128465;&#65039;</button>'+
       '</span>'+
     '</td></tr>';
 }
+// Same default ordering the Trips page's own Status sort uses (in
+// progress, then upcoming, then planning, then completed, then cancelled;
+// ties broken by nearest date to today, dateless last) — computed once per
+// group from its own earliest-departing member trip, the same
+// "representative" groupSummaryLineHtml() itself uses for the collapsed
+// line's color/status, so a group's position always agrees with what its
+// own line displays.
+var GROUP_LIFECYCLE_SORT_RANK = {inTrip:0, upcoming:1, planning:2, past:3, cancelled:4};
+function sortedGroupsByStatus(groups){
+  var withRank = groups.map(function(g){
+    var trips = groupTripObjects(g).slice().sort(function(a,b){return depSortKey(a).localeCompare(depSortKey(b));});
+    var earliest = trips[0];
+    var category = earliest ? tripLifecycleCategory(earliest) : 'planning';
+    return {g:g, category:category, departDate: earliest?(earliest.departDate||''):''};
+  });
+  return withRank.sort(function(a,b){
+    var ar = GROUP_LIFECYCLE_SORT_RANK[a.category], br = GROUP_LIFECYCLE_SORT_RANK[b.category];
+    if(ar!==br) return ar-br;
+    var pastFacing = (a.category==='past' || a.category==='cancelled');
+    var ad=a.departDate, bd=b.departDate;
+    if(!ad && !bd) return (a.g.name||'').toLowerCase().localeCompare((b.g.name||'').toLowerCase());
+    if(!ad) return 1;
+    if(!bd) return -1;
+    return pastFacing ? bd.localeCompare(ad) : ad.localeCompare(bd);
+  }).map(function(x){return x.g;});
+}
 function renderGroups(){
-  var sorted = [...db.groups].sort(function(a,b){return (a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase());});
+  var sorted = sortedGroupsByStatus(db.groups);
   var totalTripsInGroups = db.groups.reduce(function(a,g){return a+(g.tripIds||[]).length;},0);
   $('main').innerHTML =
     '<div class="page-hdr"><div class="page-title">Groups</div><button class="add-btn" id="btn-add-group">+ Add Group</button></div>'+
