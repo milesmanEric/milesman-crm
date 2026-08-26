@@ -12655,11 +12655,6 @@ function groupSummaryLineHtml(group, collapsed){
   // (tripSummaryLineInfo) — across every member trip in the group,
   // regardless of which sub-cluster (tripLinkGroups()) it belongs to.
   var totalRevenue = trips.reduce(function(a,t){return a+(t.totalValue||0);},0);
-  // Temporary diagnostic for a reported "revenue total missing from the
-  // collapsed group line" bug that hasn't reproduced in testing — open the
-  // Debug Panel (Settings > Debug) after viewing the Groups tab to see
-  // exactly what each group's member trips resolved to and summed to.
-  debugLog('Group "'+(group.name||group.id)+'": tripIds='+JSON.stringify(group.tripIds||[])+' resolved='+trips.length+' trip(s) totalValue=['+trips.map(function(t){return t.id+':'+t.totalValue;}).join(', ')+'] sum='+totalRevenue);
   return '<tr class="group-hdr" data-group-id="'+group.id+'" style="background:'+colors.bg+';cursor:pointer">'+
     '<td colspan="12" style="padding:10px 12px;font-size:13px;color:'+colors.text+';font-weight:700">'+
       '<span style="display:inline-block;width:12px">'+(collapsed?'&#9656;':'&#9662;')+'</span>'+
