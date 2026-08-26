@@ -12476,14 +12476,20 @@ function tripSummaryLineInfo(members){
   var category = tripLifecycleCategory(sorted[0]);
   var colors = TRIP_LIFECYCLE_COLORS[category];
   var statusLabel = CATEGORY_LABELS[category] || '';
-  return {sorted:sorted, isGroup:isGroup, label:label, dateRange:dateRange, category:category, colors:colors, statusLabel:statusLabel};
+  // Same totalValue field the Clients page's own Total Revenue column sums
+  // (see countDistinctTrips()'s neighboring revenue reduce) — summed across
+  // every member so a linked group's collapsed line shows the combined
+  // revenue for the whole vacation, not just whichever leg happened to be
+  // first.
+  var totalRevenue = sorted.reduce(function(a,t){return a+(t.totalValue||0);},0);
+  return {sorted:sorted, isGroup:isGroup, label:label, dateRange:dateRange, category:category, colors:colors, statusLabel:statusLabel, totalRevenue:totalRevenue};
 }
 function tripSummaryLineHtml(members, collapsed){
   var info = tripSummaryLineInfo(members);
   return '<tr class="trip-group-hdr" data-group-key="'+tripGroupKey(info.sorted)+'" style="background:'+info.colors.bg+';cursor:pointer">'+
     '<td colspan="12" style="padding:8px 12px;font-size:12px;color:'+info.colors.text+';font-weight:600">'+
     '<span style="display:inline-block;width:12px">'+(collapsed?'&#9656;':'&#9662;')+'</span>'+
-    (info.isGroup?'&#128279; ':'')+escHtml(info.label)+(info.statusLabel?' &middot; '+escHtml(info.statusLabel):'')+(info.dateRange?' &middot; '+info.dateRange:'')+(info.isGroup?' &middot; '+info.sorted.length+' trips':'')+
+    (info.isGroup?'&#128279; ':'')+escHtml(info.label)+(info.statusLabel?' &middot; '+escHtml(info.statusLabel):'')+(info.dateRange?' &middot; '+info.dateRange:'')+(info.isGroup?' &middot; '+info.sorted.length+' trips':'')+(info.totalRevenue?' &middot; $'+money(info.totalRevenue):'')+
   '</td></tr>';
 }
 // Groups consecutive rendering by linked-trip membership without disturbing
