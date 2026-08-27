@@ -38,6 +38,8 @@ On the Dashboard specifically, the **Total Revenue** and **Upcoming** tiles' lis
 
 The Dashboard also has a **Revenue by Section** card that splits the headline Total Revenue figure into Trips, Credit Card Consulting, and Referrals and Promo — click any of the three to jump to that page.
 
+**Most Recent Email** shows how your latest Mailchimp campaign is doing right on the Dashboard — subject, send date, emails sent, opens, and clicks, no clicking around needed (once Mailchimp is connected — see [Analytics](#analytics)). Click the line to see exactly who opened or clicked it; **View all** jumps to the Analytics tab with the full campaign history expanded.
+
 **Blog Followers** shows your WordPress.com follower count right on the Dashboard (once WordPress is connected — see [Analytics](#analytics)) — click it to jump straight to the Analytics tab with the full follower list already expanded and scrolled into view.
 
 **Instagram Followers** does the same for your Instagram follower count (once Facebook is connected — Instagram rides on that same connection, see [Analytics](#analytics)) — click it to jump to the Instagram section of the Analytics tab.
@@ -316,9 +318,10 @@ Setting X up is a one-time job for whoever maintains the CRM: it needs an app cr
 
 **Mailchimp** — Subscribers, **Unsubscribed Yesterday**, Total Unsubscribed, Campaigns Sent, Avg Open Rate, Avg Click Rate. **Total Unsubscribed is a running lifetime total, not "since yesterday"** — Mailchimp itself doesn't offer a "how many unsubscribed on this specific day" number directly, so that tile can only ever go up and was previously mislabeled "Unsubscribed" in a way that read as if it were a daily figure. **Unsubscribed Yesterday** is the real one for that — it's actually computed by checking each unsubscribed member's own unsubscribe date and counting the ones that fall on yesterday. Click either Unsubscribed tile to see the full list, sorted with the most recent unsubscribes at the top.
 
-**Drill down further**: under each of the first two cards, click any collapsed section header (▸) to expand it and load the detail — nothing loads until you actually open a section, so the page stays quick even though there's a lot available:
+**Drill down further**: under each card, click any collapsed section header (▸) to expand it and load the detail — nothing loads until you actually open a section, so the page stays quick even though there's a lot available:
 - **WordPress**: Daily Views & Visitors (30 Days), Top Posts & Pages, Referrers, Views by Country, Search Terms, Blog Followers.
 - **GA4**: Daily Users, Views & Sessions (30 Days), Top Pages, Traffic Sources, Device Category, Top Countries.
+- **Mailchimp — Recent Campaigns**: unlike the others, this one never shows nothing — collapsed, it always shows a quick summary of your most recently sent campaign (subject, date, emails sent, opens, clicks); expand it for a full table of your last 10 campaigns. Click any campaign (collapsed summary or expanded row) to see exactly who opened and clicked it, sorted with the most engaged recipients first.
 
 (The two daily-table sections are a slightly different kind of collapsed — their data's already been fetched along with the rest of the card, so expanding them is instant, not a fresh load like the others.)
 

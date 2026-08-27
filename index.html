@@ -4267,6 +4267,38 @@ function loadMailchimpCampaignsReport(bodyId){
     if(body) body.innerHTML = '<div class="empty">Failed to load: '+escHtml(e.message)+'</div>';
   });
 }
+// Single-campaign version of loadMailchimpCampaignsReport() above — just
+// the most recent send's own numbers, in one compact line. Used both when
+// the Analytics tab's Recent Campaigns section is collapsed (so the latest
+// numbers are always visible without expanding) and on the Dashboard's own
+// Most Recent Email card, sharing the exact same fetch/render rather than
+// keeping two copies in sync.
+function loadLatestMailchimpCampaignSummary(elId){
+  var el = $(elId);
+  if(!el) return;
+  var listId = localStorage.getItem(MAILCHIMP_LIST_KEY);
+  if(!listId){ el.innerHTML = '<div class="empty">Connect Mailchimp (Analytics tab) to see stats here.</div>'; return; }
+  mailchimpProxyGet('/reports?list_id='+encodeURIComponent(listId)+'&count=1&sort_field=send_time&sort_dir=DESC').then(function(resp){
+    el = $(elId);
+    if(!el) return;
+    var r = (resp.reports||[])[0];
+    if(!r){ el.innerHTML = '<div class="empty">No sent campaigns yet for this audience.</div>'; return; }
+    var opens = r.opens||{}, clicks = r.clicks||{};
+    el.innerHTML = '<div class="mc-latest-campaign" data-id="'+r.id+'" data-title="'+escHtml(r.campaign_title||'')+'" style="cursor:pointer;display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;font-size:12px">'+
+      '<span style="color:#2563eb;text-decoration:underline;font-weight:600">'+escHtml(r.campaign_title||'(untitled)')+'</span>'+
+      '<span style="color:#888">'+(r.send_time?fmtDate(r.send_time.slice(0,10)):'—')+'</span>'+
+      '<span>'+fmt(r.emails_sent||0)+' sent</span>'+
+      '<span>'+fmt(opens.opens_total||0)+' opens ('+(opens.open_rate!=null?(Math.round(opens.open_rate*1000)/10)+'%':'—')+')</span>'+
+      '<span>'+fmt(clicks.clicks_total||0)+' clicks ('+(clicks.click_rate!=null?(Math.round(clicks.click_rate*1000)/10)+'%':'—')+')</span>'+
+    '</div>';
+    var row = el.querySelector('.mc-latest-campaign');
+    if(row) row.addEventListener('click', function(){ openMailchimpCampaignActivity(row.dataset.id, row.dataset.title); });
+  }).catch(function(e){
+    debugLog('Mailchimp analytics: latest campaign request failed — '+e.message);
+    el = $(elId);
+    if(el) el.innerHTML = '<div class="empty">Failed to load: '+escHtml(e.message)+'</div>';
+  });
+}
 // Per-recipient drilldown for one campaign — who actually opened/clicked,
 // not just the aggregate counts the Recent Campaigns table already shows.
 // Mailchimp's email-activity endpoint returns every recipient regardless
@@ -11776,6 +11808,10 @@ function renderDash(){
         '<div class="stat dash-section-rev" data-go="referrals" style="cursor:pointer"><div class="stat-lbl">Referrals and Promo</div><div class="stat-val">$'+money(s.referralRevenue)+'</div></div>'+
       '</div>'+
     '</div>'+
+    '<div class="card" style="margin-bottom:16px">'+
+      '<div class="card-hdr"><span class="card-title">Most Recent Email</span><button class="view-all" id="dash-mc-view-all">View all &rarr;</button></div>'+
+      '<div id="dash-mc-latest-body"><div class="empty">Loading…</div></div>'+
+    '</div>'+
     '<div class="two-col">'+
       '<div class="card">'+
         '<div class="card-hdr"><span class="card-title">Upcoming &amp; In Progress Trips</span><button class="view-all" id="dash-view-all">View all &rarr;</button></div>'+
@@ -11909,6 +11945,22 @@ function renderDash(){
       db.trips.filter(function(t){return tripBookedPoints(t)>0;}).map(function(t){
         return {cells:[t.clientName||'',t.destination||'',t.departDate||'—',displayStatus(t),fmt(tripBookedPoints(t))],onClick:function(){openTripForm(t.id);}};
       }));
+  });
+
+  // Most Recent Email card — reuses the exact same fetch/render the
+  // Analytics tab's own collapsed Recent Campaigns section uses (see
+  // loadLatestMailchimpCampaignSummary), so this and that always agree.
+  // "View all" jumps to the Analytics tab with the full campaign list
+  // expanded, same pattern the Blog Followers tile below uses for its own
+  // Analytics section.
+  loadLatestMailchimpCampaignSummary('dash-mc-latest-body');
+  var dashMcViewAll = $('dash-mc-view-all');
+  if(dashMcViewAll) dashMcViewAll.addEventListener('click', function(){
+    window._analyticsCollapsed = window._analyticsCollapsed || {};
+    window._analyticsCollapsed['mc-campaigns'] = false;
+    go('analytics');
+    var el = document.getElementById('mc-campaigns-body');
+    if(el) el.scrollIntoView({behavior:'smooth', block:'center'});
   });
 
   // Blog Followers tile — count is fetched independently here (Dashboard
@@ -16781,6 +16833,22 @@ function analyticsSectionHtml(key, title){
     (collapsed?'':'<div id="'+key+'-body"><div class="empty">Loading…</div></div>')+
   '</div>';
 }
+// Same collapse header as analyticsSectionHtml(), but the collapsed state
+// shows a compact one-line summary of the latest campaign (via
+// loadLatestMailchimpCampaignSummary) instead of nothing — so collapsing
+// the full campaign list never hides the most recent send's numbers.
+function mailchimpCampaignsSectionHtml(){
+  var collapsed = analyticsSectionCollapsed('mc-campaigns');
+  return '<div style="margin-top:12px;border-top:1px solid #f0f0f0;padding-top:10px">'+
+    '<div class="analytics-sec-hdr" data-key="mc-campaigns" style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">'+
+      '<span style="display:inline-block;width:10px">'+(collapsed?'&#9656;':'&#9662;')+'</span>'+
+      'Recent Campaigns'+
+    '</div>'+
+    (collapsed
+      ? '<div id="mc-campaigns-latest"><div class="empty">Loading…</div></div>'
+      : '<div id="mc-campaigns-body"><div class="empty">Loading…</div></div>')+
+  '</div>';
+}
 // Same collapse header as analyticsSectionHtml() above, but for content
 // that's already in hand (the WordPress/GA4 cards' own daily-breakdown
 // table) rather than something to lazily fetch on expand — so this
@@ -17195,7 +17263,7 @@ function renderAnalytics(){
     '<div class="card" style="margin-bottom:16px">'+
       '<div class="card-hdr"><span class="card-title">Mailchimp</span></div>'+
       '<div id="mc-analytics-body"><div class="empty">Loading…</div></div>'+
-      analyticsSectionHtml('mc-campaigns','Recent Campaigns')+
+      mailchimpCampaignsSectionHtml()+
     '</div>'+
     '<div class="card" style="margin-bottom:16px">'+
       '<div class="card-hdr"><span class="card-title">SEO (Yoast)</span></div>'+
@@ -17283,7 +17351,8 @@ function renderAnalytics(){
   if(tiktokToken) loadTiktokAnalytics('tiktok-analytics-body');
 
   loadMailchimpAnalytics('mc-analytics-body');
-  if(!analyticsSectionCollapsed('mc-campaigns')) loadMailchimpCampaignsReport('mc-campaigns-body');
+  if(analyticsSectionCollapsed('mc-campaigns')) loadLatestMailchimpCampaignSummary('mc-campaigns-latest');
+  else loadMailchimpCampaignsReport('mc-campaigns-body');
 
   loadDailySummary(false);
   var summaryRefreshBtn = $('daily-summary-refresh');
