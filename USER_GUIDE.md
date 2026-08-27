@@ -276,7 +276,7 @@ Click **+ Load Starter Bookmarks** to add a pre-built set of consumer booking-si
 
 **Travel Agent → Award Tools** now includes a handful of award-booking tools — Seats.aero, ExpertFlyer, Point.me, and AwardWallet — for searching award availability and tracking client mileage balances across programs. These come in through the same "+ Load Starter Bookmarks" button as everything else above.
 
-Right above Bookmarks in the sidebar, two more links — **Miles Man Site** and **WordPress Admin** — open the public website and its admin dashboard in a new tab, without leaving the CRM.
+Right below Bookmarks in the sidebar, seven more quick links — **Miles Man Site**, **WordPress Admin**, **Google Drive Folder**, **Mailchimp**, **Canva**, **Vercel**, and **GitHub** — open each in a new tab, without leaving the CRM.
 
 ---
 

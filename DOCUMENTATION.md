@@ -119,7 +119,7 @@ Each category heading is collapsed by default and shows a live count (e.g. "AIRL
 
 ## 3. Navigation / Features
 
-The left nav has 14 `go()`-driven sections (`view` state: `dashboard`, `clients`, `trips`, `ccconsulting`, `referrals`, `vendors`, `bizvendors`, `planner`, `reports`, `calendar`, `email`, `marketing`, `analytics`, `bookmarks`) plus two plain external links (Miles Man Site, WordPress Admin — see the Bookmarks section below).
+The left nav has 14 `go()`-driven sections (`view` state: `dashboard`, `clients`, `trips`, `ccconsulting`, `referrals`, `vendors`, `bizvendors`, `planner`, `reports`, `calendar`, `email`, `marketing`, `analytics`, `bookmarks`) plus seven plain external links (Miles Man Site, WordPress Admin, Google Drive Folder, Mailchimp, Canva, Vercel, GitHub — see the Bookmarks section below).
 
 ### Dashboard
 A **Quick Search** box, summary stats (client count, total trips, upcoming, **Total Revenue**, points deployed, **Blog Followers**, **Instagram Followers**, **X Followers**, **TikTok Followers**), a **Revenue by Section** card, a **Mailchimp** stats card, a **Most Recent Email** card, an **Upcoming & In Progress Trips** table, a top-clients-by-revenue list, and a Planner tasks card.
@@ -318,7 +318,7 @@ Both share the same send mechanics: the rendered HTML is copied to the clipboard
 ### Bookmarks
 A saved-links list, grouped rather than one flat table — see §2's `db.bookmarks` for the schema and the grouping functions (`bookmarkSectionHtml()`/`bookmarkTableHtml()`). Three sections, **Travel Agent**, **Consumer**, then **Vendors**, each broken into per-category tables sorted by name within each — Travel Agent/Consumer use `BOOKMARK_CATEGORIES` (Airline/Hotel/Cruise Line/etc., including an **Award Tools** category holding Travel Agent-only award-booking tools like Seats.aero — see §2), Vendors uses `BIZ_VENDOR_CATS` instead (Printing/Web-Hosting/Accounting/etc., matching the Vendors page's own categories). Each name is a link that opens the site in a new tab (an explicit `window.open()` click handler backs up the `target="_blank"` attribute, since that alone isn't always honored for links clicked from a `file://` page); edit/delete icons per row (`openBookmarkForm()`/`saveBookmark()`/`deleteBookmark()`). A "+ Load Starter Bookmarks" button seeds the list with `DEFAULT_BOOKMARKS`, a curated starter pack of consumer + travel-advisor-portal links for known vendors (see §2).
 
-Two more links sit in the sidebar right above Bookmarks — **Miles Man Site** (`https://themilesman.com/`) and **WordPress Admin** (`https://themilesman.com/wp-admin/`) — but these are plain `<a target="_blank">` elements, not `go()`-driven `view` states like every other nav button (§3 intro), so they open in a new tab rather than navigating the CRM itself and are never highlighted `.active`.
+Seven more links sit in the sidebar right below Bookmarks — **Miles Man Site** (`https://themilesman.com/`), **WordPress Admin** (`https://themilesman.com/wp-admin/`), **Google Drive Folder**, **Mailchimp** (`https://admin.mailchimp.com/`), **Canva** (`https://www.canva.com/`), **Vercel** (the `milesman-auth` proxy project), and **GitHub** (this repo) — but these are plain `<a target="_blank">` elements, not `go()`-driven `view` states like every other nav button (§3 intro), so they open in a new tab rather than navigating the CRM itself and are never highlighted `.active`.
 
 ### Marketing
 Facebook Ads campaign management (`renderMarketing()`) for `FB_AD_ACCOUNT`. See §4.8 for the OAuth/API mechanics; this is the page layout.
