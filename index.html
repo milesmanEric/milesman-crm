@@ -2141,6 +2141,11 @@ function contactEmailPhoneLine(c){
   var parts=[];
   if(c.email) parts.push('<a href="mailto:'+mailtoAddr(c.email)+'" class="contact-mailto-link" style="color:#2563eb;text-decoration:underline" title="Send email">'+escHtml(c.email)+'</a>');
   if(c.phone) parts.push(escHtml(c.phone));
+  // propertyName only ever appears on a Supplier Contact tied to one of the
+  // Hotel supplier's own Properties (see openVendorContactForm) — a Vendor
+  // (biz) Contact never has this field set, so it's harmless to check here
+  // unconditionally rather than needing a separate display helper.
+  if(c.propertyName) parts.push(escHtml(c.propertyName));
   return parts.length ? parts.join(' &middot; ') : '&nbsp;';
 }
 function emailToNote(msg){
@@ -11095,6 +11100,17 @@ function openVendorContactForm(vendorId, contactId, returnToList){
       fld('Title', inp('vc-title','text',d.title,'e.g. Account Manager'))+
       fld('Email', inp('vc-email','email',d.email))+
       fld('Phone', inp('vc-phone','text',d.phone,'(xxx) xxx-xxxx'))+
+      // Only offered for a Hotel supplier that actually has properties on
+      // file — everyone else's contacts have nothing to link to. Reuses
+      // hotelPropertyOptionsHtml() (vendor.name doubles as the "hotel
+      // brand" it expects, same as the Booked Trip Details Property
+      // picklist) so this list is always the exact same properties, in
+      // the exact same order, as everywhere else that picklist appears —
+      // and matches by name rather than the properties list's own
+      // re-numbered-on-every-save id, same convention that picklist uses.
+      ((vendor.category==='Hotel' && (vendor.properties||[]).length) ?
+        fld('Property', searchableSelectWrap('<select id="vc-property">'+hotelPropertyOptionsHtml(vendor.name, d.propertyName)+'</select>','Search properties...'))
+        : '')+
       tasksHtml+
       '<div class="field full"><label>Notes Log</label>'+
         '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'+
@@ -11203,7 +11219,7 @@ function saveVendorContact(vendorId, contactId, returnToList){
     var noteType = (typeEl&&typeEl.value)||'';
     return {ts:ts.trim(),text:text.trim(),noteType:noteType};
   }).filter(function(n){return n.text;});
-  var data = {name:name, title:gv('vc-title'), email:gv('vc-email'), phone:gv('vc-phone'), notesLog:notesLog};
+  var data = {name:name, title:gv('vc-title'), email:gv('vc-email'), phone:gv('vc-phone'), propertyName:gv('vc-property'), notesLog:notesLog};
   snapshot(contactId?'Edit supplier contact':'Add supplier contact');
   var resultId = contactId;
   db.vendors = db.vendors.map(function(v){
