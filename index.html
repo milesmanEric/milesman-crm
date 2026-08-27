@@ -4148,52 +4148,79 @@ function loadMailchimpAnalytics(bodyId){
     });
     return;
   }
+  body.innerHTML = '<div id="mc-tiles-body"><div class="empty">Loading…</div></div>';
+  loadMailchimpStatsTiles('mc-tiles-body', {showListName:true});
+}
+// Shared six-tile Mailchimp stat grid — Subscribers, Subscribers Added
+// Yesterday, Unsubscribed Yesterday, Campaigns Sent, and the most
+// recently sent campaign's own Open Rate/Click Rate (not a list-wide
+// average — the single latest send's numbers, same data
+// loadLatestMailchimpCampaignSummary() uses for its own summary line).
+// Used by both the Analytics tab's Mailchimp card and the Dashboard's own
+// Mailchimp card, so the two never disagree. `opts.showListName` renders
+// the audience name above the grid (Analytics only); `opts.onCampaignsClick`
+// lets a caller override what the Campaigns Sent tile does, since
+// "expand the Recent Campaigns section in place" only makes sense on the
+// Analytics tab itself — the Dashboard passes a callback that navigates
+// there first instead.
+function loadMailchimpStatsTiles(elId, opts){
+  opts = opts || {};
+  var el = $(elId);
+  if(!el) return;
+  var listId = localStorage.getItem(MAILCHIMP_LIST_KEY);
+  if(!listId){ el.innerHTML = '<div class="empty">Connect Mailchimp (Analytics tab) to see stats here.</div>'; return; }
   var yesterday = addDaysToDateStr(today(), -1);
   Promise.all([
     mailchimpProxyGet('/lists/'+listId),
-    countMailchimpUnsubscribesOnDate(listId, yesterday).catch(function(){ return null; })
+    countMailchimpUnsubscribesOnDate(listId, yesterday).catch(function(){ return null; }),
+    countMailchimpSubscribersAddedOnDate(listId, yesterday).catch(function(){ return null; }),
+    mailchimpProxyGet('/reports?list_id='+encodeURIComponent(listId)+'&count=1&sort_field=send_time&sort_dir=DESC').catch(function(){ return null; })
   ]).then(function(results){
-    if(!body) return;
-    var list = results[0], unsubscribedYesterday = results[1];
+    el = $(elId);
+    if(!el) return;
+    var list = results[0], unsubscribedYesterday = results[1], subscribersAddedYesterday = results[2], reportsResp = results[3];
     var stats = list.stats || {};
-    // Confirmed live: List stats' open_rate/click_rate are already
-    // percentages (e.g. 49.56 meaning 49.56%), not a fraction of 1 —
-    // unlike the per-campaign Reports endpoint below, which uses the
-    // opposite convention. Mailchimp isn't consistent about this across
-    // endpoints, so don't assume the same math applies to both.
-    function pct(rate){ return rate!=null ? (Math.round(rate*10)/10)+'%' : '—'; }
-    body.innerHTML = '<div style="font-size:11px;color:#888;margin-bottom:8px">'+escHtml(list.name||'')+'</div>'+
+    var latest = reportsResp && !reportsResp.error ? (reportsResp.reports||[])[0] : null;
+    // Reports endpoint's opens/clicks rates are fractions of 1 (e.g.
+    // 0.4956), the opposite convention from List stats' own open_rate/
+    // click_rate (already a percentage) — Mailchimp isn't consistent about
+    // this across endpoints, same gotcha loadMailchimpCampaignsReport()
+    // already documents for the Recent Campaigns table.
+    function pctFraction(rate){ return rate!=null ? (Math.round(rate*1000)/10)+'%' : '—'; }
+    var openRate = latest ? pctFraction((latest.opens||{}).open_rate) : '—';
+    var clickRate = latest ? pctFraction((latest.clicks||{}).click_rate) : '—';
+    el.innerHTML = (opts.showListName ? '<div style="font-size:11px;color:#888;margin-bottom:8px">'+escHtml(list.name||'')+'</div>' : '')+
       '<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px">'+
-        '<div class="stat" id="mc-tile-subscribers" style="cursor:pointer" title="Click to see subscribers"><div class="stat-lbl">Subscribers</div><div class="stat-val">'+fmt(stats.member_count||0)+'</div></div>'+
-        '<div class="stat" id="mc-tile-unsub-yesterday" style="cursor:pointer" title="Click to see recent unsubscribes (sorted newest first)"><div class="stat-lbl">Unsubscribed Yesterday</div><div class="stat-val">'+(unsubscribedYesterday!=null?fmt(unsubscribedYesterday):'—')+'</div></div>'+
-        '<div class="stat" id="mc-tile-unsubscribed" style="cursor:pointer" title="Click to see unsubscribed"><div class="stat-lbl">Total Unsubscribed</div><div class="stat-val">'+fmt(stats.unsubscribe_count||0)+'</div></div>'+
-        '<div class="stat mc-tile-to-campaigns" style="cursor:pointer" title="Click to see campaigns below"><div class="stat-lbl">Campaigns Sent</div><div class="stat-val">'+fmt(stats.campaign_count||0)+'</div></div>'+
-        '<div class="stat mc-tile-to-campaigns" style="cursor:pointer" title="Click to see per-campaign rates below"><div class="stat-lbl">Avg Open Rate</div><div class="stat-val">'+pct(stats.open_rate)+'</div></div>'+
-        '<div class="stat mc-tile-to-campaigns" style="cursor:pointer" title="Click to see per-campaign rates below"><div class="stat-lbl">Avg Click Rate</div><div class="stat-val">'+pct(stats.click_rate)+'</div></div>'+
+        '<div class="stat mc-tile-subscribers" style="cursor:pointer" title="Click to see subscribers"><div class="stat-lbl">Subscribers</div><div class="stat-val">'+fmt(stats.member_count||0)+'</div></div>'+
+        '<div class="stat mc-tile-subs-added-yesterday" style="cursor:pointer" title="Click to see subscribers"><div class="stat-lbl">Subscribers Added Yesterday</div><div class="stat-val">'+(subscribersAddedYesterday!=null?fmt(subscribersAddedYesterday):'—')+'</div></div>'+
+        '<div class="stat mc-tile-unsub-yesterday" style="cursor:pointer" title="Click to see recent unsubscribes (sorted newest first)"><div class="stat-lbl">Unsubscribed Yesterday</div><div class="stat-val">'+(unsubscribedYesterday!=null?fmt(unsubscribedYesterday):'—')+'</div></div>'+
+        '<div class="stat mc-tile-campaigns" style="cursor:pointer" title="Click to see campaigns"><div class="stat-lbl">Campaigns Sent</div><div class="stat-val">'+fmt(stats.campaign_count||0)+'</div></div>'+
+        '<div class="stat mc-tile-open-rate" style="cursor:pointer" title="Most recent campaign — click to see who opened it"><div class="stat-lbl">Open Rate</div><div class="stat-val">'+openRate+'</div></div>'+
+        '<div class="stat mc-tile-click-rate" style="cursor:pointer" title="Most recent campaign — click to see who clicked it"><div class="stat-lbl">Click Rate</div><div class="stat-val">'+clickRate+'</div></div>'+
       '</div>';
-    var subsTile = $('mc-tile-subscribers');
+    var subsTile = el.querySelector('.mc-tile-subscribers');
     if(subsTile) subsTile.addEventListener('click', function(){ openMailchimpMembersModal(listId, 'subscribed', 'Subscribers'); });
-    var unsubsTile = $('mc-tile-unsubscribed');
-    if(unsubsTile) unsubsTile.addEventListener('click', function(){ openMailchimpMembersModal(listId, 'unsubscribed', 'Unsubscribed'); });
-    var unsubYesterdayTile = $('mc-tile-unsub-yesterday');
+    var subsAddedTile = el.querySelector('.mc-tile-subs-added-yesterday');
+    if(subsAddedTile) subsAddedTile.addEventListener('click', function(){ openMailchimpMembersModal(listId, 'subscribed', 'Subscribers'); });
+    var unsubYesterdayTile = el.querySelector('.mc-tile-unsub-yesterday');
     if(unsubYesterdayTile) unsubYesterdayTile.addEventListener('click', function(){ openMailchimpMembersModal(listId, 'unsubscribed', 'Unsubscribed'); });
-    // Campaigns Sent / Avg Open Rate / Avg Click Rate are all aggregates
-    // over the same per-campaign data the Recent Campaigns section below
-    // already breaks out — same expand+scroll pattern the WordPress card's
-    // own Blog Followers tile uses, rather than building a second view of
-    // the same numbers.
-    document.querySelectorAll('.mc-tile-to-campaigns').forEach(function(tile){
-      tile.addEventListener('click', function(){
-        window._analyticsCollapsed = window._analyticsCollapsed || {};
-        window._analyticsCollapsed['mc-campaigns'] = false;
-        render();
-        var el = document.getElementById('mc-campaigns-body');
-        if(el) el.scrollIntoView({behavior:'smooth', block:'center'});
-      });
+    if(latest){
+      var openRateTile = el.querySelector('.mc-tile-open-rate');
+      if(openRateTile) openRateTile.addEventListener('click', function(){ openMailchimpCampaignActivity(latest.id, latest.campaign_title); });
+      var clickRateTile = el.querySelector('.mc-tile-click-rate');
+      if(clickRateTile) clickRateTile.addEventListener('click', function(){ openMailchimpCampaignActivity(latest.id, latest.campaign_title); });
+    }
+    var campaignsTile = el.querySelector('.mc-tile-campaigns');
+    if(campaignsTile) campaignsTile.addEventListener('click', opts.onCampaignsClick || function(){
+      window._analyticsCollapsed = window._analyticsCollapsed || {};
+      window._analyticsCollapsed['mc-campaigns'] = false;
+      render();
+      var body = document.getElementById('mc-campaigns-body');
+      if(body) body.scrollIntoView({behavior:'smooth', block:'center'});
     });
   }).catch(function(e){
-    debugLog('Mailchimp analytics: list stats request failed — '+e.message);
-    if(body) body.innerHTML = '<div class="empty">Failed to load: '+escHtml(e.message)+'</div>';
+    debugLog('Mailchimp analytics: stat tiles request failed — '+e.message);
+    if(el) el.innerHTML = '<div class="empty">Failed to load: '+escHtml(e.message)+'</div>';
   });
 }
 // Member-list drilldown for the Subscribers/Unsubscribed tiles — same
@@ -11809,6 +11836,10 @@ function renderDash(){
       '</div>'+
     '</div>'+
     '<div class="card" style="margin-bottom:16px">'+
+      '<div class="card-hdr"><span class="card-title">Mailchimp</span><button class="view-all" id="dash-mc-stats-view-all">View all &rarr;</button></div>'+
+      '<div id="dash-mc-stats-body"><div class="empty">Loading…</div></div>'+
+    '</div>'+
+    '<div class="card" style="margin-bottom:16px">'+
       '<div class="card-hdr"><span class="card-title">Most Recent Email</span><button class="view-all" id="dash-mc-view-all">View all &rarr;</button></div>'+
       '<div id="dash-mc-latest-body"><div class="empty">Loading…</div></div>'+
     '</div>'+
@@ -11946,6 +11977,23 @@ function renderDash(){
         return {cells:[t.clientName||'',t.destination||'',t.departDate||'—',displayStatus(t),fmt(tripBookedPoints(t))],onClick:function(){openTripForm(t.id);}};
       }));
   });
+
+  // Mailchimp stats card — reuses the exact same six-tile grid the
+  // Analytics tab's own Mailchimp card uses (see loadMailchimpStatsTiles),
+  // so the two never disagree. The Campaigns Sent tile can't expand the
+  // Recent Campaigns section in place the way it does on the Analytics
+  // page (this isn't that page), so it navigates there first instead.
+  loadMailchimpStatsTiles('dash-mc-stats-body', {
+    onCampaignsClick: function(){
+      window._analyticsCollapsed = window._analyticsCollapsed || {};
+      window._analyticsCollapsed['mc-campaigns'] = false;
+      go('analytics');
+      var el = document.getElementById('mc-campaigns-body');
+      if(el) el.scrollIntoView({behavior:'smooth', block:'center'});
+    }
+  });
+  var dashMcStatsViewAll = $('dash-mc-stats-view-all');
+  if(dashMcStatsViewAll) dashMcStatsViewAll.addEventListener('click', function(){ go('analytics'); });
 
   // Most Recent Email card — reuses the exact same fetch/render the
   // Analytics tab's own collapsed Recent Campaigns section uses (see
@@ -16974,6 +17022,25 @@ function countMailchimpUnsubscribesOnDate(listId, dateStr){
     var count = 0;
     for(var i=0;i<members.length;i++){
       var d = (members[i].last_changed||'').slice(0,10);
+      if(d===dateStr) count++;
+      else if(d && d<dateStr) break; // sorted newest-first — once we're past the target date, nothing further can match
+    }
+    return count;
+  });
+}
+// Same date-scoped-count approach as countMailchimpUnsubscribesOnDate()
+// above, for the other direction — new subscribers rather than
+// unsubscribes. timestamp_opt is when the member confirmed their opt-in;
+// on a single-opt-in audience (no separate confirmation step) Mailchimp
+// sets it to the same moment as signup, so this works whether or not the
+// audience uses double opt-in.
+function countMailchimpSubscribersAddedOnDate(listId, dateStr){
+  return mailchimpProxyGet('/lists/'+listId+'/members?status=subscribed&count=1000&sort_field=timestamp_opt&sort_dir=DESC').then(function(resp){
+    if(resp.error) throw new Error(resp.error.message||resp.detail||'Failed to load subscribed members');
+    var members = resp.members||[];
+    var count = 0;
+    for(var i=0;i<members.length;i++){
+      var d = (members[i].timestamp_opt||'').slice(0,10);
       if(d===dateStr) count++;
       else if(d && d<dateStr) break; // sorted newest-first — once we're past the target date, nothing further can match
     }
