@@ -11968,8 +11968,14 @@ function renderDash(){
   });
   var statDashValue = $('stat-dash-value');
   if(statDashValue) statDashValue.addEventListener('click', function(){
-    var revenueTrips = db.trips.filter(function(t){ var st=displayStatus(t); return st==='Completed'||st==='Upcoming'; });
-    openStatDrilldownModal('Total Revenue', tripHeaders, revenueTrips.map(tripRow));
+    // Every trip with a totalValue, no status filter — matches s.value's
+    // own unconditional db.trips.reduce() exactly, so the list always adds
+    // up to precisely the number shown (the drilldown convention every
+    // other clickable stat on this page follows). A prior version only
+    // showed Completed/Upcoming trips here, which silently hid any
+    // Planning/In Progress/Cancelled trip's revenue from the very list
+    // meant to explain the total it was still counted in.
+    openStatDrilldownModal('Total Revenue', tripHeaders, db.trips.map(tripRow));
   });
   var statDashPts = $('stat-dash-pts');
   if(statDashPts) statDashPts.addEventListener('click', function(){
