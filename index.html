@@ -15506,6 +15506,25 @@ function taskContactInfo(t){
   if(t.marketingPlanId && db.marketingPlan.some(function(x){return x.id===t.marketingPlanId;})){
     return {type:'marketing', badgeCls:'b-purple', badgeLabel:'Marketing Plan', phone:'', email:''};
   }
+  // Manual override (Type field on the task form) decides the category
+  // directly instead of the automatic precedence below, for a task that
+  // genuinely has more than one kind of link on it and should read as
+  // something other than whichever one wins by default — e.g. a task with
+  // both a Linked Supplier and a Linked Client that should show as Client.
+  // Still sources phone/email from whatever's actually linked for the
+  // chosen category (falling back to blank, same as the matching
+  // auto-detected branch below, when there's no contact-level info to
+  // surface) rather than inventing data the override alone doesn't have.
+  if(t.typeOverride==='supplier'){
+    var ovVc = t.vendorContactId ? findVendorContact(t.vendorContactId) : null;
+    return {type:'supplier', badgeCls:'b-green', badgeLabel:'Supplier', phone:ovVc?ovVc.contact.phone:'', email:ovVc?ovVc.contact.email:''};
+  }
+  if(t.typeOverride==='vendor'){
+    var ovBvc = t.bizVendorContactId ? findBizVendorContact(t.bizVendorContactId) : null;
+    return {type:'vendor', badgeCls:'b-amber', badgeLabel:'Vendor', phone:ovBvc?ovBvc.contact.phone:'', email:ovBvc?ovBvc.contact.email:''};
+  }
+  if(t.typeOverride==='client') return {type:'client', badgeCls:'b-blue', badgeLabel:'Client', phone:'', email:''};
+  if(t.typeOverride==='admin') return {type:'admin', badgeCls:'b-gray', badgeLabel:'Admin', phone:'', email:''};
   var vc = t.vendorContactId ? findVendorContact(t.vendorContactId) : null;
   if(vc) return {type:'supplier', badgeCls:'b-green', badgeLabel:'Supplier', phone:vc.contact.phone, email:vc.contact.email};
   var bvc = t.bizVendorContactId ? findBizVendorContact(t.bizVendorContactId) : null;
@@ -18135,6 +18154,12 @@ function openTaskForm(id){
       fld('Due Date', inp('tk-due','date',d.dueDate))+
       fld('Time', inp('tk-time','time',d.dueTime))+
       fld('Status','<select id="tk-done"><option value="0"'+(!d.done?' selected':'')+'>Open</option><option value="1"'+(d.done?' selected':'')+'>Done</option></select>')+
+      fld('Type','<select id="tk-type"><option value=""'+(!d.typeOverride?' selected':'')+'>Auto (based on linked records)</option>'+
+        ['client','supplier','vendor','admin'].map(function(v){
+          var label = v==='admin' ? 'Admin' : v.charAt(0).toUpperCase()+v.slice(1);
+          return '<option value="'+v+'"'+(d.typeOverride===v?' selected':'')+'>'+label+'</option>';
+        }).join('')+
+        '</select><span class="hint" style="text-transform:none;font-weight:400;display:block;margin-top:4px">Overrides the automatic Client/Supplier/Vendor badge below (which normally follows whichever linked record takes precedence) — pick one to force it, or leave on Auto.</span>')+
       fld('Completion Note Type', sel('tk-note-type', NOTE_TYPES, d.completionNoteType||'General'))+
       fld('Linked Client','<div style="display:flex;align-items:center;gap:10px">'+
         searchableSelectWrap('<select id="tk-client"><option value="">None</option>'+clientOpts+'</select>','Search clients...')+
@@ -18392,6 +18417,7 @@ function saveTaskAndNew(id){
   var vendorContactId = gv('tk-vendor-contact');
   var bizVendorContactId = gv('tk-bizvendor-contact');
   var tripId = gv('tk-trip');
+  var typeOverride = gv('tk-type');
   var noteType = gv('tk-note-type');
   var desc = gv('tk-desc');
 
@@ -18407,6 +18433,7 @@ function saveTaskAndNew(id){
   var vendorContactSel=document.getElementById('tk-vendor-contact'); if(vendorContactSel) vendorContactSel.value=vendorContactId;
   var bizVendorContactSel=document.getElementById('tk-bizvendor-contact'); if(bizVendorContactSel) bizVendorContactSel.value=bizVendorContactId;
   var tripSel=document.getElementById('tk-trip'); if(tripSel) tripSel.value=tripId;
+  var typeSel=document.getElementById('tk-type'); if(typeSel) typeSel.value=typeOverride;
   var noteTypeSel=document.getElementById('tk-note-type'); if(noteTypeSel) noteTypeSel.value=noteType;
   document.getElementById('tk-desc').value = 'Follow-up to: "'+title+'"'+(desc?'\n'+desc:'');
   document.getElementById('tk-title').focus();
@@ -18433,6 +18460,7 @@ function saveTask(id){
     dueDate:gv('tk-due'),
     dueTime:gv('tk-time'),
     done: gv('tk-done')==='1',
+    typeOverride: gv('tk-type'),
     completionNoteType: gv('tk-note-type')||'General',
     clientId: clientId,
     clientIds: additionalClientIds,
