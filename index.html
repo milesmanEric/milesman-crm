@@ -1665,20 +1665,32 @@ function loadDB(){
     // Revenue-import-created trips (identifiable by having invoiceNum set —
     // only that import path writes it) used to be hardcoded to "Completed"
     // regardless of travel date, hiding genuinely-upcoming bookings from
-    // the Trips tab for anyone filtering out Completed. Only re-checks
-    // trips actually created by that path, so manually-entered trips
-    // (which never have invoiceNum) are untouched (safe to run repeatedly
-    // — a trip whose date has since passed just won't match anymore).
+    // the Trips tab for anyone filtering out Completed; a later version
+    // fixed that by using an intermediate "Confirmed" status for future-
+    // dated ones instead. Both are superseded now — extractRevenueRow()
+    // assigns the real date-derived status (Upcoming/In Progress/
+    // Completed) directly at import time — so this corrects any trip still
+    // sitting at "Completed" or "Confirmed" from either older behavior to
+    // what it should actually say today. Only re-checks trips actually
+    // created by that import path, so manually-entered trips (which never
+    // have invoiceNum) are untouched — including one a person deliberately
+    // set to "Confirmed" by hand, since that's still a selectable status on
+    // the trip form. Safe to run repeatedly: ongoing drift after this
+    // (Upcoming -> In Progress -> Completed as travel dates arrive/pass) is
+    // already handled by autoUpdateTripStatusesByDate().
     var importedStatusMigrated=0;
     db.trips.forEach(function(t){
-      if(t.invoiceNum && t.status==='Completed' && t.departDate && t.departDate>today()){
-        t.status='Confirmed';
+      if(!t.invoiceNum || (t.status!=='Completed' && t.status!=='Confirmed')) return;
+      var t0 = today();
+      var correctStatus = t.departDate>t0 ? 'Upcoming' : (t.departDate===t0 ? 'In Progress' : 'Completed');
+      if(t.status!==correctStatus){
+        t.status = correctStatus;
         importedStatusMigrated++;
       }
     });
     if(importedStatusMigrated>0){
       saveDB();
-      console.log('[CRM] Migrated '+importedStatusMigrated+' revenue-imported trip(s) from "Completed" to "Confirmed" (travel date is still in the future)');
+      console.log('[CRM] Migrated '+importedStatusMigrated+' revenue-imported trip(s) to their correct date-derived status');
     }
     // One-time data fix: trip T074 (Gartenberg, 2025) was mistakenly cross-
     // linked to T115 (Sorrentino, 2027 — legitimately linked to Garth's trip
@@ -6869,7 +6881,12 @@ function importRevenueRowForClient(row, cid, seenInBatch){
   // upcoming — the client's own trip list showed "Upcoming" correctly
   // (tripLifecycleCategory() re-derives that from the date), but the Trips
   // tab's own visibility filter checks the raw stored status directly.
-  const importedStatus = tripDate>today() ? 'Confirmed' : 'Completed';
+  // Derived straight from the actual date-based statuses (same three-way
+  // split autoUpdateTripStatusesByDate() uses going forward) rather than
+  // the intermediate "Confirmed" status a prior version used here — that
+  // status existed only to distinguish "paid but not yet completed" from
+  // real Completed, which the date itself already does more precisely.
+  const importedStatus = tripDate>today() ? 'Upcoming' : (tripDate===today() ? 'In Progress' : 'Completed');
   db.trips.push({
     id:tripId,clientId:cid,clientName:client.name,
     destination:dest,origin:'',departDate:tripDate,returnDate:tripDate,invoiceDate:invoiceDate,
