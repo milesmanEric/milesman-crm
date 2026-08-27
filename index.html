@@ -17054,11 +17054,21 @@ function fetchYesterdayMailchimpSummary(){
   var yesterday = addDaysToDateStr(today(), -1);
   return Promise.all([
     mailchimpProxyGet('/lists/'+listId),
-    countMailchimpUnsubscribesOnDate(listId, yesterday)
+    countMailchimpUnsubscribesOnDate(listId, yesterday),
+    countMailchimpSubscribersAddedOnDate(listId, yesterday),
+    mailchimpProxyGet('/reports?list_id='+encodeURIComponent(listId)+'&count=1&sort_field=send_time&sort_dir=DESC').catch(function(){ return null; })
   ]).then(function(results){
-    var list = results[0], unsubscribedYesterday = results[1];
+    var list = results[0], unsubscribedYesterday = results[1], subscribersAddedYesterday = results[2], reportsResp = results[3];
     var stats = list.stats||{};
-    return {listName:list.name, subscribers:stats.member_count, unsubscribedTotal:stats.unsubscribe_count, unsubscribedYesterday:unsubscribedYesterday, openRate:stats.open_rate, clickRate:stats.click_rate};
+    var latest = reportsResp && !reportsResp.error ? (reportsResp.reports||[])[0] : null;
+    // Reports endpoint's opens/clicks rates are fractions of 1 (e.g.
+    // 0.4956), the opposite convention from List stats' own open_rate/
+    // click_rate — converted here to the same already-a-percentage shape
+    // (e.g. 49.56) the caller's formatting math expects, same gotcha
+    // loadMailchimpStatsTiles() documents.
+    var openRate = latest && latest.opens && latest.opens.open_rate!=null ? latest.opens.open_rate*100 : null;
+    var clickRate = latest && latest.clicks && latest.clicks.click_rate!=null ? latest.clicks.click_rate*100 : null;
+    return {listName:list.name, subscribers:stats.member_count, subscribersAddedYesterday:subscribersAddedYesterday, unsubscribedYesterday:unsubscribedYesterday, openRate:openRate, clickRate:clickRate};
   });
 }
 function dailySummaryHtml(text){
@@ -17107,15 +17117,20 @@ function dailyCompilationHtml(results, dateStr){
   }
   if(results.mailchimp){
     var mc = results.mailchimp;
-    // open_rate/click_rate from the List stats endpoint are already
-    // percentages (e.g. 49.56 meaning 49.56%), same convention already
-    // confirmed live and handled in loadMailchimpAnalytics().
+    // Same fields as the interactive Mailchimp stat tiles now use
+    // (loadMailchimpStatsTiles()) — Subscribers Added Yesterday instead of
+    // the old ever-growing Total Unsubscribed, and Open/Click Rate for the
+    // single most recently sent campaign rather than a list-wide average
+    // (fetchYesterdayMailchimpSummary() already converts both out of the
+    // Reports endpoint's fraction convention into the same already-a-
+    // percentage shape used below, so the math here doesn't need to know
+    // the difference).
     blocks.push(compSourceBlock('Mailchimp — '+escHtml(mc.listName||''), [
       ['Subscribers', fmt(mc.subscribers||0)],
+      ['Subscribers Added Yesterday', fmt(mc.subscribersAddedYesterday||0)],
       ['Unsubscribed Yesterday', fmt(mc.unsubscribedYesterday||0)],
-      ['Total Unsubscribed', fmt(mc.unsubscribedTotal||0)],
-      ['Open Rate', mc.openRate!=null?(Math.round(mc.openRate*10)/10)+'%':'—'],
-      ['Click Rate', mc.clickRate!=null?(Math.round(mc.clickRate*10)/10)+'%':'—']
+      ['Open Rate (latest email)', mc.openRate!=null?(Math.round(mc.openRate*10)/10)+'%':'—'],
+      ['Click Rate (latest email)', mc.clickRate!=null?(Math.round(mc.clickRate*10)/10)+'%':'—']
     ]));
   }
   if(results.instagram){
