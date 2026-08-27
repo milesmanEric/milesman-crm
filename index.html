@@ -10616,8 +10616,14 @@ function renderVendors(){
 // through add/remove, since nothing else keys off a property's id — the
 // Booked Trip Details Property picklist matches on name, not id.
 function vendorPropertiesListHtml(properties){
+  // data-email rides along on each <option> (not a value/attribute the
+  // <select> itself exposes to the user) purely as scratch storage between
+  // renders — see the Property Email field below, which reads/writes it
+  // directly on the selected option's DOM node rather than keeping a
+  // parallel array in sync, so "Save Email" doesn't need to know a
+  // property's position/id (which gets renumbered on every save anyway).
   var optsHtml = properties.map(function(p){
-    return '<option>'+escHtml(p.name)+'</option>';
+    return '<option data-email="'+escHtml(p.email||'')+'">'+escHtml(p.name)+(p.email?' &#9993;':'')+'</option>';
   }).join('');
   return '<div style="font-size:11px;color:#888;margin-bottom:4px">'+properties.length+' propert'+(properties.length===1?'y':'ies')+'</div>'+
     '<input type="text" id="vendor-properties-filter" placeholder="Filter properties..." style="width:100%;padding:6px 8px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;font-family:inherit;margin-bottom:6px;box-sizing:border-box">'+
@@ -10626,13 +10632,21 @@ function vendorPropertiesListHtml(properties){
       '<input type="text" id="vendor-property-new" placeholder="Add a property..." style="flex:1;padding:6px 8px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;font-family:inherit;box-sizing:border-box">'+
       '<button type="button" id="btn-add-vendor-property" style="padding:5px 12px;border-radius:6px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:11px;font-family:inherit;white-space:nowrap">+ Add</button>'+
       '<button type="button" id="btn-remove-vendor-property" style="padding:5px 12px;border-radius:6px;border:1px solid #d1d5db;background:#fff;color:#dc2626;cursor:pointer;font-size:11px;font-family:inherit;white-space:nowrap">Remove Selected</button>'+
+    '</div>'+
+    '<div style="margin-top:8px;padding-top:8px;border-top:1px solid #f0f0f0">'+
+      '<label style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:.04em">Property Email</label>'+
+      '<div id="vendor-property-email-hint" style="font-size:11px;color:#aaa;margin:2px 0 4px">Select exactly one property above to set its email</div>'+
+      '<div style="display:flex;gap:6px">'+
+        '<input type="email" id="vendor-property-email" placeholder="e.g. groupsales@property.com" disabled style="flex:1;padding:6px 8px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;font-family:inherit;box-sizing:border-box">'+
+        '<button type="button" id="btn-save-vendor-property-email" disabled style="padding:5px 12px;border-radius:6px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:11px;font-family:inherit;white-space:nowrap">Save Email</button>'+
+      '</div>'+
     '</div>';
 }
 function readVendorProperties(){
   var sel = document.getElementById('vendor-properties-select');
   if(!sel) return null; // form wasn't showing a Properties section (not a Hotel supplier)
   return Array.from(sel.options).map(function(o, i){
-    return {id:'HP'+(i+1), name:o.textContent};
+    return {id:'HP'+(i+1), name:o.textContent.replace(/\s*✉\s*$/,''), email:o.dataset.email||''};
   });
 }
 function openVendorForm(id){
@@ -10925,6 +10939,47 @@ function openVendorForm(id){
     if(removePropBtn && propSelect){
       removePropBtn.addEventListener('click', function(){
         Array.from(propSelect.selectedOptions).forEach(function(o){ o.remove(); });
+        if(refreshPropertyEmailField) refreshPropertyEmailField();
+      });
+    }
+    // Property Email — only enabled with exactly one property selected in
+    // the listbox above, since an email belongs to one specific property,
+    // not a set. Reads/writes straight from/to that <option>'s own
+    // data-email (kept in sync with the ✉ suffix on its label so a
+    // property with an email is visible at a glance while scrolling
+    // hundreds of others), rather than a separate lookup structure —
+    // there's no separate array of properties in memory at this point,
+    // just the <select> itself, per readVendorProperties()'s own comment.
+    var propEmailInput = document.getElementById('vendor-property-email');
+    var propEmailHint = document.getElementById('vendor-property-email-hint');
+    var savePropEmailBtn = document.getElementById('btn-save-vendor-property-email');
+    var refreshPropertyEmailField = null;
+    if(propSelect && propEmailInput && propEmailHint && savePropEmailBtn){
+      refreshPropertyEmailField = function(){
+        var selected = propSelect.selectedOptions;
+        if(selected.length===1){
+          propEmailInput.disabled = false;
+          savePropEmailBtn.disabled = false;
+          propEmailInput.value = selected[0].dataset.email||'';
+          propEmailHint.textContent = 'Email for: '+selected[0].textContent.replace(/\s*✉\s*$/,'');
+        } else {
+          propEmailInput.disabled = true;
+          savePropEmailBtn.disabled = true;
+          propEmailInput.value = '';
+          propEmailHint.textContent = selected.length>1 ? 'Select only one property to set its email' : 'Select exactly one property above to set its email';
+        }
+      };
+      propSelect.addEventListener('change', refreshPropertyEmailField);
+      propSelect.addEventListener('click', refreshPropertyEmailField);
+      savePropEmailBtn.addEventListener('click', function(){
+        var selected = propSelect.selectedOptions;
+        if(selected.length!==1) return;
+        var opt = selected[0];
+        var email = propEmailInput.value.trim();
+        opt.dataset.email = email;
+        var bareName = opt.textContent.replace(/\s*✉\s*$/,'');
+        opt.textContent = bareName+(email?' ✉':'');
+        toast(email?'Property email saved (click Save Supplier below to keep it)':'Property email cleared (click Save Supplier below to keep it)','ok');
       });
     }
   }
