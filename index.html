@@ -12359,28 +12359,85 @@ function sortArrow(col){
 // modal (vendor detail, invoice detail), since this app has a single shared
 // modal container and can't nest one on top of another; those instead just
 // scroll to/highlight the breakdown table already shown alongside them.
+// Shared by every clickable stat tile across the app (Dashboard, Clients,
+// Trips, Suppliers, etc.) — a generic "here's exactly which records add up
+// to that number" list. Sortable by clicking any column header, re-sorting
+// client-side against the same `rows` array on every click rather than
+// re-fetching, since a caller only ever builds this list once per open.
 function openStatDrilldownModal(title, headers, rows){
-  var bodyRows = rows.map(function(r,i){
-    return '<tr class="stat-drilldown-row" data-idx="'+i+'" style="cursor:pointer">'+
-      r.cells.map(function(c){return '<td style="padding:8px 12px;font-size:13px;color:#374151">'+c+'</td>';}).join('')+
-    '</tr>';
-  }).join('');
-  $('modal').innerHTML =
-    '<div class="modal-hdr"><div class="modal-title">'+title+'</div><button class="close-btn" id="modal-close">&#x2715;</button></div>'+
-    (rows.length
-      ? '<div class="tbl-wrap" style="max-height:440px;overflow-y:auto"><table><thead><tr>'+headers.map(function(h){return '<th>'+h+'</th>';}).join('')+'</tr></thead><tbody>'+bodyRows+'</tbody></table></div>'
-      : '<div class="empty">No records</div>')+
-    '<div class="form-actions form-actions-sticky"><button class="cancel-btn" id="modal-close2">Close</button></div>';
-  $('overlay').classList.add('open');
-  $('modal-close').addEventListener('click', closeModal);
-  $('modal-close2').addEventListener('click', closeModal);
-  document.querySelectorAll('.stat-drilldown-row').forEach(function(tr){
-    tr.addEventListener('click', function(){
-      var r = rows[Number(this.dataset.idx)];
-      closeModal();
-      if(r.onClick) r.onClick();
+  var sortCol = null, sortDir = 'asc';
+  // Cells are pre-rendered HTML strings (sometimes just plain text, but a
+  // few callers wrap a cell in a styled <span>), so sorting needs the
+  // rendered text, not the markup — a scratch element strips it cleanly.
+  function cellText(html){
+    var el = document.createElement('div');
+    el.innerHTML = html==null ? '' : String(html);
+    return (el.textContent||'').trim();
+  }
+  function sortedRows(){
+    if(sortCol==null) return rows;
+    var withText = rows.map(function(r){ return {r:r, text:cellText(r.cells[sortCol])}; });
+    // Numeric if every non-blank cell in this column, once any currency/
+    // percent decoration ($, commas, %) is stripped, is purely a number —
+    // covers both plain counts and formatted dollar amounts in one check.
+    // An ISO date string (e.g. "2026-08-27", used throughout this app)
+    // already sorts correctly as plain text, so no separate date-detection
+    // is needed. Blank/"—" cells always sort to the end regardless of
+    // direction, rather than collating as the lowest/highest value.
+    var allNumeric = withText.every(function(x){
+      return !x.text || x.text==='—' || /^-?\$?[\d,]+(\.\d+)?%?$/.test(x.text);
     });
-  });
+    withText.sort(function(a,b){
+      if(allNumeric){
+        var an = (a.text && a.text!=='—') ? parseFloat(a.text.replace(/[$,%]/g,'')) : NaN;
+        var bn = (b.text && b.text!=='—') ? parseFloat(b.text.replace(/[$,%]/g,'')) : NaN;
+        if(isNaN(an) && isNaN(bn)) return 0;
+        if(isNaN(an)) return 1;
+        if(isNaN(bn)) return -1;
+        return sortDir==='asc' ? an-bn : bn-an;
+      }
+      var cmp = a.text.toLowerCase().localeCompare(b.text.toLowerCase());
+      return sortDir==='asc' ? cmp : -cmp;
+    });
+    return withText.map(function(x){return x.r;});
+  }
+  function draw(){
+    var list = sortedRows();
+    var bodyRows = list.map(function(r){
+      return '<tr class="stat-drilldown-row" style="cursor:pointer">'+
+        r.cells.map(function(c){return '<td style="padding:8px 12px;font-size:13px;color:#374151">'+c+'</td>';}).join('')+
+      '</tr>';
+    }).join('');
+    var headerHtml = headers.map(function(h,i){
+      var arrow = sortCol===i ? (sortDir==='asc'?' &#9650;':' &#9660;') : '';
+      return '<th data-col="'+i+'" style="cursor:pointer;white-space:nowrap" title="Click to sort">'+h+arrow+'</th>';
+    }).join('');
+    $('modal').innerHTML =
+      '<div class="modal-hdr"><div class="modal-title">'+title+'</div><button class="close-btn" id="modal-close">&#x2715;</button></div>'+
+      (rows.length
+        ? '<div class="tbl-wrap" style="max-height:440px;overflow-y:auto"><table><thead><tr>'+headerHtml+'</tr></thead><tbody>'+bodyRows+'</tbody></table></div>'
+        : '<div class="empty">No records</div>')+
+      '<div class="form-actions form-actions-sticky"><button class="cancel-btn" id="modal-close2">Close</button></div>';
+    $('modal-close').addEventListener('click', closeModal);
+    $('modal-close2').addEventListener('click', closeModal);
+    document.querySelectorAll('.stat-drilldown-row').forEach(function(tr, idx){
+      tr.addEventListener('click', function(){
+        var r = list[idx];
+        closeModal();
+        if(r.onClick) r.onClick();
+      });
+    });
+    document.querySelectorAll('#modal th[data-col]').forEach(function(th){
+      th.addEventListener('click', function(){
+        var col = Number(th.dataset.col);
+        if(sortCol===col) sortDir = (sortDir==='asc') ? 'desc' : 'asc';
+        else { sortCol = col; sortDir = 'asc'; }
+        draw();
+      });
+    });
+  }
+  $('overlay').classList.add('open');
+  draw();
 }
 // Scrolls to and briefly highlights an already-visible breakdown table —
 // used for stats that live inside a modal that's already showing that same
