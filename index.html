@@ -3579,7 +3579,8 @@ async function driveRestore(){
         savedReports:Array.isArray(d.savedReports)?d.savedReports:[],
         groups:Array.isArray(d.groups)?d.groups:[],
         marketingPlan:Array.isArray(d.marketingPlan)?d.marketingPlan:[],
-        pendingImportMatches:Array.isArray(d.pendingImportMatches)?d.pendingImportMatches:[]
+        pendingImportMatches:Array.isArray(d.pendingImportMatches)?d.pendingImportMatches:[],
+        jetpackRemovalQueue:Array.isArray(d.jetpackRemovalQueue)?d.jetpackRemovalQueue:[]
       };
       db.clients.forEach(function(c){ if(c.name && !c.name.includes(',')) c.name=toLastFirst(c.name); });
       saveDB();render();
@@ -3685,7 +3686,8 @@ async function secureSyncRestore(){
         savedReports:Array.isArray(d.savedReports)?d.savedReports:[],
         groups:Array.isArray(d.groups)?d.groups:[],
         marketingPlan:Array.isArray(d.marketingPlan)?d.marketingPlan:[],
-        pendingImportMatches:Array.isArray(d.pendingImportMatches)?d.pendingImportMatches:[]
+        pendingImportMatches:Array.isArray(d.pendingImportMatches)?d.pendingImportMatches:[],
+        jetpackRemovalQueue:Array.isArray(d.jetpackRemovalQueue)?d.jetpackRemovalQueue:[]
       };
       db.clients.forEach(function(c){ if(c.name && !c.name.includes(',')) c.name=toLastFirst(c.name); });
       saveDB();render();
@@ -4787,7 +4789,7 @@ function importJSON(){
     r.onload=function(ev){
       try{
         const d=JSON.parse(ev.target.result);
-        if(Array.isArray(d.clients)&&Array.isArray(d.trips)){db=d;if(!Array.isArray(db.vendors))db.vendors=[];if(!Array.isArray(db.bizVendors))db.bizVendors=[];if(!Array.isArray(db.planner))db.planner=[];if(!Array.isArray(db.bookmarks))db.bookmarks=[];if(!Array.isArray(db.savedReports))db.savedReports=[];if(!Array.isArray(db.groups))db.groups=[];if(!Array.isArray(db.marketingPlan))db.marketingPlan=[];if(!Array.isArray(db.pendingImportMatches))db.pendingImportMatches=[];(db.clients||[]).forEach(function(c){ if(c.name && !c.name.includes(',')) c.name=toLastFirst(c.name); });saveDB();toast('Data imported');render();}
+        if(Array.isArray(d.clients)&&Array.isArray(d.trips)){db=d;if(!Array.isArray(db.vendors))db.vendors=[];if(!Array.isArray(db.bizVendors))db.bizVendors=[];if(!Array.isArray(db.planner))db.planner=[];if(!Array.isArray(db.bookmarks))db.bookmarks=[];if(!Array.isArray(db.savedReports))db.savedReports=[];if(!Array.isArray(db.groups))db.groups=[];if(!Array.isArray(db.marketingPlan))db.marketingPlan=[];if(!Array.isArray(db.pendingImportMatches))db.pendingImportMatches=[];if(!Array.isArray(db.jetpackRemovalQueue))db.jetpackRemovalQueue=[];(db.clients||[]).forEach(function(c){ if(c.name && !c.name.includes(',')) c.name=toLastFirst(c.name); });saveDB();toast('Data imported');render();}
         else toast('Invalid backup file','err');
       }catch(ex){toast('Could not read file','err');}
     };r.readAsText(f);
