@@ -681,9 +681,12 @@ const X_AUTH_SERVER   = 'https://milesman-auth.vercel.app';
 // explicitly whitelists in the TikTok Developer Portal, not for the real
 // connected account, until the app's scopes are approved for production
 // (TikTok's own guidance: sandbox is hours, production review is days to
-// weeks). Needs api/tiktok-token.js (holds TT_CLIENT_SECRET) and
-// api/tiktok-api.js (CORS relay) on the milesman-auth Vercel proxy — see
-// vercel-endpoints/tiktok-token.js and tiktok-api.js in this repo.
+// weeks). Needs api/tiktok.js (holds TT_CLIENT_SECRET, does the code
+// exchange/refresh via POST and the CORS relay via GET, merged into one
+// file to stay under Vercel Hobby's 12-function-per-deployment cap — see
+// the Canva comment above for why) on the milesman-auth Vercel proxy —
+// see vercel-endpoints/tiktok.js in this repo, plus the vercel.json
+// rewrites it documents.
 // No PKCE: unlike Canva/X, TikTok only requires it for desktop/iOS/Android
 // (public clients with no way to hold a secret) — web apps are treated as
 // confidential clients since the secret stays server-side here, same plain
