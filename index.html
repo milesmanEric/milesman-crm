@@ -606,12 +606,15 @@ const WP_SITE         = 'themilesman.com';
 // no separate login flow. https://developers.google.com/analytics/devguides/reporting/data/v1
 const GA4_PROPERTY_ID = '362931402';
 // Facebook Marketing API — same OAuth-via-Vercel-proxy shape as WordPress
-// (api/facebook-token.js holds the App Secret, exchanges the code for a
+// (api/facebook.js holds the App Secret, exchanges the code for a
 // long-lived ~60-day token). ads_management (create/launch) + ads_read
-// (insights) scopes. Graph API calls are relayed through
-// api/facebook-graph.js the same defensive way WordPress's are, since
-// several act_{id} endpoints don't reliably send CORS headers to a direct
-// browser fetch.
+// (insights) scopes. Graph API calls are relayed through the same
+// api/facebook.js the same defensive way WordPress's are, since several
+// act_{id} endpoints don't reliably send CORS headers to a direct browser
+// fetch. (Originally two files, api/facebook-token.js/api/facebook-graph.js,
+// merged into one — same Vercel Hobby 12-function-cap reason as Canva/X
+// below — routed by whether the request carries a "path" query param, see
+// vercel-endpoints/facebook.js in this repo.)
 const FB_APP_ID       = '1037570602213729';
 // pages_show_list/pages_read_engagement added so the Analytics tab's
 // "Page Performance (organic, non-ads)" section can fetch the connected
@@ -654,9 +657,12 @@ const FB_AD_ACCOUNT   = 'act_1285326830438388';
 // real ID replaces this placeholder.
 // X (Twitter) API v2 — OAuth 2.0 with PKCE (mandatory, same as Canva
 // below; unlike Facebook/WordPress's plain authorization-code flow).
-// Needs api/x-token.js (holds X_CLIENT_SECRET, does the code exchange and
-// refresh) and api/x-api.js (CORS relay) on the milesman-auth Vercel proxy
-// — see wordpress-snippets/vercel-x-endpoints/ in this repo for both files.
+// Needs api/x.js (holds X_CLIENT_SECRET, does the code exchange/refresh via
+// POST and the CORS relay via GET, merged into one file to stay under
+// Vercel Hobby's 12-function-per-deployment cap — see the Canva comment
+// below for why) on the milesman-auth Vercel proxy — see
+// vercel-endpoints/x.js in this repo, plus the vercel.json rewrites it
+// documents.
 //
 // COST WARNING: X has no usable free tier as of Feb 2026 — it's pay-per-use,
 // and a user-scoped read (which is what /2/users/me is) runs ~$0.010 each.
@@ -665,7 +671,7 @@ const FB_AD_ACCOUNT   = 'act_1285326830438388';
 // follower tiles do: the Dashboard tile and the Analytics card share that
 // one cached snapshot, so a day of normal use costs one read, not dozens.
 // Don't "optimize" that cache away without understanding it bills real money.
-const X_CLIENT_ID     = '';  // fill in from the X Developer Portal app (OAuth 2.0 Client ID)
+const X_CLIENT_ID     = 'dzAyNlBDU2gxOHEwT05nZGtqWko6MTpjaQ';
 const X_SCOPE         = 'tweet.read users.read offline.access';
 const X_REDIRECT      = 'https://milesmaneric.github.io/milesman-crm/';
 const X_AUTH_SERVER   = 'https://milesman-auth.vercel.app';
