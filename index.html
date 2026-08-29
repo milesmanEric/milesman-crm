@@ -14617,7 +14617,8 @@ function hotelPropertyOptionsHtml(hotelBrand, selected){
 }
 function hotelEntryRowInnerHtml(entry){
   entry = entry || {};
-  return '<div style="display:flex;justify-content:flex-end;margin-bottom:4px">'+
+  return '<div style="display:flex;justify-content:flex-end;gap:14px;margin-bottom:4px">'+
+      '<button type="button" class="hotel-entry-voucher-btn" style="background:none;border:none;color:#2563eb;cursor:pointer;font-size:12px">&#129534; Net Rate Voucher</button>'+
       '<button type="button" class="del-hotel-entry-btn" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:12px">&#128465;&#65039; Remove</button>'+
     '</div>'+
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
@@ -14655,6 +14656,127 @@ function readHotelEntries(){
   }).filter(function(e){
     return e.hotelBrand||e.property||e.confirmationNumber||e.checkInDate||e.nights||e.price||(e.pts&&e.pts.length)||e.notes;
   });
+}
+// Net Rate Hotel Voucher — a standalone printable/emailable PDF the client
+// can hand directly to the hotel at check-in for a net-rate stay (the
+// agency has prepaid/arranged the room at a wholesale rate not meant to be
+// disclosed to the guest). Generated straight from a hotel entry's current
+// on-screen values (no need to save the trip first) — readHotelEntryRow()
+// below reads just the one row the button was clicked in, the same fields
+// readHotelEntries() reads for all of them.
+// Voucher numbers are a single ever-increasing counter, same pattern as
+// peekNextCertificateNumber()/consumeCertificateNumbers() use for referral
+// certificates — never reused, only consumed once a voucher is actually
+// generated.
+function peekNextVoucherNumber(){
+  return parseInt(localStorage.getItem('mm_next_voucher_number')||'1',10);
+}
+function consumeVoucherNumbers(count){
+  var start = peekNextVoucherNumber();
+  localStorage.setItem('mm_next_voucher_number', String(start+count));
+  var nums = [];
+  for(var i=0;i<count;i++) nums.push(start+i);
+  return nums;
+}
+// Fill in with the agency's real phone/email — shown on every voucher so
+// the hotel has a direct way to verify billing. Left blank rather than
+// guessed, same convention as X_CLIENT_ID/TT_CLIENT_KEY elsewhere in this
+// file.
+const VOUCHER_AGENCY_PHONE = '';
+const VOUCHER_AGENCY_EMAIL = '';
+function hotelVoucherHtml(guestNames, entry, voucherNumber){
+  var hf="font-family:'Times New Roman',Times,serif; ";
+  var numStr = String(voucherNumber).padStart(6,'0');
+  var propertyLine = [entry.hotelBrand, entry.property].filter(Boolean).join(' — ') || '(Property not specified)';
+  var checkOut = (entry.checkInDate && entry.nights) ? addDaysToDateStr(entry.checkInDate, entry.nights) : '';
+  var contactLine = [VOUCHER_AGENCY_PHONE, VOUCHER_AGENCY_EMAIL].filter(Boolean).join(' &middot; ') || '[Add agency phone/email in VOUCHER_AGENCY_PHONE / VOUCHER_AGENCY_EMAIL]';
+  function row(label, value){
+    if(!value) return '';
+    return '<tr><td style="'+hf+'font-size:12px;color:#777777;padding:4px 12px 4px 0;white-space:nowrap;vertical-align:top">'+label+'</td>'+
+      '<td style="'+hf+'font-size:13px;color:#111111;font-weight:bold;padding:4px 0">'+escHtml(value)+'</td></tr>';
+  }
+  return ''+
+'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:20px 0;">'+
+'<tr><td align="center">'+
+'<table role="presentation" width="536" cellpadding="0" cellspacing="0" style="border:3px double #1a1aff; border-radius:8px;">'+
+'<tr><td style="padding:28px 32px;">'+
+'<div style="text-align:center;margin-bottom:16px">'+
+'<img src="'+MILES_MAN_LOGO_DATA_URI+'" width="88" height="54" alt="Miles Man" style="display:block; margin:0 auto 14px auto; width:88px; height:54px;">'+
+'<div style="'+hf+'font-size:11px; letter-spacing:0.12em; text-transform:uppercase; color:#777777; margin-bottom:6px;">Miles Man Travel</div>'+
+'<div style="'+hf+'font-size:22px; font-weight:bold; color:#1a1aff;">Hotel Voucher — Net Rate Booking</div>'+
+'<div style="'+hf+'font-size:12px; color:#777777; margin-top:6px;">Voucher No. '+numStr+'</div>'+
+'</div>'+
+'<div style="border-top:1px solid #dcdfff; margin:0 0 16px 0;"></div>'+
+'<table role="presentation" width="100%" cellpadding="0" cellspacing="0">'+
+row('Hotel', propertyLine)+
+row('Guest Name(s)', guestNames)+
+row('Check-in', fmtDate(entry.checkInDate))+
+row('Check-out', fmtDate(checkOut))+
+row('Nights', String(entry.nights||''))+
+row('Confirmation No.', entry.confirmationNumber)+
+'</table>'+
+(entry.notes ? '<div style="'+hf+'font-size:12px;color:#333333;margin-top:14px;padding-top:14px;border-top:1px solid #dcdfff;"><strong>Notes:</strong> '+escHtml(entry.notes)+'</div>' : '')+
+'<div style="border-top:1px solid #dcdfff; margin:20px 0 16px 0;"></div>'+
+'<div style="'+hf+'font-size:11px; color:#777777; line-height:1.6; text-align:left;">'+
+'This reservation has been prepaid to Miles Man Travel at a net, wholesale rate arranged directly with the property. Please do not disclose the rate or this arrangement to the guest named above. The guest is responsible only for incidental charges (e.g. parking, dining, minibar, resort fees) not included in the confirmed room rate. For billing verification or any questions about this reservation, please contact Miles Man Travel directly: '+contactLine+'.'+
+'</div>'+
+'</td></tr>'+
+'</table>'+
+'</td></tr>'+
+'</table>';
+}
+function hotelVoucherPdfFilename(voucherNumber){
+  return 'Hotel-Voucher-'+String(voucherNumber).padStart(6,'0')+'.pdf';
+}
+// Reads one hotel-entry row's current on-screen values directly (not
+// readHotelEntries(), which reads every row — this needs just the one the
+// button was clicked in).
+function readHotelEntryRow(row){
+  return {
+    hotelBrand: (row.querySelector('.hotel-entry-brand')||{}).value||'',
+    property: (row.querySelector('.hotel-entry-property')||{}).value||'',
+    confirmationNumber: (row.querySelector('.hotel-entry-conf')||{}).value||'',
+    checkInDate: (row.querySelector('.hotel-entry-checkin')||{}).value||'',
+    nights: Number((row.querySelector('.hotel-entry-nights')||{}).value)||0,
+    notes: (row.querySelector('.hotel-entry-notes')||{}).value||''
+  };
+}
+// Guest name(s) for the voucher — the trip's primary client plus any
+// additional paying clients currently checked, read live off the open Trip
+// form the same way saveTrip() itself gathers them, so the voucher always
+// matches whatever's on screen even before Save is clicked.
+function currentTripGuestNames(){
+  var primaryId = (document.getElementById('tc')||{}).value;
+  var ids = [primaryId].concat(Array.from(document.querySelectorAll('.trip-client-cb:checked')).map(function(cb){return cb.value;}));
+  var names = ids.filter(Boolean).map(function(id){
+    var c = db.clients.find(function(cl){return cl.id===id;});
+    return c ? toFirstLast(c.name) : '';
+  });
+  return joinNames(names.filter(Boolean)) || '(Guest name not selected)';
+}
+// Copies the voucher to the clipboard (paste-able into an email) and
+// downloads it as a PDF (to attach or print for the client) — same
+// two-birds action the referral certificate's Send button
+// (renderReferralCreditPreview) already uses, since mailto: links can't
+// attach a file automatically either way.
+async function createNetRateHotelVoucher(row){
+  var entry = readHotelEntryRow(row);
+  if(!entry.hotelBrand && !entry.property){
+    toast('Select a hotel/property on this entry first','err');
+    return;
+  }
+  var guestNames = currentTripGuestNames();
+  var voucherNumber = consumeVoucherNumbers(1)[0];
+  var html = hotelVoucherHtml(guestNames, entry, voucherNumber);
+  var copied = copyHtmlToClipboard(html);
+  try{
+    var pdfBlob = await generateQuotePdfBlob('<div style="background:#ffffff;padding:10px;max-width:600px">'+html+'</div>');
+    downloadPdfBlob(pdfBlob, hotelVoucherPdfFilename(voucherNumber));
+    toast((copied?'Voucher copied (paste with Ctrl+V) and ':'')+'downloaded — give it to the client to hand the hotel at check-in','ok');
+  }catch(e){
+    debugLog('Hotel voucher PDF generation failed: '+e.message);
+    toast((copied?'Voucher copied — paste into an email (Ctrl+V). ':'')+'PDF generation failed: '+e.message,'err');
+  }
 }
 // Tour entries are the same dynamic add/remove pattern as hotel entries
 // above (a trip can book more than one tour/activity) — read back by class
@@ -15182,6 +15304,12 @@ function bindBookedTripDetailsListeners(){
       if(!hotelEntriesEl.querySelector('.hotel-entry-row')){
         hotelEntriesEl.innerHTML = '<div id="tb-hotel-entries-empty" style="color:#aaa;font-size:12px;padding:6px 0">No hotels added yet</div>';
       }
+    });
+    hotelEntriesEl.addEventListener('click', function(e){
+      var voucherBtn = e.target.closest ? e.target.closest('.hotel-entry-voucher-btn') : null;
+      if(!voucherBtn) return;
+      var row = voucherBtn.closest('.hotel-entry-row');
+      if(row) createNetRateHotelVoucher(row);
     });
     hotelEntriesEl.addEventListener('change', function(e){
       var sel = e.target.closest ? e.target.closest('.hotel-entry-brand') : null;
