@@ -18963,6 +18963,12 @@ function openTaskForm(id){
       '<span>'+c.name+'</span>'+
     '</label>';
   }).join('');
+  // Collapsed by default — the full checkbox list is every client in the
+  // CRM (same as openTripForm's Additional Clients), which can run to
+  // hundreds of rows and dominates the form for the common case of a task
+  // with no (or one already-picked) additional client. The summary line
+  // shows who's currently checked without needing to expand.
+  var initialAdditionalNames = sortedClients.filter(function(c){ return (d.clientIds||[]).includes(c.id); }).map(function(c){ return c.name; });
 
   $('modal').innerHTML=
     '<div class="modal-hdr"><div class="modal-title">'+(id?'Edit Task':'Add Task')+'</div><button class="close-btn" id="modal-close">&#x2715;</button></div>'+
@@ -18987,7 +18993,11 @@ function openTaskForm(id){
         '<span id="tk-client-link"></span>'+
       '</div>')+
       '<div class="field full"><label>Additional Clients <span class="hint" style="text-transform:none;font-weight:400">(if more than one client is tied to this task)</span></label>'+
-        '<div style="border:1px solid #e5e7eb;border-radius:8px;padding:10px;max-height:180px;overflow-y:auto;background:#fafafa">'+
+        '<div id="tk-additional-clients-toggle" style="display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;font-size:13px;color:#374151;padding:2px 0">'+
+          '<span id="tk-additional-clients-arrow" style="display:inline-block;font-size:10px;transition:transform .15s">&#9656;</span>'+
+          '<span id="tk-additional-clients-summary">'+(initialAdditionalNames.length ? escHtml(joinNames(initialAdditionalNames)) : '<span style="color:#aaa">None selected</span>')+'</span>'+
+        '</div>'+
+        '<div id="tk-additional-clients-box" style="display:none;margin-top:6px;border:1px solid #e5e7eb;border-radius:8px;padding:10px;max-height:180px;overflow-y:auto;background:#fafafa">'+
           (additionalClientChecks || '<div style="color:#aaa;font-size:12px">No clients yet</div>')+
         '</div>'+
       '</div>'+
@@ -19037,7 +19047,18 @@ function openTaskForm(id){
   document.querySelectorAll('.task-client-cb').forEach(function(cb){
     cb.addEventListener('change', refreshTaskEmailFromLinkedClients);
     cb.addEventListener('change', refreshTaskPhoneFromLinkedClients);
+    cb.addEventListener('change', refreshTaskAdditionalClientsSummary);
   });
+  var addlClientsToggle = document.getElementById('tk-additional-clients-toggle');
+  if(addlClientsToggle){
+    addlClientsToggle.addEventListener('click', function(){
+      var box = document.getElementById('tk-additional-clients-box');
+      var arrow = document.getElementById('tk-additional-clients-arrow');
+      var isOpen = box.style.display !== 'none';
+      box.style.display = isOpen ? 'none' : 'block';
+      arrow.innerHTML = isOpen ? '&#9656;' : '&#9662;';
+    });
+  }
   $('tk-vendor').addEventListener('change', refreshTaskVendorContactChoices);
   $('tk-vendor-contact').addEventListener('change', refreshTaskEmailFromVendorContact);
   $('tk-vendor-contact').addEventListener('change', refreshTaskPhoneFromVendorContact);
@@ -19049,6 +19070,17 @@ function openTaskForm(id){
   refreshTaskBizVendorContactLinkDisplay();
   $('tk-trip').addEventListener('change', refreshTaskTripLinkDisplay);
   refreshTaskTripLinkDisplay();
+}
+// Keeps the collapsed Additional Clients summary line in sync with the
+// checkbox list underneath it — re-runs on every checkbox change so the
+// summary is always accurate whether or not the box is currently expanded.
+function refreshTaskAdditionalClientsSummary(){
+  var summaryEl = document.getElementById('tk-additional-clients-summary');
+  if(!summaryEl) return;
+  var names = Array.from(document.querySelectorAll('.task-client-cb:checked')).map(function(cb){
+    return (cb.nextElementSibling && cb.nextElementSibling.textContent) || '';
+  }).filter(Boolean);
+  summaryEl.innerHTML = names.length ? escHtml(joinNames(names)) : '<span style="color:#aaa">None selected</span>';
 }
 // Linking clients on the task form also carries over their email(s) — the
 // primary Linked Client plus every checked Additional Client — so the
