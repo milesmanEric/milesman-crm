@@ -16562,6 +16562,30 @@ const MARKETING_AI_CHANNEL_GUIDE = {
 // Shows the result in a review modal (renderMarketingAiDraftModal) rather
 // than writing it back automatically — a generated draft should be read
 // before it becomes the item's real notes.
+// One AI-draft request. `reviseFrom`/`instruction` are set only when the
+// user asks for a revision from the review modal's "what to change" box —
+// the existing draft plus that instruction go to Claude as a follow-up
+// turn, so it edits rather than starting over. Returns the draft text.
+function marketingAiDraftRequest(item, reviseFrom, instruction){
+  var guide = MARKETING_AI_CHANNEL_GUIDE[item.channel] || MARKETING_AI_CHANNEL_GUIDE.Other;
+  var messages = [{role:'user', content:'Title: '+(item.title||'')+'\nChannel: '+(item.channel||'')+'\nDate: '+(item.date||'')+'\nExisting notes: '+(item.notes||'(none)')}];
+  if(reviseFrom && instruction){
+    messages.push({role:'assistant', content:reviseFrom});
+    messages.push({role:'user', content:'Revise the draft above with these changes, keeping everything else:\n\n'+instruction});
+  }
+  return fetch(DRIVE_AUTH_SERVER+'/api/claude-messages', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({
+      system: 'You are a marketing copywriter for a small travel/cruise agency (Miles Man Travel). Given one item from the agency\'s marketing plan, write '+guide+'. Be specific and ready-to-use, not generic filler — reference cruises/travel where it fits naturally. Plain text only, no markdown formatting.',
+      messages: messages
+    })
+  }).then(function(r){ return r.json(); }).then(function(data){
+    if(data.error) throw new Error(data.error.message||JSON.stringify(data.error));
+    var block = (data.content||[]).find(function(b){return b.type==='text';});
+    return block ? block.text : '(no draft generated)';
+  });
+}
 function draftMarketingPlanItemWithAI(id){
   var item = db.marketingPlan.find(function(x){return x.id===id;});
   if(!item) return;
@@ -16572,18 +16596,8 @@ function draftMarketingPlanItemWithAI(id){
   $('overlay').classList.add('open');
   $('modal-close').addEventListener('click', closeModal);
 
-  var guide = MARKETING_AI_CHANNEL_GUIDE[item.channel] || MARKETING_AI_CHANNEL_GUIDE.Other;
-  fetch(DRIVE_AUTH_SERVER+'/api/claude-messages', {
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({
-      system: 'You are a marketing copywriter for a small travel/cruise agency (Miles Man Travel). Given one item from the agency\'s marketing plan, write '+guide+'. Be specific and ready-to-use, not generic filler — reference cruises/travel where it fits naturally. Plain text only, no markdown formatting.',
-      messages: [{role:'user', content:'Title: '+(item.title||'')+'\nChannel: '+(item.channel||'')+'\nDate: '+(item.date||'')+'\nExisting notes: '+(item.notes||'(none)')}]
-    })
-  }).then(function(r){ return r.json(); }).then(function(data){
-    if(data.error) throw new Error(data.error.message||JSON.stringify(data.error));
-    var block = (data.content||[]).find(function(b){return b.type==='text';});
-    renderMarketingAiDraftModal(item, block ? block.text : '(no draft generated)');
+  marketingAiDraftRequest(item).then(function(text){
+    renderMarketingAiDraftModal(item, text);
   }).catch(function(e){
     $('modal').innerHTML =
       '<div class="modal-hdr"><div class="modal-title">AI Draft — '+escHtml(item.title||'')+'</div><button class="close-btn" id="modal-close">&#x2715;</button></div>'+
@@ -16593,15 +16607,74 @@ function draftMarketingPlanItemWithAI(id){
     $('modal-cancel').addEventListener('click', closeModal);
   });
 }
+// Creates a WordPress **draft** post from a Blog Post plan item's draft,
+// via the self-hosted REST API with the same Application Password the
+// Jetpack auto-subscribe feature stores (Analytics tab → "Set Up
+// Auto-Subscribe"). Never publishes — status is always 'draft', so it
+// lands in wp-admin for a human to review and publish.
+function saveMarketingDraftToWordPress(item, text, btn){
+  var creds = getJetpackSubCreds();
+  if(!creds){
+    toast('Connect WordPress first — Analytics tab → WordPress.com / Jetpack card → "Set Up Auto-Subscribe" (it stores the Application Password this uses)','err');
+    return;
+  }
+  // A second save updates the same draft rather than creating a duplicate,
+  // as long as that post still exists and is still a draft.
+  var current = db.marketingPlan.find(function(x){return x.id===item.id;}) || item;
+  var existingId = current.wpDraftId;
+  var url = 'https://'+WP_SITE+'/wp-json/wp/v2/posts'+(existingId?('/'+existingId):'');
+  if(btn){ btn.disabled = true; btn.textContent = existingId ? 'Updating draft…' : 'Saving to WordPress…'; }
+  fetch(url, {
+    method:'POST',
+    headers:{
+      'Content-Type':'application/json',
+      'Authorization':'Basic '+btoa(creds.user+':'+creds.pass)
+    },
+    body: JSON.stringify({
+      title: item.title || 'Untitled draft',
+      content: text.replace(/\n/g,'<br>\n'),
+      status: 'draft'
+    })
+  }).then(function(r){ return r.json().then(function(d){ return {ok:r.ok, status:r.status, d:d}; }); }).then(function(res){
+    // A stale wpDraftId (post trashed/published) 404s or 403s — retry once as a fresh create.
+    if((res.status===404 || res.status===403) && existingId){
+      return fetch('https://'+WP_SITE+'/wp-json/wp/v2/posts', {
+        method:'POST',
+        headers:{'Content-Type':'application/json','Authorization':'Basic '+btoa(creds.user+':'+creds.pass)},
+        body: JSON.stringify({title:item.title||'Untitled draft', content:text.replace(/\n/g,'<br>\n'), status:'draft'})
+      }).then(function(r){ return r.json().then(function(d){ return {ok:r.ok, status:r.status, d:d}; }); });
+    }
+    return res;
+  }).then(function(res){
+    if(!res.ok || res.d.code) throw new Error((res.d && res.d.message) || ('HTTP '+res.status+' creating draft'));
+    var editUrl = 'https://'+WP_SITE+'/wp-admin/post.php?post='+res.d.id+'&action=edit';
+    db.marketingPlan = db.marketingPlan.map(function(x){ return x.id===item.id ? Object.assign({},x,{wpDraftId:res.d.id}) : x; });
+    saveDB();
+    toast(existingId ? 'WordPress draft updated — opening editor' : 'WordPress draft created — opening editor','ok');
+    window.open(editUrl, '_blank', 'noopener');
+    if(btn){ btn.disabled = false; btn.textContent = 'Update WordPress Draft'; }
+  }).catch(function(e){
+    toast('Could not save WordPress draft: '+e.message,'err');
+    if(btn){ btn.disabled = false; btn.textContent = existingId ? 'Update WordPress Draft' : 'Save as WordPress Draft'; }
+  });
+}
 function renderMarketingAiDraftModal(item, text){
+  var isBlog = (item.channel === 'Blog Post');
   $('modal').innerHTML =
     '<div class="modal-hdr"><div class="modal-title">AI Draft — '+escHtml(item.title||'')+'</div><button class="close-btn" id="modal-close">&#x2715;</button></div>'+
     '<div class="fg">'+
       fld('Draft (edit freely before saving)', '<textarea id="mp-ai-draft" rows="14">'+escHtml(text)+'</textarea>', true)+
+      '<div class="field full"><label>Ask the AI to revise <span class="hint" style="text-transform:none;font-weight:400">(what to change — tone, length, add a call-to-action, fix a detail…)</span></label>'+
+        '<div style="display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap">'+
+          '<textarea id="mp-ai-revise" rows="2" placeholder="e.g. Make it shorter and add a booking link at the end" style="flex:1;min-width:220px"></textarea>'+
+          '<button type="button" class="cancel-btn" id="mp-ai-revise-btn" style="color:#2563eb;border-color:#2563eb">Revise Draft</button>'+
+        '</div>'+
+      '</div>'+
     '</div>'+
     '<div class="form-actions form-actions-sticky">'+
       '<button class="cancel-btn" id="modal-cancel">Close</button>'+
       '<button class="cancel-btn" id="mp-ai-copy">Copy</button>'+
+      (isBlog ? '<button class="cancel-btn" id="mp-ai-wp" style="color:#2563eb;border-color:#2563eb">'+(item.wpDraftId?'Update WordPress Draft':'Save as WordPress Draft')+'</button>' : '')+
       '<button class="save-btn" id="mp-ai-insert">Save to Item Notes</button>'+
     '</div>';
   $('modal').classList.add('modal-wide');
@@ -16612,6 +16685,20 @@ function renderMarketingAiDraftModal(item, text){
       toast('Draft copied to clipboard','ok');
     }).catch(function(){ toast('Could not copy automatically — select and copy manually','err'); });
   });
+  $('mp-ai-revise-btn').addEventListener('click', function(){
+    var instruction = ($('mp-ai-revise').value||'').trim();
+    if(!instruction){ toast('Type what you want changed first','err'); return; }
+    var btn = this;
+    btn.disabled = true; btn.textContent = 'Revising…';
+    marketingAiDraftRequest(item, $('mp-ai-draft').value, instruction).then(function(newText){
+      renderMarketingAiDraftModal(item, newText);
+    }).catch(function(e){
+      toast('Revision failed: '+e.message,'err');
+      btn.disabled = false; btn.textContent = 'Revise Draft';
+    });
+  });
+  var wpBtn = $('mp-ai-wp');
+  if(wpBtn) wpBtn.addEventListener('click', function(){ saveMarketingDraftToWordPress(item, $('mp-ai-draft').value, this); });
   $('mp-ai-insert').addEventListener('click', function(){
     snapshot('AI-draft marketing plan item');
     var draftText = $('mp-ai-draft').value;
