@@ -945,13 +945,14 @@ const MARKETING_CHANNEL_COLORS = {
   'Referral Push':  {bg:'#f0fdfa', text:'#115e59'},
   'Other':          {bg:'#f3f4f6', text:'#4b5563'}
 };
-// Starter 30-day content calendar for the Marketing Plan, seeded on demand
-// via "+ Load 30-Day Calendar" (see seedDefaultMarketingPlan) rather than
-// baked into every db by default — same on-demand pattern as
-// DEFAULT_BOOKMARKS. dayOffset is relative to today() at seed time (not a
-// fixed date) so the button always plans forward from whenever it's
-// clicked, and the mix of channels/cadence below is a generic cruise/travel
-// agency starting point meant to be edited to fit real campaigns.
+// Starter 30-day content calendar for the Marketing Plan, auto-seeded once
+// on first run (see autoSeedDefaultMarketingPlanOnce) and re-loadable later
+// via "+ Load 30-Day Calendar" (see seedDefaultMarketingPlan) — same pattern
+// as DEFAULT_BOOKMARKS/autoSeedDefaultBookmarksOnce. dayOffset is relative
+// to today() at seed time (not a fixed date) so it always plans forward
+// from whenever it's (re-)seeded, and the mix of channels/cadence below is
+// a generic cruise/travel agency starting point meant to be edited to fit
+// real campaigns.
 const DEFAULT_MARKETING_PLAN = [
   {dayOffset:0,  channel:'Email',         title:"Welcome Email — This Week's Cruise Deals", notes:'Send featured sailings to new subscribers and recent leads.'},
   {dayOffset:1,  channel:'Social Media',  title:'Instagram Reel: Top 5 Caribbean Itineraries', notes:''},
@@ -16445,18 +16446,15 @@ function delMarketingPlanItem(id){
   db.planner = db.planner.filter(function(t){return t.marketingPlanId!==id;});
   saveDB(); closeModal(); toast('Plan item deleted'); render();
 }
-// Adds the DEFAULT_MARKETING_PLAN starter pack (each item's date computed
-// from today() + its dayOffset), skipping any title already present so this
-// is safe to click more than once. Manual/on-demand only — unlike bookmarks
-// there's no auto-seed-once-on-first-run here, since re-running this later
-// should still plan forward from "now" rather than only ever firing once.
-function seedDefaultMarketingPlan(){
+// Pushes each not-yet-present DEFAULT_MARKETING_PLAN template into
+// db.marketingPlan (title-deduped) and keeps its synced Planner task in
+// step, same as a manually-added plan item. Shared by the silent first-run
+// auto-seed and the manual "+ Load 30-Day Calendar" button below — neither
+// calls saveDB()/render() itself, so the caller controls when those happen.
+function addDefaultMarketingPlanItems(){
   var existingTitles = {};
   db.marketingPlan.forEach(function(item){ existingTitles[item.title||''] = true; });
   var toAdd = DEFAULT_MARKETING_PLAN.filter(function(tpl){ return !existingTitles[tpl.title]; });
-  if(!toAdd.length){ toast('Starter 30-day calendar is already loaded'); return; }
-  if(!confirm('Add '+toAdd.length+' starter marketing plan items spread across the next 30 days (email/social/blog/ads/print/event/referral)? This can be undone.')) return;
-  snapshot('Load 30-day marketing calendar');
   toAdd.forEach(function(tpl){
     var item = {
       id: newId('MP', db.marketingPlan),
@@ -16469,8 +16467,38 @@ function seedDefaultMarketingPlan(){
     db.marketingPlan.push(item);
     syncMarketingPlanTask(item);
   });
+  return toAdd.length;
+}
+// Silently seeds the starter 30-day calendar the first time the app ever
+// runs in this browser — same mm_*_seeded-gate pattern as
+// autoSeedDefaultBookmarksOnce(), so it fires once regardless of outcome
+// and never reappears if the user later deletes the starter items on
+// purpose. Skips entirely if a marketing plan already exists (e.g. restored
+// from a backup) — topping that up is the manual button's job, not this one's.
+function autoSeedDefaultMarketingPlanOnce(){
+  if(localStorage.getItem('mm_default_marketing_plan_seeded')) return;
+  localStorage.setItem('mm_default_marketing_plan_seeded', '1');
+  if(db.marketingPlan.length) return;
+  var added = addDefaultMarketingPlanItems();
+  if(added){
+    saveDB();
+    debugLog('Auto-seeded '+added+' starter marketing plan item(s) (first run)');
+  }
+}
+// Manual top-up version of the above — e.g. a user who deleted the starter
+// set, or is loading it a month later once the earlier batch has all passed.
+// Dates recompute from today() each time it's run, so it always plans the
+// next 30 days forward from whenever it's clicked.
+function seedDefaultMarketingPlan(){
+  var wouldAdd = DEFAULT_MARKETING_PLAN.filter(function(tpl){
+    return !db.marketingPlan.some(function(item){ return item.title===tpl.title; });
+  }).length;
+  if(!wouldAdd){ toast('Starter 30-day calendar is already loaded'); return; }
+  if(!confirm('Add '+wouldAdd+' starter marketing plan items spread across the next 30 days (email/social/blog/ads/print/event/referral)? This can be undone.')) return;
+  snapshot('Load 30-day marketing calendar');
+  var added = addDefaultMarketingPlanItems();
   saveDB(); render();
-  toast(toAdd.length+' marketing plan items added');
+  toast(added+' marketing plan items added');
 }
 // Month-grid calendar scoped to the Marketing tab, same layout as the main
 // Calendar page's trip grid but keyed off db.marketingPlan instead of
@@ -19549,6 +19577,7 @@ debugLog('Search: '+window.location.search);
 debugLog('Hash: '+window.location.hash.slice(0,100));
 loadDB();
 autoSeedDefaultBookmarksOnce();
+autoSeedDefaultMarketingPlanOnce();
 // One-time recovery for the watermark bug pollCheckpointNow() fixes: any
 // checkpoint already saved in this browser from before the fix could sit
 // past the receivedDateTime of a real email that arrived but was never
