@@ -16442,7 +16442,9 @@ function renderMarketing(){
         : '<div style="padding:8px 0"><button class="add-btn" id="canva-connect-btn">Connect Canva</button><div style="font-size:11px;color:#888;margin-top:6px">Optional — lets the ad-creation wizard pull an image straight from a Canva design instead of only a local file upload.</div></div>')+
     '</div>'+
     '<div class="card" style="margin-bottom:16px">'+
-      '<div class="card-hdr"><span class="card-title">Marketing Plan</span><span><button class="cancel-btn" id="mkt-plan-seed-btn" style="margin-right:8px">+ Load 30-Day Calendar</button><button class="add-btn" id="mkt-plan-add-btn">+ Add Plan Item</button></span></div>'+
+      '<div class="card-hdr"><span class="card-title">Marketing Plan</span><span>'+
+        '<label style="font-size:12px;color:#555;margin-right:12px;cursor:pointer;user-select:none"><input type="checkbox" id="mkt-plan-hide-done"'+(window._mktPlanHideDone?' checked':'')+' style="vertical-align:-2px;margin-right:4px">Hide completed</label>'+
+        '<button class="cancel-btn" id="mkt-plan-seed-btn" style="margin-right:8px">+ Load 30-Day Calendar</button><button class="add-btn" id="mkt-plan-add-btn">+ Add Plan Item</button></span></div>'+
       '<div id="mkt-plan-body">'+marketingPlanListHtml()+'</div>'+
     '</div>'+
     '<div class="card" style="margin-bottom:16px">'+
@@ -16476,6 +16478,11 @@ function renderMarketing(){
   if(mktPlanAddBtn) mktPlanAddBtn.addEventListener('click', function(){ openMarketingPlanForm(); });
   var mktPlanSeedBtn = $('mkt-plan-seed-btn');
   if(mktPlanSeedBtn) mktPlanSeedBtn.addEventListener('click', seedDefaultMarketingPlan);
+  var mktPlanHideDoneCb = $('mkt-plan-hide-done');
+  if(mktPlanHideDoneCb) mktPlanHideDoneCb.addEventListener('change', function(){ window._mktPlanHideDone = this.checked; render(); });
+  document.querySelectorAll('.mkt-plan-done[data-id]').forEach(function(el){
+    el.addEventListener('change', function(e){ e.stopPropagation(); toggleMarketingPlanDone(el.dataset.id, el.checked); });
+  });
   document.querySelectorAll('.mkt-plan-title[data-id]').forEach(function(el){
     el.addEventListener('click', function(){ openMarketingPlanForm(el.dataset.id); });
   });
@@ -16496,22 +16503,36 @@ function renderMarketing(){
 // Calendar below via the shared MARKETING_CHANNEL_COLORS coding, so adding
 // an item to the plan is the only step needed to also put it on the
 // calendar — there's no separate "add to calendar" action.
+// An item counts as "complete" when its Status is Done — the row checkbox is
+// just a fast toggle for that (checking sets Done, unchecking sets Planned).
+// window._mktPlanHideDone (the "Hide completed" filter) drops those rows.
+function marketingPlanItemComplete(item){ return item && item.status === 'Done'; }
 function marketingPlanListHtml(){
   var sorted = [].concat(db.marketingPlan).sort(function(a,b){ return (a.date||'').localeCompare(b.date||''); });
-  if(!sorted.length) return '<div class="empty">No marketing plan items yet — add one to start scheduling campaigns.</div>';
+  var hiddenDone = 0;
+  if(window._mktPlanHideDone){
+    hiddenDone = sorted.filter(marketingPlanItemComplete).length;
+    sorted = sorted.filter(function(item){ return !marketingPlanItemComplete(item); });
+  }
+  if(!sorted.length){
+    if(hiddenDone) return '<div class="empty">All '+hiddenDone+' marketing plan item'+(hiddenDone===1?' is':'s are')+' complete. Untick &ldquo;Hide completed&rdquo; to see them.</div>';
+    return '<div class="empty">No marketing plan items yet — add one to start scheduling campaigns.</div>';
+  }
   var statusColors = {
     'Planned':     {bg:'#dbeafe', text:'#1e40af'},
     'In Progress': {bg:'#fef9c3', text:'#854d0e'},
     'Done':        {bg:'#dcfce7', text:'#166534'},
     'Cancelled':   {bg:'#fee2e2', text:'#991b1b'}
   };
-  return '<div class="tbl-wrap"><table><thead><tr><th>Date</th><th>Title</th><th>Channel</th><th>Status</th><th></th></tr></thead><tbody>'+
+  return '<div class="tbl-wrap"><table><thead><tr><th></th><th>Date</th><th>Title</th><th>Channel</th><th>Status</th><th></th></tr></thead><tbody>'+
     sorted.map(function(item){
       var chColors = MARKETING_CHANNEL_COLORS[item.channel] || MARKETING_CHANNEL_COLORS.Other;
       var stColors = statusColors[item.status] || {bg:'#f3f4f6', text:'#4b5563'};
+      var done = marketingPlanItemComplete(item);
       return '<tr>'+
-        '<td style="white-space:nowrap">'+(item.date?fmtDate(item.date):'—')+'</td>'+
-        '<td class="mkt-plan-title" data-id="'+item.id+'" style="cursor:pointer;color:#2563eb;text-decoration:underline">'+escHtml(item.title||'')+'</td>'+
+        '<td style="text-align:center"><input type="checkbox" class="mkt-plan-done" data-id="'+item.id+'"'+(done?' checked':'')+' title="Mark complete" style="cursor:pointer"></td>'+
+        '<td style="white-space:nowrap'+(done?';opacity:.55':'')+'">'+(item.date?fmtDate(item.date):'—')+'</td>'+
+        '<td class="mkt-plan-title" data-id="'+item.id+'" style="cursor:pointer;color:#2563eb;text-decoration:underline'+(done?';opacity:.55':'')+'">'+escHtml(item.title||'')+'</td>'+
         '<td><span style="background:'+chColors.bg+';color:'+chColors.text+';padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">'+escHtml(item.channel||'')+'</span></td>'+
         '<td><span style="background:'+stColors.bg+';color:'+stColors.text+';padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">'+escHtml(item.status||'')+'</span></td>'+
         '<td><button class="icon-btn mkt-plan-ai" data-id="'+item.id+'" title="Draft this item\'s content with AI">&#10024;</button> <button class="icon-btn mkt-plan-del" data-id="'+item.id+'" style="color:#dc2626" title="Delete">&#128465;&#65039;</button></td>'+
@@ -16648,6 +16669,21 @@ function syncMarketingPlanTask(item){
     taskData.createdAt = today();
     db.planner.push(taskData);
   }
+}
+// Row-checkbox toggle for the Marketing Plan list — flips Status between
+// Done and Planned (unchecking an item that was mid-flight lands it back on
+// Planned, not In Progress; the form's Status dropdown is there for finer
+// control). Leaves the synced Planner task's own `done` alone, same as
+// syncMarketingPlanTask does on edit.
+function toggleMarketingPlanDone(id, done){
+  var item = db.marketingPlan.find(function(x){return x.id===id;});
+  if(!item) return;
+  snapshot('Toggle marketing plan item complete');
+  db.marketingPlan = db.marketingPlan.map(function(x){
+    return x.id===id ? Object.assign({}, x, {status: done ? 'Done' : 'Planned'}) : x;
+  });
+  saveDB();
+  render();
 }
 function saveMarketingPlanItem(id){
   var title = gv('mp-title');
@@ -18780,6 +18816,24 @@ function linkedClientPhonesStr(clientId, additionalIds){
     return c && c.phone;
   }).filter(Boolean).join(', ');
 }
+// Supplier Contact <option> list for the task form, scoped to one supplier
+// when Linked Supplier is set so the picklist only offers that supplier's
+// own contacts. With no supplier chosen it lists every supplier's contacts
+// (you can still pick a contact first — that back-fills the supplier via
+// refreshTaskEmailFromVendorContact). The currently-selected contact is
+// always kept in the list even if it belongs to another supplier, so
+// opening an existing task never silently drops its contact. Does not
+// include the leading "None" option — the markup adds that.
+function taskVendorContactOptionsHtml(vendorId, selectedId){
+  var rows = allVendorContacts();
+  if(vendorId){
+    rows = rows.filter(function(x){ return x.vendor.id===vendorId || x.contact.id===selectedId; });
+  }
+  rows.sort(function(a,b){return (a.contact.name||'').toLowerCase().localeCompare((b.contact.name||'').toLowerCase());});
+  return rows.map(function(x){
+    return '<option value="'+x.contact.id+'"'+(x.contact.id===selectedId?' selected':'')+'>'+x.contact.name+' — '+x.vendor.name+'</option>';
+  }).join('');
+}
 function openTaskForm(id){
   var d = id ? (db.planner.find(function(t){return t.id===id;})||{}) : {dueDate:today()};
   // Existing tasks linked to a client before this task ever had its own
@@ -18799,10 +18853,7 @@ function openTaskForm(id){
 
   var clientOpts = sortedClients.map(function(c){return '<option value="'+c.id+'"'+(c.id===d.clientId?' selected':'')+'>'+c.name+'</option>';}).join('');
   var vendorOpts = sortedVendors.map(function(v){return '<option value="'+v.id+'"'+(v.id===d.vendorId?' selected':'')+'>'+v.name+'</option>';}).join('');
-  var sortedVendorContacts = allVendorContacts().sort(function(a,b){return (a.contact.name||'').toLowerCase().localeCompare((b.contact.name||'').toLowerCase());});
-  var vendorContactOpts = sortedVendorContacts.map(function(x){
-    return '<option value="'+x.contact.id+'"'+(x.contact.id===d.vendorContactId?' selected':'')+'>'+x.contact.name+' — '+x.vendor.name+'</option>';
-  }).join('');
+  var vendorContactOpts = taskVendorContactOptionsHtml(d.vendorId, d.vendorContactId);
   var sortedBizVendorContacts = allBizVendorContacts().sort(function(a,b){return (a.contact.name||'').toLowerCase().localeCompare((b.contact.name||'').toLowerCase());});
   var bizVendorContactOpts = sortedBizVendorContacts.map(function(x){
     return '<option value="'+x.contact.id+'"'+(x.contact.id===d.bizVendorContactId?' selected':'')+'>'+x.contact.name+' — '+x.vendor.name+'</option>';
@@ -18898,6 +18949,7 @@ function openTaskForm(id){
     cb.addEventListener('change', refreshTaskEmailFromLinkedClients);
     cb.addEventListener('change', refreshTaskPhoneFromLinkedClients);
   });
+  $('tk-vendor').addEventListener('change', refreshTaskVendorContactChoices);
   $('tk-vendor-contact').addEventListener('change', refreshTaskEmailFromVendorContact);
   $('tk-vendor-contact').addEventListener('change', refreshTaskPhoneFromVendorContact);
   $('tk-vendor-contact').addEventListener('change', refreshTaskVendorContactLinkDisplay);
@@ -19047,6 +19099,27 @@ function refreshTaskTripLinkDisplay(){
     closeModal();
     openTripForm(tid);
   });
+}
+// Re-scopes the Supplier Contact picklist whenever Linked Supplier changes,
+// so it only lists that supplier's own contacts (see
+// taskVendorContactOptionsHtml). Keeps the current contact selected if it
+// still belongs to the chosen supplier; clears it if it doesn't (a task
+// linked to one supplier shouldn't keep a contact from another).
+function refreshTaskVendorContactChoices(){
+  var vendorSel = document.getElementById('tk-vendor');
+  var contactSel = document.getElementById('tk-vendor-contact');
+  if(!vendorSel || !contactSel) return;
+  var vendorId = vendorSel.value;
+  var current = contactSel.value;
+  var keep = current;
+  if(vendorId && current){
+    var found = findVendorContact(current);
+    if(!found || found.vendor.id !== vendorId) keep = '';
+  }
+  contactSel.innerHTML = '<option value="">None</option>'+taskVendorContactOptionsHtml(vendorId, keep);
+  contactSel.value = keep;
+  resetSearchableSelectInput('tk-vendor-contact');
+  refreshTaskVendorContactLinkDisplay();
 }
 // A Supplier Contact isn't its own top-level record — it's nested inside a
 // Vendor's own `contacts` array (findVendorContact(), §... Vendors) — so
