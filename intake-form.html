@@ -110,57 +110,9 @@
         <label>Country of Birth</label>
         <input type="text" name="Country of Birth">
       </div>
-      <div class="field">
-        <label for="ref-select">How did you hear about us?</label>
-        <select id="ref-select" name="Referred By">
-          <option value="">-- Select --</option>
-          <option value="Subscriber">Newsletter Subscriber</option>
-          <option value="Ad">Ad</option>
-          <option value="Event">Event</option>
-          <option value="Person">Referred by a Person</option>
-          <option value="Outbound Solicit">Outbound Solicit</option>
-          <option value="ChatGPT">ChatGPT</option>
-          <option value="Claude">Claude</option>
-          <option value="CoPilot">CoPilot</option>
-          <option value="Gemini">Gemini</option>
-          <option value="Other">Other</option>
-        </select>
-      </div>
-      <div class="field full" id="ref-detail-wrap">
-        <label id="ref-detail-label">Details</label>
-        <input type="text" id="ref-detail" name="Referred By Detail" placeholder="Event or person's name">
-      </div>
-      <div class="field full">
-        <label>Discounts <span class="hint">(check any that apply)</span></label>
-        <div class="radio-row">
-          <label><input type="checkbox" name="Discount - Military" value="Yes"> Military</label>
-          <label><input type="checkbox" name="Discount - AAA" value="Yes"> AAA</label>
-          <label><input type="checkbox" name="Discount - First Responder" value="Yes"> First Responder</label>
-          <label><input type="checkbox" name="Discount - Educator" value="Yes"> Educator</label>
-          <label><input type="checkbox" id="discount-other-cb" name="Discount - Other" value="Yes"> Other</label>
-        </div>
-      </div>
-      <div class="field full" id="discount-other-wrap" style="display:none">
-        <label>Please specify discount</label>
-        <input type="text" id="discount-other-detail" name="Discount - Other Detail" placeholder="e.g. Senior, AARP, Teacher Union">
-      </div>
-      <div class="field full">
-        <label>Interests <span class="hint">(check any that apply)</span></label>
-        <div class="radio-row">
-          <label><input type="checkbox" name="Interest - Beach" value="Yes"> Beach</label>
-          <label><input type="checkbox" name="Interest - Skiing" value="Yes"> Skiing</label>
-          <label><input type="checkbox" name="Interest - Boating" value="Yes"> Boating</label>
-          <label><input type="checkbox" name="Interest - Fishing" value="Yes"> Fishing</label>
-          <label><input type="checkbox" name="Interest - Snorkeling" value="Yes"> Snorkeling</label>
-          <label><input type="checkbox" name="Interest - Horseback Riding" value="Yes"> Horseback Riding</label>
-          <label><input type="checkbox" name="Interest - Adventure" value="Yes"> Adventure</label>
-          <label><input type="checkbox" id="interest-other-cb" name="Interest - Other" value="Yes"> Other</label>
-        </div>
-      </div>
-      <div class="field full" id="interest-other-wrap" style="display:none">
-        <label>Please specify interest</label>
-        <input type="text" id="interest-other-detail" name="Interest - Other Detail" placeholder="e.g. Golf, Wine Tasting, Photography">
-      </div>
+      <div id="referred-by-slot" style="display:contents"></div>
+      <div id="discounts-slot" style="display:contents"></div>
+      <div id="interests-slot" style="display:contents"></div>
       <div class="field">
         <label for="pref-airline-select">Preferred Airline</label>
         <select class="pref-other-sel" id="pref-airline-select" name="Preferred Airline">
@@ -648,6 +600,44 @@
   // "Import Formspree Submissions" importer expects.
   var AIRLINES = ['American','United','Delta','Southwest','JetBlue','Qatar Airways','ANA','Emirates','Lufthansa','British Airways','Air France','Virgin Atlantic','Qantas','Etihad','JAL','Air Canada','Frontier','Alaska/Hawaiian Air'];
   var HOTELS = ['Marriott','Hilton','Hyatt','Accor','IHG','Wyndham','Four Seasons','Ritz-Carlton','W Hotels','Kimpton','Conrad'];
+  // Mirrors DISCOUNT_TYPES/INTEREST_TYPES in the CRM's own index.html.
+  var DISCOUNT_TYPES = ['Military','AAA','First Responder','Educator'];
+  var INTEREST_TYPES = ['Beach','Skiing','Boating','Fishing','Snorkeling','Horseback Riding','Adventure'];
+  // Shared field-group builders for Referred By / Discounts / Interests —
+  // used for both "Your Information" (the primary contact) and every
+  // Traveler 2+ block, so the two can never drift out of sync the way two
+  // separately hand-written copies eventually would. namePrefix becomes
+  // the submitted field name(s) exactly (e.g. "Referred By" for the primary
+  // contact, "Traveler 2 - Referred By" for a companion traveler) — the CRM's
+  // buildTripFormFieldLabels() must mirror whatever these emit.
+  function referredByFieldGroupHtml(namePrefix, selectId){
+    return '<div class="field"><label'+(selectId?' for="'+selectId+'"':'')+'>How did you hear about us?</label>'+
+      '<select class="ref-select"'+(selectId?' id="'+selectId+'"':'')+' name="'+namePrefix+'">'+
+        '<option value="">-- Select --</option>'+
+        '<option value="Subscriber">Newsletter Subscriber</option><option value="Ad">Ad</option><option value="Event">Event</option>'+
+        '<option value="Person">Referred by a Person</option><option value="Outbound Solicit">Outbound Solicit</option>'+
+        '<option value="ChatGPT">ChatGPT</option><option value="Claude">Claude</option><option value="CoPilot">CoPilot</option>'+
+        '<option value="Gemini">Gemini</option><option value="Other">Other</option>'+
+      '</select></div>'+
+      '<div class="field full ref-detail-wrap" style="display:none"><label class="ref-detail-label">Details</label>'+
+      '<input type="text" class="ref-detail-input" name="'+namePrefix+' Detail" placeholder="Event or person\'s name"></div>';
+  }
+  function discountsFieldGroupHtml(namePrefix){
+    return '<div class="field full"><label>Discounts <span class="hint">(check any that apply)</span></label><div class="radio-row">'+
+      DISCOUNT_TYPES.map(function(d){return '<label><input type="checkbox" name="'+namePrefix+' - '+d+'" value="Yes"> '+d+'</label>';}).join('')+
+      '<label><input type="checkbox" class="discount-other-cb" name="'+namePrefix+' - Other" value="Yes"> Other</label>'+
+    '</div></div>'+
+    '<div class="field full discount-other-wrap" style="display:none"><label>Please specify discount</label>'+
+    '<input type="text" class="discount-other-detail-input" name="'+namePrefix+' - Other Detail" placeholder="e.g. Senior, AARP, Teacher Union"></div>';
+  }
+  function interestsFieldGroupHtml(namePrefix){
+    return '<div class="field full"><label>Interests <span class="hint">(check any that apply)</span></label><div class="radio-row">'+
+      INTEREST_TYPES.map(function(t){return '<label><input type="checkbox" name="'+namePrefix+' - '+t+'" value="Yes"> '+t+'</label>';}).join('')+
+      '<label><input type="checkbox" class="interest-other-cb" name="'+namePrefix+' - Other" value="Yes"> Other</label>'+
+    '</div></div>'+
+    '<div class="field full interest-other-wrap" style="display:none"><label>Please specify interest</label>'+
+    '<input type="text" class="interest-other-detail-input" name="'+namePrefix+' - Other Detail" placeholder="e.g. Golf, Wine Tasting, Photography"></div>';
+  }
   // Mirrors HOTEL_PROPERTY_SEEDS in the CRM's index.html — keep in sync by
   // hand. Only covers brands the CRM has curated properties for; any other
   // brand just shows "No preference" with nothing else to pick.
@@ -849,10 +839,20 @@
   buildBalanceGrid('cc-balances-grid', CREDIT_CARDS, 'Credit Card', null);
   buildBrandedCcChecklist('airline-cc-checklist', AIRLINE_CREDIT_CARDS, 'Airline Credit Card');
   buildBrandedCcChecklist('hotel-cc-checklist', HOTEL_CREDIT_CARDS, 'Hotel Credit Card');
+  document.getElementById('referred-by-slot').innerHTML = referredByFieldGroupHtml('Referred By', 'ref-select');
+  document.getElementById('discounts-slot').innerHTML = discountsFieldGroupHtml('Discount');
+  document.getElementById('interests-slot').innerHTML = interestsFieldGroupHtml('Interest');
 
-  // Additional travelers get the same personal-info + balance fields as
-  // Traveler 1, minus the contact/lead-source fields (Email, Phone,
-  // Referred By) which describe the primary contact, not each traveler.
+  // Additional travelers get the exact same fields as Traveler 1/the primary
+  // contact — including Email, Phone, Street Address/City/State/Zip, Referred
+  // By, and Discounts/Interests, all previously left off the theory that only
+  // the primary contact needed them. In practice a companion traveler is
+  // often not reachable via the primary's own contact info (e.g. an adult
+  // child on their parents' trip who books their own future travel too), and
+  // an existing client entered here under their legal/passport name (this
+  // form's own "Name as shown on passport or license" label) rather than a
+  // nickname already on file needs the exact same enrichment path the
+  // primary contact gets, not a reduced one.
   function selectOptionsHtml(list){
     return '<option value="">No preference</option>'+list.map(function(x){return '<option>'+x+'</option>';}).join('')+'<option>Other</option>';
   }
@@ -862,9 +862,18 @@
       '<div class="section-title">'+p+'</div>'+
       '<div class="fg">'+
         '<div class="field full"><label>Name as shown on passport or license</label><input type="text" name="'+p+' - Full Name" placeholder="'+p+' full name"></div>'+
+        '<div class="field"><label>Email</label><input type="email" name="'+p+' - Email" placeholder="jane@example.com"></div>'+
+        '<div class="field"><label>Phone</label><input type="tel" name="'+p+' - Phone" placeholder="(555) 555-5555"></div>'+
+        '<div class="field full"><label>Street Address</label><input type="text" name="'+p+' - Street Address" placeholder="123 Main St"></div>'+
+        '<div class="field"><label>City</label><input type="text" name="'+p+' - City"></div>'+
+        '<div class="field"><label>State</label><input type="text" name="'+p+' - State"></div>'+
+        '<div class="field"><label>Zip Code</label><input type="text" name="'+p+' - Zip Code"></div>'+
         '<div class="field"><label>Birthdate</label><input type="date" name="'+p+' - Birthdate"></div>'+
         '<div class="field"><label>Country of Citizenship</label><input type="text" name="'+p+' - Country of Citizenship"></div>'+
         '<div class="field"><label>Country of Birth</label><input type="text" name="'+p+' - Country of Birth"></div>'+
+        referredByFieldGroupHtml(p+' - Referred By', 't'+n+'-ref-select')+
+        discountsFieldGroupHtml(p+' - Discount')+
+        interestsFieldGroupHtml(p+' - Interest')+
         '<div class="field"><label for="t'+n+'-pref-airline">Preferred Airline</label><select class="pref-other-sel" id="t'+n+'-pref-airline" name="'+p+' - Preferred Airline">'+selectOptionsHtml(AIRLINES)+'</select></div>'+
         '<div class="field pref-other-wrap" style="display:none"><label>Please specify airline</label><input type="text" class="pref-other-input" name="'+p+' - Preferred Airline Other"></div>'+
         '<div class="field"><label for="t'+n+'-pref-hotel">Preferred Hotel Brand</label><select class="pref-other-sel" id="t'+n+'-pref-hotel" name="'+p+' - Preferred Hotel">'+selectOptionsHtml(HOTELS)+'</select></div>'+
@@ -900,42 +909,13 @@
   }
   document.getElementById('num-travelers').addEventListener('input', renderAdditionalTravelers);
   renderAdditionalTravelers();
-
-  var refSelect = document.getElementById('ref-select');
-  var refWrap = document.getElementById('ref-detail-wrap');
-  var refLabel = document.getElementById('ref-detail-label');
-  var refDetail = document.getElementById('ref-detail');
-  refSelect.addEventListener('change', function(){
-    if(this.value==='Event' || this.value==='Person' || this.value==='Other'){
-      refWrap.style.display = 'flex';
-      refLabel.textContent = this.value==='Person' ? 'Person\'s Name' : (this.value==='Event' ? 'Event Name' : 'Please specify');
-    } else {
-      refWrap.style.display = 'none';
-      refDetail.value = '';
-    }
-  });
-
-  var discountOtherCb = document.getElementById('discount-other-cb');
-  var discountOtherWrap = document.getElementById('discount-other-wrap');
-  discountOtherCb.addEventListener('change', function(){
-    if(this.checked){
-      discountOtherWrap.style.display = 'flex';
-    } else {
-      discountOtherWrap.style.display = 'none';
-      document.getElementById('discount-other-detail').value = '';
-    }
-  });
-
-  var interestOtherCb = document.getElementById('interest-other-cb');
-  var interestOtherWrap = document.getElementById('interest-other-wrap');
-  interestOtherCb.addEventListener('change', function(){
-    if(this.checked){
-      interestOtherWrap.style.display = 'flex';
-    } else {
-      interestOtherWrap.style.display = 'none';
-      document.getElementById('interest-other-detail').value = '';
-    }
-  });
+  // Referred By / Discount-Other / Interest-Other toggle wiring for every
+  // instance of these field groups (the primary contact's plus every
+  // Traveler N's) is handled generically below, in the same delegated
+  // "Other" listener as pref-other-sel/balance-status-sel, since
+  // referredByFieldGroupHtml()/discountsFieldGroupHtml()/
+  // interestsFieldGroupHtml() render class-based hooks rather than
+  // per-instance ids.
 
   var cruiseWrap = document.getElementById('cruise-details-wrap');
   document.getElementById('need-cruise-cb').addEventListener('change', function(){
@@ -987,6 +967,40 @@
         if(e.target.value!=='Other'){
           var input = wrap.querySelector('.pref-other-input');
           if(input) input.value='';
+        }
+      }
+    }
+    // Same delegated-sibling pattern as pref-other-sel above, generalized to
+    // cover the Referred By select and the Discount/Interest "Other"
+    // checkboxes — one listener handles every instance of these (the primary
+    // contact's plus every Traveler N's) since referredByFieldGroupHtml()/
+    // discountsFieldGroupHtml()/interestsFieldGroupHtml() render class-based
+    // hooks rather than per-instance ids.
+    if(e.target.classList.contains('ref-select')){
+      var refFieldDiv = e.target.closest('.field');
+      var refWrap = refFieldDiv ? refFieldDiv.nextElementSibling : null;
+      if(refWrap && refWrap.classList.contains('ref-detail-wrap')){
+        var show = (e.target.value==='Event' || e.target.value==='Person' || e.target.value==='Other');
+        refWrap.style.display = show ? 'flex' : 'none';
+        var refLabelEl = refWrap.querySelector('.ref-detail-label');
+        if(refLabelEl) refLabelEl.textContent = e.target.value==='Person' ? 'Person\'s Name' : (e.target.value==='Event' ? 'Event Name' : 'Please specify');
+        if(!show){
+          var refInput = refWrap.querySelector('.ref-detail-input');
+          if(refInput) refInput.value='';
+        }
+      }
+    }
+    if(e.target.classList.contains('discount-other-cb') || e.target.classList.contains('interest-other-cb')){
+      var isDiscount = e.target.classList.contains('discount-other-cb');
+      var otherFieldDiv = e.target.closest('.field.full');
+      var otherWrap = otherFieldDiv ? otherFieldDiv.nextElementSibling : null;
+      var wrapClass = isDiscount ? 'discount-other-wrap' : 'interest-other-wrap';
+      var inputClass = isDiscount ? 'discount-other-detail-input' : 'interest-other-detail-input';
+      if(otherWrap && otherWrap.classList.contains(wrapClass)){
+        otherWrap.style.display = e.target.checked ? 'flex' : 'none';
+        if(!e.target.checked){
+          var otherInput2 = otherWrap.querySelector('.'+inputClass);
+          if(otherInput2) otherInput2.value='';
         }
       }
     }
