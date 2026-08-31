@@ -16534,10 +16534,10 @@ function marketingPlanListHtml(){
       return '<tr>'+
         '<td style="text-align:center"><input type="checkbox" class="mkt-plan-done" data-id="'+item.id+'"'+(done?' checked':'')+' title="Mark complete" style="cursor:pointer"></td>'+
         '<td style="white-space:nowrap'+(done?';opacity:.55':'')+'">'+(item.date?fmtDate(item.date):'—')+'</td>'+
-        '<td class="mkt-plan-title" data-id="'+item.id+'" style="cursor:pointer;color:#2563eb;text-decoration:underline'+(done?';opacity:.55':'')+'">'+escHtml(item.title||'')+'</td>'+
+        '<td'+(done?' style="opacity:.55"':'')+'><span class="mkt-plan-title" data-id="'+item.id+'" style="cursor:pointer;color:#2563eb;text-decoration:underline">'+escHtml(item.title||'')+'</span> <button class="icon-btn mkt-plan-ai" data-id="'+item.id+'" title="Draft this item\'s content with AI" style="vertical-align:middle">&#10024;</button></td>'+
         '<td><span style="background:'+chColors.bg+';color:'+chColors.text+';padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">'+escHtml(item.channel||'')+'</span></td>'+
         '<td><span style="background:'+stColors.bg+';color:'+stColors.text+';padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">'+escHtml(item.status||'')+'</span></td>'+
-        '<td><button class="icon-btn mkt-plan-ai" data-id="'+item.id+'" title="Draft this item\'s content with AI">&#10024;</button> <button class="icon-btn mkt-plan-del" data-id="'+item.id+'" style="color:#dc2626" title="Delete">&#128465;&#65039;</button></td>'+
+        '<td><button class="icon-btn mkt-plan-del" data-id="'+item.id+'" style="color:#dc2626" title="Delete">&#128465;&#65039;</button></td>'+
       '</tr>';
     }).join('')+
   '</tbody></table></div>';
