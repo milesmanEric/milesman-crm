@@ -319,6 +319,7 @@ tr:last-child td{border-bottom:none}
         <button class="sync-btn" id="btn-clean-import-revenue" style="color:#7c3aed;border-color:#c4b5fd">&#129529; Clean &amp; Import Revenue File</button>
         <button class="sync-btn" id="btn-reset-revenue-import-history" style="color:#888;border-color:#ddd;font-size:11px" title="Lets the automatic Revenue Report email check re-fetch and re-attempt every report email again, instead of skipping ones it already saw">&#128260; Re-check All Revenue Report Emails</button>
         <button class="sync-btn" id="btn-pending-import-matches" style="color:#d97706;border-color:#fde68a" title="Revenue import rows that had no client match — Skip this row now saves them here instead of discarding them">&#9203; Pending Import Matches (<span id="nc-pending-import-matches">0</span>)</button>
+        <button class="sync-btn" id="btn-pending-traveler-matches" style="color:#d97706;border-color:#fde68a" title="Book a Trip form companion travelers (Traveler 2+) whose name didn't exactly match an existing client, but who share a last name with one — pick the right client instead of risking a silent duplicate">&#9203; Pending Traveler Matches (<span id="nc-pending-traveler-matches">0</span>)</button>
         <button class="sync-btn" id="btn-import-csv" style="color:#059669;border-color:#6ee7b7">&#128203; Import Clients CSV</button>
         <button class="sync-btn" id="btn-import-tripform" style="color:#059669;border-color:#6ee7b7">&#9992;&#65039; Import Book a Trip Form PDF(s)</button>
         <button class="sync-btn" id="btn-import-formspree" style="color:#059669;border-color:#6ee7b7">&#128231; Import Formspree Submissions</button>
@@ -1129,7 +1130,7 @@ const DEFAULT_BOOKMARKS = [
   {name:'AwardWallet', url:'https://www.awardwallet.com', category:'Award Tools', audience:'Travel Agent', notes:'tracks client mileage/points balances across programs'}
 ];
 
-let db = {clients:[],trips:[],vendors:[],bizVendors:[],planner:[],bookmarks:[],savedReports:[],groups:[],marketingPlan:[],pendingImportMatches:[],jetpackRemovalQueue:[]};
+let db = {clients:[],trips:[],vendors:[],bizVendors:[],planner:[],bookmarks:[],savedReports:[],groups:[],marketingPlan:[],pendingImportMatches:[],pendingTravelerMatches:[],jetpackRemovalQueue:[]};
 const UNDO_STACK = [];
 const MAX_UNDO = 20;
 function snapshot(label){
@@ -1661,6 +1662,7 @@ function loadDB(){
     db.groups=Array.isArray(d.groups)?d.groups:[];
     db.marketingPlan=Array.isArray(d.marketingPlan)?d.marketingPlan:[];
     db.pendingImportMatches=Array.isArray(d.pendingImportMatches)?d.pendingImportMatches:[];
+    db.pendingTravelerMatches=Array.isArray(d.pendingTravelerMatches)?d.pendingTravelerMatches:[];
     // Clients unmarked as Subscriber that still need manual removal in WP
     // Admin — see the "Jetpack Manual-Removal Queue" comment near
     // flagJetpackManualRemoval() for why this can't be automated.
@@ -3626,6 +3628,7 @@ async function driveRestore(){
         groups:Array.isArray(d.groups)?d.groups:[],
         marketingPlan:Array.isArray(d.marketingPlan)?d.marketingPlan:[],
         pendingImportMatches:Array.isArray(d.pendingImportMatches)?d.pendingImportMatches:[],
+        pendingTravelerMatches:Array.isArray(d.pendingTravelerMatches)?d.pendingTravelerMatches:[],
         jetpackRemovalQueue:Array.isArray(d.jetpackRemovalQueue)?d.jetpackRemovalQueue:[]
       };
       db.clients.forEach(function(c){ if(c.name && !c.name.includes(',')) c.name=toLastFirst(c.name); });
@@ -3733,6 +3736,7 @@ async function secureSyncRestore(){
         groups:Array.isArray(d.groups)?d.groups:[],
         marketingPlan:Array.isArray(d.marketingPlan)?d.marketingPlan:[],
         pendingImportMatches:Array.isArray(d.pendingImportMatches)?d.pendingImportMatches:[],
+        pendingTravelerMatches:Array.isArray(d.pendingTravelerMatches)?d.pendingTravelerMatches:[],
         jetpackRemovalQueue:Array.isArray(d.jetpackRemovalQueue)?d.jetpackRemovalQueue:[]
       };
       db.clients.forEach(function(c){ if(c.name && !c.name.includes(',')) c.name=toLastFirst(c.name); });
@@ -7150,6 +7154,129 @@ function resolvePendingImportMatch(id, cid, skipSnapshot){
   openPendingImportMatchesModal();
 }
 
+// Book a Trip form companion travelers (Traveler 2+) whose name didn't
+// exactly match an existing client, but who share a last name with at
+// least one — see the matching comment in processTripFormRow() (the
+// Jacqueline B Rogers / Jakki Rogers legal-name-vs-nickname case this was
+// built for). Same "queue it, resolve it whenever" shape as
+// openPendingImportMatchesModal() above, right down to the Match/+ Add as
+// New Client/Discard button trio — this modal stays open and re-renders
+// itself after each resolve so several can be worked through in one
+// sitting.
+function openPendingTravelerMatchesModal(){
+  var pending = [...(db.pendingTravelerMatches||[])].sort(function(a,b){return (a.createdAt||'').localeCompare(b.createdAt||'');});
+  var sortedClients = [...db.clients].sort(function(a,b){return (a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase());});
+  var clientOpts = '<option value="">Select existing client...</option>'+sortedClients.map(function(c){return '<option value="'+c.id+'">'+escHtml(c.name)+'</option>';}).join('');
+
+  $('modal').innerHTML =
+    '<div class="modal-hdr"><div class="modal-title">Pending Traveler Matches</div><button class="close-btn" id="modal-close">&#x2715;</button></div>'+
+    '<div class="fg">'+
+      (pending.length ? pending.map(function(pm){
+        var trip = pm.tripId ? db.trips.find(function(t){return t.id===pm.tripId;}) : null;
+        var candidateNames = (pm.candidateClientIds||[]).map(function(cid){
+          var c = db.clients.find(function(x){return x.id===cid;});
+          return c ? c.name : null;
+        }).filter(Boolean);
+        return '<div class="field full" style="border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin-bottom:10px;background:#fafafa">'+
+          '<div style="font-weight:600;color:#111;margin-bottom:4px">'+escHtml(pm.name)+'</div>'+
+          (trip ? '<div style="font-size:12px;color:#666;margin-bottom:4px">Trip: '+escHtml(trip.destination||'(no destination)')+(trip.departDate?' — '+fmtDate(trip.departDate):'')+'</div>' : '')+
+          (candidateNames.length ? '<div style="font-size:12px;color:#d97706;margin-bottom:10px">Possible match: '+escHtml(candidateNames.join(', '))+'</div>' : '')+
+          '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">'+
+            '<select class="ptm-client-sel" data-id="'+pm.id+'" style="flex:1;min-width:180px">'+clientOpts+'</select>'+
+            '<button type="button" class="ptm-match-btn" data-id="'+pm.id+'" style="padding:6px 12px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit">Match</button>'+
+            '<button type="button" class="ptm-newclient-btn" data-id="'+pm.id+'" style="padding:6px 12px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#059669;cursor:pointer;font-size:12px;font-family:inherit">+ Add as New Client</button>'+
+            '<button type="button" class="ptm-discard-btn" data-id="'+pm.id+'" style="padding:6px 12px;border-radius:7px;border:none;background:none;color:#dc2626;cursor:pointer;font-size:12px;font-family:inherit">Discard</button>'+
+          '</div>'+
+        '</div>';
+      }).join('') : '<div class="empty">No pending traveler matches</div>')+
+    '</div>'+
+    '<div class="form-actions form-actions-sticky"><button class="cancel-btn" id="modal-cancel">Close</button></div>';
+
+  $('overlay').classList.add('open');
+  $('modal-close').addEventListener('click', closeModal);
+  $('modal-cancel').addEventListener('click', closeModal);
+
+  document.querySelectorAll('.ptm-match-btn').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var sel = document.querySelector('.ptm-client-sel[data-id="'+btn.dataset.id+'"]');
+      var cid = sel ? sel.value : '';
+      if(!cid){ toast('Select a client first','err'); return; }
+      resolvePendingTravelerMatch(btn.dataset.id, cid);
+    });
+  });
+  document.querySelectorAll('.ptm-newclient-btn').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var pm = (db.pendingTravelerMatches||[]).find(function(x){return x.id===btn.dataset.id;});
+      if(!pm) return;
+      snapshot('Add client from pending traveler match');
+      var newCid = newId('C', db.clients);
+      db.clients.push(Object.assign({id:newCid, name:toLastFirst(pm.name),
+        discounts:pm.discounts||[], interests:pm.interests||[],
+        mileageBalances:pm.mileageBalances||{}, hotelBalances:pm.hotelBalances||{}, cruiseBalances:pm.cruiseBalances||{}, carRentalBalances:pm.carRentalBalances||{}, creditCardBalances:pm.creditCardBalances||{},
+        airlineCreditCards:pm.airlineCreditCards||[], hotelCreditCards:pm.hotelCreditCards||[],
+        notes:'', joined:today(), totalTrips:0, notesLog:[]}, pm.fields||{}));
+      resolvePendingTravelerMatch(btn.dataset.id, newCid, true);
+    });
+  });
+  document.querySelectorAll('.ptm-discard-btn').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      if(!confirm('Discard this pending traveler match? The trip will keep its "NEEDS REVIEW" note, but no client will be linked. This cannot be undone from here.')) return;
+      snapshot('Discard pending traveler match');
+      db.pendingTravelerMatches = (db.pendingTravelerMatches||[]).filter(function(x){return x.id!==btn.dataset.id;});
+      saveDB();render();
+      openPendingTravelerMatchesModal();
+    });
+  });
+}
+// skipSnapshot lets "+ Add as New Client" (which already took its own
+// snapshot before creating the client) avoid a redundant second undo step
+// for what's really one logical action from the user's perspective — same
+// convention as resolvePendingImportMatch() above.
+function resolvePendingTravelerMatch(id, cid, skipSnapshot){
+  var pm = (db.pendingTravelerMatches||[]).find(function(x){return x.id===id;});
+  if(!pm) return;
+  var client = db.clients.find(function(c){return c.id===cid;});
+  if(!client){ toast('Could not resolve — client not found','err'); return; }
+  if(!skipSnapshot) snapshot('Resolve pending traveler match');
+
+  // Same field-by-field enrichment processTripFormRow() itself applies when
+  // a companion traveler DOES exactly match an existing client — a value
+  // present on the form overwrites only when it actually differs, balances/
+  // discounts/interests/cards merge rather than replace.
+  var fields = pm.fields||{};
+  Object.keys(fields).forEach(function(k){
+    if(fields[k] && fields[k]!==client[k]) client[k]=fields[k];
+  });
+  if((pm.discounts||[]).length){var dcm=mergeCardChecklist(client.discounts,pm.discounts); if(dcm.added.length) client.discounts=dcm.merged;}
+  if((pm.interests||[]).length){var icm=mergeCardChecklist(client.interests,pm.interests); if(icm.added.length) client.interests=icm.merged;}
+  if(pm.mileageBalances && Object.keys(pm.mileageBalances).length){var mm=mergeBalanceObjects(client.mileageBalances,pm.mileageBalances); if(mm.added.length) client.mileageBalances=mm.merged;}
+  if(pm.hotelBalances && Object.keys(pm.hotelBalances).length){var hm=mergeBalanceObjects(client.hotelBalances,pm.hotelBalances); if(hm.added.length) client.hotelBalances=hm.merged;}
+  if(pm.cruiseBalances && Object.keys(pm.cruiseBalances).length){var cbm=mergeBalanceObjects(client.cruiseBalances,pm.cruiseBalances); if(cbm.added.length) client.cruiseBalances=cbm.merged;}
+  if(pm.carRentalBalances && Object.keys(pm.carRentalBalances).length){var crbm=mergeBalanceObjects(client.carRentalBalances,pm.carRentalBalances); if(crbm.added.length) client.carRentalBalances=crbm.merged;}
+  if(pm.creditCardBalances && Object.keys(pm.creditCardBalances).length){var cm=mergeCreditCardBalances(client.creditCardBalances,pm.creditCardBalances); if(cm.added.length) client.creditCardBalances=cm.merged;}
+  if((pm.airlineCreditCards||[]).length){var accm=mergeCardChecklist(client.airlineCreditCards,pm.airlineCreditCards); if(accm.added.length) client.airlineCreditCards=accm.merged;}
+  if((pm.hotelCreditCards||[]).length){var hccm=mergeCardChecklist(client.hotelCreditCards,pm.hotelCreditCards); if(hccm.added.length) client.hotelCreditCards=hccm.merged;}
+
+  // Link the resolved client onto the trip this traveler came in on, and
+  // tidy up the "NEEDS REVIEW" placeholder line left in its Notes.
+  if(pm.tripId){
+    var trip = db.trips.find(function(t){return t.id===pm.tripId;});
+    if(trip){
+      trip.clientIds = Array.isArray(trip.clientIds) ? trip.clientIds.slice() : [];
+      if(trip.clientIds.indexOf(cid)===-1) trip.clientIds.push(cid);
+      if(pm.noteLine && trip.notes){
+        trip.notes = trip.notes.split(pm.noteLine).join('Traveling with: '+client.name+' (client '+client.id+')');
+      }
+    }
+  }
+
+  db.pendingTravelerMatches = (db.pendingTravelerMatches||[]).filter(function(x){return x.id!==id;});
+  saveDB();
+  toast('Matched '+pm.name+' to '+client.name,'ok');
+  render();
+  openPendingTravelerMatchesModal();
+}
+
 function importCSV(){
   const i=document.createElement('input');i.type='file';i.accept='.csv';
   i.onchange=function(e){
@@ -7481,20 +7608,46 @@ function processTripFormRow(getVal, counters){
   addLine('Bus Class of Service', getVal('Bus Class of Service'));
 
   // Companion travelers (Traveler 2+) get their own client record too —
-  // matched/enriched by name the same way the primary contact is, just
-  // without email/phone/location/referred-by since the form doesn't
-  // collect those per-traveler (only the primary contact has them).
-  // Every companion's client id also gets linked onto the trip record
-  // created below (clientId stays the primary/billing contact).
+  // matched/enriched by name the same way the primary contact is, and now
+  // with the exact same field set as the primary contact (Email/Phone/
+  // Address/Referred By/Discounts/Interests included — see the matching
+  // comment in intake-form.html's travelerBlockHtml()). Every companion's
+  // client id also gets linked onto the trip record created below
+  // (clientId stays the primary/billing contact).
+  //
+  // Matching is still name-only, though — a companion traveler's form entry
+  // has no email to fall back on, and the form's own "Name as shown on
+  // passport or license" label actively encourages a legal name that can
+  // differ from whatever nickname an existing client is already filed
+  // under (e.g. "Jacqueline B Rogers" on the form vs. an existing "Jakki
+  // Rogers" record) — an exact first+last match would silently miss that
+  // and create a duplicate. Rather than either silently duplicate or
+  // silently guess, a traveler with no exact match but at least one
+  // existing client sharing their last name is queued in
+  // db.pendingTravelerMatches for a human to resolve (openPendingTravelerMatchesModal())
+  // instead of being auto-created.
   var linkedClientIds = [];
+  var pendingMatches = [];
   var travelerCount = parseInt(getVal('Number of Travelers'),10)||1;
   for(var tn=2; tn<=travelerCount; tn++){
     var tp='Traveler '+tn;
     var tName=getVal(tp+' - Full Name');
     if(!tName) continue;
+    var tEmail=getVal(tp+' - Email');
+    var tPhone=getVal(tp+' - Phone');
+    var tStreetAddress=getVal(tp+' - Street Address');
+    var tCity=getVal(tp+' - City');
+    var tState=getVal(tp+' - State');
+    var tZip=getVal(tp+' - Zip Code');
     var tBirthdate=getVal(tp+' - Birthdate');
     var tCountryOfCitizenship=getVal(tp+' - Country of Citizenship');
     var tCountryOfBirth=getVal(tp+' - Country of Birth');
+    var tReferredBy=getVal(tp+' - Referred By');
+    var tReferredByDetail=getVal(tp+' - Referred By Detail');
+    var tDiscounts=extractChecklistWithOther(DISCOUNT_TYPES, tp+' - Discount');
+    var tDiscountOther=getVal(tp+' - Discount - Other Detail');
+    var tInterests=extractChecklistWithOther(INTEREST_TYPES, tp+' - Interest');
+    var tInterestOther=getVal(tp+' - Interest - Other Detail');
     var tAirline=resolveOther(getVal(tp+' - Preferred Airline'), getVal(tp+' - Preferred Airline Other'));
     var tHotel=resolveOther(getVal(tp+' - Preferred Hotel'), getVal(tp+' - Preferred Hotel Other'));
     var tCruise=resolveOther(getVal(tp+' - Preferred Cruise Line'), getVal(tp+' - Preferred Cruise Line Other'));
@@ -7505,6 +7658,10 @@ function processTripFormRow(getVal, counters){
     var tCcBal=extractBalances(CREDIT_CARDS,tp+' Credit Card',false);
     var tAirlineCc=extractCardChecklist(AIRLINE_CREDIT_CARDS, tp+' Airline Credit Card');
     var tHotelCc=extractCardChecklist(HOTEL_CREDIT_CARDS, tp+' Hotel Credit Card');
+    var tFields={email:tEmail, phone:tPhone, streetAddress:tStreetAddress, city:tCity, state:tState, zip:tZip,
+      birthdate:tBirthdate, countryOfCitizenship:tCountryOfCitizenship, countryOfBirth:tCountryOfBirth,
+      referredBy:tReferredBy, referredByDetail:tReferredByDetail, discountOther:tDiscountOther, interestOther:tInterestOther,
+      preferredAirline:tAirline, preferredHotel:tHotel, preferredCruiseLine:tCruise};
 
     var tFirst=getFirstName(tName).toLowerCase(), tLast=getLastName(tName).toLowerCase();
     var tClient = db.clients.find(function(c){
@@ -7515,12 +7672,11 @@ function processTripFormRow(getVal, counters){
 
     if(tClient){
       var tFilled=[];
-      if(tBirthdate && tBirthdate!==tClient.birthdate){tClient.birthdate=tBirthdate;tFilled.push('birthdate');}
-      if(tCountryOfCitizenship && tCountryOfCitizenship!==tClient.countryOfCitizenship){tClient.countryOfCitizenship=tCountryOfCitizenship;tFilled.push('countryOfCitizenship');}
-      if(tCountryOfBirth && tCountryOfBirth!==tClient.countryOfBirth){tClient.countryOfBirth=tCountryOfBirth;tFilled.push('countryOfBirth');}
-      if(tAirline && tAirline!==tClient.preferredAirline){tClient.preferredAirline=tAirline;tFilled.push('preferredAirline');}
-      if(tHotel && tHotel!==tClient.preferredHotel){tClient.preferredHotel=tHotel;tFilled.push('preferredHotel');}
-      if(tCruise && tCruise!==tClient.preferredCruiseLine){tClient.preferredCruiseLine=tCruise;tFilled.push('preferredCruiseLine');}
+      Object.keys(tFields).forEach(function(k){
+        if(tFields[k] && tFields[k]!==tClient[k]){tClient[k]=tFields[k];tFilled.push(k);}
+      });
+      if(tDiscounts.length){var tdcm=mergeCardChecklist(tClient.discounts,tDiscounts); if(tdcm.added.length){tClient.discounts=tdcm.merged;tFilled.push('discounts');}}
+      if(tInterests.length){var ticm=mergeCardChecklist(tClient.interests,tInterests); if(ticm.added.length){tClient.interests=ticm.merged;tFilled.push('interests');}}
       if(tAirlineBal){var tmm=mergeBalanceObjects(tClient.mileageBalances,tAirlineBal); if(tmm.added.length){tClient.mileageBalances=tmm.merged;tFilled.push('mileageBalances');}}
       if(tHotelBal){var thm=mergeBalanceObjects(tClient.hotelBalances,tHotelBal); if(thm.added.length){tClient.hotelBalances=thm.merged;tFilled.push('hotelBalances');}}
       if(tCruiseBal){var tcbm=mergeBalanceObjects(tClient.cruiseBalances,tCruiseBal); if(tcbm.added.length){tClient.cruiseBalances=tcbm.merged;tFilled.push('cruiseBalances');}}
@@ -7529,16 +7685,34 @@ function processTripFormRow(getVal, counters){
       if(tAirlineCc){var taccm=mergeCardChecklist(tClient.airlineCreditCards,tAirlineCc); if(taccm.added.length){tClient.airlineCreditCards=taccm.merged;tFilled.push('airlineCreditCards');}}
       if(tHotelCc){var thccm=mergeCardChecklist(tClient.hotelCreditCards,tHotelCc); if(thccm.added.length){tClient.hotelCreditCards=thccm.merged;tFilled.push('hotelCreditCards');}}
       if(tFilled.length) counters.enriched++;
+      linkedClientIds.push(tClient.id);
+      tripLines.push('Traveling with: '+tClient.name+' (client '+tClient.id+')');
     } else {
-      tClient = {id:newId('C',db.clients), name:toLastFirst(tName), email:'', phone:'',
-        birthdate:tBirthdate, countryOfCitizenship:tCountryOfCitizenship, countryOfBirth:tCountryOfBirth, preferredAirline:tAirline, preferredHotel:tHotel, preferredCruiseLine:tCruise,
-        mileageBalances:tAirlineBal||{}, hotelBalances:tHotelBal||{}, cruiseBalances:tCruiseBal||{}, carRentalBalances:tCarRentalBal||{}, creditCardBalances:tCcBal||{}, airlineCreditCards:tAirlineCc||[], hotelCreditCards:tHotelCc||[],
-        notes:'', joined:today(), totalTrips:0, notesLog:[]};
-      db.clients.push(tClient);
-      counters.added++;
+      var sameLastNameCandidates = tLast ? db.clients.filter(function(c){ return getLastName(c.name).toLowerCase()===tLast; }) : [];
+      if(sameLastNameCandidates.length){
+        var pendingNoteLine = 'Traveling with: '+tName+' — NEEDS REVIEW (possible match with an existing '+getLastName(tName)+' client), see Pending Traveler Matches';
+        pendingMatches.push({
+          id: newId('PM', (db.pendingTravelerMatches||[]).concat(pendingMatches)),
+          name: tName, fields: tFields, discounts: tDiscounts, interests: tInterests,
+          mileageBalances: tAirlineBal||{}, hotelBalances: tHotelBal||{}, cruiseBalances: tCruiseBal||{}, carRentalBalances: tCarRentalBal||{}, creditCardBalances: tCcBal||{},
+          airlineCreditCards: tAirlineCc||[], hotelCreditCards: tHotelCc||[],
+          candidateClientIds: sameLastNameCandidates.map(function(c){return c.id;}),
+          noteLine: pendingNoteLine,
+          createdAt: today()
+        });
+        tripLines.push(pendingNoteLine);
+        counters.pendingReview = (counters.pendingReview||0)+1;
+      } else {
+        tClient = Object.assign({id:newId('C',db.clients), name:toLastFirst(tName),
+          discounts:tDiscounts, interests:tInterests,
+          mileageBalances:tAirlineBal||{}, hotelBalances:tHotelBal||{}, cruiseBalances:tCruiseBal||{}, carRentalBalances:tCarRentalBal||{}, creditCardBalances:tCcBal||{}, airlineCreditCards:tAirlineCc||[], hotelCreditCards:tHotelCc||[],
+          notes:'', joined:today(), totalTrips:0, notesLog:[]}, tFields);
+        db.clients.push(tClient);
+        counters.added++;
+        linkedClientIds.push(tClient.id);
+        tripLines.push('Traveling with: '+tClient.name+' (client '+tClient.id+')');
+      }
     }
-    linkedClientIds.push(tClient.id);
-    tripLines.push('Traveling with: '+tClient.name+' (client '+tClient.id+')');
   }
 
   // Match the requested Airline/Cruise Line/Hotel Brand/Car Rental Company/
@@ -7590,6 +7764,17 @@ function processTripFormRow(getVal, counters){
     counters.tripsCreated++;
   }
 
+  // Finalize any queued possible-duplicate travelers now that the trip
+  // (and its id) actually exists — see the pendingMatches comment above.
+  if(pendingMatches.length){
+    if(!db.pendingTravelerMatches) db.pendingTravelerMatches=[];
+    pendingMatches.forEach(function(pm){
+      pm.tripId = newTripId;
+      pm.tripDestination = destination;
+      db.pendingTravelerMatches.push(pm);
+    });
+  }
+
   if(tripLines.length){
     db.planner.push({
       id:newId('PL',db.planner),
@@ -7624,7 +7809,7 @@ function importFormspreeSubmissions(){
       }
       snapshot('Import Formspree submissions');
       saveDB(); render();
-      toast('Imported '+counters.added+' new client'+(counters.added!==1?'s':'')+(counters.enriched?', enriched '+counters.enriched+' existing':'')+', created '+counters.tripsCreated+' trip'+(counters.tripsCreated!==1?'s':'')+' and '+counters.tasksCreated+' follow-up task'+(counters.tasksCreated!==1?'s':'')+(counters.skipped?' ('+counters.skipped+' skipped)':''),'ok');
+      toast('Imported '+counters.added+' new client'+(counters.added!==1?'s':'')+(counters.enriched?', enriched '+counters.enriched+' existing':'')+', created '+counters.tripsCreated+' trip'+(counters.tripsCreated!==1?'s':'')+' and '+counters.tasksCreated+' follow-up task'+(counters.tasksCreated!==1?'s':'')+(counters.skipped?' ('+counters.skipped+' skipped)':'')+(counters.pendingReview?', '+counters.pendingReview+' traveler'+(counters.pendingReview!==1?'s':'')+' need review — see Pending Traveler Matches':''),'ok');
     }catch(err){
       console.error(err);
       toast('Could not read file: '+err.message,'err');
@@ -7687,9 +7872,20 @@ function buildTripFormFieldLabels(){
   for(var xi=1; xi<=20; xi++){ labels.push('Transfer '+xi+' Pickup Date','Transfer '+xi+' Pickup Time','Transfer '+xi+' Origin','Transfer '+xi+' Destination','Transfer '+xi+' Car Type'); }
   for(var tn=2; tn<=12; tn++){
     var p = 'Traveler '+tn;
-    labels.push(p+' - Full Name', p+' - Birthdate', p+' - Country of Citizenship', p+' - Country of Birth',
+    // A companion traveler gets the exact same field set as the primary
+    // contact (Email/Phone/Address/Referred By/Discounts/Interests
+    // included) — see the matching comment in intake-form.html's
+    // travelerBlockHtml() for why: their own client record needs the same
+    // enrichment path the primary gets, not a reduced one, and they aren't
+    // always reachable through the primary's own contact info.
+    labels.push(p+' - Full Name', p+' - Email', p+' - Phone', p+' - Street Address', p+' - City', p+' - State', p+' - Zip Code',
+      p+' - Birthdate', p+' - Country of Citizenship', p+' - Country of Birth', p+' - Referred By', p+' - Referred By Detail',
       p+' - Preferred Airline', p+' - Preferred Airline Other', p+' - Preferred Hotel', p+' - Preferred Hotel Other',
       p+' - Preferred Cruise Line', p+' - Preferred Cruise Line Other');
+    DISCOUNT_TYPES.forEach(function(d){ labels.push(p+' - Discount - '+d); });
+    labels.push(p+' - Discount - Other', p+' - Discount - Other Detail');
+    INTEREST_TYPES.forEach(function(t){ labels.push(p+' - Interest - '+t); });
+    labels.push(p+' - Interest - Other', p+' - Interest - Other Detail');
     addBalanceLabels(p+' Airline', AIRLINES, true);
     addBalanceLabels(p+' Hotel', HOTELS, true);
     addBalanceLabels(p+' Cruise', CRUISE_LINES, true);
@@ -7825,10 +8021,10 @@ async function checkForNewTripFormEmails(silent){
     if(processedIds.length > 500) processedIds = processedIds.slice(processedIds.length-500);
     localStorage.setItem('mm_tripform_processed_ids', JSON.stringify(processedIds));
 
-    if(counters.tripsCreated || counters.added || counters.enriched){
+    if(counters.tripsCreated || counters.added || counters.enriched || counters.pendingReview){
       snapshot('Auto-import trip form emails');
       saveDB(); render();
-      toast('Auto-imported '+counters.tripsCreated+' trip'+(counters.tripsCreated!==1?'s':'')+' from email ('+counters.added+' new client'+(counters.added!==1?'s':'')+')','ok');
+      toast('Auto-imported '+counters.tripsCreated+' trip'+(counters.tripsCreated!==1?'s':'')+' from email ('+counters.added+' new client'+(counters.added!==1?'s':'')+')'+(counters.pendingReview?' — '+counters.pendingReview+' traveler'+(counters.pendingReview!==1?'s':'')+' need review, see Pending Traveler Matches':''),'ok');
     }
   }catch(e){
     debugLog('Trip form email check failed: '+e.message);
@@ -8690,6 +8886,7 @@ function render(){
   var ncp=$('nc-planner'); if(ncp) ncp.textContent=db.planner.filter(function(t){return !t.done;}).length;
   var ncg=$('nc-groups'); if(ncg) ncg.textContent=db.groups.length;
   var ncpim=$('nc-pending-import-matches'); if(ncpim) ncpim.textContent=db.pendingImportMatches.length;
+  var ncptm=$('nc-pending-traveler-matches'); if(ncptm) ncptm.textContent=(db.pendingTravelerMatches||[]).length;
   if(view==='dashboard') renderDash();
   else if(view==='clients') renderClients();
   else if(view==='trips') renderTrips();
@@ -19622,6 +19819,7 @@ function bindClick(id, handler){
     debugLog('Revenue report import history cleared (manual reset)');
   });
   bindClick('btn-pending-import-matches', openPendingImportMatchesModal);
+  bindClick('btn-pending-traveler-matches', openPendingTravelerMatchesModal);
   bindClick('btn-user-guide', function(){ window.open('user-guide.html', '_blank', 'noopener,noreferrer'); });
   bindClick('btn-documentation', function(){ window.open('documentation.html', '_blank', 'noopener,noreferrer'); });
   bindClick('btn-debug-toggle', function(){
