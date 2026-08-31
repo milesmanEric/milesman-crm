@@ -16869,6 +16869,13 @@ function renderMarketingAiDraftModal(item, text){
           '<button type="button" class="cancel-btn" id="mp-ai-revise-btn" style="color:#2563eb;border-color:#2563eb">Revise Draft</button>'+
         '</div>'+
       '</div>'+
+      fld('Matching Graphic', '<div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">'+
+        '<canvas id="mp-ai-graphic" style="width:220px;height:220px;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.25);background:#0b2545"></canvas>'+
+        '<div style="display:flex;flex-direction:column;gap:8px">'+
+          '<button class="cancel-btn" id="mp-ai-graphic-download" disabled>Download Graphic (PNG)</button>'+
+          '<div style="font-size:11px;color:#888;max-width:220px">Branded template graphic built locally from your logo/colors — no AI image generator involved, so it won\'t have that "AI-generated" look.</div>'+
+        '</div>'+
+      '</div>', true)+
     '</div>'+
     '<div class="form-actions form-actions-sticky">'+
       '<button class="cancel-btn" id="modal-cancel">Close</button>'+
@@ -16905,6 +16912,99 @@ function renderMarketingAiDraftModal(item, text){
     saveDB(); closeModal(); render();
     toast('Draft saved to item notes');
   });
+  var graphicDownloadBtn = $('mp-ai-graphic-download');
+  drawMarketingGraphicCanvas($('mp-ai-graphic'), item, function(){
+    if(graphicDownloadBtn) graphicDownloadBtn.disabled = false;
+  });
+  graphicDownloadBtn.addEventListener('click', function(){
+    var link = document.createElement('a');
+    link.download = 'marketing-'+item.id+'.png';
+    link.href = $('mp-ai-graphic').toDataURL('image/png');
+    link.click();
+  });
+}
+// Draws a square (1080x1080, Instagram-safe) branded social graphic to pair
+// with an AI-drafted post — deliberately NOT run through an image-generation
+// model. A flat brand-gradient + logo + typography template can't have the
+// telltale "AI look" (warped text/hands, plastic-glossy renders) because
+// there's no generative image model in the loop at all; it reads the same
+// way a human-made Canva/template graphic would. Fully client-side (no new
+// API, vendor, or per-image cost) — reuses MILES_MAN_LOGO_DATA_URI, the same
+// embedded logo the quote emails already use. Calls onReady() once the async
+// logo image has actually finished drawing, since a download triggered
+// before that would miss the logo.
+function drawMarketingGraphicCanvas(canvas, item, onReady){
+  var W = 1080, H = 1080;
+  canvas.width = W; canvas.height = H;
+  var ctx = canvas.getContext('2d');
+
+  var grad = ctx.createLinearGradient(0, 0, W, H);
+  grad.addColorStop(0, '#0b2545');
+  grad.addColorStop(1, '#0f766e');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+
+  // Soft abstract wave bands near the bottom (ocean/cruise motif) — plain
+  // shapes, not a depiction of anything an eye could judge as "AI-ish."
+  function wave(yBase, amp, alpha){
+    ctx.beginPath();
+    ctx.moveTo(0, yBase);
+    ctx.bezierCurveTo(W*0.25, yBase-amp, W*0.75, yBase+amp, W, yBase);
+    ctx.lineTo(W, H); ctx.lineTo(0, H); ctx.closePath();
+    ctx.fillStyle = 'rgba(255,255,255,'+alpha+')';
+    ctx.fill();
+  }
+  wave(H*0.82, 40, 0.06);
+  wave(H*0.88, 30, 0.05);
+  wave(H*0.94, 24, 0.08);
+
+  var maxWidth = W - 160;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillStyle = '#ffffff';
+  var fontSize = 84, lines;
+  do {
+    ctx.font = '800 '+fontSize+'px Georgia, "Times New Roman", serif';
+    lines = wrapCanvasText(ctx, (item.title||'').toUpperCase(), maxWidth);
+    if(lines.length <= 4) break;
+    fontSize -= 6;
+  } while(fontSize > 36);
+  var lineHeight = fontSize*1.15;
+  var startY = H*0.38 - (lines.length-1)*lineHeight/2;
+  lines.forEach(function(line, i){ ctx.fillText(line, 80, startY + i*lineHeight); });
+
+  ctx.fillStyle = '#facc15';
+  ctx.font = '700 28px Arial, sans-serif';
+  ctx.fillText((item.channel||'').toUpperCase(), 82, startY - lineHeight - 10);
+  ctx.fillRect(80, startY + (lines.length-1)*lineHeight + fontSize*0.5, 90, 6);
+
+  var logo = new Image();
+  logo.onload = function(){
+    var logoH = 70, logoW = logoH*(logo.width/logo.height);
+    ctx.drawImage(logo, 80, H-140, logoW, logoH);
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.font = '600 26px Arial, sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillText('themilesman.com', W-80, H-70);
+    if(onReady) onReady();
+  };
+  logo.src = MILES_MAN_LOGO_DATA_URI;
+}
+// Greedy word-wrap for canvas text — canvas has no native text-wrapping, so
+// this measures each candidate line with the context's *current* font
+// (caller must set ctx.font before calling) and breaks once a word would
+// overflow maxWidth.
+function wrapCanvasText(ctx, text, maxWidth){
+  var words = text.split(' ');
+  var lines = [], current = '';
+  words.forEach(function(word){
+    var test = current ? current+' '+word : word;
+    if(ctx.measureText(test).width > maxWidth && current){
+      lines.push(current); current = word;
+    } else current = test;
+  });
+  if(current) lines.push(current);
+  return lines;
 }
 function openMarketingPlanForm(id){
   var d = id ? (db.marketingPlan.find(function(x){return x.id===id;})||{}) : {};
