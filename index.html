@@ -16335,6 +16335,9 @@ function renderMarketing(){
   document.querySelectorAll('.mkt-plan-del[data-id]').forEach(function(el){
     el.addEventListener('click', function(e){ e.stopPropagation(); delMarketingPlanItem(el.dataset.id); });
   });
+  document.querySelectorAll('.mkt-plan-ai[data-id]').forEach(function(el){
+    el.addEventListener('click', function(e){ e.stopPropagation(); draftMarketingPlanItemWithAI(el.dataset.id); });
+  });
   renderMarketingCalendar();
 
   if(fbToken) loadFacebookCampaigns(fbToken);
@@ -16364,10 +16367,90 @@ function marketingPlanListHtml(){
         '<td class="mkt-plan-title" data-id="'+item.id+'" style="cursor:pointer;color:#2563eb;text-decoration:underline">'+escHtml(item.title||'')+'</td>'+
         '<td><span style="background:'+chColors.bg+';color:'+chColors.text+';padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">'+escHtml(item.channel||'')+'</span></td>'+
         '<td><span style="background:'+stColors.bg+';color:'+stColors.text+';padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">'+escHtml(item.status||'')+'</span></td>'+
-        '<td><button class="icon-btn mkt-plan-del" data-id="'+item.id+'" style="color:#dc2626" title="Delete">&#128465;&#65039;</button></td>'+
+        '<td><button class="icon-btn mkt-plan-ai" data-id="'+item.id+'" title="Draft this item\'s content with AI">&#10024;</button> <button class="icon-btn mkt-plan-del" data-id="'+item.id+'" style="color:#dc2626" title="Delete">&#128465;&#65039;</button></td>'+
       '</tr>';
     }).join('')+
   '</tbody></table></div>';
+}
+// Channel-specific guidance for what "the content" of a plan item actually
+// looks like — an Email item needs a subject+body, a Google Ad needs
+// character-capped headline/description variations, etc. Falls back to
+// generic copy for a channel not listed (only 'Other' currently isn't).
+const MARKETING_AI_CHANNEL_GUIDE = {
+  'Email':         'a subject line plus a full email body',
+  'Social Media':  'a caption plus 3-5 relevant hashtags',
+  'Blog Post':     'a title plus a short outline (headings with 1-2 sentences under each)',
+  'Facebook Ad':   'primary text, a headline, and a description, per Meta ad copy conventions',
+  'Google Ad':     '3 headline variations (max 30 characters each) and 2 description variations (max 90 characters each), per Google Search Ads conventions',
+  'Print':         'short flyer/postcard copy — a headline plus 2-3 sentences of body copy',
+  'Event':         'a short event description/invite blurb',
+  'Referral Push': 'a short message to send past clients asking for referrals',
+  'Other':         'ready-to-use marketing copy appropriate to the item'
+};
+// The Marketing Plan's "✨" button — asks Claude (same api/claude-messages.js
+// proxy the Assistant chat and Analytics Daily Summary already call, so the
+// Anthropic key stays server-side in the Vercel proxy) to draft the actual
+// content for one plan item, based on its title/channel/existing notes.
+// Shows the result in a review modal (renderMarketingAiDraftModal) rather
+// than writing it back automatically — a generated draft should be read
+// before it becomes the item's real notes.
+function draftMarketingPlanItemWithAI(id){
+  var item = db.marketingPlan.find(function(x){return x.id===id;});
+  if(!item) return;
+  $('modal').innerHTML =
+    '<div class="modal-hdr"><div class="modal-title">AI Draft — '+escHtml(item.title||'')+'</div><button class="close-btn" id="modal-close">&#x2715;</button></div>'+
+    '<div class="fg"><div class="empty">Generating '+escHtml(item.channel||'')+' content…</div></div>';
+  $('modal').classList.add('modal-wide');
+  $('overlay').classList.add('open');
+  $('modal-close').addEventListener('click', closeModal);
+
+  var guide = MARKETING_AI_CHANNEL_GUIDE[item.channel] || MARKETING_AI_CHANNEL_GUIDE.Other;
+  fetch(DRIVE_AUTH_SERVER+'/api/claude-messages', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({
+      system: 'You are a marketing copywriter for a small travel/cruise agency (Miles Man Travel). Given one item from the agency\'s marketing plan, write '+guide+'. Be specific and ready-to-use, not generic filler — reference cruises/travel where it fits naturally. Plain text only, no markdown formatting.',
+      messages: [{role:'user', content:'Title: '+(item.title||'')+'\nChannel: '+(item.channel||'')+'\nDate: '+(item.date||'')+'\nExisting notes: '+(item.notes||'(none)')}]
+    })
+  }).then(function(r){ return r.json(); }).then(function(data){
+    if(data.error) throw new Error(data.error.message||JSON.stringify(data.error));
+    var block = (data.content||[]).find(function(b){return b.type==='text';});
+    renderMarketingAiDraftModal(item, block ? block.text : '(no draft generated)');
+  }).catch(function(e){
+    $('modal').innerHTML =
+      '<div class="modal-hdr"><div class="modal-title">AI Draft — '+escHtml(item.title||'')+'</div><button class="close-btn" id="modal-close">&#x2715;</button></div>'+
+      '<div class="fg"><div class="empty">Failed to generate: '+escHtml(e.message)+'</div></div>'+
+      '<div class="form-actions form-actions-sticky"><button class="cancel-btn" id="modal-cancel">Close</button></div>';
+    $('modal-close').addEventListener('click', closeModal);
+    $('modal-cancel').addEventListener('click', closeModal);
+  });
+}
+function renderMarketingAiDraftModal(item, text){
+  $('modal').innerHTML =
+    '<div class="modal-hdr"><div class="modal-title">AI Draft — '+escHtml(item.title||'')+'</div><button class="close-btn" id="modal-close">&#x2715;</button></div>'+
+    '<div class="fg">'+
+      fld('Draft (edit freely before saving)', '<textarea id="mp-ai-draft" rows="14">'+escHtml(text)+'</textarea>', true)+
+    '</div>'+
+    '<div class="form-actions form-actions-sticky">'+
+      '<button class="cancel-btn" id="modal-cancel">Close</button>'+
+      '<button class="cancel-btn" id="mp-ai-copy">Copy</button>'+
+      '<button class="save-btn" id="mp-ai-insert">Save to Item Notes</button>'+
+    '</div>';
+  $('modal').classList.add('modal-wide');
+  $('modal-close').addEventListener('click', closeModal);
+  $('modal-cancel').addEventListener('click', closeModal);
+  $('mp-ai-copy').addEventListener('click', function(){
+    navigator.clipboard.writeText($('mp-ai-draft').value).then(function(){
+      toast('Draft copied to clipboard','ok');
+    }).catch(function(){ toast('Could not copy automatically — select and copy manually','err'); });
+  });
+  $('mp-ai-insert').addEventListener('click', function(){
+    snapshot('AI-draft marketing plan item');
+    var draftText = $('mp-ai-draft').value;
+    db.marketingPlan = db.marketingPlan.map(function(x){ return x.id===item.id ? Object.assign({},x,{notes:draftText}) : x; });
+    saveDB(); closeModal(); render();
+    toast('Draft saved to item notes');
+  });
 }
 function openMarketingPlanForm(id){
   var d = id ? (db.marketingPlan.find(function(x){return x.id===id;})||{}) : {};
