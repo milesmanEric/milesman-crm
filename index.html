@@ -18455,6 +18455,7 @@ function renderAnalytics(){
       analyticsSectionHtml('ga4-traffic-sources','Traffic Sources (30 days)')+
       analyticsSectionHtml('ga4-devices','Device Category (30 days)')+
       analyticsSectionHtml('ga4-countries','Top Countries (30 days)')+
+      analyticsSectionHtml('ga4-ai-referrals','AI Assistant Referrals — GEO (30 days)')+
     '</div>'+
     '<div class="card" style="margin-bottom:16px">'+
       '<div class="card-hdr"><span class="card-title">Facebook</span>'+
@@ -18602,6 +18603,7 @@ function renderAnalytics(){
     if(!analyticsSectionCollapsed('ga4-traffic-sources')) loadGA4Breakdown(token, 'ga4-traffic-sources-body', 'sessionDefaultChannelGroup', 'Channel', 'sessions', 'Sessions');
     if(!analyticsSectionCollapsed('ga4-devices')) loadGA4Breakdown(token, 'ga4-devices-body', 'deviceCategory', 'Device', 'activeUsers', 'Users');
     if(!analyticsSectionCollapsed('ga4-countries')) loadGA4Breakdown(token, 'ga4-countries-body', 'country', 'Country', 'activeUsers', 'Users');
+    if(!analyticsSectionCollapsed('ga4-ai-referrals')) loadGA4AiReferrals(token, 'ga4-ai-referrals-body');
   });
 }
 // Yoast SEO attaches a `yoast_head_json` field (meta title, meta
@@ -19037,6 +19039,67 @@ function loadGA4Breakdown(token, containerId, dimensionName, dimensionLabel, met
         return '<tr><td style="max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escHtml(label)+'</td><td>'+fmt(val)+'</td></tr>';
       }).join('')+
     '</tbody></table></div>';
+  }).catch(function(e){
+    var body = $(containerId);
+    if(body) body.innerHTML = '<div class="empty">Failed to load: '+e.message+'</div>';
+  });
+}
+// GEO (Generative Engine Optimization) traffic — there's no official API
+// for "how often an AI engine mentions/recommends this site," so this
+// isn't true GEO tracking. What IS measurable: real visitor sessions that
+// arrived via a link an AI assistant generated, which GA4 already
+// captures as an ordinary referrer domain (sessionSource) whenever the
+// assistant's UI actually sends one. Requests a wide row limit (AI
+// referral volume is typically far too low to place in the default
+// top-15 breakdown) and filters client-side against a curated list of
+// known assistant domains, rather than adding a server-side dimension
+// filter to the GA4 request itself — GA4's API filters match a dimension
+// exactly/by regex per value, not "any of a domain list," so client-side
+// filtering after one broad fetch is simpler than N separate requests.
+// Necessarily incomplete: some assistants (notably ChatGPT's mobile app)
+// strip the referrer entirely, which then shows up as ordinary "(direct)"
+// traffic with no way to attribute it back here.
+var GA4_AI_REFERRAL_DOMAINS = ['chatgpt.com','chat.openai.com','perplexity.ai','gemini.google.com','bard.google.com','copilot.microsoft.com','claude.ai','you.com','poe.com','meta.ai'];
+function loadGA4AiReferrals(token, containerId){
+  fetch('https://analyticsdata.googleapis.com/v1beta/properties/'+GA4_PROPERTY_ID+':runReport', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer '+token },
+    body: JSON.stringify({
+      dateRanges: [{ startDate: '30daysAgo', endDate: 'today' }],
+      dimensions: [{ name: 'sessionSource' }],
+      metrics: [{ name: 'sessions' }, { name: 'activeUsers' }],
+      orderBys: [{ metric: { metricName: 'sessions' }, desc: true }],
+      limit: 200
+    })
+  }).then(function(r){ return r.json(); }).then(function(d){
+    var body = $(containerId);
+    if(!body) return;
+    if(d.error){
+      var msg = (d.error && (d.error.message||d.error))||'Unknown error';
+      if(/insufficient authentication scopes/i.test(String(msg))){
+        body.innerHTML = '<div class="empty">Reconnect Google Drive from the GA4 card above to refresh Analytics access.</div>';
+        return;
+      }
+      body.innerHTML = '<div class="empty">'+escHtml(msg)+'</div>';
+      return;
+    }
+    var rows = (d.rows||[]).filter(function(row){
+      var source = (row.dimensionValues[0].value||'').toLowerCase();
+      return GA4_AI_REFERRAL_DOMAINS.some(function(dom){ return source===dom || source.endsWith('.'+dom); });
+    });
+    var hint = '<div style="font-size:11px;color:#aaa;margin-bottom:8px">Sessions referred by a link an AI assistant generated — undercounts assistants that strip the referrer (e.g. ChatGPT\'s mobile app), which show up as Direct traffic instead.</div>';
+    if(!rows.length){ body.innerHTML = hint+'<div class="empty">No AI assistant referral traffic detected in the last 30 days.</div>'; return; }
+    var totalSessions = rows.reduce(function(a,row){ return a+(Number(row.metricValues[0].value)||0); },0);
+    body.innerHTML = hint+
+      '<div style="font-size:12px;color:#555;margin-bottom:8px"><strong>'+fmt(totalSessions)+'</strong> session'+(totalSessions!==1?'s':'')+' total from AI assistants</div>'+
+      '<div class="tbl-wrap" style="max-height:280px;overflow-y:auto"><table><thead><tr><th>Source</th><th>Sessions</th><th>Users</th></tr></thead><tbody>'+
+      rows.map(function(row){
+        var label = row.dimensionValues[0].value || '(not set)';
+        var sessions = Number(row.metricValues[0].value)||0;
+        var users = Number(row.metricValues[1].value)||0;
+        return '<tr><td style="max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escHtml(label)+'</td><td>'+fmt(sessions)+'</td><td>'+fmt(users)+'</td></tr>';
+      }).join('')+
+      '</tbody></table></div>';
   }).catch(function(e){
     var body = $(containerId);
     if(body) body.innerHTML = '<div class="empty">Failed to load: '+e.message+'</div>';
