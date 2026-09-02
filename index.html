@@ -1596,6 +1596,31 @@ function addDaysToDateStr(dateStr, days){
   d.setDate(d.getDate()+days);
   return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 }
+// The most recently fully-completed Monday-Sunday week as of today() — e.g.
+// on any day this week, this is LAST week's Mon-Sun span, never a
+// still-in-progress one. Used to key the Weekly Summary (see
+// loadPeriodSummary()) so it regenerates itself exactly once per week
+// (when this range's own start date changes) regardless of how many times
+// the page is opened in between.
+function lastCompletedWeekRange(){
+  var dow = new Date(today()+'T00:00:00').getDay(); // 0=Sun..6=Sat
+  var daysSinceMonday = (dow+6)%7;
+  var thisMonday = addDaysToDateStr(today(), -daysSinceMonday);
+  var end = addDaysToDateStr(thisMonday, -1);   // last Sunday
+  var start = addDaysToDateStr(end, -6);        // the Monday before it
+  return {start:start, end:end};
+}
+// Same idea as lastCompletedWeekRange() but for the most recently
+// fully-completed calendar month — e.g. any day in September, this is all
+// of August. Keys the Monthly Summary by the month's own YYYY-MM.
+function lastCompletedMonthRange(){
+  var t = new Date(today()+'T00:00:00');
+  var firstOfThisMonth = new Date(t.getFullYear(), t.getMonth(), 1);
+  var lastOfPrevMonth = new Date(firstOfThisMonth.getFullYear(), firstOfThisMonth.getMonth(), 0);
+  var firstOfPrevMonth = new Date(lastOfPrevMonth.getFullYear(), lastOfPrevMonth.getMonth(), 1);
+  function fmtYmd(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+  return {start:fmtYmd(firstOfPrevMonth), end:fmtYmd(lastOfPrevMonth)};
+}
 function displayStatus(t){
   var st = t.status||'Planning';
   if(st==='Completed' && t.departDate && t.departDate>=today()) st='Upcoming';
@@ -2955,7 +2980,7 @@ function xHistoryTableHtml(history){
     }).join('')+
     '</tbody></table></div></div>';
 }
-// Feeds the Daily Summary compilation (loadDailySummary()) — reuses
+// Feeds the Daily/Weekly/Monthly Summary compilation (loadPeriodSummary()) — reuses
 // xFollowerSnapshot()'s existing once-per-calendar-day cache (force:false),
 // so this never triggers a second billable X read on its own; opening the
 // Dashboard, the Analytics tab, and the Daily Summary in the same day still
@@ -2969,6 +2994,31 @@ function fetchYesterdayX(){
     var prev = xPreviousSnapshot(res.history, res.snapshot.date);
     var change = (prev && res.snapshot.followers!=null && prev.followers!=null) ? res.snapshot.followers-prev.followers : null;
     return { followersTotal: res.snapshot.followers, followersChange: change, changeSinceDate: prev?prev.date:null };
+  });
+}
+// Most recent cached snapshot on or before dateStr — used below to find
+// "followers as of the end of the period" from the local history rather
+// than a fresh billable read.
+function xSnapshotAtOrBefore(history, dateStr){
+  var eligible = (history||[]).filter(function(h){ return h.date<=dateStr; });
+  return eligible.length ? eligible[eligible.length-1] : null;
+}
+// Real week-over-week / month-over-month follower delta for the Weekly/
+// Monthly Summary, built entirely from the same locally-cached daily
+// snapshots xFollowerSnapshot() already maintains — no extra billable X
+// reads beyond the one-per-day fetchYesterdayX()/loadXAnalytics() already
+// trigger. If the CRM wasn't opened on every day of the period the nearest
+// snapshots on either side are used instead, same "not necessarily
+// literally that date" caveat xPreviousSnapshot() documents, which is why
+// changeSinceDate reports the actual comparison date used.
+function fetchXFollowerChangeForRange(start, end){
+  if(!localStorage.getItem('mm_x_token')) return Promise.reject(new Error('X not connected'));
+  return xFollowerSnapshot(false).then(function(res){
+    var endSnap = xSnapshotAtOrBefore(res.history, end);
+    var startSnap = xPreviousSnapshot(res.history, start);
+    if(!endSnap) return { followersTotal: res.snapshot.followers, followersChange: null, changeSinceDate: null };
+    var change = (startSnap && endSnap.followers!=null && startSnap.followers!=null) ? endSnap.followers-startSnap.followers : null;
+    return { followersTotal: endSnap.followers, followersChange: change, changeSinceDate: startSnap?startSnap.date:null };
   });
 }
 // ── TikTok Analytics ─────────────────────────────────────────────────────
@@ -3087,7 +3137,7 @@ function loadTiktokAnalytics(bodyId){
     if(body) body.innerHTML = '<div class="empty">Failed to load: '+escHtml(e.message)+'</div>';
   });
 }
-// Feeds the Daily Summary compilation (loadDailySummary()) — TikTok's
+// Feeds the Daily/Weekly/Monthly Summary compilation (loadPeriodSummary()) — TikTok's
 // Display API only ever returns current, all-time totals, the same
 // limitation the TikTok card itself has (no day-specific Insights-style
 // endpoint exists), so the field names spell "Total" explicitly rather
@@ -12451,14 +12501,8 @@ function renderDash(){
       '<input type="text" id="dash-quick-search" placeholder="Search clients, suppliers, or vendors..." autocomplete="off" style="width:100%;padding:9px 12px;border-radius:8px;border:1px solid #d1d5db;font-size:13px;font-family:inherit;box-sizing:border-box">'+
       '<div id="dash-quick-search-results"></div>'+
     '</div>'+
-    '<div class="card" style="margin-bottom:16px">'+
-      '<div class="card-hdr"><span class="card-title">Daily Summary</span><button class="cancel-btn" id="dash-daily-summary-refresh">&#128260; Regenerate</button></div>'+
-      '<div id="daily-summary-body"><div class="empty">Loading…</div></div>'+
-    '</div>'+
-    '<div class="card" style="margin-bottom:16px">'+
-      '<div class="card-hdr"><span class="card-title">Yesterday\'s Analytics</span></div>'+
-      '<div id="daily-compilation-body"><div class="empty">Loading…</div></div>'+
-    '</div>'+
+    periodSummaryCardHtml('daily', {periodTabs:false})+
+    '<div style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.04em;margin:4px 0 6px">Business</div>'+
     '<div class="stats-grid">'+
       '<div class="stat" id="stat-dash-clients"><div class="stat-lbl">Clients</div><div class="stat-val">'+s.clients+'</div></div>'+
       '<div class="stat" id="stat-dash-trips"><div class="stat-lbl">Total trips</div><div class="stat-val">'+s.trips+'</div></div>'+
@@ -12467,6 +12511,9 @@ function renderDash(){
       '<div class="stat" id="stat-dash-pts"><div class="stat-lbl">Points deployed</div><div class="stat-val">'+fmt(s.pts)+'</div></div>'+
       '<div class="stat" id="stat-dash-eod-collections" title="'+(eodReport?escHtml(eodReport.asOf):'No End of Day Sales Report received yet')+'"><div class="stat-lbl">Yesterday\'s Collections</div><div class="stat-val">'+(eodReport?'$'+money(eodReport.amount):'—')+'</div></div>'+
       '<div class="stat" id="stat-dash-ar-total" title="'+(arReport?escHtml(arReport.asOf):'No A/R Aging Summary received yet')+'"><div class="stat-lbl">Total A/R</div><div class="stat-val">'+(arReport?'$'+money(arReport.amount):'—')+'</div></div>'+
+    '</div>'+
+    '<div style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.04em;margin:-8px 0 6px">Social Reach</div>'+
+    '<div class="stats-grid">'+
       '<div class="stat" id="stat-dash-followers" style="cursor:pointer" title="Click to view blog followers"><div class="stat-lbl">Blog Followers</div><div class="stat-val" id="dash-followers-val">—</div></div>'+
       '<div class="stat" id="stat-dash-ig-followers" style="cursor:pointer" title="Click to view Instagram analytics"><div class="stat-lbl">Instagram Followers</div><div class="stat-val" id="dash-ig-followers-val">—</div></div>'+
       '<div class="stat" id="stat-dash-x-followers" style="cursor:pointer" title="Click to view X analytics"><div class="stat-lbl">X Followers</div><div class="stat-val" id="dash-x-followers-val">—</div><div id="dash-x-followers-delta"></div></div>'+
@@ -12746,13 +12793,15 @@ function renderDash(){
   }
 
   // Same #daily-summary-body/#daily-compilation-body containers and
-  // per-day localStorage cache the Analytics tab's own Daily Summary/
-  // Yesterday's Analytics cards use — generating it here (or there,
-  // whichever is opened first) means the other page shows the same
-  // already-generated result instantly, no duplicate Claude call.
-  loadDailySummary(false);
-  var dashSummaryRefreshBtn = $('dash-daily-summary-refresh');
-  if(dashSummaryRefreshBtn) dashSummaryRefreshBtn.addEventListener('click', function(){ loadDailySummary(true); });
+  // per-day localStorage cache the Analytics tab's own Daily Summary card
+  // uses (Analytics also offers Weekly/Monthly — the Dashboard sticks to
+  // Daily only) — generating it here (or there, whichever is opened first)
+  // means the other page shows the same already-generated result
+  // instantly, no duplicate Claude call.
+  bindPeriodSummaryCardEvents();
+  loadPeriodSummary('daily', false);
+  var dashSummaryRefreshBtn = $('daily-summary-refresh');
+  if(dashSummaryRefreshBtn) dashSummaryRefreshBtn.addEventListener('click', function(){ loadPeriodSummary('daily', true); });
 }
 
 function clientSortArrow(col){
@@ -17933,16 +17982,19 @@ function loadInstagramAnalytics(bodyId){
     if(body) body.innerHTML = '<div class="empty">'+escHtml(e.message)+'</div>';
   });
 }
-// Same-shaped fetch as fetchYesterdayFacebookPage() above, feeding the
-// Daily Summary / "Yesterday's Analytics" compilation instead of the
-// Analytics tab's own Instagram card.
-function fetchYesterdayInstagram(dateStr){
+// Same-shaped fetch as fetchFacebookPageStats() above, feeding the
+// Daily/Weekly/Monthly Summary compilation instead of the Analytics tab's
+// own Instagram card. period:'day' over a multi-day range returns one
+// value per day per metric — summed below, same additive-count assumption
+// documented on fetchFacebookPageStats() (reach isn't a true dedup across
+// days when summed, but is an accepted approximation here).
+function fetchInstagramStats(start, end){
   if(!localStorage.getItem('mm_fb_token')) return Promise.reject(new Error('Facebook not connected'));
   return fetchInstagramAccountId().then(function(acct){
-    return fbGraph('/'+acct.igId+'/insights', {token:acct.pageToken, query:{metric:'reach,views,profile_views', period:'day', since:dateStr, until:dateStr}}).then(function(resp){
+    return fbGraph('/'+acct.igId+'/insights', {token:acct.pageToken, query:{metric:'reach,views,profile_views', period:'day', since:start, until:end}}).then(function(resp){
       if(resp.error) throw new Error(resp.error.message);
       var byName = {};
-      (resp.data||[]).forEach(function(m){ byName[m.name] = igInsightValue(m); });
+      (resp.data||[]).forEach(function(m){ byName[m.name] = (m.total_value ? m.total_value.value : (m.values||[]).reduce(function(a,v){return a+(Number(v.value)||0);},0)); });
       return { reach: byName.reach||0, views: byName.views||0, profileViews: byName.profile_views||0 };
     });
   });
@@ -18476,14 +18528,18 @@ function bindInlineCollapseToggle(key, containerEl){
 // in localStorage so reopening the tab repeatedly doesn't re-bill a
 // fresh Claude call each time. The Regenerate button forces a fresh pull.
 function dailySummaryCacheKey(){ return 'mm_daily_summary_'+addDaysToDateStr(today(),-1); }
-function fetchYesterdayGA4(dateStr){
+// start/end are the same date for the Daily Summary (see loadPeriodSummary)
+// and a real span for the Weekly/Monthly ones — GA4's runReport dedupes
+// activeUsers correctly over whatever range it's given, so widening the
+// range needs no other change here.
+function fetchGA4Stats(start, end){
   return getDriveTokenSilent().then(function(token){
     if(!token) return Promise.reject(new Error('Google Drive not connected'));
     return fetch('https://analyticsdata.googleapis.com/v1beta/properties/'+GA4_PROPERTY_ID+':runReport', {
       method:'POST',
       headers:{'Content-Type':'application/json', Authorization:'Bearer '+token},
       body: JSON.stringify({
-        dateRanges:[{startDate:dateStr, endDate:dateStr}],
+        dateRanges:[{startDate:start, endDate:end}],
         metrics:[{name:'activeUsers'},{name:'screenPageViews'},{name:'sessions'}]
       })
     }).then(function(r){return r.json();}).then(function(data){
@@ -18494,34 +18550,43 @@ function fetchYesterdayGA4(dateStr){
     });
   });
 }
-function fetchYesterdayWordPress(dateStr){
+// Reuses the same /sites/{site}/stats endpoint loadWordpressStats() already
+// calls successfully (its visits.data array is the same [date, views,
+// visitors] rows behind that card's own "Last 30 Days" table) — a
+// separate /stats/visits path tried here originally returned "unauthorized"
+// from WordPress.com despite a valid token, for reasons that were never
+// pinned down; this proven endpoint sidesteps the question entirely. Sums
+// every day in [start,end] rather than looking up one — views/visitors are
+// plain additive daily counts, so this is exact, not an approximation.
+function fetchWordPressStats(start, end){
   var token = localStorage.getItem('mm_wp_token');
   if(!token) return Promise.reject(new Error('WordPress.com not connected'));
-  // Reuses the same /sites/{site}/stats endpoint loadWordpressStats() already
-  // calls successfully (its visits.data array is the same [date, views,
-  // visitors] rows behind that card's own "Last 30 Days" table) — a
-  // separate /stats/visits path tried here originally returned "unauthorized"
-  // from WordPress.com despite a valid token, for reasons that were never
-  // pinned down; this proven endpoint sidesteps the question entirely.
   return fetch(WP_AUTH_SERVER+'/api/wordpress-stats?path='+encodeURIComponent('/sites/'+WP_SITE+'/stats'), {
     headers:{Authorization:'Bearer '+token}
   }).then(function(r){return r.json();}).then(function(data){
     if(data.error) throw new Error(data.error_description||data.error);
     var rows = (data.visits&&data.visits.data)||[];
-    var day = rows.find(function(r){ return r[0]===dateStr; });
-    if(!day) return {views:0, visitors:0};
-    return {views:day[1], visitors:day[2]};
+    var inRange = rows.filter(function(r){ return r[0]>=start && r[0]<=end; });
+    if(!inRange.length) return {views:0, visitors:0};
+    return {
+      views: inRange.reduce(function(a,r){return a+(Number(r[1])||0);},0),
+      visitors: inRange.reduce(function(a,r){return a+(Number(r[2])||0);},0)
+    };
   });
 }
-function fetchYesterdayFacebookAds(dateStr){
+// Meta's Ads Insights API returns one pre-aggregated row for the whole
+// time_range span when no time_increment is requested (the default), so a
+// wider range needs no summing here — spend/impressions/clicks are already
+// the period total.
+function fetchFacebookAdsStats(start, end){
   if(!localStorage.getItem('mm_fb_token')) return Promise.reject(new Error('Facebook not connected'));
-  return fbGraph('/'+FB_AD_ACCOUNT+'/insights', {query:{level:'account', time_range:JSON.stringify({since:dateStr, until:dateStr}), fields:'spend,impressions,clicks,cpc'}}).then(function(resp){
+  return fbGraph('/'+FB_AD_ACCOUNT+'/insights', {query:{level:'account', time_range:JSON.stringify({since:start, until:end}), fields:'spend,impressions,clicks,cpc'}}).then(function(resp){
     if(resp.error) throw new Error(resp.error.message);
     var row = (resp.data||[])[0];
     return row ? {spend:row.spend, impressions:row.impressions, clicks:row.clicks} : {spend:0, impressions:0, clicks:0};
   });
 }
-function fetchYesterdayFacebookPage(dateStr){
+function fetchFacebookPageStats(start, end){
   if(!localStorage.getItem('mm_fb_token')) return Promise.reject(new Error('Facebook not connected'));
   return fbGraph('/me/accounts', {query:{fields:'id,name,access_token'}}).then(function(pagesResp){
     if(pagesResp.error) throw new Error(pagesResp.error.message);
@@ -18529,15 +18594,18 @@ function fetchYesterdayFacebookPage(dateStr){
     if(!page) throw new Error('no managed Page found');
     // page_impressions deprecated by Meta — page_media_view is the
     // confirmed-live replacement (see loadFacebookPageAnalytics above).
-    return fbGraph('/'+page.id+'/insights', {token:page.access_token, query:{metric:'page_views_total,page_media_view,page_post_engagements', period:'day', since:dateStr, until:dateStr}}).then(function(resp){
+    // period:'day' over a multi-day range returns one value per day per
+    // metric — summed below, which is exact for these three (plain counts,
+    // not a deduplicated-unique-visitor metric that summing would distort).
+    return fbGraph('/'+page.id+'/insights', {token:page.access_token, query:{metric:'page_views_total,page_media_view,page_post_engagements', period:'day', since:start, until:end}}).then(function(resp){
       if(resp.error) throw new Error(resp.error.message);
       var byName = {};
-      (resp.data||[]).forEach(function(m){ byName[m.name] = (m.values||[])[0]; });
+      (resp.data||[]).forEach(function(m){ byName[m.name] = (m.values||[]).reduce(function(a,v){return a+(Number(v.value)||0);},0); });
       return {
         pageName: page.name,
-        views: byName.page_views_total?byName.page_views_total.value:0,
-        impressions: byName.page_media_view?byName.page_media_view.value:0,
-        engagements: byName.page_post_engagements?byName.page_post_engagements.value:0
+        views: byName.page_views_total||0,
+        impressions: byName.page_media_view||0,
+        engagements: byName.page_post_engagements||0
       };
     });
   });
@@ -18588,31 +18656,116 @@ function countMailchimpSubscribersAddedOnDate(listId, dateStr){
     return count;
   });
 }
-function fetchYesterdayMailchimpSummary(){
+// Range-based counterparts of countMailchimpUnsubscribesOnDate()/
+// countMailchimpSubscribersAddedOnDate() above, for the Weekly/Monthly
+// Summary — same sorted-newest-first early-break scan, just matching a
+// [start,end] window instead of one exact date. The exact-date functions
+// above stay as-is since loadMailchimpStatsTiles() (the always-daily
+// Mailchimp card) still calls them directly.
+function countMailchimpUnsubscribesInRange(listId, start, end){
+  return mailchimpProxyGet('/lists/'+listId+'/members?status=unsubscribed&count=1000&sort_field=last_changed&sort_dir=DESC').then(function(resp){
+    if(resp.error) throw new Error(resp.error.message||resp.detail||'Failed to load unsubscribed members');
+    var members = resp.members||[];
+    var count = 0;
+    for(var i=0;i<members.length;i++){
+      var d = (members[i].last_changed||'').slice(0,10);
+      if(d>=start && d<=end) count++;
+      else if(d && d<start) break;
+    }
+    return count;
+  });
+}
+function countMailchimpSubscribersAddedInRange(listId, start, end){
+  return mailchimpProxyGet('/lists/'+listId+'/members?status=subscribed&count=1000&sort_field=timestamp_opt&sort_dir=DESC').then(function(resp){
+    if(resp.error) throw new Error(resp.error.message||resp.detail||'Failed to load subscribed members');
+    var members = resp.members||[];
+    var count = 0;
+    for(var i=0;i<members.length;i++){
+      var d = (members[i].timestamp_opt||'').slice(0,10);
+      if(d>=start && d<=end) count++;
+      else if(d && d<start) break;
+    }
+    return count;
+  });
+}
+function fetchMailchimpSummaryForRange(start, end){
   var listId = localStorage.getItem(MAILCHIMP_LIST_KEY);
   if(!listId) return Promise.reject(new Error('no audience chosen yet'));
-  var yesterday = addDaysToDateStr(today(), -1);
   return Promise.all([
     mailchimpProxyGet('/lists/'+listId),
-    countMailchimpUnsubscribesOnDate(listId, yesterday),
-    countMailchimpSubscribersAddedOnDate(listId, yesterday),
+    countMailchimpUnsubscribesInRange(listId, start, end),
+    countMailchimpSubscribersAddedInRange(listId, start, end),
     mailchimpProxyGet('/reports?list_id='+encodeURIComponent(listId)+'&count=1&sort_field=send_time&sort_dir=DESC').catch(function(){ return null; })
   ]).then(function(results){
-    var list = results[0], unsubscribedYesterday = results[1], subscribersAddedYesterday = results[2], reportsResp = results[3];
+    var list = results[0], unsubscribed = results[1], subscribersAdded = results[2], reportsResp = results[3];
     var stats = list.stats||{};
     var latest = reportsResp && !reportsResp.error ? (reportsResp.reports||[])[0] : null;
     // Reports endpoint's opens/clicks rates are fractions of 1 (e.g.
     // 0.4956), the opposite convention from List stats' own open_rate/
     // click_rate — converted here to the same already-a-percentage shape
     // (e.g. 49.56) the caller's formatting math expects, same gotcha
-    // loadMailchimpStatsTiles() documents.
+    // loadMailchimpStatsTiles() documents. These rates are always for the
+    // single most recently sent campaign, regardless of period.
     var openRate = latest && latest.opens && latest.opens.open_rate!=null ? latest.opens.open_rate*100 : null;
     var clickRate = latest && latest.clicks && latest.clicks.click_rate!=null ? latest.clicks.click_rate*100 : null;
-    return {listName:list.name, subscribers:stats.member_count, subscribersAddedYesterday:subscribersAddedYesterday, unsubscribedYesterday:unsubscribedYesterday, openRate:openRate, clickRate:clickRate};
+    return {listName:list.name, subscribers:stats.member_count, subscribersAdded:subscribersAdded, unsubscribed:unsubscribed, openRate:openRate, clickRate:clickRate};
   });
 }
 function dailySummaryHtml(text){
   return '<div style="white-space:pre-wrap;font-size:13px;line-height:1.6">'+escHtml(text)+'</div>';
+}
+// Daily/Weekly/Monthly Summary + its raw-numbers compilation used to be two
+// always-open, always-stacked cards (one pair per period, on the Analytics
+// page). That got hard to scan once Weekly/Monthly were added, so all three
+// periods now share ONE card: a period tab row (Analytics page only — the
+// Dashboard only ever shows Daily) plus a Summary/Numbers view toggle,
+// following the same "set a state var, re-render" pattern the existing
+// analytics-sec-hdr collapse toggles and Reports tabs already use elsewhere
+// in this file, rather than introducing a new client-side show/hide scheme.
+function periodSummaryTabsHtml(activePeriod){
+  var periods = [['daily','Daily'],['weekly','Weekly'],['monthly','Monthly']];
+  return '<div style="display:flex;gap:2px;border-bottom:1px solid #eee;margin:-2px -2px 10px">'+
+    periods.map(function(p){
+      return '<button class="rpt-tab-btn period-tab-btn'+(activePeriod===p[0]?' active':'')+'" data-period="'+p[0]+'">'+p[1]+'</button>';
+    }).join('')+
+  '</div>';
+}
+function periodSummaryCardHtml(period, opts){
+  opts = opts || {};
+  var view = window._analyticsSummaryView || 'summary';
+  var label = period==='weekly' ? 'Weekly' : (period==='monthly' ? 'Monthly' : 'Daily');
+  return '<div class="card" style="margin-bottom:16px">'+
+    (opts.periodTabs ? periodSummaryTabsHtml(period) : '')+
+    '<div class="card-hdr">'+
+      '<span class="card-title">'+label+' Summary</span>'+
+      '<div style="display:flex;gap:6px;align-items:center">'+
+        '<button class="cancel-btn period-view-btn" data-view="summary" style="padding:3px 10px'+(view==='summary'?';background:#dbeafe;color:#1d4ed8':'')+'">Summary</button>'+
+        '<button class="cancel-btn period-view-btn" data-view="numbers" style="padding:3px 10px'+(view==='numbers'?';background:#dbeafe;color:#1d4ed8':'')+'">Numbers</button>'+
+        '<button class="cancel-btn" id="'+period+'-summary-refresh" title="Regenerate">&#128260;</button>'+
+      '</div>'+
+    '</div>'+
+    '<div id="'+period+'-summary-body" style="'+(view==='summary'?'':'display:none')+'"><div class="empty">Loading…</div></div>'+
+    '<div id="'+period+'-compilation-body" style="'+(view==='numbers'?'':'display:none')+'"><div class="empty">Loading…</div></div>'+
+  '</div>';
+}
+// Wires the period tabs (Analytics page only, since periodStateKey selects
+// which state var a given card's tabs should drive — the Dashboard's fixed
+// Daily card never renders .period-tab-btn at all) and the Summary/Numbers
+// view toggle (both pages). Call once per render pass, after the card's
+// HTML is in the DOM.
+function bindPeriodSummaryCardEvents(){
+  document.querySelectorAll('.period-tab-btn').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      window._analyticsSummaryPeriod = btn.dataset.period;
+      render();
+    });
+  });
+  document.querySelectorAll('.period-view-btn').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      window._analyticsSummaryView = btn.dataset.view;
+      render();
+    });
+  });
 }
 // "Yesterday's Analytics" — the raw compiled numbers behind the Daily
 // Summary's AI interpretation, straight from the same fetch pass rather
@@ -18629,8 +18782,9 @@ function compSourceBlock(title, pairs){
     '</div>'+
   '</div>';
 }
-function dailyCompilationHtml(results, dateStr){
+function periodCompilationHtml(results, period, range){
   var blocks = [];
+  var mcSuffix = period==='weekly' ? 'This Week' : (period==='monthly' ? 'This Month' : 'Yesterday');
   if(results.ga4){
     var g = results.ga4;
     blocks.push(compSourceBlock('Google Analytics (GA4)', [
@@ -18658,17 +18812,17 @@ function dailyCompilationHtml(results, dateStr){
   if(results.mailchimp){
     var mc = results.mailchimp;
     // Same fields as the interactive Mailchimp stat tiles now use
-    // (loadMailchimpStatsTiles()) — Subscribers Added Yesterday instead of
-    // the old ever-growing Total Unsubscribed, and Open/Click Rate for the
-    // single most recently sent campaign rather than a list-wide average
-    // (fetchYesterdayMailchimpSummary() already converts both out of the
-    // Reports endpoint's fraction convention into the same already-a-
-    // percentage shape used below, so the math here doesn't need to know
-    // the difference).
+    // (loadMailchimpStatsTiles()) — Subscribers Added/Unsubscribed instead
+    // of the old ever-growing Total Unsubscribed, and Open/Click Rate for
+    // the single most recently sent campaign rather than a list-wide
+    // average (fetchMailchimpSummaryForRange() already converts both out
+    // of the Reports endpoint's fraction convention into the same
+    // already-a-percentage shape used below). The Added/Unsubscribed
+    // label names the period this compilation actually covers.
     blocks.push(compSourceBlock('Mailchimp — '+escHtml(mc.listName||''), [
       ['Subscribers', fmt(mc.subscribers||0)],
-      ['Subscribers Added Yesterday', fmt(mc.subscribersAddedYesterday||0)],
-      ['Unsubscribed Yesterday', fmt(mc.unsubscribedYesterday||0)],
+      ['Subscribers Added '+mcSuffix, fmt(mc.subscribersAdded||0)],
+      ['Unsubscribed '+mcSuffix, fmt(mc.unsubscribed||0)],
       ['Open Rate (latest email)', mc.openRate!=null?(Math.round(mc.openRate*10)/10)+'%':'—'],
       ['Click Rate (latest email)', mc.clickRate!=null?(Math.round(mc.clickRate*10)/10)+'%':'—']
     ]));
@@ -18713,66 +18867,102 @@ function dailyCompilationHtml(results, dateStr){
     ]));
   }
   if(!blocks.length) return '<div class="empty">No connected analytics sources yet.</div>';
-  return '<div style="font-size:11px;color:#888;margin-bottom:10px">'+fmtDate(dateStr)+'</div>'+blocks.join('');
+  var dateLabel = range.start===range.end ? fmtDate(range.end) : (fmtDate(range.start)+' – '+fmtDate(range.end));
+  return '<div style="font-size:11px;color:#888;margin-bottom:10px">'+dateLabel+'</div>'+blocks.join('');
 }
-function loadDailySummary(force){
-  var summaryBody = $('daily-summary-body');
-  var compBody = $('daily-compilation-body');
+// Date range each period covers. Daily = yesterday only (unchanged
+// long-standing behavior); Weekly = the most recently fully-completed
+// Monday-Sunday week; Monthly = the most recently fully-completed calendar
+// month — both via lastCompletedWeekRange()/lastCompletedMonthRange(), so
+// each is a real just-finished period rather than a partial one.
+function periodRange(period){
+  if(period==='weekly') return lastCompletedWeekRange();
+  if(period==='monthly') return lastCompletedMonthRange();
+  var y = addDaysToDateStr(today(), -1);
+  return {start:y, end:y};
+}
+// Cache keys are anchored to the period's own identity (the week's Monday,
+// the month's YYYY-MM) rather than to today's date, so the summary
+// regenerates naturally exactly once per period no matter how many times
+// the page is opened during it — same one-Claude-call-per-day approach the
+// Daily Summary has always used, just extended to weekly/monthly cadence.
+function periodSummaryCacheKey(period){
+  if(period==='weekly') return 'mm_weekly_summary_'+lastCompletedWeekRange().start;
+  if(period==='monthly') return 'mm_monthly_summary_'+lastCompletedMonthRange().start.slice(0,7);
+  return dailySummaryCacheKey();
+}
+function periodCompilationCacheKey(period, range){
+  if(period==='weekly') return 'mm_weekly_compilation_'+range.start;
+  if(period==='monthly') return 'mm_monthly_compilation_'+range.start.slice(0,7);
+  return 'mm_daily_compilation_'+range.end;
+}
+function loadPeriodSummary(period, force){
+  var idPrefix = period==='weekly' ? 'weekly' : (period==='monthly' ? 'monthly' : 'daily');
+  var summaryBody = $(idPrefix+'-summary-body');
+  var compBody = $(idPrefix+'-compilation-body');
   if(!summaryBody && !compBody) return;
-  var yesterday = addDaysToDateStr(today(), -1);
-  var textKey = dailySummaryCacheKey();
-  var compKey = 'mm_daily_compilation_'+yesterday;
+  var range = periodRange(period);
+  var textKey = periodSummaryCacheKey(period);
+  var compKey = periodCompilationCacheKey(period, range);
   if(!force){
     var cachedText = localStorage.getItem(textKey);
     var cachedCompRaw = localStorage.getItem(compKey);
     if(cachedText && cachedCompRaw){
       if(summaryBody) summaryBody.innerHTML = dailySummaryHtml(cachedText);
-      if(compBody) compBody.innerHTML = dailyCompilationHtml(JSON.parse(cachedCompRaw), yesterday);
+      if(compBody) compBody.innerHTML = periodCompilationHtml(JSON.parse(cachedCompRaw), period, range);
       return;
     }
   }
-  if(summaryBody) summaryBody.innerHTML = '<div class="empty">Gathering yesterday\'s numbers…</div>';
-  if(compBody) compBody.innerHTML = '<div class="empty">Gathering yesterday\'s numbers…</div>';
+  var loadingMsg = period==='weekly' ? 'Gathering last week\'s numbers…' : (period==='monthly' ? 'Gathering last month\'s numbers…' : 'Gathering yesterday\'s numbers…');
+  if(summaryBody) summaryBody.innerHTML = '<div class="empty">'+loadingMsg+'</div>';
+  if(compBody) compBody.innerHTML = '<div class="empty">'+loadingMsg+'</div>';
 
   var results = {};
   var failures = [];
-  var labelByKey = {ga4:'Google Analytics (GA4)', wordpress:'WordPress.com / Jetpack', facebookAds:'Facebook Ads', facebookPage:'Facebook Page (organic)', mailchimp:'Mailchimp', instagram:'Instagram', x:'X', tiktok:'TikTok (current totals, not day-specific)', seo:'SEO (Yoast) site audit, not day-specific'};
+  var labelByKey = {ga4:'Google Analytics (GA4)', wordpress:'WordPress.com / Jetpack', facebookAds:'Facebook Ads', facebookPage:'Facebook Page (organic)', mailchimp:'Mailchimp', instagram:'Instagram', x:'X', tiktok:'TikTok (current totals, not period-specific)', seo:'SEO (Yoast) site audit, not period-specific'};
   function tryFetch(key, fn){
     return fn().then(function(result){ results[key] = result; }).catch(function(e){
       failures.push(labelByKey[key]+': '+(e&&e.message||e));
     });
   }
   Promise.all([
-    tryFetch('ga4', function(){ return fetchYesterdayGA4(yesterday); }),
-    tryFetch('wordpress', function(){ return fetchYesterdayWordPress(yesterday); }),
-    tryFetch('facebookAds', function(){ return fetchYesterdayFacebookAds(yesterday); }),
-    tryFetch('facebookPage', function(){ return fetchYesterdayFacebookPage(yesterday); }),
-    tryFetch('mailchimp', function(){ return fetchYesterdayMailchimpSummary(); }),
-    tryFetch('instagram', function(){ return fetchYesterdayInstagram(yesterday); }),
-    tryFetch('x', function(){ return fetchYesterdayX(); }),
+    tryFetch('ga4', function(){ return fetchGA4Stats(range.start, range.end); }),
+    tryFetch('wordpress', function(){ return fetchWordPressStats(range.start, range.end); }),
+    tryFetch('facebookAds', function(){ return fetchFacebookAdsStats(range.start, range.end); }),
+    tryFetch('facebookPage', function(){ return fetchFacebookPageStats(range.start, range.end); }),
+    tryFetch('mailchimp', function(){ return fetchMailchimpSummaryForRange(range.start, range.end); }),
+    tryFetch('instagram', function(){ return fetchInstagramStats(range.start, range.end); }),
+    // X's real per-day snapshot history makes a genuine period-over-period
+    // follower delta possible for weekly/monthly (fetchXFollowerChangeForRange)
+    // — daily keeps using fetchYesterdayX()'s existing most-recent-prior-
+    // snapshot comparison unchanged.
+    tryFetch('x', function(){ return period==='daily' ? fetchYesterdayX() : fetchXFollowerChangeForRange(range.start, range.end); }),
     tryFetch('tiktok', function(){ return fetchYesterdayTiktok(); }),
     tryFetch('seo', function(){ return fetchSeoAuditSummary(); })
   ]).then(function(){
     localStorage.setItem(compKey, JSON.stringify(results));
-    if(compBody) compBody.innerHTML = dailyCompilationHtml(results, yesterday);
+    if(compBody) compBody.innerHTML = periodCompilationHtml(results, period, range);
 
     var sourceKeys = Object.keys(results);
     if(!sourceKeys.length){
-      if(summaryBody) summaryBody.innerHTML = '<div class="empty">No connected analytics sources yet — connect WordPress, Google Drive, Facebook, or Mailchimp below to get a daily summary.</div>';
+      if(summaryBody) summaryBody.innerHTML = '<div class="empty">No connected analytics sources yet — connect WordPress, Google Drive, Facebook, or Mailchimp below to get a summary.</div>';
       return;
     }
     // Each source's own label (labelByKey) already flags the two
     // current-totals-only sources (TikTok, SEO) in the label text itself,
     // not just in the system prompt below — belt-and-suspenders against
     // the model narrating a cumulative total as if it were something that
-    // happened yesterday.
+    // happened specifically during this period.
     var statsText = sourceKeys.map(function(k){ return labelByKey[k]+':\n'+JSON.stringify(results[k], null, 2); }).join('\n\n');
+    var periodNoun = period==='weekly' ? 'week' : (period==='monthly' ? 'month' : 'day');
+    var periodPhrase = period==='weekly' ? ('Last week ('+range.start+' to '+range.end+')') :
+      (period==='monthly' ? ('Last month ('+range.start+' to '+range.end+')') : ('Yesterday ('+range.end+')'));
     return fetch(DRIVE_AUTH_SERVER+'/api/claude-messages', {
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body: JSON.stringify({
-        system: 'You write short, plain-English daily marketing analytics summaries for a small travel agency owner (Miles Man Travel) who is not a data analyst. Given raw stats for one day, write: (1) a 2-3 sentence plain-English summary of what happened, (2) 2-4 bullet-point observations worth noting (good or bad, only if genuinely notable — do not manufacture insight from noise in small numbers), (3) 1-3 concrete, specific recommended actions for today. No fluff, no generic advice like "keep posting consistently." If a data source is missing, just skip it silently rather than commenting on the gap. Some sources are labeled "current totals, not day-specific" or "site audit, not day-specific" — those are cumulative/point-in-time figures, not something that happened specifically yesterday, so never phrase them as "yesterday you gained/lost X" or similar; describe them as the current state instead (e.g. "your TikTok following now stands at X").',
-        messages: [{role:'user', content:'Yesterday ('+yesterday+') stats:\n\n'+statsText}]
+        system: 'You write short, plain-English '+periodNoun+'ly marketing analytics summaries for a small travel agency owner (Miles Man Travel) who is not a data analyst. Given raw stats for one '+periodNoun+', write: (1) a 2-3 sentence plain-English summary of what happened, (2) 2-4 bullet-point observations worth noting (good or bad, only if genuinely notable — do not manufacture insight from noise in small numbers), (3) 1-3 concrete, specific recommended actions for the '+(period==='daily'?'day ahead':'period ahead')+'. No fluff, no generic advice like "keep posting consistently." If a data source is missing, just skip it silently rather than commenting on the gap. Some sources are labeled "current totals, not period-specific" or "site audit, not period-specific" — those are cumulative/point-in-time figures, not something that happened specifically during this '+periodNoun+', so never phrase them as "you gained/lost X this '+periodNoun+'" or similar; describe them as the current state instead (e.g. "your TikTok following now stands at X").',
+        messages: [{role:'user', content:periodPhrase+' stats:\n\n'+statsText}]
       })
     }).then(function(r){ return r.json(); }).then(function(data){
       if(!summaryBody) return;
@@ -18784,7 +18974,7 @@ function loadDailySummary(force){
       summaryBody.innerHTML = dailySummaryHtml(text);
     });
   }).catch(function(e){
-    debugLog('Daily summary generation failed: '+e.message);
+    debugLog(period+' summary generation failed: '+e.message);
     if(summaryBody) summaryBody.innerHTML = '<div class="empty">Failed to generate summary: '+escHtml(e.message)+'</div>';
   });
 }
@@ -18801,16 +18991,11 @@ function renderAnalytics(){
   var xToken = localStorage.getItem('mm_x_token');
   var tiktokToken = localStorage.getItem('mm_tiktok_token');
   var jetpackSubConfigured = !!getJetpackSubCreds();
+  var summaryPeriod = window._analyticsSummaryPeriod || 'daily';
   $('main').innerHTML =
     '<div class="page-hdr"><div class="page-title">Analytics</div></div>'+
-    '<div class="card" style="margin-bottom:16px">'+
-      '<div class="card-hdr"><span class="card-title">Daily Summary</span><button class="cancel-btn" id="daily-summary-refresh">&#128260; Regenerate</button></div>'+
-      '<div id="daily-summary-body"><div class="empty">Loading…</div></div>'+
-    '</div>'+
-    '<div class="card" style="margin-bottom:16px">'+
-      '<div class="card-hdr"><span class="card-title">Yesterday\'s Analytics</span></div>'+
-      '<div id="daily-compilation-body"><div class="empty">Loading…</div></div>'+
-    '</div>'+
+    periodSummaryCardHtml(summaryPeriod, {periodTabs:true})+
+    '<div style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.04em;margin:4px 0 6px">Website &amp; Search</div>'+
     '<div class="card" style="margin-bottom:16px">'+
       '<div class="card-hdr"><span class="card-title">WordPress.com / Jetpack Stats</span>'+
         (wpToken ? '<button class="cancel-btn" id="wp-disconnect">Disconnect</button>' : '')+
@@ -18853,6 +19038,13 @@ function renderAnalytics(){
       analyticsSectionHtml('ga4-ai-referrals','AI Assistant Referrals — GEO (30 days)')+
     '</div>'+
     '<div class="card" style="margin-bottom:16px">'+
+      '<div class="card-hdr"><span class="card-title">SEO (Yoast)</span></div>'+
+      '<div id="yoast-seo-summary"><div class="empty">Loading…</div></div>'+
+      analyticsSectionHtml('yoast-posts','Posts')+
+      analyticsSectionHtml('yoast-pages','Pages')+
+    '</div>'+
+    '<div style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.04em;margin:4px 0 6px">Social &amp; Email</div>'+
+    '<div class="card" style="margin-bottom:16px">'+
       '<div class="card-hdr"><span class="card-title">Facebook</span>'+
         (fbToken ? '<button class="cancel-btn" id="fb-analytics-disconnect">Disconnect</button>' : '')+
       '</div>'+
@@ -18888,12 +19080,6 @@ function renderAnalytics(){
       '<div class="card-hdr"><span class="card-title">Mailchimp</span></div>'+
       '<div id="mc-analytics-body"><div class="empty">Loading…</div></div>'+
       mailchimpCampaignsSectionHtml()+
-    '</div>'+
-    '<div class="card" style="margin-bottom:16px">'+
-      '<div class="card-hdr"><span class="card-title">SEO (Yoast)</span></div>'+
-      '<div id="yoast-seo-summary"><div class="empty">Loading…</div></div>'+
-      analyticsSectionHtml('yoast-posts','Posts')+
-      analyticsSectionHtml('yoast-pages','Pages')+
     '</div>';
 
   document.querySelectorAll('.analytics-sec-hdr').forEach(function(hdr){
@@ -18978,9 +19164,10 @@ function renderAnalytics(){
   if(analyticsSectionCollapsed('mc-campaigns')) loadLatestMailchimpCampaignSummary('mc-campaigns-latest');
   else loadMailchimpCampaignsReport('mc-campaigns-body');
 
-  loadDailySummary(false);
-  var summaryRefreshBtn = $('daily-summary-refresh');
-  if(summaryRefreshBtn) summaryRefreshBtn.addEventListener('click', function(){ loadDailySummary(true); });
+  bindPeriodSummaryCardEvents();
+  loadPeriodSummary(summaryPeriod, false);
+  var summaryRefreshBtn = $(summaryPeriod+'-summary-refresh');
+  if(summaryRefreshBtn) summaryRefreshBtn.addEventListener('click', function(){ loadPeriodSummary(summaryPeriod, true); });
 
   loadYoastSeoAudit();
 
@@ -19062,7 +19249,7 @@ function yoastSeoTableHtml(items){
 // sections is currently expanded — mirrors analyticsSectionHtml()'s
 // existing collapsed-by-default pattern instead of one combined table with
 // a Type column.
-// Feeds the Daily Summary compilation (loadDailySummary()) — same counting
+// Feeds the Daily/Weekly/Monthly Summary compilation (loadPeriodSummary()) — same counting
 // logic loadYoastSeoAudit() uses for its own summary tiles, kept as a
 // separate small fetch rather than refactored to share code, since that
 // function's own fetchType() also pulls link/title/type fields this one
