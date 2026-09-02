@@ -930,7 +930,11 @@ const STATUSES = ['Planning','Confirmed','Upcoming','In Progress','Completed','C
 const TYPES    = ['Leisure','Business','Honeymoon','Family','Adventure','Cruise'];
 const CLASSES  = ['Basic Economy','Economy','Premium Economy','Business','First'];
 const NOTE_TYPES = ['Email Sent','Email Received','Initial Call','Follow-up','Post-Trip Follow-up','General','Trip Import','Text Message Sent','Text Message Received','Lead','Mailchimp Email Sent','Facebook Message'];
-const MARKETING_CHANNELS = ['Email','Social Media','Blog Post','Facebook Ad','Google Ad','Print','Event','Referral Push','Other'];
+// 'Sales Outreach' is direct 1:1 selling (a call, a personal email, a
+// proposal) rather than content published to an audience — kept distinct
+// from every other channel here so a concrete sales task (call these 10
+// people) never gets buried in a list of posts/ads/blog content.
+const MARKETING_CHANNELS = ['Email','Social Media','Blog Post','Facebook Ad','Google Ad','Print','Event','Referral Push','Sales Outreach','Other'];
 const MARKETING_PLAN_STATUSES = ['Planned','In Progress','Done','Cancelled'];
 // Same idea as TRIP_LIFECYCLE_COLORS — one bg/text pair per channel, used
 // for both the Marketing Plan list rows and the Marketing Calendar cells so
@@ -944,40 +948,75 @@ const MARKETING_CHANNEL_COLORS = {
   'Print':          {bg:'#f3f4f6', text:'#374151'},
   'Event':          {bg:'#ffedd5', text:'#9a3412'},
   'Referral Push':  {bg:'#f0fdfa', text:'#115e59'},
+  'Sales Outreach': {bg:'#fee2e2', text:'#991b1b'},
   'Other':          {bg:'#f3f4f6', text:'#4b5563'}
 };
-// Starter 30-day content calendar for the Marketing Plan, auto-seeded once
-// on first run (see autoSeedDefaultMarketingPlanOnce) and re-loadable later
-// via "+ Load 30-Day Calendar" (see seedDefaultMarketingPlan) — same pattern
-// as DEFAULT_BOOKMARKS/autoSeedDefaultBookmarksOnce. dayOffset is relative
-// to today() at seed time (not a fixed date) so it always plans forward
-// from whenever it's (re-)seeded, and the mix of channels/cadence below is
-// a generic cruise/travel agency starting point meant to be edited to fit
-// real campaigns.
+// Who a Marketing Plan item is actually written for — separate from Channel
+// (the medium it goes out on), since e.g. a Social Media post could target
+// General/All Clients one day and Corporate & Incentive Travel the next.
+// Drives the AI draft's tone/framing (see marketingAiDraftRequest) as well
+// as the list's Target column/filter.
+const MARKETING_TARGET_GROUPS = ['General/All Clients','Corporate & Incentive Travel','Birthdays','Anniversaries','Family Reunions','Weddings & Honeymoons','Group Travel','Past Clients','New Leads/Prospects','Other'];
+// Same bg/text badge-color idea as MARKETING_CHANNEL_COLORS, kept as a
+// separate palette (not reused from it) so a Target badge never gets
+// mistaken for a Channel badge sitting next to it in the same row.
+const MARKETING_TARGET_GROUP_COLORS = {
+  'General/All Clients':          {bg:'#f3f4f6', text:'#4b5563'},
+  'Corporate & Incentive Travel': {bg:'#dbeafe', text:'#1e3a8a'},
+  'Birthdays':                    {bg:'#fce7f3', text:'#9d174d'},
+  'Anniversaries':                {bg:'#fae8ff', text:'#86198f'},
+  'Family Reunions':              {bg:'#fef3c7', text:'#92400e'},
+  'Weddings & Honeymoons':        {bg:'#ffe4e6', text:'#9f1239'},
+  'Group Travel':                 {bg:'#dcfce7', text:'#166534'},
+  'Past Clients':                 {bg:'#f0fdfa', text:'#115e59'},
+  'New Leads/Prospects':          {bg:'#ede9fe', text:'#5b21b6'},
+  'Other':                        {bg:'#f3f4f6', text:'#4b5563'}
+};
+// Starter 30-day calendar for the Marketing Plan, auto-seeded once on first
+// run (see autoSeedDefaultMarketingPlanOnce) and re-loadable later via
+// "+ Load 30-Day Calendar" (see seedDefaultMarketingPlan) — same pattern as
+// DEFAULT_BOOKMARKS/autoSeedDefaultBookmarksOnce. dayOffset is relative to
+// today() at seed time (not a fixed date) so it always plans forward from
+// whenever it's (re-)seeded. Deliberately weighted toward concrete,
+// revenue-driving Sales Outreach tasks for the audiences most worth selling
+// to directly (Corporate & Incentive Travel, Past Clients, New Leads) rather
+// than an even split of generic content across every channel — a handful of
+// notes reference real CRM features (the Trips page's Status filter, the
+// Groups tab, the Reports tab's Referral Certificates report, and the
+// existing 90-day-out birthday-outreach task auto-created by
+// checkForUpcomingBirthdays()) so the task is something to actually go do,
+// not just an idea.
 const DEFAULT_MARKETING_PLAN = [
-  {dayOffset:0,  channel:'Email',         title:"Welcome Email — This Week's Cruise Deals", notes:'Send featured sailings to new subscribers and recent leads.'},
-  {dayOffset:1,  channel:'Social Media',  title:'Instagram Reel: Top 5 Caribbean Itineraries', notes:''},
-  {dayOffset:3,  channel:'Blog Post',     title:'Blog: How to Choose Your First Cruise Line', notes:''},
-  {dayOffset:4,  channel:'Google Ad',     title:'Google Ads: Refresh "Cruise Deals Near Me" Campaign', notes:''},
-  {dayOffset:6,  channel:'Facebook Ad',   title:'Facebook Ad: Retarget Site Visitors — Free Quote CTA', notes:''},
-  {dayOffset:7,  channel:'Social Media',  title:'Facebook Post: Client Testimonial Spotlight', notes:''},
-  {dayOffset:8,  channel:'Referral Push', title:'Referral Push: "Refer a Friend" Reminder to Past Clients', notes:''},
-  {dayOffset:10, channel:'Email',         title:'Monthly Newsletter — New Vendor Offers', notes:''},
-  {dayOffset:11, channel:'Print',         title:'Update Office Brochure Rack with New Itineraries', notes:''},
-  {dayOffset:13, channel:'Event',         title:'Host In-Office Cruise Info Night', notes:''},
-  {dayOffset:14, channel:'Blog Post',     title:'Blog: Packing Tips for a 7-Night Caribbean Cruise', notes:''},
-  {dayOffset:15, channel:'Social Media',  title:'Instagram Story Series: Behind-the-Scenes Client Trip', notes:''},
-  {dayOffset:17, channel:'Google Ad',     title:'Google Ads: Launch "All-Inclusive Resorts" Keyword Set', notes:''},
-  {dayOffset:18, channel:'Email',         title:'Abandoned Quote Follow-Up Sequence', notes:''},
-  {dayOffset:20, channel:'Facebook Ad',   title:'Facebook Ad: Video Ad — Fall Cruise Promo', notes:''},
-  {dayOffset:21, channel:'Referral Push', title:'Referral Push: Post-Trip Review Request Check-In', notes:''},
-  {dayOffset:22, channel:'Social Media',  title:'LinkedIn Post: Agency Milestone / Client Success Story', notes:''},
-  {dayOffset:24, channel:'Event',         title:'Attend Local Chamber of Commerce Mixer', notes:''},
-  {dayOffset:25, channel:'Blog Post',     title:'Blog: Top Ports of Call for Virgin Voyages Itineraries', notes:''},
-  {dayOffset:26, channel:'Email',         title:'Early-Bird Deposit Reminder — Upcoming Sailings', notes:''},
-  {dayOffset:27, channel:'Print',         title:'Design Postcard Mailer for Past Cruise Clients', notes:''},
-  {dayOffset:28, channel:'Social Media',  title:'Instagram Reel: Client Welcome-Gift Unboxing', notes:''},
-  {dayOffset:29, channel:'Other',         title:'Review 30-Day Marketing Performance & Plan Next Month', notes:''}
+  {dayOffset:0,  channel:'Email',          targetGroup:'New Leads/Prospects',          title:"Welcome Email — This Week's Cruise Deals", notes:'Send featured sailings to new subscribers and recent leads.'},
+  {dayOffset:1,  channel:'Sales Outreach', targetGroup:'New Leads/Prospects',          title:"Call Every Open Quote from the Last 7 Days That Hasn't Booked", notes:'Trips page, filter Status = Planning, sorted by most recent — call or email everyone who requested a quote in the last 7 days and hasn\'t booked. Speed-to-lead matters most in the first 48 hours.'},
+  {dayOffset:2,  channel:'Social Media',   targetGroup:'General/All Clients',          title:'Instagram Reel: Top 5 Caribbean Itineraries', notes:''},
+  {dayOffset:3,  channel:'Sales Outreach', targetGroup:'Corporate & Incentive Travel', title:'Build a Target List of 20 Local Businesses for Incentive Travel', notes:'Use LinkedIn, the local Chamber of Commerce directory, and local business listings to build a spreadsheet of 20 prospects (company, HR/sales contact name, phone/email) for corporate incentive-trip outreach.'},
+  {dayOffset:4,  channel:'Blog Post',      targetGroup:'General/All Clients',          title:'Blog: How to Choose Your First Cruise Line', notes:''},
+  {dayOffset:5,  channel:'Social Media',   targetGroup:'Birthdays',                    title:'Instagram Post: "Birthday Club" Signup Reminder', notes:''},
+  {dayOffset:6,  channel:'Google Ad',      targetGroup:'General/All Clients',          title:'Google Ads: Refresh "Cruise Deals Near Me" Campaign', notes:''},
+  {dayOffset:7,  channel:'Sales Outreach', targetGroup:'Corporate & Incentive Travel', title:'Pitch Custom Proposals to the Top 10 Incentive Travel Prospects', notes:'Work down the target list built earlier this month — call or email the top 10, pitching a custom incentive-trip proposal and offering a free sample itinerary.'},
+  {dayOffset:8,  channel:'Facebook Ad',    targetGroup:'New Leads/Prospects',          title:'Facebook Ad: Retarget Site Visitors — Free Quote CTA', notes:''},
+  {dayOffset:9,  channel:'Sales Outreach', targetGroup:'Past Clients',                 title:"Call the 10 Highest-Value Past Clients Who Haven't Booked in a Year", notes:'Clients page, sort by lifetime revenue — call the top 10 who haven\'t booked a trip in 12+ months with a personal "we\'d love to have you back" offer.'},
+  {dayOffset:10, channel:'Referral Push',  targetGroup:'Past Clients',                 title:'Referral Push: "Refer a Friend" Reminder to Past Clients', notes:''},
+  {dayOffset:11, channel:'Sales Outreach', targetGroup:'Family Reunions',              title:'Call Past Group Trip Organizers About a Return Reunion Trip', notes:'Groups tab — find past multi-client/family group trips, then call each organizer about planning a return reunion trip. Offer a group-rate incentive for 8+ cabins/rooms booked together.'},
+  {dayOffset:12, channel:'Email',          targetGroup:'General/All Clients',          title:'Monthly Newsletter — New Vendor Offers', notes:''},
+  {dayOffset:13, channel:'Referral Push',  targetGroup:'Past Clients',                 title:'Clear the Unredeemed Referral Certificate Backlog', notes:'Reports tab → Referral Certificates report lists every unredeemed certificate — reach out to each client with an unused certificate and remind them it\'s still valid before it\'s forgotten.'},
+  {dayOffset:14, channel:'Blog Post',      targetGroup:'Weddings & Honeymoons',        title:'Blog: Planning a Destination Wedding or Honeymoon Cruise', notes:''},
+  {dayOffset:15, channel:'Event',          targetGroup:'Corporate & Incentive Travel', title:'Attend Local Chamber of Commerce Mixer — Collect 10 New Contacts', notes:'Bring business cards and the corporate incentive-travel one-pager (see later this month) — set a goal of 10 new business contacts to add to the prospect list.'},
+  {dayOffset:16, channel:'Blog Post',      targetGroup:'General/All Clients',          title:'Blog: Packing Tips for a 7-Night Caribbean Cruise', notes:''},
+  {dayOffset:17, channel:'Sales Outreach', targetGroup:'Corporate & Incentive Travel', title:'Follow Up with Every Lead from the Chamber Mixer', notes:'Follow up with every contact collected at the mixer within 48 hours — a short "great meeting you" email with the incentive-travel one-pager attached converts far better than a cold approach.'},
+  {dayOffset:18, channel:'Social Media',   targetGroup:'Past Clients',                 title:'Instagram Story Series: Behind-the-Scenes Client Trip', notes:''},
+  {dayOffset:19, channel:'Sales Outreach', targetGroup:'Birthdays',                    title:"Personalize and Send This Week's Auto-Generated Birthday Outreach", notes:'The Planner auto-creates a "Birthday trip outreach" task for each client 90 days before their birthday with a ready-to-send email draft — review this week\'s batch, personalize each one, and send.'},
+  {dayOffset:20, channel:'Google Ad',      targetGroup:'New Leads/Prospects',          title:'Google Ads: Launch "All-Inclusive Resorts" Keyword Set', notes:''},
+  {dayOffset:21, channel:'Email',          targetGroup:'New Leads/Prospects',          title:'Abandoned Quote Follow-Up Sequence', notes:''},
+  {dayOffset:22, channel:'Referral Push',  targetGroup:'Family Reunions',              title:'Referral Push: Family Reunion Planning Guide to Past Group Clients', notes:''},
+  {dayOffset:23, channel:'Facebook Ad',    targetGroup:'General/All Clients',          title:'Facebook Ad: Video Ad — Fall Cruise Promo', notes:''},
+  {dayOffset:24, channel:'Email',          targetGroup:'Birthdays',                    title:'Birthday-Month Discount for Clients Celebrating This Month', notes:'A broader monthly segment blast — distinct from the individual 90-day-out birthday outreach task, which stays personal and one-to-one.'},
+  {dayOffset:25, channel:'Social Media',   targetGroup:'Corporate & Incentive Travel', title:'LinkedIn Case Study Post Targeting Corporate Decision-Makers', notes:''},
+  {dayOffset:26, channel:'Print',          targetGroup:'Corporate & Incentive Travel', title:'Leave-Behind One-Pager for Corporate Incentive Trip Meetings', notes:''},
+  {dayOffset:27, channel:'Social Media',   targetGroup:'Family Reunions',              title:'Facebook Post: "Plan Your Family Reunion Cruise" Group Rates', notes:''},
+  {dayOffset:28, channel:'Sales Outreach', targetGroup:'Weddings & Honeymoons',        title:'Propose a Referral Partnership to 3 Local Wedding Venues', notes:'Identify 3 local wedding venues/planners and pitch a referral partnership — they refer engaged couples to you for the honeymoon, you refer wedding-planning clients to them.'},
+  {dayOffset:29, channel:'Other',          targetGroup:'Other',                        title:'Review 30-Day Marketing Performance & Plan Next Month', notes:''}
 ];
 const THEME_PARKS = ['Disney World','Disneyland California','Universal Studios Hollywood','Universal Studios Orlando'];
 const TRAIN_CLASSES = ['Coach','Business Class','First Class','Sleeper Car'];
@@ -16641,6 +16680,7 @@ function renderMarketing(){
     '<div class="card" style="margin-bottom:16px">'+
       '<div class="card-hdr"><span class="card-title">Marketing Plan</span><span>'+
         '<label style="font-size:12px;color:#555;margin-right:12px;cursor:pointer;user-select:none"><input type="checkbox" id="mkt-plan-hide-done"'+(window._mktPlanHideDone!==false?' checked':'')+' style="vertical-align:-2px;margin-right:4px">Hide completed</label>'+
+        '<select id="mkt-plan-target-filter" style="margin-right:12px;font-size:12px"><option value="">All Target Groups</option>'+selOpts(MARKETING_TARGET_GROUPS, window._mktPlanTargetFilter||'')+'</select>'+
         '<button class="cancel-btn" id="mkt-plan-seed-btn" style="margin-right:8px">+ Load 30-Day Calendar</button><button class="add-btn" id="mkt-plan-add-btn">+ Add Plan Item</button></span></div>'+
       '<div id="mkt-plan-body">'+marketingPlanListHtml()+'</div>'+
     '</div>'+
@@ -16677,6 +16717,8 @@ function renderMarketing(){
   if(mktPlanSeedBtn) mktPlanSeedBtn.addEventListener('click', seedDefaultMarketingPlan);
   var mktPlanHideDoneCb = $('mkt-plan-hide-done');
   if(mktPlanHideDoneCb) mktPlanHideDoneCb.addEventListener('change', function(){ window._mktPlanHideDone = this.checked; render(); });
+  var mktPlanTargetFilter = $('mkt-plan-target-filter');
+  if(mktPlanTargetFilter) mktPlanTargetFilter.addEventListener('change', function(){ window._mktPlanTargetFilter = this.value; render(); });
   document.querySelectorAll('.mkt-plan-done[data-id]').forEach(function(el){
     el.addEventListener('change', function(e){ e.stopPropagation(); toggleMarketingPlanDone(el.dataset.id, el.checked); });
   });
@@ -16713,7 +16755,12 @@ function marketingPlanListHtml(){
     hiddenDone = sorted.filter(marketingPlanItemComplete).length;
     sorted = sorted.filter(function(item){ return !marketingPlanItemComplete(item); });
   }
+  var targetFilter = window._mktPlanTargetFilter;
+  if(targetFilter){
+    sorted = sorted.filter(function(item){ return (item.targetGroup||'General/All Clients')===targetFilter; });
+  }
   if(!sorted.length){
+    if(targetFilter) return '<div class="empty">No marketing plan items target &ldquo;'+escHtml(targetFilter)+'&rdquo;'+(hiddenDone?' (or they\'re all complete — see the &ldquo;Hide completed&rdquo; checkbox)':'')+'.</div>';
     if(hiddenDone) return '<div class="empty">All '+hiddenDone+' marketing plan item'+(hiddenDone===1?' is':'s are')+' complete. Untick &ldquo;Hide completed&rdquo; to see them.</div>';
     return '<div class="empty">No marketing plan items yet — add one to start scheduling campaigns.</div>';
   }
@@ -16723,9 +16770,11 @@ function marketingPlanListHtml(){
     'Done':        {bg:'#dcfce7', text:'#166534'},
     'Cancelled':   {bg:'#fee2e2', text:'#991b1b'}
   };
-  return '<div class="tbl-wrap"><table><thead><tr><th></th><th>Date</th><th>Title</th><th>Channel</th><th>Status</th><th></th></tr></thead><tbody>'+
+  return '<div class="tbl-wrap"><table><thead><tr><th></th><th>Date</th><th>Title</th><th>Channel</th><th>Target</th><th>Status</th><th></th></tr></thead><tbody>'+
     sorted.map(function(item){
       var chColors = MARKETING_CHANNEL_COLORS[item.channel] || MARKETING_CHANNEL_COLORS.Other;
+      var targetGroup = item.targetGroup||'General/All Clients';
+      var tgColors = MARKETING_TARGET_GROUP_COLORS[targetGroup] || MARKETING_TARGET_GROUP_COLORS.Other;
       var stColors = statusColors[item.status] || {bg:'#f3f4f6', text:'#4b5563'};
       var done = marketingPlanItemComplete(item);
       return '<tr>'+
@@ -16733,6 +16782,7 @@ function marketingPlanListHtml(){
         '<td style="white-space:nowrap'+(done?';opacity:.55':'')+'">'+(item.date?fmtDate(item.date):'—')+'</td>'+
         '<td'+(done?' style="opacity:.55"':'')+'><span class="mkt-plan-title" data-id="'+item.id+'" style="cursor:pointer;color:#2563eb;text-decoration:underline">'+escHtml(item.title||'')+'</span> <button class="icon-btn mkt-plan-ai" data-id="'+item.id+'" title="Draft this item\'s content with AI" style="vertical-align:middle">&#10024;</button></td>'+
         '<td><span style="background:'+chColors.bg+';color:'+chColors.text+';padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">'+escHtml(item.channel||'')+'</span></td>'+
+        '<td><span style="background:'+tgColors.bg+';color:'+tgColors.text+';padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;white-space:nowrap">'+escHtml(targetGroup)+'</span></td>'+
         '<td><span style="background:'+stColors.bg+';color:'+stColors.text+';padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">'+escHtml(item.status||'')+'</span></td>'+
         '<td><button class="icon-btn mkt-plan-del" data-id="'+item.id+'" style="color:#dc2626" title="Delete">&#128465;&#65039;</button></td>'+
       '</tr>';
@@ -16752,6 +16802,7 @@ const MARKETING_AI_CHANNEL_GUIDE = {
   'Print':         'short flyer/postcard copy — a headline plus 2-3 sentences of body copy',
   'Event':         'a short event description/invite blurb',
   'Referral Push': 'a short message to send past clients asking for referrals',
+  'Sales Outreach':'a short call script (opening line, value proposition, one clear next-step ask) AND a short outreach email covering the same ground — written for the person making the call/sending the email, not as a public-facing post',
   'Other':         'ready-to-use marketing copy appropriate to the item'
 };
 // The Marketing Plan's "✨" button — asks Claude (same api/claude-messages.js
@@ -16761,13 +16812,32 @@ const MARKETING_AI_CHANNEL_GUIDE = {
 // Shows the result in a review modal (renderMarketingAiDraftModal) rather
 // than writing it back automatically — a generated draft should be read
 // before it becomes the item's real notes.
+// Tone/framing guidance per MARKETING_TARGET_GROUPS entry, folded into the
+// AI draft's system prompt alongside the channel guide — a Corporate &
+// Incentive Travel piece needs a professional, ROI/team-building pitch aimed
+// at a business decision-maker, while a Birthdays piece needs a warm,
+// personal note to an individual client, even on the identical channel.
+const MARKETING_AI_AUDIENCE_GUIDE = {
+  'General/All Clients':          'the agency\'s general client base — broadly appealing, no specific life event or business angle assumed',
+  'Corporate & Incentive Travel':  'a business decision-maker (HR/sales leadership, small business owner) considering a corporate retreat, sales-incentive trip, or team-building trip for employees — professional tone, lead with ROI/morale/productivity framing, not vacation-brochure language',
+  'Birthdays':                     'an individual client with an upcoming or current birthday month — warm, personal, and celebratory, framed as a reason to treat themselves to a trip',
+  'Anniversaries':                 'a couple with an upcoming wedding/relationship anniversary — warm and romantic, framed around celebrating together',
+  'Family Reunions':               'a client organizing a multi-generational family reunion trip — emphasize group logistics, group rates/perks, and something for every age',
+  'Weddings & Honeymoons':         'an engaged couple or newlyweds planning a destination wedding or honeymoon — romantic, aspirational, emphasize once-in-a-lifetime experience',
+  'Group Travel':                  'an organizer booking travel for a larger group (friends, club, affinity group) — emphasize group coordination, group pricing/perks',
+  'Past Clients':                  'someone who has already traveled with the agency before — warm and familiar in tone, reference the existing relationship rather than introducing the agency from scratch',
+  'New Leads/Prospects':           'someone who has shown interest but never booked with the agency — focus on building trust and a clear, low-friction next step (get a quote, reply, call)',
+  'Other':                         'the audience implied by the item\'s title/notes'
+};
 // One AI-draft request. `reviseFrom`/`instruction` are set only when the
 // user asks for a revision from the review modal's "what to change" box —
 // the existing draft plus that instruction go to Claude as a follow-up
 // turn, so it edits rather than starting over. Returns the draft text.
 function marketingAiDraftRequest(item, reviseFrom, instruction){
   var guide = MARKETING_AI_CHANNEL_GUIDE[item.channel] || MARKETING_AI_CHANNEL_GUIDE.Other;
-  var messages = [{role:'user', content:'Title: '+(item.title||'')+'\nChannel: '+(item.channel||'')+'\nDate: '+(item.date||'')+'\nExisting notes: '+(item.notes||'(none)')}];
+  var targetGroup = item.targetGroup||'General/All Clients';
+  var audienceGuide = MARKETING_AI_AUDIENCE_GUIDE[targetGroup] || MARKETING_AI_AUDIENCE_GUIDE.Other;
+  var messages = [{role:'user', content:'Title: '+(item.title||'')+'\nChannel: '+(item.channel||'')+'\nTarget group: '+targetGroup+'\nDate: '+(item.date||'')+'\nExisting notes: '+(item.notes||'(none)')}];
   if(reviseFrom && instruction){
     messages.push({role:'assistant', content:reviseFrom});
     messages.push({role:'user', content:'Revise the draft above with these changes, keeping everything else:\n\n'+instruction});
@@ -16776,7 +16846,7 @@ function marketingAiDraftRequest(item, reviseFrom, instruction){
     method:'POST',
     headers:{'Content-Type':'application/json'},
     body: JSON.stringify({
-      system: 'You are a marketing copywriter for a small travel/cruise agency (Miles Man Travel). Given one item from the agency\'s marketing plan, write '+guide+'. Be specific and ready-to-use, not generic filler — reference cruises/travel where it fits naturally. Plain text only, no markdown formatting.',
+      system: 'You are a marketing copywriter for a small travel/cruise agency (Miles Man Travel). Given one item from the agency\'s marketing plan, write '+guide+'. This item\'s target group is "'+targetGroup+'" — write for '+audienceGuide+'. Be specific and ready-to-use, not generic filler — reference cruises/travel where it fits naturally. Plain text only, no markdown formatting.',
       messages: messages
     })
   }).then(function(r){ return r.json(); }).then(function(data){
@@ -17013,6 +17083,7 @@ function openMarketingPlanForm(id){
     '<div class="fg">'+
       fld('Title', inp('mp-title','text',d.title,'e.g. Fall Cruise Sale — Email Blast'), true)+
       fld('Channel', sel('mp-channel', MARKETING_CHANNELS, d.channel||'Email'))+
+      fld('Target Group', sel('mp-target', MARKETING_TARGET_GROUPS, d.targetGroup||'General/All Clients'))+
       fld('Date', inp('mp-date','date',d.date))+
       fld('Status', sel('mp-status', MARKETING_PLAN_STATUSES, d.status||'Planned'))+
       fld('Notes', '<textarea id="mp-notes" rows="3">'+(d.notes||'')+'</textarea>', true)+
@@ -17077,7 +17148,7 @@ function saveMarketingPlanItem(id){
   var date = gv('mp-date');
   if(!date){ toast('Date is required','err'); return; }
   snapshot(id?'Edit marketing plan item':'Add marketing plan item');
-  var data = { title:title, channel:gv('mp-channel')||'Other', date:date, status:gv('mp-status')||'Planned', notes:gv('mp-notes') };
+  var data = { title:title, channel:gv('mp-channel')||'Other', targetGroup:gv('mp-target')||'General/All Clients', date:date, status:gv('mp-status')||'Planned', notes:gv('mp-notes') };
   if(id){
     data.id = id;
     db.marketingPlan = db.marketingPlan.map(function(x){return x.id===id?Object.assign({},x,data):x;});
@@ -17112,6 +17183,7 @@ function addDefaultMarketingPlanItems(){
       id: newId('MP', db.marketingPlan),
       title: tpl.title,
       channel: tpl.channel,
+      targetGroup: tpl.targetGroup||'General/All Clients',
       date: addDaysToDateStr(today(), tpl.dayOffset),
       status: 'Planned',
       notes: tpl.notes||''
