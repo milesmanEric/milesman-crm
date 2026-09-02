@@ -424,16 +424,39 @@ window.onerror = function(msg, src, line, col, err) {
 };
 
 // ── Password gate ────────────────────────────────────────────────────────
-// A simple client-side password screen, not real security (this is a
-// public repo — the check itself and the localStorage data it's guarding
-// are both readable by anyone who looks). It's meant only to keep a casual
-// visitor who stumbles on the GitHub Pages URL from seeing client data.
-// The password is never hardcoded or committed: on first use, each
-// browser/device sets its own password, and only a salted SHA-256 hash of
-// it is kept in that browser's localStorage — never sent anywhere.
-const AUTH_HASH_KEY = 'mm_auth_hash';
+// The CRM's own data (db, persisted by saveDB() below) is now encrypted at
+// rest with a key derived from this password via PBKDF2 — unlike a plain
+// "should the UI show the data" flag, there's nothing to flip in
+// localStorage to get in: decrypting successfully IS the password check
+// (see deriveDbKey()/encryptDbJson()/decryptDbJson() and how loadDB()/
+// saveDB() use them further down). The password itself is never sent
+// anywhere or hardcoded — only a random salt lives in localStorage. The
+// derived key lives in memory for the tab's lifetime, plus a copy cached
+// in sessionStorage (NOT localStorage) so a plain reload doesn't force
+// retyping it — closing the browser, or clicking Lock, clears that cache
+// and requires the password again. This still isn't server-verified
+// security — anyone with devtools open on an ALREADY-unlocked tab can read
+// the decrypted data directly, same as any purely client-side app — but a
+// locked, freshly-opened, or stolen/shared device genuinely can't be read
+// without the password now, instead of the old scheme where setting one
+// localStorage flag bypassed the whole thing.
+// Moved out of bootApp() (where every other app-data constant lives) since
+// the auth-gate code below — specifically the login/migration flow's own
+// decrypt-to-verify step — needs it before bootApp() ever runs. bootApp()'s
+// own code still sees this exact same binding via the normal outer-scope
+// closure, so nothing inside it needs to change.
+const LS_KEY = 'milesman_crm_v2';
 const AUTH_SALT_KEY = 'mm_auth_salt';
-const AUTH_UNLOCKED_KEY = 'mm_authed';
+const AUTH_SESSION_KEY = 'mm_session_key';
+// Legacy pre-encryption scheme (plain salted SHA-256 gating a UI flag,
+// nothing about the data itself protected). Kept only so a device that
+// already has a password keeps working the first time it opens after this
+// change — see the migration branch in bindAuthLoginForm()'s attempt().
+// Deleted the moment that one-time migration completes and never written
+// by anything after this change, so this constant (and the branch that
+// reads it) can eventually be removed once no device still has it set.
+const AUTH_HASH_KEY_LEGACY = 'mm_auth_hash';
+var _dbEncKey = null; // CryptoKey, set once per unlocked session — never itself persisted
 async function sha256Hex(str){
   var enc = new TextEncoder().encode(str);
   var buf = await crypto.subtle.digest('SHA-256', enc);
@@ -443,6 +466,62 @@ function randomSalt(){
   var arr = new Uint8Array(16);
   crypto.getRandomValues(arr);
   return Array.from(arr).map(function(b){return b.toString(16).padStart(2,'0');}).join('');
+}
+function hexToBytes(hex){
+  var arr = new Uint8Array(hex.length/2);
+  for(var i=0;i<arr.length;i++) arr[i] = parseInt(hex.substr(i*2,2),16);
+  return arr;
+}
+function bytesToHex(bytes){
+  return Array.from(bytes).map(function(b){return b.toString(16).padStart(2,'0');}).join('');
+}
+// PBKDF2-HMAC-SHA256, 210,000 rounds (current OWASP baseline for this
+// hash) — deliberately slow (tens to low hundreds of ms), which only
+// matters once per login since the resulting key is reused for the whole
+// session rather than re-derived on every save.
+function deriveDbKey(password, saltHex){
+  return crypto.subtle.importKey('raw', new TextEncoder().encode(password), {name:'PBKDF2'}, false, ['deriveKey']).then(function(baseKey){
+    return crypto.subtle.deriveKey(
+      {name:'PBKDF2', salt:hexToBytes(saltHex), iterations:210000, hash:'SHA-256'},
+      baseKey,
+      {name:'AES-GCM', length:256},
+      true, // extractable — cacheSessionKey() below needs to export it
+      ['encrypt','decrypt']
+    );
+  });
+}
+function importRawDbKey(rawBytes){
+  return crypto.subtle.importKey('raw', rawBytes, {name:'AES-GCM'}, true, ['encrypt','decrypt']);
+}
+// Caches the derived key itself (not a boolean) in sessionStorage so a
+// reload or new tab in the SAME browser session skips retyping the
+// password, without persisting anything past that session the way the old
+// mm_authed flag did. Real key material sitting in sessionStorage is
+// exactly as readable via devtools as the old flag was — the difference is
+// what it takes to get to that point at all (an active, already-open tab)
+// versus before (nothing).
+function cacheSessionKey(key){
+  return crypto.subtle.exportKey('raw', key).then(function(raw){
+    sessionStorage.setItem(AUTH_SESSION_KEY, bytesToHex(new Uint8Array(raw)));
+  });
+}
+// AES-256-GCM. The random 12-byte IV travels alongside the ciphertext (IVs
+// aren't secret, just must never repeat under the same key — a fresh one
+// every save makes that a non-issue) and GCM's built-in authentication tag
+// is what makes a wrong key fail loudly (decrypt() rejects) instead of
+// silently returning garbage — that rejection IS the "incorrect password"
+// signal everywhere in this file now, not a separate hash comparison.
+function encryptDbJson(jsonStr, key){
+  var iv = crypto.getRandomValues(new Uint8Array(12));
+  return crypto.subtle.encrypt({name:'AES-GCM', iv:iv}, key||_dbEncKey, new TextEncoder().encode(jsonStr)).then(function(cipherBuf){
+    return JSON.stringify({v:1, iv:bytesToHex(iv), data:bytesToHex(new Uint8Array(cipherBuf))});
+  });
+}
+function decryptDbJson(storedStr, key){
+  var parsed = JSON.parse(storedStr);
+  return crypto.subtle.decrypt({name:'AES-GCM', iv:hexToBytes(parsed.iv)}, key||_dbEncKey, hexToBytes(parsed.data)).then(function(plainBuf){
+    return new TextDecoder().decode(plainBuf);
+  });
 }
 function authGateBoxHtml(inner){
   return '<div style="background:#fff;border-radius:12px;padding:36px 32px;width:320px;max-width:90vw;box-shadow:0 4px 24px rgba(0,0,0,.08);text-align:center;font-family:\'Times New Roman\',Times,serif">'+inner+'</div>';
@@ -465,39 +544,70 @@ function authSetupFormHtml(){
     '<input type="password" id="auth-pw-confirm" placeholder="Confirm password" style="width:100%;padding:10px 12px;border-radius:7px;border:1px solid #d1d5db;font-size:14px;font-family:inherit;margin-bottom:10px;box-sizing:border-box">'+
     '<div id="auth-error" style="color:#dc2626;font-size:12px;margin-bottom:10px;min-height:14px"></div>'+
     '<button id="auth-submit-btn" style="width:100%;padding:10px;border-radius:8px;border:none;background:#2563eb;color:#fff;cursor:pointer;font-size:14px;font-weight:600;font-family:inherit">Set Password</button>'+
-    '<div style="font-size:11px;color:#aaa;margin-top:14px">Stored only on this device — it isn\'t sent anywhere and can\'t be recovered if you forget it.</div>'
+    '<div style="font-size:11px;color:#aaa;margin-top:14px">Encrypts your CRM data on this device with this password — it isn\'t sent anywhere. If you forget it, this device\'s local data can\'t be recovered, but you can get it back from a Google Drive backup (Analytics tab) after setting a new password.</div>'
   );
 }
 function bindAuthLoginForm(){
   var input = document.getElementById('auth-pw-input');
   var err = document.getElementById('auth-error');
+  function fail(){
+    err.textContent = 'Incorrect password';
+    input.value='';
+    input.focus();
+  }
   function attempt(){
     var pw = input.value;
     if(!pw) return;
     var salt = localStorage.getItem(AUTH_SALT_KEY)||'';
-    sha256Hex(salt+pw).then(function(hash){
-      if(hash === localStorage.getItem(AUTH_HASH_KEY)){
-        localStorage.setItem(AUTH_UNLOCKED_KEY, '1');
-        unlockApp();
-      }else{
-        err.textContent = 'Incorrect password';
-        input.value='';
-        input.focus();
-      }
-    });
+    var legacyHash = localStorage.getItem(AUTH_HASH_KEY_LEGACY);
+    if(legacyHash){
+      // One-time migration path — this device set its password before
+      // data-at-rest encryption existed, so there's nothing encrypted yet
+      // to verify a freshly-derived key against. Verify the old way first,
+      // then derive a real key and encrypt whatever plaintext CRM data is
+      // already sitting in localStorage under it, and retire the old hash
+      // so this branch is never taken again on this device.
+      sha256Hex(salt+pw).then(function(hash){
+        if(hash !== legacyHash){ fail(); return; }
+        return deriveDbKey(pw, salt).then(function(key){
+          var plaintext = localStorage.getItem(LS_KEY);
+          return (plaintext ? encryptDbJson(plaintext, key) : Promise.resolve(null)).then(function(encoded){
+            if(encoded) localStorage.setItem(LS_KEY, encoded);
+            localStorage.removeItem(AUTH_HASH_KEY_LEGACY);
+            _dbEncKey = key;
+            return cacheSessionKey(key);
+          }).then(unlockApp);
+        });
+      }).catch(function(){ fail(); });
+      return;
+    }
+    deriveDbKey(pw, salt).then(function(key){
+      var stored = localStorage.getItem(LS_KEY);
+      var verify = stored ? decryptDbJson(stored, key) : Promise.resolve();
+      return verify.then(function(){
+        _dbEncKey = key;
+        return cacheSessionKey(key);
+      }).then(unlockApp);
+    }).catch(function(){ fail(); });
   }
   document.getElementById('auth-submit-btn').addEventListener('click', attempt);
   input.addEventListener('keydown', function(e){ if(e.key==='Enter') attempt(); });
   input.focus();
   document.getElementById('auth-forgot-link').addEventListener('click', function(e){
     e.preventDefault();
-    // Only clears the password gate, never the CRM data itself (a separate
-    // localStorage key) — safe to offer since there's no server to verify
-    // identity against anyway; this is a convenience reset, not recovery.
-    if(confirm('Reset the password for this device? You\'ll be asked to set a new one. Your client data is not affected.')){
-      localStorage.removeItem(AUTH_HASH_KEY);
+    // Unlike the old scheme (where this only ever cleared a UI flag, never
+    // touching real data), this device's CRM data is genuinely encrypted
+    // with the password being reset — there is no way to decrypt it
+    // without that password, so resetting necessarily erases it here.
+    // Google Drive's own backup was deliberately left as plain JSON (not
+    // encrypted) specifically so this stays recoverable via Restore after
+    // setting a new password, rather than a dead end.
+    if(confirm('Reset the password for this device?\n\nThis device\'s CRM data is encrypted with your current password and cannot be decrypted without it — resetting will permanently erase it here. If you have a Google Drive backup, you can get your data back with "Restore from Google Drive" (Analytics tab) after setting a new password.\n\nContinue?')){
+      localStorage.removeItem(AUTH_HASH_KEY_LEGACY);
       localStorage.removeItem(AUTH_SALT_KEY);
-      localStorage.removeItem(AUTH_UNLOCKED_KEY);
+      localStorage.removeItem(LS_KEY);
+      sessionStorage.removeItem(AUTH_SESSION_KEY);
+      _dbEncKey = null;
       showAuthGate();
     }
   });
@@ -511,12 +621,11 @@ function bindAuthSetupForm(){
     if(!pw || pw.length<4){ err.textContent='Password must be at least 4 characters'; return; }
     if(pw !== pw2){ err.textContent='Passwords don\'t match'; confirmInput.value=''; confirmInput.focus(); return; }
     var salt = randomSalt();
-    sha256Hex(salt+pw).then(function(hash){
+    deriveDbKey(pw, salt).then(function(key){
       localStorage.setItem(AUTH_SALT_KEY, salt);
-      localStorage.setItem(AUTH_HASH_KEY, hash);
-      localStorage.setItem(AUTH_UNLOCKED_KEY, '1');
-      unlockApp();
-    });
+      _dbEncKey = key;
+      return cacheSessionKey(key);
+    }).then(unlockApp);
   }
   document.getElementById('auth-submit-btn').addEventListener('click', attempt);
   confirmInput.addEventListener('keydown', function(e){ if(e.key==='Enter') attempt(); });
@@ -525,7 +634,12 @@ function bindAuthSetupForm(){
 function showAuthGate(){
   var gate = document.getElementById('auth-gate');
   gate.style.cssText = 'display:flex;position:fixed;inset:0;background:#f4f5f7;z-index:99999;align-items:center;justify-content:center';
-  var hasPassword = !!localStorage.getItem(AUTH_HASH_KEY);
+  // A device that already has a salt (set on first-ever setup, and never
+  // removed short of a Forgot Password reset) has a password configured —
+  // covers both an already-migrated device (salt only) and a legacy
+  // pre-migration one (salt + the legacy hash), so either shows the login
+  // form rather than "set a new password".
+  var hasPassword = !!localStorage.getItem(AUTH_SALT_KEY);
   gate.innerHTML = hasPassword ? authLoginFormHtml() : authSetupFormHtml();
   if(hasPassword) bindAuthLoginForm(); else bindAuthSetupForm();
 }
@@ -534,34 +648,27 @@ function unlockApp(){
   bootApp();
 }
 function lockApp(){
-  localStorage.removeItem(AUTH_UNLOCKED_KEY);
+  sessionStorage.removeItem(AUTH_SESSION_KEY);
+  _dbEncKey = null;
   location.reload();
 }
-function changeAuthPassword(){
-  var current = prompt('Enter your current password to continue:');
-  if(current===null) return;
-  var salt = localStorage.getItem(AUTH_SALT_KEY)||'';
-  sha256Hex(salt+current).then(function(hash){
-    if(hash !== localStorage.getItem(AUTH_HASH_KEY)){
-      toast('Incorrect current password','err');
-      return;
-    }
-    var next = prompt('Enter a new password (at least 4 characters):');
-    if(next===null) return;
-    if(next.length<4){ toast('Password must be at least 4 characters','err'); return; }
-    var newSalt = randomSalt();
-    sha256Hex(newSalt+next).then(function(newHash){
-      localStorage.setItem(AUTH_SALT_KEY, newSalt);
-      localStorage.setItem(AUTH_HASH_KEY, newHash);
-      toast('Password updated','ok');
-    });
+// Boots straight from a cached session key (see cacheSessionKey()) when
+// one exists — the equivalent of the old mm_authed-flag shortcut, but
+// gated on actually having the key material needed to read the data,
+// not just a flag the app's own code chose to respect. Falls through to
+// the password gate on a fresh browser session, a cleared sessionStorage,
+// or a cached key that's somehow no longer valid.
+(function(){
+  var cachedHex = sessionStorage.getItem(AUTH_SESSION_KEY);
+  if(!cachedHex){ showAuthGate(); return; }
+  importRawDbKey(hexToBytes(cachedHex)).then(function(key){
+    _dbEncKey = key;
+    bootApp();
+  }).catch(function(){
+    sessionStorage.removeItem(AUTH_SESSION_KEY);
+    showAuthGate();
   });
-}
-if(localStorage.getItem(AUTH_UNLOCKED_KEY)==='1'){
-  bootApp();
-}else{
-  showAuthGate();
-}
+})();
 
 // Everything below runs only after the password gate is passed.
 function bootApp(){
@@ -709,7 +816,6 @@ const CANVA_SCOPE      = 'design:meta:read design:content:read';
 const CANVA_REDIRECT   = 'https://milesmaneric.github.io/milesman-crm/';
 const CANVA_AUTH_SERVER = 'https://milesman-auth.vercel.app';
 const BACKUP_FILENAME  = 'milesman-crm-backup.json';
-const LS_KEY           = 'milesman_crm_v2';
 
 const AIRLINES = ['American','United','Delta','Southwest','JetBlue','Qatar Airways','ANA','Emirates','Lufthansa','British Airways','Air France','Virgin Atlantic','Qantas','Etihad','JAL','Air Canada','Frontier','Alaska/Hawaiian Air'];
 const HOTELS   = ['Marriott','Disney','Hilton','Hyatt','Accor','IHG','Wyndham','Four Seasons','Ritz-Carlton','W Hotels','Kimpton','Conrad'];
@@ -1694,9 +1800,25 @@ function updateSyncStatusDisplay(){
     lbl.style.color = '#dc2626';
   }
 }
+// Encryption is fire-and-forget from every one of this function's 100+
+// call sites — saveDB() itself stays synchronous so none of them need to
+// change, but the actual encrypt+write happens through _dbSaveChain, a
+// promise chain that serializes them so two rapid saves can't race and
+// land out of order. The "Saved HH:MM" label still updates optimistically
+// the instant this is called, same as before — it was never actually
+// waiting on the write completing even back when it was a plain
+// synchronous JSON.stringify.
+var _dbSaveChain = Promise.resolve();
 function saveDB(){
   try{
-    localStorage.setItem(LS_KEY,JSON.stringify(db));
+    var json = JSON.stringify(db);
+    _dbSaveChain = _dbSaveChain.then(function(){
+      return encryptDbJson(json);
+    }).then(function(encoded){
+      localStorage.setItem(LS_KEY, encoded);
+    }).catch(function(e){
+      console.error('[CRM] Encrypted save failed:', e);
+    });
     var lbl=document.getElementById('sync-lbl');
     if(lbl){
       if(_driveBackupStale){
@@ -1714,9 +1836,11 @@ function saveDB(){
     }
   }catch(e){}
 }
-function loadDB(){
+async function loadDB(){
   try{
-    const d=JSON.parse(localStorage.getItem(LS_KEY)||'{}');
+    var stored = localStorage.getItem(LS_KEY);
+    var jsonStr = stored ? await decryptDbJson(stored) : '{}';
+    const d=JSON.parse(jsonStr);
     db.clients=Array.isArray(d.clients)?d.clients:[];
     db.trips=Array.isArray(d.trips)?d.trips:[];
     db.vendors=Array.isArray(d.vendors)?d.vendors:[];
@@ -1998,7 +2122,38 @@ function loadDB(){
       saveDB();
       console.log('[CRM] Created '+mpTasksBackfilled+' Planner task(s) for existing Marketing Plan items');
     }
-  }catch(e){db={clients:[],trips:[],vendors:[],planner:[]};}
+  }catch(e){
+    console.error('[CRM] loadDB failed:', e);
+    db={clients:[],trips:[],vendors:[],planner:[]};
+  }
+}
+// Lives here (inside bootApp(), alongside saveDB()/loadDB() and the same
+// encryption key they use) rather than with the rest of the auth-gate code
+// near the top of the file — moving it here also fixes a pre-existing bug
+// where this function, previously defined outside bootApp() next to
+// showAuthGate()/lockApp(), called toast() (only ever defined inside
+// bootApp()) and would have thrown ReferenceError the moment anyone
+// actually used "Change Password".
+function changeAuthPassword(){
+  var current = prompt('Enter your current password to continue:');
+  if(current===null) return;
+  var salt = localStorage.getItem(AUTH_SALT_KEY)||'';
+  deriveDbKey(current, salt).then(function(candidateKey){
+    var stored = localStorage.getItem(LS_KEY);
+    var verify = stored ? decryptDbJson(stored, candidateKey) : Promise.resolve();
+    return verify.then(function(){
+      var next = prompt('Enter a new password (at least 4 characters):');
+      if(next===null) return;
+      if(next.length<4){ toast('Password must be at least 4 characters','err'); return; }
+      var newSalt = randomSalt();
+      return deriveDbKey(next, newSalt).then(function(newKey){
+        _dbEncKey = newKey;
+        localStorage.setItem(AUTH_SALT_KEY, newSalt);
+        saveDB(); // re-encrypts the already-in-memory db under the new key
+        return cacheSessionKey(newKey);
+      }).then(function(){ toast('Password updated','ok'); });
+    });
+  }).catch(function(){ toast('Incorrect current password','err'); });
 }
 
 // ── Toast ─────────────────────────────────────────────────────────────────
@@ -21393,35 +21548,47 @@ console.log('[CRM] Script loaded, binding buttons...');
 debugLog('Page URL: '+window.location.href.slice(0,200));
 debugLog('Search: '+window.location.search);
 debugLog('Hash: '+window.location.hash.slice(0,100));
-loadDB();
-autoSeedDefaultBookmarksOnce();
-autoSeedDefaultMarketingPlanOnce();
-// One-time recovery for the watermark bug pollCheckpointNow() fixes: any
-// checkpoint already saved in this browser from before the fix could sit
-// past the receivedDateTime of a real email that arrived but was never
-// found (Graph index lag advancing the old, unbuffered watermark past it).
-// Clearing these once forces the next check for each to fall back to its
-// own 24-hours-ago default window, safe to do since processedIds already
-// prevents anything genuinely already-imported from being duplicated.
-if(!localStorage.getItem('mm_pollcheckpoint_buffer_fix_v1')){
-  localStorage.setItem('mm_pollcheckpoint_buffer_fix_v1','1');
-  localStorage.removeItem('mm_last_tripform_check');
-  localStorage.removeItem('mm_last_contactform_check');
-  localStorage.removeItem('mm_last_revenuereport_check');
-  debugLog('One-time reset of email-poll checkpoints (watermark buffer fix) — next check re-scans the last 24h');
-}
-render();
-loadDebugLog();
-startAutosave();
-updateUndoBtn();
-checkDriveRedirect();
-checkWordpressRedirect();
-checkFacebookRedirect();
-checkCanvaRedirect();
-checkXRedirect();
-checkTikTokRedirect();
-updateSyncStatusDisplay();
-console.log('[CRM] Ready. Clients:', db.clients.length, 'Trips:', db.trips.length);
+// loadDB() is async now (it has to decrypt the stored blob first) — the
+// entire rest of boot depends on db actually being populated first, so
+// this whole tail runs inside the .then() rather than as a flat sequence
+// of statements the way it did back when loadDB() was synchronous.
+loadDB().then(function(){
+  autoSeedDefaultBookmarksOnce();
+  autoSeedDefaultMarketingPlanOnce();
+  // One-time recovery for the watermark bug pollCheckpointNow() fixes: any
+  // checkpoint already saved in this browser from before the fix could sit
+  // past the receivedDateTime of a real email that arrived but was never
+  // found (Graph index lag advancing the old, unbuffered watermark past it).
+  // Clearing these once forces the next check for each to fall back to its
+  // own 24-hours-ago default window, safe to do since processedIds already
+  // prevents anything genuinely already-imported from being duplicated.
+  if(!localStorage.getItem('mm_pollcheckpoint_buffer_fix_v1')){
+    localStorage.setItem('mm_pollcheckpoint_buffer_fix_v1','1');
+    localStorage.removeItem('mm_last_tripform_check');
+    localStorage.removeItem('mm_last_contactform_check');
+    localStorage.removeItem('mm_last_revenuereport_check');
+    debugLog('One-time reset of email-poll checkpoints (watermark buffer fix) — next check re-scans the last 24h');
+  }
+  render();
+  loadDebugLog();
+  startAutosave();
+  updateUndoBtn();
+  checkDriveRedirect();
+  checkWordpressRedirect();
+  checkFacebookRedirect();
+  checkCanvaRedirect();
+  checkXRedirect();
+  checkTikTokRedirect();
+  updateSyncStatusDisplay();
+  console.log('[CRM] Ready. Clients:', db.clients.length, 'Trips:', db.trips.length);
+}).catch(function(e){
+  // Shouldn't happen — the password was already verified (by successfully
+  // decrypting this same blob) before bootApp() was ever called — but if
+  // the stored data is somehow corrupted, surface something visible rather
+  // than leaving the page stuck blank with no explanation.
+  console.error('[CRM] Failed to load CRM data:', e);
+  render();
+});
 } // end bootApp()
 </script>
 </body>
