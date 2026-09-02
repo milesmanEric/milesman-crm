@@ -930,7 +930,11 @@ const STATUSES = ['Planning','Confirmed','Upcoming','In Progress','Completed','C
 const TYPES    = ['Leisure','Business','Honeymoon','Family','Adventure','Cruise'];
 const CLASSES  = ['Basic Economy','Economy','Premium Economy','Business','First'];
 const NOTE_TYPES = ['Email Sent','Email Received','Initial Call','Follow-up','Post-Trip Follow-up','General','Trip Import','Text Message Sent','Text Message Received','Lead','Mailchimp Email Sent','Facebook Message'];
-const MARKETING_CHANNELS = ['Email','Social Media','Blog Post','Facebook Ad','Google Ad','Print','Event','Referral Push','Other'];
+// 'Sales Outreach' is direct 1:1 selling (a call, a personal email, a
+// proposal) rather than content published to an audience — kept distinct
+// from every other channel here so a concrete sales task (call these 10
+// people) never gets buried in a list of posts/ads/blog content.
+const MARKETING_CHANNELS = ['Email','Social Media','Blog Post','Facebook Ad','Google Ad','Print','Event','Referral Push','Sales Outreach','Other'];
 const MARKETING_PLAN_STATUSES = ['Planned','In Progress','Done','Cancelled'];
 // Same idea as TRIP_LIFECYCLE_COLORS — one bg/text pair per channel, used
 // for both the Marketing Plan list rows and the Marketing Calendar cells so
@@ -944,6 +948,7 @@ const MARKETING_CHANNEL_COLORS = {
   'Print':          {bg:'#f3f4f6', text:'#374151'},
   'Event':          {bg:'#ffedd5', text:'#9a3412'},
   'Referral Push':  {bg:'#f0fdfa', text:'#115e59'},
+  'Sales Outreach': {bg:'#fee2e2', text:'#991b1b'},
   'Other':          {bg:'#f3f4f6', text:'#4b5563'}
 };
 // Who a Marketing Plan item is actually written for — separate from Channel
@@ -967,45 +972,51 @@ const MARKETING_TARGET_GROUP_COLORS = {
   'New Leads/Prospects':          {bg:'#ede9fe', text:'#5b21b6'},
   'Other':                        {bg:'#f3f4f6', text:'#4b5563'}
 };
-// Starter 30-day content calendar for the Marketing Plan, auto-seeded once
-// on first run (see autoSeedDefaultMarketingPlanOnce) and re-loadable later
-// via "+ Load 30-Day Calendar" (see seedDefaultMarketingPlan) — same pattern
-// as DEFAULT_BOOKMARKS/autoSeedDefaultBookmarksOnce. dayOffset is relative
-// to today() at seed time (not a fixed date) so it always plans forward
-// from whenever it's (re-)seeded, and the mix of channels/cadence below is
-// a generic cruise/travel agency starting point meant to be edited to fit
-// real campaigns.
+// Starter 30-day calendar for the Marketing Plan, auto-seeded once on first
+// run (see autoSeedDefaultMarketingPlanOnce) and re-loadable later via
+// "+ Load 30-Day Calendar" (see seedDefaultMarketingPlan) — same pattern as
+// DEFAULT_BOOKMARKS/autoSeedDefaultBookmarksOnce. dayOffset is relative to
+// today() at seed time (not a fixed date) so it always plans forward from
+// whenever it's (re-)seeded. Deliberately weighted toward concrete,
+// revenue-driving Sales Outreach tasks for the audiences most worth selling
+// to directly (Corporate & Incentive Travel, Past Clients, New Leads) rather
+// than an even split of generic content across every channel — a handful of
+// notes reference real CRM features (the Trips page's Status filter, the
+// Groups tab, the Reports tab's Referral Certificates report, and the
+// existing 90-day-out birthday-outreach task auto-created by
+// checkForUpcomingBirthdays()) so the task is something to actually go do,
+// not just an idea.
 const DEFAULT_MARKETING_PLAN = [
-  {dayOffset:0,  channel:'Email',         targetGroup:'New Leads/Prospects',          title:"Welcome Email — This Week's Cruise Deals", notes:'Send featured sailings to new subscribers and recent leads.'},
-  {dayOffset:1,  channel:'Social Media',  targetGroup:'General/All Clients',          title:'Instagram Reel: Top 5 Caribbean Itineraries', notes:''},
-  {dayOffset:2,  channel:'Social Media',  targetGroup:'Birthdays',                    title:'Instagram Post: "Birthday Club" Signup Reminder', notes:''},
-  {dayOffset:3,  channel:'Blog Post',     targetGroup:'General/All Clients',          title:'Blog: How to Choose Your First Cruise Line', notes:''},
-  {dayOffset:4,  channel:'Google Ad',     targetGroup:'General/All Clients',          title:'Google Ads: Refresh "Cruise Deals Near Me" Campaign', notes:''},
-  {dayOffset:5,  channel:'Email',         targetGroup:'Corporate & Incentive Travel', title:'Email: Corporate Incentive Trip Packages — Local Business Outreach', notes:''},
-  {dayOffset:6,  channel:'Facebook Ad',   targetGroup:'New Leads/Prospects',          title:'Facebook Ad: Retarget Site Visitors — Free Quote CTA', notes:''},
-  {dayOffset:7,  channel:'Social Media',  targetGroup:'Past Clients',                 title:'Facebook Post: Client Testimonial Spotlight', notes:''},
-  {dayOffset:8,  channel:'Referral Push', targetGroup:'Past Clients',                 title:'Referral Push: "Refer a Friend" Reminder to Past Clients', notes:''},
-  {dayOffset:9,  channel:'Referral Push', targetGroup:'Family Reunions',              title:'Referral Push: Family Reunion Planning Guide to Past Group Clients', notes:''},
-  {dayOffset:10, channel:'Email',         targetGroup:'General/All Clients',          title:'Monthly Newsletter — New Vendor Offers', notes:''},
-  {dayOffset:11, channel:'Print',         targetGroup:'General/All Clients',          title:'Update Office Brochure Rack with New Itineraries', notes:''},
-  {dayOffset:12, channel:'Blog Post',     targetGroup:'Weddings & Honeymoons',        title:'Blog: Planning a Destination Wedding or Honeymoon Cruise', notes:''},
-  {dayOffset:13, channel:'Event',         targetGroup:'General/All Clients',          title:'Host In-Office Cruise Info Night', notes:''},
-  {dayOffset:14, channel:'Blog Post',     targetGroup:'General/All Clients',          title:'Blog: Packing Tips for a 7-Night Caribbean Cruise', notes:''},
-  {dayOffset:15, channel:'Social Media',  targetGroup:'Past Clients',                 title:'Instagram Story Series: Behind-the-Scenes Client Trip', notes:''},
-  {dayOffset:16, channel:'Email',         targetGroup:'Birthdays',                    title:'Email: Birthday-Month Discount for Clients Celebrating This Month', notes:''},
-  {dayOffset:17, channel:'Google Ad',     targetGroup:'New Leads/Prospects',          title:'Google Ads: Launch "All-Inclusive Resorts" Keyword Set', notes:''},
-  {dayOffset:18, channel:'Email',         targetGroup:'New Leads/Prospects',          title:'Abandoned Quote Follow-Up Sequence', notes:''},
-  {dayOffset:19, channel:'Social Media',  targetGroup:'Family Reunions',              title:'Facebook Post: "Plan Your Family Reunion Cruise" Group Rates', notes:''},
-  {dayOffset:20, channel:'Facebook Ad',   targetGroup:'General/All Clients',          title:'Facebook Ad: Video Ad — Fall Cruise Promo', notes:''},
-  {dayOffset:21, channel:'Referral Push', targetGroup:'Past Clients',                 title:'Referral Push: Post-Trip Review Request Check-In', notes:''},
-  {dayOffset:22, channel:'Social Media',  targetGroup:'Corporate & Incentive Travel', title:'LinkedIn Post: Agency Milestone / Client Success Story', notes:''},
-  {dayOffset:23, channel:'Print',         targetGroup:'Corporate & Incentive Travel', title:'Print: Leave-Behind Flyer for Corporate Incentive Trip Meetings', notes:''},
-  {dayOffset:24, channel:'Event',         targetGroup:'Corporate & Incentive Travel', title:'Attend Local Chamber of Commerce Mixer', notes:''},
-  {dayOffset:25, channel:'Blog Post',     targetGroup:'General/All Clients',          title:'Blog: Top Ports of Call for Virgin Voyages Itineraries', notes:''},
-  {dayOffset:26, channel:'Email',         targetGroup:'General/All Clients',          title:'Early-Bird Deposit Reminder — Upcoming Sailings', notes:''},
-  {dayOffset:27, channel:'Print',         targetGroup:'Past Clients',                 title:'Design Postcard Mailer for Past Cruise Clients', notes:''},
-  {dayOffset:28, channel:'Social Media',  targetGroup:'Past Clients',                 title:'Instagram Reel: Client Welcome-Gift Unboxing', notes:''},
-  {dayOffset:29, channel:'Other',         targetGroup:'Other',                        title:'Review 30-Day Marketing Performance & Plan Next Month', notes:''}
+  {dayOffset:0,  channel:'Email',          targetGroup:'New Leads/Prospects',          title:"Welcome Email — This Week's Cruise Deals", notes:'Send featured sailings to new subscribers and recent leads.'},
+  {dayOffset:1,  channel:'Sales Outreach', targetGroup:'New Leads/Prospects',          title:"Call Every Open Quote from the Last 7 Days That Hasn't Booked", notes:'Trips page, filter Status = Planning, sorted by most recent — call or email everyone who requested a quote in the last 7 days and hasn\'t booked. Speed-to-lead matters most in the first 48 hours.'},
+  {dayOffset:2,  channel:'Social Media',   targetGroup:'General/All Clients',          title:'Instagram Reel: Top 5 Caribbean Itineraries', notes:''},
+  {dayOffset:3,  channel:'Sales Outreach', targetGroup:'Corporate & Incentive Travel', title:'Build a Target List of 20 Local Businesses for Incentive Travel', notes:'Use LinkedIn, the local Chamber of Commerce directory, and local business listings to build a spreadsheet of 20 prospects (company, HR/sales contact name, phone/email) for corporate incentive-trip outreach.'},
+  {dayOffset:4,  channel:'Blog Post',      targetGroup:'General/All Clients',          title:'Blog: How to Choose Your First Cruise Line', notes:''},
+  {dayOffset:5,  channel:'Social Media',   targetGroup:'Birthdays',                    title:'Instagram Post: "Birthday Club" Signup Reminder', notes:''},
+  {dayOffset:6,  channel:'Google Ad',      targetGroup:'General/All Clients',          title:'Google Ads: Refresh "Cruise Deals Near Me" Campaign', notes:''},
+  {dayOffset:7,  channel:'Sales Outreach', targetGroup:'Corporate & Incentive Travel', title:'Pitch Custom Proposals to the Top 10 Incentive Travel Prospects', notes:'Work down the target list built earlier this month — call or email the top 10, pitching a custom incentive-trip proposal and offering a free sample itinerary.'},
+  {dayOffset:8,  channel:'Facebook Ad',    targetGroup:'New Leads/Prospects',          title:'Facebook Ad: Retarget Site Visitors — Free Quote CTA', notes:''},
+  {dayOffset:9,  channel:'Sales Outreach', targetGroup:'Past Clients',                 title:"Call the 10 Highest-Value Past Clients Who Haven't Booked in a Year", notes:'Clients page, sort by lifetime revenue — call the top 10 who haven\'t booked a trip in 12+ months with a personal "we\'d love to have you back" offer.'},
+  {dayOffset:10, channel:'Referral Push',  targetGroup:'Past Clients',                 title:'Referral Push: "Refer a Friend" Reminder to Past Clients', notes:''},
+  {dayOffset:11, channel:'Sales Outreach', targetGroup:'Family Reunions',              title:'Call Past Group Trip Organizers About a Return Reunion Trip', notes:'Groups tab — find past multi-client/family group trips, then call each organizer about planning a return reunion trip. Offer a group-rate incentive for 8+ cabins/rooms booked together.'},
+  {dayOffset:12, channel:'Email',          targetGroup:'General/All Clients',          title:'Monthly Newsletter — New Vendor Offers', notes:''},
+  {dayOffset:13, channel:'Referral Push',  targetGroup:'Past Clients',                 title:'Clear the Unredeemed Referral Certificate Backlog', notes:'Reports tab → Referral Certificates report lists every unredeemed certificate — reach out to each client with an unused certificate and remind them it\'s still valid before it\'s forgotten.'},
+  {dayOffset:14, channel:'Blog Post',      targetGroup:'Weddings & Honeymoons',        title:'Blog: Planning a Destination Wedding or Honeymoon Cruise', notes:''},
+  {dayOffset:15, channel:'Event',          targetGroup:'Corporate & Incentive Travel', title:'Attend Local Chamber of Commerce Mixer — Collect 10 New Contacts', notes:'Bring business cards and the corporate incentive-travel one-pager (see later this month) — set a goal of 10 new business contacts to add to the prospect list.'},
+  {dayOffset:16, channel:'Blog Post',      targetGroup:'General/All Clients',          title:'Blog: Packing Tips for a 7-Night Caribbean Cruise', notes:''},
+  {dayOffset:17, channel:'Sales Outreach', targetGroup:'Corporate & Incentive Travel', title:'Follow Up with Every Lead from the Chamber Mixer', notes:'Follow up with every contact collected at the mixer within 48 hours — a short "great meeting you" email with the incentive-travel one-pager attached converts far better than a cold approach.'},
+  {dayOffset:18, channel:'Social Media',   targetGroup:'Past Clients',                 title:'Instagram Story Series: Behind-the-Scenes Client Trip', notes:''},
+  {dayOffset:19, channel:'Sales Outreach', targetGroup:'Birthdays',                    title:"Personalize and Send This Week's Auto-Generated Birthday Outreach", notes:'The Planner auto-creates a "Birthday trip outreach" task for each client 90 days before their birthday with a ready-to-send email draft — review this week\'s batch, personalize each one, and send.'},
+  {dayOffset:20, channel:'Google Ad',      targetGroup:'New Leads/Prospects',          title:'Google Ads: Launch "All-Inclusive Resorts" Keyword Set', notes:''},
+  {dayOffset:21, channel:'Email',          targetGroup:'New Leads/Prospects',          title:'Abandoned Quote Follow-Up Sequence', notes:''},
+  {dayOffset:22, channel:'Referral Push',  targetGroup:'Family Reunions',              title:'Referral Push: Family Reunion Planning Guide to Past Group Clients', notes:''},
+  {dayOffset:23, channel:'Facebook Ad',    targetGroup:'General/All Clients',          title:'Facebook Ad: Video Ad — Fall Cruise Promo', notes:''},
+  {dayOffset:24, channel:'Email',          targetGroup:'Birthdays',                    title:'Birthday-Month Discount for Clients Celebrating This Month', notes:'A broader monthly segment blast — distinct from the individual 90-day-out birthday outreach task, which stays personal and one-to-one.'},
+  {dayOffset:25, channel:'Social Media',   targetGroup:'Corporate & Incentive Travel', title:'LinkedIn Case Study Post Targeting Corporate Decision-Makers', notes:''},
+  {dayOffset:26, channel:'Print',          targetGroup:'Corporate & Incentive Travel', title:'Leave-Behind One-Pager for Corporate Incentive Trip Meetings', notes:''},
+  {dayOffset:27, channel:'Social Media',   targetGroup:'Family Reunions',              title:'Facebook Post: "Plan Your Family Reunion Cruise" Group Rates', notes:''},
+  {dayOffset:28, channel:'Sales Outreach', targetGroup:'Weddings & Honeymoons',        title:'Propose a Referral Partnership to 3 Local Wedding Venues', notes:'Identify 3 local wedding venues/planners and pitch a referral partnership — they refer engaged couples to you for the honeymoon, you refer wedding-planning clients to them.'},
+  {dayOffset:29, channel:'Other',          targetGroup:'Other',                        title:'Review 30-Day Marketing Performance & Plan Next Month', notes:''}
 ];
 const THEME_PARKS = ['Disney World','Disneyland California','Universal Studios Hollywood','Universal Studios Orlando'];
 const TRAIN_CLASSES = ['Coach','Business Class','First Class','Sleeper Car'];
@@ -16791,6 +16802,7 @@ const MARKETING_AI_CHANNEL_GUIDE = {
   'Print':         'short flyer/postcard copy — a headline plus 2-3 sentences of body copy',
   'Event':         'a short event description/invite blurb',
   'Referral Push': 'a short message to send past clients asking for referrals',
+  'Sales Outreach':'a short call script (opening line, value proposition, one clear next-step ask) AND a short outreach email covering the same ground — written for the person making the call/sending the email, not as a public-facing post',
   'Other':         'ready-to-use marketing copy appropriate to the item'
 };
 // The Marketing Plan's "✨" button — asks Claude (same api/claude-messages.js
