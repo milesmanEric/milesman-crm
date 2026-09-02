@@ -20735,6 +20735,43 @@ const ASSISTANT_TOOLS = [
     }
   },
   {
+    name: 'create_vendor',
+    description: 'Create a new travel Supplier/Vendor record (an airline, hotel, cruise line, tour operator, referral partner, DMC, etc.). Only top-level fields — a Hotel supplier\'s Properties list and per-contact records stay a manual, in-app step.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string' },
+        type: { type: 'string', enum: VENDOR_TYPES },
+        category: { type: 'string', enum: VENDOR_CATS },
+        contactName: { type: 'string' },
+        email: { type: 'string' },
+        phone: { type: 'string' },
+        website: { type: 'string' },
+        notes: { type: 'string' }
+      },
+      required: ['name']
+    }
+  },
+  {
+    name: 'update_vendor',
+    description: 'Update top-level fields on an existing Supplier/Vendor, found first via find_vendors. Only pass the fields that are changing — doesn\'t touch a Hotel supplier\'s Properties list, per-contact records, or referral-partner client list, which stay a manual, in-app step.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string' },
+        name: { type: 'string' },
+        type: { type: 'string', enum: VENDOR_TYPES },
+        category: { type: 'string', enum: VENDOR_CATS },
+        contactName: { type: 'string' },
+        email: { type: 'string' },
+        phone: { type: 'string' },
+        website: { type: 'string' },
+        notes: { type: 'string' }
+      },
+      required: ['id']
+    }
+  },
+  {
     name: 'update_trip',
     description: 'Update common fields on an existing trip, found first via find_trips. Only pass the fields that are changing. Does not touch the detailed Booked Trip Details line items (individual flight/hotel/cruise segments, points/balance grids) — those still need the Trip Details form in the app, since they\'re too structured/nested for a chat edit.',
     input_schema: {
@@ -20867,8 +20904,32 @@ async function runAssistantTool(name, input){
     var vq = (input.query||'').toLowerCase();
     var vMatches = db.vendors.filter(function(v){
       return (v.name||'').toLowerCase().indexOf(vq)!==-1;
-    }).slice(0,10).map(function(v){ return {id:v.id, name:v.name, category:v.category, website:v.website}; });
+    }).slice(0,10).map(function(v){ return {id:v.id, name:v.name, type:v.type, category:v.category, contactName:v.contactName, email:v.email, phone:v.phone, website:v.website, notes:v.notes}; });
     return {vendors: vMatches};
+  }
+  if(name === 'create_vendor'){
+    if(!input.name) return {error:'Supplier name is required'};
+    snapshot('Assistant: create vendor');
+    var newVendor = {
+      id: newId('V', db.vendors), name: input.name, type: input.type||'', category: input.category||'',
+      contactName: input.contactName||'', email: input.email||'', phone: input.phone||'', website: input.website||'',
+      notes: input.notes||'', notesLog: [], clientIds: []
+    };
+    db.vendors.push(newVendor);
+    saveDB();
+    return {ok:true, message:'Supplier created: '+newVendor.name, vendorId:newVendor.id};
+  }
+  if(name === 'update_vendor'){
+    var vendorExisting = db.vendors.find(function(x){return x.id===input.id;});
+    if(!vendorExisting) return {error:'No supplier found with id '+input.id};
+    snapshot('Assistant: update vendor');
+    var vendorUpdated = Object.assign({}, vendorExisting);
+    ['name','type','category','contactName','email','phone','website','notes'].forEach(function(f){
+      if(input[f]!==undefined) vendorUpdated[f] = input[f];
+    });
+    db.vendors = db.vendors.map(function(v){ return v.id===input.id ? vendorUpdated : v; });
+    saveDB();
+    return {ok:true, message:'Supplier updated: '+vendorUpdated.name};
   }
   if(name === 'find_referral_credits'){
     var creditRows = [];
