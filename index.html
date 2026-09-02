@@ -11458,6 +11458,178 @@ function refreshVendorClientsSummary(){
   }).filter(Boolean);
   summaryEl.innerHTML = names.length ? escHtml(joinNames(names)) : '<span style="color:#aaa">None selected</span>';
 }
+// "Paste a URL" Add-Supplier detection ───────────────────────────────────
+// A pasted URL is routed one of two ways: a known hotel-brand domain means
+// it's a specific PROPERTY (added straight to that brand's existing
+// Supplier record, see addPropertyToVendorPrompt), while anything else is
+// treated as its own INDEPENDENT supplier and gets its form fields
+// pre-filled. Domain routing never depends on fetching the page (so it
+// still works even if the fetch below fails) — only field pre-fill needs
+// actual page content.
+// Not exhaustive — just the brands already in the HOTELS constant — since
+// those are the only Supplier records a "Property" can be attached to.
+const HOTEL_BRAND_DOMAINS = {
+  'marriott.com':'Marriott', 'ritzcarlton.com':'Ritz-Carlton',
+  'disney.go.com':'Disney', 'disneyworld.disney.go.com':'Disney', 'disneyland.disney.go.com':'Disney',
+  'hilton.com':'Hilton', 'conradhotels3.hilton.com':'Conrad', 'conradhotels.com':'Conrad',
+  'hyatt.com':'Hyatt',
+  'accor.com':'Accor', 'all.accor.com':'Accor',
+  'ihg.com':'IHG',
+  'wyndhamhotels.com':'Wyndham', 'wyndham.com':'Wyndham',
+  'fourseasons.com':'Four Seasons',
+  'whotels.com':'W Hotels',
+  'kimptonhotels.com':'Kimpton'
+};
+function detectHotelBrandFromHost(hostname){
+  hostname = (hostname||'').toLowerCase().replace(/^www\./,'');
+  if(HOTEL_BRAND_DOMAINS[hostname]) return HOTEL_BRAND_DOMAINS[hostname];
+  // Brand sites often live on a subdomain (e.g. a property-specific
+  // "resort.marriott.com") — fall back to matching the registrable
+  // (last-two-label) domain too.
+  var parts = hostname.split('.');
+  var registrable = parts.slice(-2).join('.');
+  return HOTEL_BRAND_DOMAINS[registrable] || null;
+}
+// Best-effort name guess from a property URL's path (e.g.
+// "/hotels/travel/bosbr-boston-marriott-copley-place/" ->
+// "Bosbr Boston Marriott Copley Place") — used only when the page fetch
+// below fails or the page has no name to read, since a URL slug is a much
+// worse source than the page's own content.
+function guessPropertyNameFromPath(url){
+  var segments = url.pathname.split('/').filter(Boolean);
+  var last = segments[segments.length-1] || '';
+  return last.replace(/[-_]+/g,' ').trim().replace(/\b\w/g, function(c){return c.toUpperCase();});
+}
+function guessNameFromHost(url){
+  return url.hostname.replace(/^www\./,'').split('.')[0].replace(/[-_]+/g,' ').replace(/\b\w/g, function(c){return c.toUpperCase();});
+}
+// Browsers can't read the content of an arbitrary third-party page
+// directly — the target site almost never sends CORS headers permitting
+// it. Routed through a public CORS proxy so the raw HTML can actually be
+// read; this sends the pasted URL to that third-party service, and only
+// runs when the user explicitly clicks "Detect".
+async function fetchUrlHtmlViaProxy(url){
+  var proxyUrl = 'https://api.allorigins.win/raw?url='+encodeURIComponent(url);
+  var r = await fetch(proxyUrl);
+  if(!r.ok) throw new Error('Fetch failed: HTTP '+r.status);
+  return await r.text();
+}
+// Pulls name/phone/address/category out of a fetched page — schema.org
+// JSON-LD structured data first (meant to be machine-read, so far more
+// reliable than scraping visible layout), falling back to <title>/meta
+// tags and a tel: link. Many hotel-brand sites are JS-rendered SPAs whose
+// raw HTML (all a proxy fetch ever sees, since it doesn't run JS) has none
+// of this — in that case every field here comes back empty and the caller
+// falls back to guessing from the URL itself.
+function extractSupplierInfoFromHtml(html){
+  var doc = new DOMParser().parseFromString(html, 'text/html');
+  var info = {name:'', phone:'', address:'', category:''};
+  var ldNodes = doc.querySelectorAll('script[type="application/ld+json"]');
+  for(var i=0;i<ldNodes.length;i++){
+    var parsed;
+    try{ parsed = JSON.parse(ldNodes[i].textContent); }catch(e){ continue; }
+    var items = Array.isArray(parsed) ? parsed : [parsed];
+    for(var j=0;j<items.length;j++){
+      var it = items[j];
+      if(!it || typeof it!=='object') continue;
+      var type = (it['@type']||'').toString();
+      if(!/Hotel|LodgingBusiness|Resort|TravelAgency|LocalBusiness|Organization|Airline/i.test(type)) continue;
+      if(it.name && !info.name) info.name = it.name;
+      if(it.telephone && !info.phone) info.phone = it.telephone;
+      if(it.address && !info.address){
+        var a = it.address;
+        info.address = typeof a==='string' ? a : [a.streetAddress,a.addressLocality,a.addressRegion,a.postalCode,a.addressCountry].filter(Boolean).join(', ');
+      }
+      if(!info.category){
+        if(/Hotel|LodgingBusiness|Resort/i.test(type)) info.category = 'Hotel';
+        else if(/Airline/i.test(type)) info.category = 'Airline';
+      }
+    }
+  }
+  if(!info.name){
+    var ogSite = doc.querySelector('meta[property="og:site_name"]');
+    var ogTitle = doc.querySelector('meta[property="og:title"]');
+    info.name = (ogSite && ogSite.content) || (ogTitle && ogTitle.content) || (doc.title||'').split(/[|\-–]/)[0].trim();
+  }
+  if(!info.phone){
+    var telLink = doc.querySelector('a[href^="tel:"]');
+    if(telLink) info.phone = telLink.getAttribute('href').replace(/^tel:/,'').trim();
+  }
+  return info;
+}
+// Drives the Add Supplier form's "Paste a URL" → "Detect" button (see
+// vurl-detect-input/btn-vurl-detect above). Domain routing (property vs.
+// independent supplier) happens first and doesn't need the fetch to
+// succeed; only the actual field pre-fill for an independent supplier (or
+// the property name, when a fetch does succeed) depends on it.
+async function handleVendorUrlDetect(btn){
+  var urlInput = document.getElementById('vurl-detect-input');
+  var statusEl = document.getElementById('vurl-detect-status');
+  var raw = (urlInput.value||'').trim();
+  if(!raw){ statusEl.textContent = 'Paste a URL first.'; statusEl.style.color = '#dc2626'; return; }
+  var url;
+  try{ url = new URL(/^https?:\/\//i.test(raw) ? raw : 'https://'+raw); }
+  catch(e){ statusEl.textContent = "That doesn't look like a valid URL."; statusEl.style.color = '#dc2626'; return; }
+
+  var brand = detectHotelBrandFromHost(url.hostname);
+  statusEl.textContent = 'Looking up '+url.hostname+'...';
+  statusEl.style.color = '#888';
+  btn.disabled = true;
+
+  var info = {name:'', phone:'', address:'', category:''};
+  try{
+    var html = await fetchUrlHtmlViaProxy(url.href);
+    info = extractSupplierInfoFromHtml(html);
+  }catch(e){
+    debugLog('Supplier URL detect: fetch/parse failed for '+url.href+' — '+e.message);
+  }
+  btn.disabled = false;
+
+  var guessedName = info.name || (brand ? (guessPropertyNameFromPath(url) || guessNameFromHost(url)) : guessNameFromHost(url));
+
+  if(brand){
+    var vendor = db.vendors.find(function(v){ return v.name===brand; });
+    if(!vendor){
+      statusEl.innerHTML = 'This looks like a '+brand+' property, but there is no "'+brand+'" Supplier record yet to add it to. Create that Supplier first, or fill in the fields below by hand.';
+      statusEl.style.color = '#dc2626';
+      return;
+    }
+    vendor.properties = vendor.properties || [];
+    var existing = vendor.properties.find(function(p){ return p.name.toLowerCase()===guessedName.toLowerCase(); });
+    if(existing){
+      statusEl.textContent = '"'+guessedName+'" already exists as a '+brand+' property — nothing added.';
+      statusEl.style.color = '#374151';
+      toast('That property already exists on '+brand);
+    }else{
+      snapshot('Add supplier property from URL');
+      vendor.properties.push({id:'HP'+(vendor.properties.length+1), name:guessedName});
+      saveDB();
+      statusEl.textContent = 'Added "'+guessedName+'" as a property under the existing '+brand+' supplier — no new supplier needed.';
+      statusEl.style.color = '#16a34a';
+      toast('Added as a '+brand+' property');
+      setTimeout(closeModal, 1600);
+    }
+    return;
+  }
+
+  // Not a known brand domain — treat as its own independent supplier and
+  // pre-fill whatever was actually found on the page (best-effort; a page
+  // with no schema.org markup and no readable <title> only yields the
+  // domain-derived name).
+  document.getElementById('vn').value = guessedName;
+  if(info.phone) document.getElementById('vph').value = info.phone;
+  document.getElementById('vwb').value = url.origin;
+  if(info.category){
+    var catSel = document.getElementById('vcat');
+    if(Array.from(catSel.options).some(function(o){return o.value===info.category;})) catSel.value = info.category;
+  }
+  if(info.address){
+    var notesEl = document.getElementById('vno');
+    notesEl.value = (notesEl.value ? notesEl.value+'\n' : '')+'Address (from '+url.hostname+'): '+info.address;
+  }
+  statusEl.textContent = info.name ? 'Filled in from the page below — double-check before saving.' : 'Could not read details from that page — filled in what could be guessed from the URL; fill in the rest by hand.';
+  statusEl.style.color = info.name ? '#16a34a' : '#b45309';
+}
 function readVendorProperties(){
   var sel = document.getElementById('vendor-properties-select');
   if(!sel) return null; // form wasn't showing a Properties section (not a Hotel supplier)
@@ -11504,6 +11676,16 @@ function openVendorForm(id){
   $('modal').innerHTML =
     '<div class="modal-hdr"><div class="modal-title">'+(id?'Edit Supplier':'Add Supplier')+'</div><button class="close-btn" id="modal-close">&#x2715;</button></div>'+
     '<div class="fg">'+
+      (id ? '' :
+        '<div class="field full" style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px;margin-bottom:14px">'+
+          '<label>Paste a Property/Company URL <span class="hint" style="text-transform:none;font-weight:400">(optional — a known hotel brand\'s site adds a property to that existing supplier instead of creating a new one; anything else pre-fills the fields below)</span></label>'+
+          '<div style="display:flex;gap:6px;margin-top:4px">'+
+            '<input type="text" id="vurl-detect-input" placeholder="https://..." style="flex:1;padding:6px 8px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;font-family:inherit;box-sizing:border-box">'+
+            '<button type="button" id="btn-vurl-detect" style="padding:6px 14px;border-radius:6px;border:1px solid #2563eb;background:#2563eb;color:#fff;cursor:pointer;font-size:12px;font-family:inherit;white-space:nowrap">Detect</button>'+
+          '</div>'+
+          '<div id="vurl-detect-status" style="font-size:11px;color:#888;margin-top:4px"></div>'+
+        '</div>'
+      )+
       fld('Supplier Name', inp('vn','text',d.name,'e.g. Delta Air Lines'))+
       fld('Type', '<select id="vtype"><option value="">Select...</option>'+typeOpts+'</select>')+
       fld('Category', '<select id="vcat"><option value="">Select...</option>'+catOpts+'</select>')+
@@ -11674,6 +11856,8 @@ function openVendorForm(id){
   $('modal-cancel').addEventListener('click', closeModal);
 
   $('modal-save-vendor').addEventListener('click', function(){saveVendor(this.dataset.id);});
+  var vurlDetectBtn = document.getElementById('btn-vurl-detect');
+  if(vurlDetectBtn) vurlDetectBtn.addEventListener('click', function(){ handleVendorUrlDetect(vurlDetectBtn); });
   var vendorClientsToggle = document.getElementById('vendor-clients-toggle');
   if(vendorClientsToggle){
     vendorClientsToggle.addEventListener('click', function(){
