@@ -1169,7 +1169,7 @@ const DEFAULT_BOOKMARKS = [
   {name:'AwardWallet', url:'https://www.awardwallet.com', category:'Award Tools', audience:'Travel Agent', notes:'tracks client mileage/points balances across programs'}
 ];
 
-let db = {clients:[],trips:[],vendors:[],bizVendors:[],planner:[],bookmarks:[],savedReports:[],groups:[],marketingPlan:[],pendingImportMatches:[],pendingTravelerMatches:[],jetpackRemovalQueue:[]};
+let db = {clients:[],trips:[],vendors:[],bizVendors:[],planner:[],bookmarks:[],savedReports:[],groups:[],marketingPlan:[],pendingImportMatches:[],pendingTravelerMatches:[],jetpackRemovalQueue:[],reportTotals:{}};
 const UNDO_STACK = [];
 const MAX_UNDO = 20;
 function snapshot(label){
@@ -1702,6 +1702,14 @@ function loadDB(){
     db.marketingPlan=Array.isArray(d.marketingPlan)?d.marketingPlan:[];
     db.pendingImportMatches=Array.isArray(d.pendingImportMatches)?d.pendingImportMatches:[];
     db.pendingTravelerMatches=Array.isArray(d.pendingTravelerMatches)?d.pendingTravelerMatches:[];
+    // Latest-known figure per auto-detected QuickBooks report (see
+    // extractAndStoreReportTotal) — e.g. reportTotals.endOfDaySales for the
+    // "Yesterday's Collections" dashboard tile. Purely a display cache that
+    // re-populates itself off the next incoming report email, so a missing/
+    // malformed value here is never worth failing a restore over — same
+    // reasoning as the other defensive Array.isArray(...)?...:[] guards on
+    // this page, just for a plain object instead of an array.
+    db.reportTotals=(d.reportTotals && typeof d.reportTotals==='object' && !Array.isArray(d.reportTotals))?d.reportTotals:{};
     // Clients unmarked as Subscriber that still need manual removal in WP
     // Admin — see the "Jetpack Manual-Removal Queue" comment near
     // flagJetpackManualRemoval() for why this can't be automated.
@@ -8414,6 +8422,87 @@ async function cleanAndImportRevenuePdfEmail(arrayBuffer, filename){
   }
   startRevenueImport(revenueRows, extractionSkipped, true);
 }
+// Every known "just show me the grand total" report this inbox can receive,
+// each identified by matching its title text against every PDF attachment
+// found (see extractAndStoreReportTotal) — distinct from the Sales by
+// Customer Detail report above, which is parsed for its full line-item
+// table rather than a single number. key indexes db.reportTotals;
+// dashboardLabel is shown on the matching Dashboard stat tile.
+const REPORT_TOTAL_CONFIGS = [
+  { key:'endOfDaySales',  titleMatch:/end of day sales report/i, dashboardLabel:"Yesterday's Collections" },
+  { key:'arAgingSummary', titleMatch:/a\/?r\s*aging\s*summary/i, dashboardLabel:'Total A/R' }
+];
+// Same per-page text-item extraction extractRevenueTableFromPdf uses, just
+// returning every row across every page as one flat, reading-order list
+// instead of classifying them into named columns — these "grand total"
+// reports aren't a fixed table shape, so there's nothing to classify.
+async function extractAllPdfRows(arrayBuffer, password){
+  var pdfjsLib = await loadPdfJs();
+  var pdf = await pdfjsLib.getDocument({data:arrayBuffer, password:password}).promise;
+  var allRows = [];
+  for(var p=1; p<=pdf.numPages; p++){
+    var page = await pdf.getPage(p);
+    var content = await page.getTextContent();
+    var items = content.items.map(function(it){
+      var tr = it.transform;
+      return {str:it.str, x:tr[4], y:tr[5], w:it.width};
+    });
+    allRows = allRows.concat(groupPdfItemsIntoRows(items));
+  }
+  return allRows;
+}
+// QuickBooks prints a grand-total row at the very end of both an End of Day
+// Sales Report and an A/R Aging Summary — reading the sample report this was
+// built from, that row's leftmost cell is the bare word "TOTAL" (as opposed
+// to a per-group subtotal like "Total Chase", whose label has more text
+// after "Total"), and the actual figure is always the rightmost cell on that
+// same row — the Amount column on the sales report, the Total column (the
+// last of the aging buckets) on the aging summary. Scans every row for that
+// exact-"TOTAL" label and keeps the LAST match (top-to-bottom, across every
+// page) rather than the first, since a per-page or per-group "TOTAL"-only
+// row can appear before the real grand total at the very end.
+function extractGrandTotalFromPdfRows(rows){
+  var totalRows = rows.filter(function(row){
+    var sorted = row.items.slice().sort(function(a,b){return a.x-b.x;});
+    return sorted.length && sorted[0].str.trim().toUpperCase()==='TOTAL';
+  });
+  if(!totalRows.length) return null;
+  var lastRow = totalRows[totalRows.length-1];
+  var sorted = lastRow.items.slice().sort(function(a,b){return a.x-b.x;});
+  var rightmost = sorted[sorted.length-1];
+  if(!rightmost) return null;
+  var num = parseFloat(rightmost.str.replace(/[^0-9.\-]/g,''));
+  return isNaN(num) ? null : num;
+}
+// Checks one PDF attachment against every REPORT_TOTAL_CONFIGS entry (by
+// title text found near the top of the document) and, on a match, stores its
+// grand total for the matching Dashboard tile. Deliberately silent/no-op —
+// not an error — when a PDF matches none of them (e.g. it's the Sales by
+// Customer Detail report cleanAndImportRevenuePdfEmail already handles, or
+// some other attachment entirely), since a single email can carry several
+// different report PDFs at once and this only needs to catch the ones it
+// recognizes. `asOf` is read verbatim from whatever line immediately follows
+// the report's title (its own date/date-range line) rather than parsed into
+// a real date — the two report types format that line differently ("September
+// 1, 2026" vs "As of September 2, 2026"), and showing it verbatim is both
+// simpler and always faithful to what the report itself says.
+async function extractAndStoreReportTotal(arrayBuffer, filename){
+  var rows = await extractAllPdfRows(arrayBuffer, REVENUE_REPORT_PDF_PASSWORD);
+  if(!rows.length) return;
+  function rowText(row){ return row.items.slice().sort(function(a,b){return a.x-b.x;}).map(function(it){return it.str;}).join(' '); }
+  var titleRowIdx = rows.slice(0,10).findIndex(function(row){
+    return REPORT_TOTAL_CONFIGS.some(function(c){ return c.titleMatch.test(rowText(row)); });
+  });
+  if(titleRowIdx===-1){ debugLog('Report-total extraction: "'+filename+'" did not match any known report title'); return; }
+  var config = REPORT_TOTAL_CONFIGS.find(function(c){ return c.titleMatch.test(rowText(rows[titleRowIdx])); });
+  var total = extractGrandTotalFromPdfRows(rows);
+  if(total===null){ debugLog('Report-total extraction: found "'+config.dashboardLabel+'" in "'+filename+'" but no TOTAL row was found'); return; }
+  var asOfLine = rows[titleRowIdx+1] ? rowText(rows[titleRowIdx+1]).trim() : '';
+  db.reportTotals = db.reportTotals || {};
+  db.reportTotals[config.key] = {amount:total, asOf:asOfLine||('received '+today()), label:config.dashboardLabel};
+  saveDB();
+  debugLog('Report-total extraction: "'+config.dashboardLabel+'" = '+total+' (from "'+filename+'")');
+}
 async function checkForNewRevenueReportEmails(silent){
   try{
     var token = await getValidMsToken(false);
@@ -8472,15 +8561,39 @@ async function checkForNewRevenueReportEmails(silent){
         var ar = await fetch(attUrl, {headers:{Authorization:'Bearer '+token}});
         var ad = await ar.json();
         if(!ar.ok){ debugLog('Revenue report email: attachment fetch error - '+(ad.error&&ad.error.message||ar.status)); continue; }
-        var pdfAtt = (ad.value||[]).find(function(a){
+        // "Report(s)" in REVENUE_REPORT_EMAIL_SUBJECTS is plural for a
+        // reason — this email can carry more than one report PDF at once
+        // (the Sales by Customer Detail line-item table alongside an End of
+        // Day Sales Report and/or an A/R Aging Summary), so every PDF
+        // attachment is processed independently rather than stopping at the
+        // first one found.
+        var pdfAtts = (ad.value||[]).filter(function(a){
           return a['@odata.type']==='#microsoft.graph.fileAttachment' &&
             ((a.contentType||'').toLowerCase()==='application/pdf' || /\.pdf$/i.test(a.name||''));
         });
-        if(!pdfAtt){ debugLog('Revenue report email: no PDF attachment found on "'+msg.subject+'"'); continue; }
-        var bin = atob(pdfAtt.contentBytes);
-        var bytes = new Uint8Array(bin.length);
-        for(var bi=0; bi<bin.length; bi++) bytes[bi]=bin.charCodeAt(bi);
-        await cleanAndImportRevenuePdfEmail(bytes.buffer, pdfAtt.name||'revenue-report.pdf');
+        if(!pdfAtts.length){ debugLog('Revenue report email: no PDF attachment found on "'+msg.subject+'"'); continue; }
+        for(var pai=0; pai<pdfAtts.length; pai++){
+          var pdfAtt = pdfAtts[pai];
+          var pdfName = pdfAtt.name||'revenue-report.pdf';
+          var bin = atob(pdfAtt.contentBytes);
+          var bytes = new Uint8Array(bin.length);
+          for(var bi=0; bi<bin.length; bi++) bytes[bi]=bin.charCodeAt(bi);
+          // Each attempt gets its own fresh copy of the bytes — pdf.js's
+          // getDocument() isn't guaranteed not to consume/transfer the
+          // buffer it's handed, so reusing one buffer across two independent
+          // parse attempts on the same attachment risked the second one
+          // silently failing on an already-detached ArrayBuffer.
+          try{
+            await cleanAndImportRevenuePdfEmail(bytes.buffer.slice(0), pdfName);
+          }catch(revErr){
+            debugLog('Revenue report email: "'+pdfName+'" is not a Sales by Customer Detail report ('+revErr.message+') — trying known report-total formats instead');
+          }
+          try{
+            await extractAndStoreReportTotal(bytes.buffer.slice(0), pdfName);
+          }catch(totErr){
+            debugLog('Report-total extraction failed for "'+pdfName+'": '+totErr.message);
+          }
+        }
       }catch(attErr){
         debugLog('Revenue report email: import failed for "'+msg.subject+'" — '+attErr.message);
         console.error(attErr);
@@ -12292,6 +12405,13 @@ function renderDash(){
     ccRevenue:db.trips.filter(isCreditCardConsultingTrip).reduce(function(a,t){return a+(t.totalValue||0);},0),
     referralRevenue:db.trips.filter(isReferralIncomeTrip).reduce(function(a,t){return a+(t.totalValue||0);},0)
   };
+  // Latest figures auto-extracted from incoming "Report(s) from Miles Man"
+  // emails — see extractAndStoreReportTotal(). Absent (both undefined) until
+  // the first matching report email is processed; the tile then shows "—"
+  // rather than $0.00, since a missing report isn't the same thing as an
+  // actual zero.
+  var eodReport = (db.reportTotals||{}).endOfDaySales;
+  var arReport = (db.reportTotals||{}).arAgingSummary;
   // Dashboard's "Upcoming & In Progress" widget: excludes non-travel income
   // (Referrals/Credit Card Consulting have no travel dates, so they'd never
   // belong here anyway) and anything not currently 'inTrip' or 'upcoming'
@@ -12345,6 +12465,8 @@ function renderDash(){
       '<div class="stat" id="stat-dash-upcoming"><div class="stat-lbl">Upcoming</div><div class="stat-val">'+s.upcoming+'</div></div>'+
       '<div class="stat" id="stat-dash-value"><div class="stat-lbl">Total Revenue</div><div class="stat-val">$'+money(s.value)+'</div></div>'+
       '<div class="stat" id="stat-dash-pts"><div class="stat-lbl">Points deployed</div><div class="stat-val">'+fmt(s.pts)+'</div></div>'+
+      '<div class="stat" id="stat-dash-eod-collections" title="'+(eodReport?escHtml(eodReport.asOf):'No End of Day Sales Report received yet')+'"><div class="stat-lbl">Yesterday\'s Collections</div><div class="stat-val">'+(eodReport?'$'+money(eodReport.amount):'—')+'</div></div>'+
+      '<div class="stat" id="stat-dash-ar-total" title="'+(arReport?escHtml(arReport.asOf):'No A/R Aging Summary received yet')+'"><div class="stat-lbl">Total A/R</div><div class="stat-val">'+(arReport?'$'+money(arReport.amount):'—')+'</div></div>'+
       '<div class="stat" id="stat-dash-followers" style="cursor:pointer" title="Click to view blog followers"><div class="stat-lbl">Blog Followers</div><div class="stat-val" id="dash-followers-val">—</div></div>'+
       '<div class="stat" id="stat-dash-ig-followers" style="cursor:pointer" title="Click to view Instagram analytics"><div class="stat-lbl">Instagram Followers</div><div class="stat-val" id="dash-ig-followers-val">—</div></div>'+
       '<div class="stat" id="stat-dash-x-followers" style="cursor:pointer" title="Click to view X analytics"><div class="stat-lbl">X Followers</div><div class="stat-val" id="dash-x-followers-val">—</div><div id="dash-x-followers-delta"></div></div>'+
