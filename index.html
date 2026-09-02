@@ -16796,7 +16796,7 @@ function marketingPlanListHtml(){
 const MARKETING_AI_CHANNEL_GUIDE = {
   'Email':         'a subject line plus a full email body',
   'Social Media':  'a caption plus 3-5 relevant hashtags',
-  'Blog Post':     'a title plus a short outline (headings with 1-2 sentences under each)',
+  'Blog Post':     'a complete, publish-ready blog post structured in Markdown for both traditional SEO and GEO (Generative Engine Optimization — being clearly quotable/citable by AI answer engines like ChatGPT, Perplexity, and Google AI Overviews): one "# " title line, then an opening paragraph of about 140-160 characters written so it can double as the page meta description, then 3-5 "## " sections each with 2-4 sentences of direct, factual, quotable statements (not vague marketing fluff), and a closing "## Frequently Asked Questions" section with 2-3 "### " questions travelers would actually ask, each followed by a short direct-answer paragraph. Naturally work in the title\'s main topic/keyword a few times without stuffing.',
   'Facebook Ad':   'primary text, a headline, and a description, per Meta ad copy conventions',
   'Google Ad':     '3 headline variations (max 30 characters each) and 2 description variations (max 90 characters each), per Google Search Ads conventions',
   'Print':         'short flyer/postcard copy — a headline plus 2-3 sentences of body copy',
@@ -16842,11 +16842,19 @@ function marketingAiDraftRequest(item, reviseFrom, instruction){
     messages.push({role:'assistant', content:reviseFrom});
     messages.push({role:'user', content:'Revise the draft above with these changes, keeping everything else:\n\n'+instruction});
   }
+  // Every other channel is plain text (it's going straight into an email/
+  // social/ad field, or a textarea a human reads) — Blog Post is the one
+  // exception, since saveMarketingDraftToWordPress needs real "# "/"## "
+  // markers to build actual <h2>/<h3> tags and an FAQPage schema when
+  // publishing, not just visual formatting.
+  var formatRule = (item.channel==='Blog Post')
+    ? 'Format the output in Markdown exactly as specified above (a single "# " title line, blank lines between paragraphs, "## "/"### " headings) so it can be converted into real HTML headings when published — not just visually bolded plain text.'
+    : 'Plain text only, no markdown formatting.';
   return fetch(DRIVE_AUTH_SERVER+'/api/claude-messages', {
     method:'POST',
     headers:{'Content-Type':'application/json'},
     body: JSON.stringify({
-      system: 'You are a marketing copywriter for a small travel/cruise agency (Miles Man Travel). Given one item from the agency\'s marketing plan, write '+guide+'. This item\'s target group is "'+targetGroup+'" — write for '+audienceGuide+'. Be specific and ready-to-use, not generic filler — reference cruises/travel where it fits naturally. Plain text only, no markdown formatting.',
+      system: 'You are a marketing copywriter for a small travel/cruise agency (Miles Man Travel). Given one item from the agency\'s marketing plan, write '+guide+'. This item\'s target group is "'+targetGroup+'" — write for '+audienceGuide+'. Be specific and ready-to-use, not generic filler — reference cruises/travel where it fits naturally. '+formatRule,
       messages: messages
     })
   }).then(function(r){ return r.json(); }).then(function(data){
@@ -16876,12 +16884,143 @@ function draftMarketingPlanItemWithAI(id){
     $('modal-cancel').addEventListener('click', closeModal);
   });
 }
-// Creates a WordPress **draft** post from a Blog Post plan item's draft,
-// via the self-hosted REST API with the same Application Password the
-// Jetpack auto-subscribe feature stores (Analytics tab → "Set Up
-// Auto-Subscribe"). Never publishes — status is always 'draft', so it
-// lands in wp-admin for a human to review and publish.
-function saveMarketingDraftToWordPress(item, text, btn){
+// Converts the AI draft's Markdown ("# "/"## "/"### " headings, blank-line
+// paragraphs — see MARKETING_AI_CHANNEL_GUIDE['Blog Post']) into real HTML
+// for WordPress, since real <h2>/<h3> tags (not just visually bold text) are
+// what both traditional SEO crawlers and GEO/AI answer engines actually
+// parse a page's structure from. The lone "# " title line is dropped rather
+// than rendered — the WordPress post's own title field already carries it,
+// so keeping it in the body would just duplicate it as an <h1>.
+// Also collects Q&A pairs found under a "## Frequently Asked Questions"
+// section into a schema.org FAQPage JSON-LD block appended to the content —
+// structured Q&A data is one of the most direct GEO levers there is, since
+// it's exactly the shape an AI answer engine (or Google's own rich results)
+// extracts a quotable answer from. Returns {html, excerpt, faqCount} —
+// `excerpt` is the first body paragraph (written to run ~140-160 characters
+// per the channel guide), used as both the WordPress excerpt and a stand-in
+// meta description.
+function blogMarkdownToHtml(md){
+  var lines = (md||'').split(/\r?\n/);
+  var htmlParts = [];
+  var para = [];
+  var faqs = [];
+  var inFaqSection = false;
+  var sawH2 = false;
+  var excerpt = '';
+  var currentQuestion = null;
+  var currentAnswerParts = [];
+  function flushPara(){
+    if(!para.length) return;
+    var text = para.join(' ').trim();
+    para = [];
+    if(!text) return;
+    if(inFaqSection && currentQuestion){ currentAnswerParts.push(text); return; }
+    if(!sawH2 && !excerpt) excerpt = text;
+    htmlParts.push('<p>'+escHtml(text)+'</p>');
+  }
+  function flushFaqAnswer(){
+    if(!currentQuestion) return;
+    var answer = currentAnswerParts.join(' ').trim();
+    currentAnswerParts = [];
+    if(answer) faqs.push({q:currentQuestion, a:answer});
+    currentQuestion = null;
+  }
+  lines.forEach(function(line){
+    var trimmed = line.trim();
+    if(!trimmed){ flushPara(); return; }
+    var h1 = trimmed.match(/^#\s+(.*)/);
+    var h2 = trimmed.match(/^##\s+(.*)/);
+    var h3 = trimmed.match(/^###\s+(.*)/);
+    if(h1){ flushPara(); return; }
+    if(h2){
+      flushPara(); flushFaqAnswer();
+      sawH2 = true;
+      inFaqSection = /frequently asked questions|^faq\b/i.test(h2[1]);
+      htmlParts.push('<h2>'+escHtml(h2[1])+'</h2>');
+      return;
+    }
+    if(h3){
+      flushPara();
+      if(inFaqSection){ flushFaqAnswer(); currentQuestion = h3[1]; }
+      else htmlParts.push('<h3>'+escHtml(h3[1])+'</h3>');
+      return;
+    }
+    para.push(trimmed);
+  });
+  flushPara(); flushFaqAnswer();
+  if(faqs.length){
+    faqs.forEach(function(f){ htmlParts.push('<h3>'+escHtml(f.q)+'</h3><p>'+escHtml(f.a)+'</p>'); });
+    var schema = {
+      '@context':'https://schema.org', '@type':'FAQPage',
+      mainEntity: faqs.map(function(f){ return {'@type':'Question', name:f.q, acceptedAnswer:{'@type':'Answer', text:f.a}}; })
+    };
+    htmlParts.push('<script type="application/ld+json">'+JSON.stringify(schema)+'</script>');
+  }
+  return {html: htmlParts.join('\n'), excerpt: excerpt, faqCount: faqs.length};
+}
+// Trims to a word boundary rather than mid-word, for a WordPress
+// excerpt/meta-description field that reads cleanly if the AI's intro
+// paragraph runs a bit over the requested length.
+function trimExcerpt(text, max){
+  if(!text || text.length<=max) return text||'';
+  var cut = text.slice(0, max);
+  var lastSpace = cut.lastIndexOf(' ');
+  return (lastSpace>0 ? cut.slice(0,lastSpace) : cut).trim()+'…';
+}
+function slugifyTitle(title){
+  return (title||'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,75);
+}
+// A data: URL (e.g. canvas.toDataURL()) as a Blob, for a binary media
+// upload — fetch()'s body can't take a data: URL directly.
+function dataUrlToBlob(dataUrl){
+  var parts = dataUrl.split(',');
+  var mimeMatch = parts[0].match(/:(.*?);/);
+  var binary = atob(parts[1]);
+  var arr = new Uint8Array(binary.length);
+  for(var i=0;i<binary.length;i++) arr[i] = binary.charCodeAt(i);
+  return new Blob([arr], {type: mimeMatch ? mimeMatch[1] : 'image/png'});
+}
+// Uploads the Marketing Plan's AI-drafted graphic (drawMarketingGraphicCanvas)
+// to the WordPress media library so it can be both the post's featured image
+// and an inline image in the body — alt text (set via a follow-up PATCH,
+// since a raw-binary upload POST has no field for it) is real on-page SEO,
+// not just decoration. Resolves {id, url}; the caller decides what to do if
+// this rejects (saveMarketingDraftToWordPress still publishes without the
+// image rather than failing the whole save).
+function uploadMarketingGraphicToWordPress(creds, dataUrl, item){
+  var filename = 'marketing-'+item.id+'.png';
+  return fetch('https://'+WP_SITE+'/wp-json/wp/v2/media', {
+    method:'POST',
+    headers:{
+      'Content-Type':'image/png',
+      'Content-Disposition':'attachment; filename="'+filename+'"',
+      'Authorization':'Basic '+btoa(creds.user+':'+creds.pass)
+    },
+    body: dataUrlToBlob(dataUrl)
+  }).then(function(r){ return r.json().then(function(d){ return {ok:r.ok, status:r.status, d:d}; }); }).then(function(res){
+    if(!res.ok || res.d.code) throw new Error((res.d && res.d.message) || ('HTTP '+res.status+' uploading image'));
+    var media = {id: res.d.id, url: res.d.source_url};
+    var altText = item.title || 'Miles Man Travel';
+    return fetch('https://'+WP_SITE+'/wp-json/wp/v2/media/'+media.id, {
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Basic '+btoa(creds.user+':'+creds.pass)},
+      body: JSON.stringify({alt_text: altText, caption: item.title||'', title: item.title||filename})
+    }).catch(function(){ /* alt-text patch failing shouldn't block using the already-uploaded image */ }).then(function(){ return media; });
+  });
+}
+// Creates a WordPress **draft** post from a Blog Post plan item's draft, via
+// the self-hosted REST API with the same Application Password the Jetpack
+// auto-subscribe feature stores (Analytics tab → "Set Up Auto-Subscribe").
+// Never publishes — status is always 'draft', so it lands in wp-admin for a
+// human to review and publish. When `canvas` is passed (the modal's
+// drawMarketingGraphicCanvas output, once its logo has finished drawing —
+// see renderMarketingAiDraftModal), uploads it as a real WordPress image
+// first and sets it as both the post's featured image and an inline <img>,
+// rather than leaving the post as text-only. Sets excerpt/slug and a
+// best-effort Yoast SEO meta description/title (WordPress silently ignores
+// unknown meta keys, so this never breaks the save even on a site that
+// hasn't exposed those fields to REST — see Yoast's own settings).
+function saveMarketingDraftToWordPress(item, text, btn, canvas){
   var creds = getJetpackSubCreds();
   if(!creds){
     toast('Connect WordPress first — Analytics tab → WordPress.com / Jetpack card → "Set Up Auto-Subscribe" (it stores the Application Password this uses)','err');
@@ -16891,37 +17030,55 @@ function saveMarketingDraftToWordPress(item, text, btn){
   // as long as that post still exists and is still a draft.
   var current = db.marketingPlan.find(function(x){return x.id===item.id;}) || item;
   var existingId = current.wpDraftId;
-  var url = 'https://'+WP_SITE+'/wp-json/wp/v2/posts'+(existingId?('/'+existingId):'');
   if(btn){ btn.disabled = true; btn.textContent = existingId ? 'Updating draft…' : 'Saving to WordPress…'; }
-  fetch(url, {
-    method:'POST',
-    headers:{
-      'Content-Type':'application/json',
-      'Authorization':'Basic '+btoa(creds.user+':'+creds.pass)
-    },
-    body: JSON.stringify({
-      title: item.title || 'Untitled draft',
-      content: text.replace(/\n/g,'<br>\n'),
-      status: 'draft'
-    })
-  }).then(function(r){ return r.json().then(function(d){ return {ok:r.ok, status:r.status, d:d}; }); }).then(function(res){
-    // A stale wpDraftId (post trashed/published) 404s or 403s — retry once as a fresh create.
-    if((res.status===404 || res.status===403) && existingId){
-      return fetch('https://'+WP_SITE+'/wp-json/wp/v2/posts', {
-        method:'POST',
-        headers:{'Content-Type':'application/json','Authorization':'Basic '+btoa(creds.user+':'+creds.pass)},
-        body: JSON.stringify({title:item.title||'Untitled draft', content:text.replace(/\n/g,'<br>\n'), status:'draft'})
-      }).then(function(r){ return r.json().then(function(d){ return {ok:r.ok, status:r.status, d:d}; }); });
-    }
-    return res;
-  }).then(function(res){
-    if(!res.ok || res.d.code) throw new Error((res.d && res.d.message) || ('HTTP '+res.status+' creating draft'));
-    var editUrl = 'https://'+WP_SITE+'/wp-admin/post.php?post='+res.d.id+'&action=edit';
-    db.marketingPlan = db.marketingPlan.map(function(x){ return x.id===item.id ? Object.assign({},x,{wpDraftId:res.d.id}) : x; });
-    saveDB();
-    toast(existingId ? 'WordPress draft updated — opening editor' : 'WordPress draft created — opening editor','ok');
-    window.open(editUrl, '_blank', 'noopener');
-    if(btn){ btn.disabled = false; btn.textContent = 'Update WordPress Draft'; }
+
+  var formatted = blogMarkdownToHtml(text);
+  var postBodyBase = {
+    title: item.title || 'Untitled draft',
+    excerpt: trimExcerpt(formatted.excerpt, 155),
+    slug: slugifyTitle(item.title),
+    status: 'draft',
+    meta: { _yoast_wpseo_metadesc: trimExcerpt(formatted.excerpt, 155), _yoast_wpseo_title: item.title||'' }
+  };
+
+  var imageStep = canvas
+    ? uploadMarketingGraphicToWordPress(creds, canvas.toDataURL('image/png'), item).catch(function(e){
+        debugLog('Marketing graphic upload to WordPress failed, publishing without it: '+e.message);
+        return null;
+      })
+    : Promise.resolve(null);
+
+  imageStep.then(function(image){
+    var postBody = Object.assign({}, postBodyBase, {
+      content: image
+        ? '<img src="'+escHtml(image.url)+'" alt="'+escHtml(item.title||'')+'" style="max-width:100%;height:auto" />\n\n'+formatted.html
+        : formatted.html
+    });
+    if(image) postBody.featured_media = image.id;
+    var url = 'https://'+WP_SITE+'/wp-json/wp/v2/posts'+(existingId?('/'+existingId):'');
+    return fetch(url, {
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Basic '+btoa(creds.user+':'+creds.pass)},
+      body: JSON.stringify(postBody)
+    }).then(function(r){ return r.json().then(function(d){ return {ok:r.ok, status:r.status, d:d}; }); }).then(function(res){
+      // A stale wpDraftId (post trashed/published) 404s or 403s — retry once as a fresh create.
+      if((res.status===404 || res.status===403) && existingId){
+        return fetch('https://'+WP_SITE+'/wp-json/wp/v2/posts', {
+          method:'POST',
+          headers:{'Content-Type':'application/json','Authorization':'Basic '+btoa(creds.user+':'+creds.pass)},
+          body: JSON.stringify(postBody)
+        }).then(function(r){ return r.json().then(function(d){ return {ok:r.ok, status:r.status, d:d}; }); });
+      }
+      return res;
+    }).then(function(res){
+      if(!res.ok || res.d.code) throw new Error((res.d && res.d.message) || ('HTTP '+res.status+' creating draft'));
+      var editUrl = 'https://'+WP_SITE+'/wp-admin/post.php?post='+res.d.id+'&action=edit';
+      db.marketingPlan = db.marketingPlan.map(function(x){ return x.id===item.id ? Object.assign({},x,{wpDraftId:res.d.id}) : x; });
+      saveDB();
+      toast((existingId ? 'WordPress draft updated' : 'WordPress draft created')+(image?' with graphic':'')+' — opening editor','ok');
+      window.open(editUrl, '_blank', 'noopener');
+      if(btn){ btn.disabled = false; btn.textContent = 'Update WordPress Draft'; }
+    });
   }).catch(function(e){
     toast('Could not save WordPress draft: '+e.message,'err');
     if(btn){ btn.disabled = false; btn.textContent = existingId ? 'Update WordPress Draft' : 'Save as WordPress Draft'; }
@@ -16943,7 +17100,7 @@ function renderMarketingAiDraftModal(item, text){
         '<canvas id="mp-ai-graphic" style="width:220px;height:220px;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.25);background:#0b2545"></canvas>'+
         '<div style="display:flex;flex-direction:column;gap:8px">'+
           '<button class="cancel-btn" id="mp-ai-graphic-download" disabled>Download Graphic (PNG)</button>'+
-          '<div style="font-size:11px;color:#888;max-width:220px">Branded template graphic built locally from your logo/colors — no AI image generator involved, so it won\'t have that "AI-generated" look.</div>'+
+          '<div style="font-size:11px;color:#888;max-width:220px">Branded template graphic built locally from your logo/colors — no AI image generator involved, so it won\'t have that "AI-generated" look.'+(isBlog?' Included automatically as the featured + inline image when you save this to WordPress.':'')+'</div>'+
         '</div>'+
       '</div>', true)+
     '</div>'+
@@ -16974,7 +17131,16 @@ function renderMarketingAiDraftModal(item, text){
     });
   });
   var wpBtn = $('mp-ai-wp');
-  if(wpBtn) wpBtn.addEventListener('click', function(){ saveMarketingDraftToWordPress(item, $('mp-ai-draft').value, this); });
+  if(wpBtn) wpBtn.addEventListener('click', function(){
+    // Read the graphic's ready state at click time (not registration time —
+    // the ✨-generated canvas draws asynchronously): the Download button only
+    // enables once drawMarketingGraphicCanvas's onReady fires, so that's the
+    // signal the canvas actually has real pixels (including the logo) ready
+    // to upload rather than still-blank.
+    var graphicBtn = $('mp-ai-graphic-download');
+    var canvas = (graphicBtn && !graphicBtn.disabled) ? $('mp-ai-graphic') : null;
+    saveMarketingDraftToWordPress(item, $('mp-ai-draft').value, this, canvas);
+  });
   $('mp-ai-insert').addEventListener('click', function(){
     snapshot('AI-draft marketing plan item');
     var draftText = $('mp-ai-draft').value;
