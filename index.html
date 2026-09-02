@@ -16899,6 +16899,14 @@ function draftMarketingPlanItemWithAI(id){
 // `excerpt` is the first body paragraph (written to run ~140-160 characters
 // per the channel guide), used as both the WordPress excerpt and a stand-in
 // meta description.
+// Same 'Times New Roman' branded serif this CRM already uses for every other
+// piece of outbound client-facing content (quote emails, referral
+// certificates — see the `hf` variable in referralCertificateHtml) — applied
+// here as an inline style so an AI-drafted post visually matches the site's
+// established branded look rather than whatever the WordPress theme's
+// default body font happens to be. Purely cosmetic: it doesn't touch the
+// underlying <h2>/<h3>/<p> tags SEO/GEO structure relies on.
+var BLOG_BRAND_FONT = "font-family:'Times New Roman',Times,serif;";
 function blogMarkdownToHtml(md){
   var lines = (md||'').split(/\r?\n/);
   var htmlParts = [];
@@ -16916,7 +16924,7 @@ function blogMarkdownToHtml(md){
     if(!text) return;
     if(inFaqSection && currentQuestion){ currentAnswerParts.push(text); return; }
     if(!sawH2 && !excerpt) excerpt = text;
-    htmlParts.push('<p>'+escHtml(text)+'</p>');
+    htmlParts.push('<p style="'+BLOG_BRAND_FONT+'font-size:16px;line-height:1.6;color:#222">'+escHtml(text)+'</p>');
   }
   function flushFaqAnswer(){
     if(!currentQuestion) return;
@@ -16936,20 +16944,20 @@ function blogMarkdownToHtml(md){
       flushPara(); flushFaqAnswer();
       sawH2 = true;
       inFaqSection = /frequently asked questions|^faq\b/i.test(h2[1]);
-      htmlParts.push('<h2>'+escHtml(h2[1])+'</h2>');
+      htmlParts.push('<h2 style="'+BLOG_BRAND_FONT+'color:#111">'+escHtml(h2[1])+'</h2>');
       return;
     }
     if(h3){
       flushPara();
       if(inFaqSection){ flushFaqAnswer(); currentQuestion = h3[1]; }
-      else htmlParts.push('<h3>'+escHtml(h3[1])+'</h3>');
+      else htmlParts.push('<h3 style="'+BLOG_BRAND_FONT+'color:#111">'+escHtml(h3[1])+'</h3>');
       return;
     }
     para.push(trimmed);
   });
   flushPara(); flushFaqAnswer();
   if(faqs.length){
-    faqs.forEach(function(f){ htmlParts.push('<h3>'+escHtml(f.q)+'</h3><p>'+escHtml(f.a)+'</p>'); });
+    faqs.forEach(function(f){ htmlParts.push('<h3 style="'+BLOG_BRAND_FONT+'color:#111">'+escHtml(f.q)+'</h3><p style="'+BLOG_BRAND_FONT+'font-size:16px;line-height:1.6;color:#222">'+escHtml(f.a)+'</p>'); });
     var schema = {
       '@context':'https://schema.org', '@type':'FAQPage',
       mainEntity: faqs.map(function(f){ return {'@type':'Question', name:f.q, acceptedAnswer:{'@type':'Answer', text:f.a}}; })
@@ -17008,6 +17016,24 @@ function uploadMarketingGraphicToWordPress(creds, dataUrl, item){
     }).catch(function(){ /* alt-text patch failing shouldn't block using the already-uploaded image */ }).then(function(){ return media; });
   });
 }
+// Standard sign-off block appended to the bottom of every AI-drafted Blog
+// Post sent to WordPress (see saveMarketingDraftToWordPress) — same branded
+// serif as the rest of the post body, italicized to read as a distinct
+// closing CTA rather than body copy, matching the reference footer image.
+// The three link URLs are the agency's own real pages, not guessed.
+var MARKETING_BLOG_FOOTER_HTML =
+  '<div style="margin-top:32px;padding-top:20px;border-top:1px solid #ddd">'+
+    '<p style="'+BLOG_BRAND_FONT+'font-weight:bold;font-size:16px;color:#222;margin:0 0 14px 0">Miles Man helps travelers:</p>'+
+    '<ul style="'+BLOG_BRAND_FONT+'font-style:italic;font-size:16px;line-height:1.6;color:#222;margin:0 0 16px 0;padding-left:24px">'+
+      '<li>maximize credit card benefits,</li>'+
+      '<li>strategically earn miles and points,</li>'+
+      '<li>book award and non-award travel,</li>'+
+      '<li>identify the best cards for their goals,</li>'+
+      '<li>avoid leaving valuable credits unused</li>'+
+    '</ul>'+
+    '<p style="'+BLOG_BRAND_FONT+'font-style:italic;font-size:16px;line-height:1.6;color:#222;margin:0 0 16px 0">In addition to <a href="https://themilesman.com/travel-for-free-using-miles-and-points/book-a-trip/">award travel services</a>, Miles Man also operates as a certified IATAN travel agency, helping clients book paid travel.</p>'+
+    '<p style="'+BLOG_BRAND_FONT+'font-style:italic;font-size:16px;line-height:1.6;color:#222;margin:0">Whether you need help choosing the right credit cards, understanding premium card benefits, or booking trips using points and miles, <a href="https://themilesman.com/contact/">reach out</a> to Miles Man for personalized assistance and a <a href="http://www.themilesman.com/contact">free 15-minute consultation</a>.</p>'+
+  '</div>';
 // Creates a WordPress **draft** post from a Blog Post plan item's draft, via
 // the self-hosted REST API with the same Application Password the Jetpack
 // auto-subscribe feature stores (Analytics tab → "Set Up Auto-Subscribe").
@@ -17049,10 +17075,11 @@ function saveMarketingDraftToWordPress(item, text, btn, canvas){
     : Promise.resolve(null);
 
   imageStep.then(function(image){
+    var bodyWithFooter = formatted.html+'\n'+MARKETING_BLOG_FOOTER_HTML;
     var postBody = Object.assign({}, postBodyBase, {
       content: image
-        ? '<img src="'+escHtml(image.url)+'" alt="'+escHtml(item.title||'')+'" style="max-width:100%;height:auto" />\n\n'+formatted.html
-        : formatted.html
+        ? '<img src="'+escHtml(image.url)+'" alt="'+escHtml(item.title||'')+'" style="max-width:100%;height:auto" />\n\n'+bodyWithFooter
+        : bodyWithFooter
     });
     if(image) postBody.featured_media = image.id;
     var url = 'https://'+WP_SITE+'/wp-json/wp/v2/posts'+(existingId?('/'+existingId):'');
