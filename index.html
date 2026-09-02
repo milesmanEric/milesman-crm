@@ -11557,8 +11557,14 @@ function extractSupplierInfoFromHtml(html){
   }
   return info;
 }
-// Drives the Add Supplier form's "Paste a URL" → "Detect" button (see
-// vurl-detect-input/btn-vurl-detect above). Domain routing (property vs.
+var EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+var HOSTNAME_RE = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/i;
+// Drives the Add Supplier form's "Paste a URL or Email" → "Detect" button
+// (see vurl-detect-input/btn-vurl-detect above). Accepts either — an email
+// address is reduced to its domain and run through the exact same
+// domain-routing and page-fetch logic as a URL (a company's email domain
+// is generally its own website), with the pasted address itself also
+// carried through as a contact email. Domain routing (property vs.
 // independent supplier) happens first and doesn't need the fetch to
 // succeed; only the actual field pre-fill for an independent supplier (or
 // the property name, when a fetch does succeed) depends on it.
@@ -11566,10 +11572,22 @@ async function handleVendorUrlDetect(btn){
   var urlInput = document.getElementById('vurl-detect-input');
   var statusEl = document.getElementById('vurl-detect-status');
   var raw = (urlInput.value||'').trim();
-  if(!raw){ statusEl.textContent = 'Paste a URL first.'; statusEl.style.color = '#dc2626'; return; }
+  if(!raw){ statusEl.textContent = 'Paste a URL or email address first.'; statusEl.style.color = '#dc2626'; return; }
+
+  var emailAddr = EMAIL_RE.test(raw) ? raw : null;
   var url;
-  try{ url = new URL(/^https?:\/\//i.test(raw) ? raw : 'https://'+raw); }
-  catch(e){ statusEl.textContent = "That doesn't look like a valid URL."; statusEl.style.color = '#dc2626'; return; }
+  try{ url = new URL(/^https?:\/\//i.test(raw) ? raw : 'https://'+(emailAddr ? raw.split('@')[1] : raw)); }
+  catch(e){ url = null; }
+  // The URL constructor is lenient about garbage hosts (it just
+  // percent-encodes stray characters like spaces instead of rejecting
+  // them), so plain non-URL, non-email text would otherwise silently
+  // "succeed" as a nonsense hostname — check the hostname actually looks
+  // like a real domain (at least one dot, valid domain characters) too.
+  if(!url || !HOSTNAME_RE.test(url.hostname)){
+    statusEl.textContent = "That doesn't look like a valid URL or email address.";
+    statusEl.style.color = '#dc2626';
+    return;
+  }
 
   var brand = detectHotelBrandFromHost(url.hostname);
   statusEl.textContent = 'Looking up '+url.hostname+'...';
@@ -11594,17 +11612,40 @@ async function handleVendorUrlDetect(btn){
       statusEl.style.color = '#dc2626';
       return;
     }
+    // A brand's own corporate domain (a bare homepage URL, or a generic
+    // email like reservations@marriott.com) doesn't point to any specific
+    // property — nothing to name a new property after. Rather than create
+    // a useless property literally named "Marriott", fall back to saving
+    // the email as that Supplier's own general contact email instead.
+    if(guessedName.toLowerCase()===brand.toLowerCase()){
+      if(emailAddr && !vendor.email){
+        snapshot('Set supplier contact email from detect');
+        vendor.email = emailAddr;
+        saveDB();
+        statusEl.textContent = "That's "+brand+"'s general domain, not a specific property — saved as "+brand+"'s contact email instead.";
+        statusEl.style.color = '#374151';
+        toast(brand+"'s contact email updated");
+        setTimeout(closeModal, 1600);
+      }else{
+        statusEl.textContent = "That's "+brand+"'s general domain, not a specific property — paste a link to (or an email tied to) the specific property instead, or fill in the fields below by hand.";
+        statusEl.style.color = '#b45309';
+      }
+      return;
+    }
     vendor.properties = vendor.properties || [];
     var existing = vendor.properties.find(function(p){ return p.name.toLowerCase()===guessedName.toLowerCase(); });
     if(existing){
-      statusEl.textContent = '"'+guessedName+'" already exists as a '+brand+' property — nothing added.';
+      if(emailAddr && !existing.email){ snapshot('Add property email from detect'); existing.email = emailAddr; saveDB(); }
+      statusEl.textContent = '"'+guessedName+'" already exists as a '+brand+' property'+(emailAddr && existing.email===emailAddr ? ' — added the email to it.' : ' — nothing else added.');
       statusEl.style.color = '#374151';
       toast('That property already exists on '+brand);
     }else{
-      snapshot('Add supplier property from URL');
-      vendor.properties.push({id:'HP'+(vendor.properties.length+1), name:guessedName});
+      snapshot('Add supplier property from detect');
+      var newProp = {id:'HP'+(vendor.properties.length+1), name:guessedName};
+      if(emailAddr) newProp.email = emailAddr;
+      vendor.properties.push(newProp);
       saveDB();
-      statusEl.textContent = 'Added "'+guessedName+'" as a property under the existing '+brand+' supplier — no new supplier needed.';
+      statusEl.textContent = 'Added "'+guessedName+'" as a property under the existing '+brand+' supplier'+(emailAddr ? ' with that email attached' : '')+' — no new supplier needed.';
       statusEl.style.color = '#16a34a';
       toast('Added as a '+brand+' property');
       setTimeout(closeModal, 1600);
@@ -11617,6 +11658,7 @@ async function handleVendorUrlDetect(btn){
   // with no schema.org markup and no readable <title> only yields the
   // domain-derived name).
   document.getElementById('vn').value = guessedName;
+  if(emailAddr) document.getElementById('vem').value = emailAddr;
   if(info.phone) document.getElementById('vph').value = info.phone;
   document.getElementById('vwb').value = url.origin;
   if(info.category){
@@ -11627,7 +11669,7 @@ async function handleVendorUrlDetect(btn){
     var notesEl = document.getElementById('vno');
     notesEl.value = (notesEl.value ? notesEl.value+'\n' : '')+'Address (from '+url.hostname+'): '+info.address;
   }
-  statusEl.textContent = info.name ? 'Filled in from the page below — double-check before saving.' : 'Could not read details from that page — filled in what could be guessed from the URL; fill in the rest by hand.';
+  statusEl.textContent = info.name ? 'Filled in from the page below — double-check before saving.' : 'Could not read details from that page — filled in what could be guessed; fill in the rest by hand.';
   statusEl.style.color = info.name ? '#16a34a' : '#b45309';
 }
 function readVendorProperties(){
@@ -11678,9 +11720,9 @@ function openVendorForm(id){
     '<div class="fg">'+
       (id ? '' :
         '<div class="field full" style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px;margin-bottom:14px">'+
-          '<label>Paste a Property/Company URL <span class="hint" style="text-transform:none;font-weight:400">(optional — a known hotel brand\'s site adds a property to that existing supplier instead of creating a new one; anything else pre-fills the fields below)</span></label>'+
+          '<label>Paste a Property/Company URL or Email <span class="hint" style="text-transform:none;font-weight:400">(optional — a known hotel brand\'s site or email domain adds a property to that existing supplier instead of creating a new one; anything else pre-fills the fields below)</span></label>'+
           '<div style="display:flex;gap:6px;margin-top:4px">'+
-            '<input type="text" id="vurl-detect-input" placeholder="https://..." style="flex:1;padding:6px 8px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;font-family:inherit;box-sizing:border-box">'+
+            '<input type="text" id="vurl-detect-input" placeholder="https://... or email@example.com" style="flex:1;padding:6px 8px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;font-family:inherit;box-sizing:border-box">'+
             '<button type="button" id="btn-vurl-detect" style="padding:6px 14px;border-radius:6px;border:1px solid #2563eb;background:#2563eb;color:#fff;cursor:pointer;font-size:12px;font-family:inherit;white-space:nowrap">Detect</button>'+
           '</div>'+
           '<div id="vurl-detect-status" style="font-size:11px;color:#888;margin-top:4px"></div>'+
