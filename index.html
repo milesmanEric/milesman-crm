@@ -1821,6 +1821,30 @@ var _dbSaveChain = Promise.resolve();
 // import (see driveRestore()/secureSyncRestore()/importJSON()) is what
 // clears it, since that's the point a real recovery has actually happened.
 var _dbDecryptFailed = false;
+// A device's automatic Drive backups (the 5-minute interval, tab-hide, and
+// page-unload triggers — see startAutosave()) upload whatever `db`
+// currently holds in memory, with no human in the loop to notice if
+// that's wrong. Twice now (Sept 1, and again today), something emptied out
+// `db` in memory mid-session for a reason never pinned down, and the very
+// next silent auto-backup then dutifully overwrote the real Drive backup
+// with that emptiness — the actual mechanism behind both incidents, not
+// just a coincidence of timing. This tracks the record counts last known
+// to be real (updated on every save) so an automatic backup can refuse to
+// persist a suspicious drop to zero, regardless of what caused it —
+// closing the hole even without knowing why `db` emptied in the first
+// place.
+var LAST_GOOD_COUNTS_KEY = 'mm_last_good_counts';
+function recordGoodDbCounts(){
+  if(db.clients.length===0 && db.trips.length===0) return; // nothing to raise the high-water mark with
+  try{ localStorage.setItem(LAST_GOOD_COUNTS_KEY, JSON.stringify({clients:db.clients.length, trips:db.trips.length})); }catch(e){}
+}
+function dbAppearsWiped(){
+  if(db.clients.length>0 || db.trips.length>0) return false;
+  try{
+    var last = JSON.parse(localStorage.getItem(LAST_GOOD_COUNTS_KEY)||'null');
+    return !!(last && (last.clients>0 || last.trips>0));
+  }catch(e){ return false; }
+}
 function saveDB(){
   if(_dbDecryptFailed){
     console.error('[CRM] Refusing to save — this device could not decrypt its existing data, and saving now would overwrite it before you can recover it. Use Restore from Google Drive, Secure Sync: Load, or the local Restore (JSON file import) to recover — any of those will clear this and allow saving again.');
@@ -1828,6 +1852,7 @@ function saveDB(){
   }
   try{
     var json = JSON.stringify(db);
+    recordGoodDbCounts();
     _dbSaveChain = _dbSaveChain.then(function(){
       return encryptDbJson(json);
     }).then(function(encoded){
@@ -2161,6 +2186,7 @@ async function loadDB(){
       saveDB();
       console.log('[CRM] Created '+mpTasksBackfilled+' Planner task(s) for existing Marketing Plan items');
     }
+    recordGoodDbCounts(); // seeds the wipe-guard baseline immediately, before any save this session
     debugLog('loadDB: loaded successfully — '+db.clients.length+' clients, '+db.trips.length+' trips, '+db.vendors.length+' suppliers');
   }catch(e){
     // Decrypted fine, but what came out wasn't valid/expected JSON —
@@ -3846,6 +3872,22 @@ async function driveBackup(silent){
     debugLog('Drive backup skipped — this device could not decrypt its existing data; backing up now would overwrite the real backup with an empty one. Restore first.');
     return;
   }
+  // See recordGoodDbCounts()/dbAppearsWiped() above — this device previously
+  // had real data, and db now shows none. An automatic/silent backup skips
+  // outright rather than silently burying the real Drive backup again; a
+  // manual click gets an explicit confirm() instead, since a human is
+  // actually present to make that call.
+  if(dbAppearsWiped()){
+    var wipeMsg = 'Local data shows 0 clients and 0 trips, but this device previously had real data — this looks like the in-memory data got wiped, not a deliberate deletion.';
+    if(silent){
+      debugLog('Auto Drive backup BLOCKED — '+wipeMsg+' Skipping to avoid overwriting the real Drive backup with emptiness. Reload the page, or use Restore if your data appears missing.');
+      return;
+    }
+    if(!confirm(wipeMsg+'\n\nBack up anyway and overwrite the existing Google Drive backup with this empty state?')){
+      debugLog('Manual backup cancelled — local data appears wiped (0 clients, 0 trips) versus a previously known-good count.');
+      return;
+    }
+  }
   const btn=$('drive-btn');
   if(!silent){btn.textContent='Saving...';btn.disabled=true;debugLog('Manual backup clicked...');}
   try{
@@ -3930,6 +3972,13 @@ async function checkNightlyPermanentBackup(){
   // Same reasoning as driveBackup()'s own guard — never archive an empty
   // in-memory stand-in as if it were a real nightly snapshot.
   if(_dbDecryptFailed) return;
+  // Same reasoning as driveBackup()'s dbAppearsWiped() guard — this runs
+  // unattended (no human to confirm), so a suspicious drop to zero just
+  // skips rather than permanently archiving emptiness under today's date.
+  if(dbAppearsWiped()){
+    debugLog('Nightly permanent backup BLOCKED — local data shows 0 clients and 0 trips, but this device previously had real data. Skipping rather than archiving emptiness; will retry next check.');
+    return;
+  }
   if(new Date().getHours() < NIGHTLY_BACKUP_HOUR) return; // not yet time today
   var todayStr = today();
   if(localStorage.getItem('mm_last_nightly_backup_date') === todayStr) return; // already done today
@@ -4062,6 +4111,12 @@ async function secureSyncBackup(){
   if(_dbDecryptFailed){
     debugLog('Secure Sync backup skipped — this device could not decrypt its existing data; backing up now would overwrite the real backup with an empty one. Restore first.');
     toast('Skipped — this device\'s local data failed to decrypt. Restore first.','err');
+    return;
+  }
+  // Same reasoning as driveBackup()'s dbAppearsWiped() guard — this is a
+  // manual click, so a human is present to confirm rather than skip outright.
+  if(dbAppearsWiped() && !confirm('Local data shows 0 clients and 0 trips, but this device previously had real data — this looks like the in-memory data got wiped, not a deliberate deletion.\n\nBack up anyway and overwrite the existing Secure Sync backup with this empty state?')){
+    debugLog('Secure Sync backup cancelled — local data appears wiped (0 clients, 0 trips) versus a previously known-good count.');
     return;
   }
   const btn = $('secure-sync-backup-btn');
@@ -21102,7 +21157,12 @@ function bindClick(id, handler){
   bindClick('nb-referrals', function(){go('referrals');closeMobileNav();});
   bindClick('outlook-btn', syncOutlook);
   bindClick('btn-sync-texts', syncTexts);
-  bindClick('drive-btn', driveBackup);
+  // Passing driveBackup directly used to hand it the click Event object as
+  // its `silent` parameter — always truthy, so every real click silently
+  // behaved as an automatic/silent backup (no "Saving..." text, no success
+  // toast, and — critically — it would have skipped the wipe-guard's
+  // confirm() prompt below instead of asking a human).
+  bindClick('drive-btn', function(){ driveBackup(false); });
   bindClick('drive-restore-btn', driveRestore);
   bindClick('secure-sync-backup-btn', secureSyncBackup);
   bindClick('secure-sync-restore-btn', secureSyncRestore);
