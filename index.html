@@ -11446,6 +11446,18 @@ function vendorPropertiesListHtml(properties){
       '<button type="button" id="btn-add-property-contact" disabled style="margin-top:4px;padding:5px 12px;border-radius:6px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:11px;font-family:inherit">+ Add Contact for This Property</button>'+
     '</div>';
 }
+// Keeps the collapsed Linked Clients summary line in sync with the
+// checkbox list underneath it — same pattern as
+// refreshTaskAdditionalClientsSummary, re-run on every checkbox change so
+// the summary is accurate whether or not the box is currently expanded.
+function refreshVendorClientsSummary(){
+  var summaryEl = document.getElementById('vendor-clients-summary');
+  if(!summaryEl) return;
+  var names = Array.from(document.querySelectorAll('.vendor-client-cb:checked')).map(function(cb){
+    return (cb.nextElementSibling && cb.nextElementSibling.textContent) || '';
+  }).filter(Boolean);
+  summaryEl.innerHTML = names.length ? escHtml(joinNames(names)) : '<span style="color:#aaa">None selected</span>';
+}
 function readVendorProperties(){
   var sel = document.getElementById('vendor-properties-select');
   if(!sel) return null; // form wasn't showing a Properties section (not a Hotel supplier)
@@ -11475,6 +11487,12 @@ function openVendorForm(id){
       '</span>'+
     '</label>';
   }).join('');
+  // Collapsed by default, same as openTripForm's/openTaskForm's own
+  // Additional Clients list — this can run to hundreds of rows and used to
+  // dominate the form even for the common case of a supplier linked to
+  // just one or two clients. The summary line shows who's currently
+  // checked without needing to expand (see refreshVendorClientsSummary).
+  var initialLinkedNames = sortedClients.filter(function(c){ return (d.clientIds||[]).includes(c.id); }).map(function(c){ return c.name; });
 
   var typeOpts = VENDOR_TYPES.map(function(t){
     return '<option value="'+t+'"'+(t===d.type?' selected':'')+'>'+t+'</option>';
@@ -11502,7 +11520,11 @@ function openVendorForm(id){
       // checkboxes to fix it without briefly switching Type away and back.
       // Now always visible so any vendor's linked clients can be reviewed.
       '<div class="field full" id="client-link-section"><label>Linked Clients</label>'+
-        '<div style="border:1px solid #e5e7eb;border-radius:8px;padding:10px;max-height:200px;overflow-y:auto;background:#fafafa">'+
+        '<div id="vendor-clients-toggle" style="display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;font-size:13px;color:#374151;padding:2px 0">'+
+          '<span id="vendor-clients-arrow" style="display:inline-block;font-size:10px;transition:transform .15s">&#9656;</span>'+
+          '<span id="vendor-clients-summary">'+(initialLinkedNames.length ? escHtml(joinNames(initialLinkedNames)) : '<span style="color:#aaa">None selected</span>')+'</span>'+
+        '</div>'+
+        '<div id="vendor-clients-box" style="display:none;margin-top:6px;border:1px solid #e5e7eb;border-radius:8px;padding:10px;max-height:200px;overflow-y:auto;background:#fafafa">'+
           (clientChecks || '<div style="color:#aaa;font-size:12px">No clients yet</div>')+
         '</div>'+
       '</div>'+
@@ -11652,6 +11674,19 @@ function openVendorForm(id){
   $('modal-cancel').addEventListener('click', closeModal);
 
   $('modal-save-vendor').addEventListener('click', function(){saveVendor(this.dataset.id);});
+  var vendorClientsToggle = document.getElementById('vendor-clients-toggle');
+  if(vendorClientsToggle){
+    vendorClientsToggle.addEventListener('click', function(){
+      var box = document.getElementById('vendor-clients-box');
+      var arrow = document.getElementById('vendor-clients-arrow');
+      var isOpen = box.style.display !== 'none';
+      box.style.display = isOpen ? 'none' : 'block';
+      arrow.innerHTML = isOpen ? '&#9656;' : '&#9662;';
+    });
+  }
+  document.querySelectorAll('.vendor-client-cb').forEach(function(cb){
+    cb.addEventListener('change', refreshVendorClientsSummary);
+  });
   document.querySelectorAll('.supplier-client-link').forEach(function(el){
     el.addEventListener('click', function(e){
       e.stopPropagation();
