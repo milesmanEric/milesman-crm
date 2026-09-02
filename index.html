@@ -16954,7 +16954,7 @@ function blogMarkdownToHtml(md){
       '@context':'https://schema.org', '@type':'FAQPage',
       mainEntity: faqs.map(function(f){ return {'@type':'Question', name:f.q, acceptedAnswer:{'@type':'Answer', text:f.a}}; })
     };
-    htmlParts.push('<script type="application/ld+json">'+JSON.stringify(schema)+'</script>');
+    htmlParts.push('<scr'+'ipt type="application/ld+json">'+JSON.stringify(schema)+'<\/script>');
   }
   return {html: htmlParts.join('\n'), excerpt: excerpt, faqCount: faqs.length};
 }
