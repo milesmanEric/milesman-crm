@@ -20357,7 +20357,7 @@ async function closeApp(){
 // maps straight onto an existing CRM action. Every mutating tool calls
 // snapshot() first, so any assistant-made change is undoable with the same
 // Undo button as everything else in the app.
-const ASSISTANT_SYSTEM_PROMPT = 'You are the in-app assistant for a travel agency CRM. Help the user look up and update their own clients, trips, and follow-up tasks, and answer questions about blog/website traffic and Facebook Ads performance, using only the provided tools. Always resolve a client by name to a clientId with find_clients before acting on them — if more than one client matches, ask which one rather than guessing. For any traffic, blog, or ad-performance question, call get_analytics_summary — if a source comes back connected:false, tell the user that integration isn\'t connected rather than saying you can\'t access it. Be concise. After taking an action, briefly confirm what you did.';
+const ASSISTANT_SYSTEM_PROMPT = 'You are the in-app assistant for a travel agency CRM. Help the user look up and update their own clients, trips, marketing plan, vendors, and follow-up tasks, and answer questions about blog/website traffic and Facebook Ads performance, using only the provided tools. Always resolve a client by name to a clientId with find_clients before acting on them — if more than one client matches, ask which one rather than guessing. Same idea for a marketing plan item: use find_marketing_plan_items to find its id before updating it, rather than guessing one. When asked to add something to the marketing plan/calendar (a blog post, social post, email, ad, or sales task) without every field spelled out, use sensible defaults instead of asking for each one — channel matching the kind of content described, target group \'General/All Clients\' unless a specific audience was mentioned, status \'Planned\', and today\'s date if no date was given. For any traffic, blog, or ad-performance question, call get_analytics_summary — if a source comes back connected:false, tell the user that integration isn\'t connected rather than saying you can\'t access it. Be concise. After taking an action, briefly confirm what you did.';
 
 const ASSISTANT_TOOLS = [
   {
@@ -20427,6 +20427,63 @@ const ASSISTANT_TOOLS = [
     name: 'get_analytics_summary',
     description: 'Fetches current marketing/website performance: WordPress.com blog stats, Google Analytics (GA4) website traffic, and Facebook Ads campaign spend/performance. Each source reports connected:false if that integration isn\'t connected on this device — mention that to the user rather than treating it as an error. Use this for any question about site traffic, blog followers, or ad campaign performance/spend.',
     input_schema: { type: 'object', properties: {} }
+  },
+  {
+    name: 'find_marketing_plan_items',
+    description: 'Search/filter the Marketing Plan (the agency\'s content/campaign calendar — blog posts, social posts, emails, ads, events, sales outreach tasks). All filters optional and combine together (AND). Returns up to 20 matches with id, title, channel, targetGroup, date, status, notes. Use this to find an item\'s id before updating it, or to answer questions about what\'s already scheduled.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        titleContains: { type: 'string', description: 'Substring match against the item title' },
+        channel: { type: 'string', enum: MARKETING_CHANNELS },
+        targetGroup: { type: 'string', enum: MARKETING_TARGET_GROUPS },
+        status: { type: 'string', enum: MARKETING_PLAN_STATUSES },
+        dateAfter: { type: 'string', description: 'YYYY-MM-DD, inclusive' },
+        dateBefore: { type: 'string', description: 'YYYY-MM-DD, inclusive' }
+      }
+    }
+  },
+  {
+    name: 'create_marketing_plan_item',
+    description: 'Add a new item to the Marketing Plan/Calendar — e.g. a blog post topic, a social media post, an email campaign, a Facebook/Google ad, an event, or a sales outreach task. It also shows up on the Marketing Calendar and gets a linked Planner follow-up task automatically.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: 'e.g. "Blog: 5 Tips for Booking a Last-Minute Cruise"' },
+        channel: { type: 'string', enum: MARKETING_CHANNELS },
+        targetGroup: { type: 'string', enum: MARKETING_TARGET_GROUPS },
+        date: { type: 'string', description: 'YYYY-MM-DD' },
+        status: { type: 'string', enum: MARKETING_PLAN_STATUSES },
+        notes: { type: 'string' }
+      },
+      required: ['title','date']
+    }
+  },
+  {
+    name: 'update_marketing_plan_item',
+    description: 'Update fields on an existing Marketing Plan item, found first via find_marketing_plan_items. Only pass the fields that are changing.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string' },
+        title: { type: 'string' },
+        channel: { type: 'string', enum: MARKETING_CHANNELS },
+        targetGroup: { type: 'string', enum: MARKETING_TARGET_GROUPS },
+        date: { type: 'string', description: 'YYYY-MM-DD' },
+        status: { type: 'string', enum: MARKETING_PLAN_STATUSES },
+        notes: { type: 'string' }
+      },
+      required: ['id']
+    }
+  },
+  {
+    name: 'find_vendors',
+    description: 'Search travel suppliers/vendors by name (case-insensitive substring). Returns up to 10 matches with id, name, category, website.',
+    input_schema: {
+      type: 'object',
+      properties: { query: { type: 'string' } },
+      required: ['query']
+    }
   }
 ];
 
@@ -20495,6 +20552,57 @@ async function runAssistantTool(name, input){
     saveDB();
     return {ok:true, message:'Client created: '+newClient.name, clientId:newClient.id};
   }
+  if(name === 'find_marketing_plan_items'){
+    var mpMatches = db.marketingPlan.filter(function(it){
+      if(input.titleContains && (it.title||'').toLowerCase().indexOf(input.titleContains.toLowerCase())===-1) return false;
+      if(input.channel && it.channel!==input.channel) return false;
+      if(input.targetGroup && (it.targetGroup||'General/All Clients')!==input.targetGroup) return false;
+      if(input.status && it.status!==input.status) return false;
+      if(input.dateAfter && !((it.date||'')>=input.dateAfter)) return false;
+      if(input.dateBefore && !((it.date||'')<=input.dateBefore)) return false;
+      return true;
+    }).slice(0,20).map(function(it){
+      return {id:it.id, title:it.title, channel:it.channel, targetGroup:it.targetGroup||'General/All Clients', date:it.date, status:it.status, notes:it.notes};
+    });
+    return {items: mpMatches};
+  }
+  if(name === 'create_marketing_plan_item'){
+    if(!input.title || !input.date) return {error:'Both title and date are required'};
+    snapshot('Assistant: create marketing plan item');
+    var mpItem = {
+      id: newId('MP', db.marketingPlan),
+      title: input.title,
+      channel: input.channel || 'Other',
+      targetGroup: input.targetGroup || 'General/All Clients',
+      date: input.date,
+      status: input.status || 'Planned',
+      notes: input.notes || ''
+    };
+    db.marketingPlan.push(mpItem);
+    syncMarketingPlanTask(mpItem);
+    saveDB();
+    return {ok:true, message:'Marketing plan item created: "'+mpItem.title+'" ('+mpItem.date+')', itemId:mpItem.id};
+  }
+  if(name === 'update_marketing_plan_item'){
+    var mpExisting = db.marketingPlan.find(function(x){return x.id===input.id;});
+    if(!mpExisting) return {error:'No marketing plan item found with id '+input.id};
+    snapshot('Assistant: update marketing plan item');
+    var mpUpdated = Object.assign({}, mpExisting);
+    ['title','channel','targetGroup','date','status','notes'].forEach(function(f){
+      if(input[f]!==undefined) mpUpdated[f] = input[f];
+    });
+    db.marketingPlan = db.marketingPlan.map(function(x){ return x.id===input.id ? mpUpdated : x; });
+    syncMarketingPlanTask(mpUpdated);
+    saveDB();
+    return {ok:true, message:'Marketing plan item updated: "'+mpUpdated.title+'"'};
+  }
+  if(name === 'find_vendors'){
+    var vq = (input.query||'').toLowerCase();
+    var vMatches = db.vendors.filter(function(v){
+      return (v.name||'').toLowerCase().indexOf(vq)!==-1;
+    }).slice(0,10).map(function(v){ return {id:v.id, name:v.name, category:v.category, website:v.website}; });
+    return {vendors: vMatches};
+  }
   return {error:'Unknown tool: '+name};
 }
 
@@ -20519,6 +20627,8 @@ function describeToolResult(name, input, result){
   if(result && result.message) return '✓ '+result.message;
   if(name==='find_clients') return 'Found '+((result.clients||[]).length)+' client(s) for "'+(input.query||'')+'"';
   if(name==='find_trips') return 'Found '+((result.trips||[]).length)+' trip(s)';
+  if(name==='find_marketing_plan_items') return 'Found '+((result.items||[]).length)+' marketing plan item(s)';
+  if(name==='find_vendors') return 'Found '+((result.vendors||[]).length)+' vendor(s) for "'+(input.query||'')+'"';
   if(name==='get_analytics_summary'){
     var connected = ['wordpress','ga4','facebookAds'].filter(function(k){return result[k]&&result[k].connected;});
     return connected.length ? 'Fetched analytics ('+connected.join(', ')+')' : 'No analytics sources connected';
