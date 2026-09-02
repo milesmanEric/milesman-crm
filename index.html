@@ -20357,7 +20357,7 @@ async function closeApp(){
 // maps straight onto an existing CRM action. Every mutating tool calls
 // snapshot() first, so any assistant-made change is undoable with the same
 // Undo button as everything else in the app.
-const ASSISTANT_SYSTEM_PROMPT = 'You are the in-app assistant for a travel agency CRM. Help the user look up and update their own clients, trips, marketing plan, vendors, referral credits, and follow-up tasks, and answer questions about blog/website traffic and Facebook Ads performance, using only the provided tools. Always resolve a client by name to a clientId with find_clients before acting on them — if more than one client matches, ask which one rather than guessing. Same idea for a marketing plan item (find_marketing_plan_items) or a trip (find_trips) — always find its id before calling update_trip or update_marketing_plan_item, rather than guessing one, and if more than one trip matches ask which before changing anything. When asked to add something to the marketing plan/calendar (a blog post, social post, email, ad, or sales task) without every field spelled out, use sensible defaults instead of asking for each one — channel matching the kind of content described, target group \'General/All Clients\' unless a specific audience was mentioned, status \'Planned\', and today\'s date if no date was given. For any traffic, blog, or ad-performance question, call get_analytics_summary — if a source comes back connected:false, tell the user that integration isn\'t connected rather than saying you can\'t access it. Be concise. After taking an action, briefly confirm what you did.';
+const ASSISTANT_SYSTEM_PROMPT = 'You are the in-app assistant for a travel agency CRM. Help the user look up and update their own clients, trips, marketing plan, vendors, referral credits, bookmarks, and follow-up tasks, and answer questions about blog/website traffic and Facebook Ads performance, using only the provided tools. Always resolve a client by name to a clientId with find_clients before acting on them — if more than one client matches, ask which one rather than guessing. Same idea for a marketing plan item (find_marketing_plan_items) or a trip (find_trips) — always find its id before calling update_trip or update_marketing_plan_item, rather than guessing one, and if more than one trip matches ask which before changing anything. When asked to add something to the marketing plan/calendar (a blog post, social post, email, ad, or sales task) without every field spelled out, use sensible defaults instead of asking for each one — channel matching the kind of content described, target group \'General/All Clients\' unless a specific audience was mentioned, status \'Planned\', and today\'s date if no date was given. For any traffic, blog, or ad-performance question, call get_analytics_summary — if a source comes back connected:false, tell the user that integration isn\'t connected rather than saying you can\'t access it. Be concise. After taking an action, briefly confirm what you did.';
 
 const ASSISTANT_TOOLS = [
   {
@@ -20506,6 +20506,49 @@ const ASSISTANT_TOOLS = [
         certNumber: { type: 'number' }
       },
       required: ['clientId','certNumber']
+    }
+  },
+  {
+    name: 'find_bookmarks',
+    description: 'Search saved bookmarks (travel-related links — airline/hotel/cruise sites, visa/documentation portals, award tools, etc.). All filters optional and combine (AND). Returns up to 15 matches with id, name, url, category, audience, notes.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Substring match against the bookmark name' },
+        category: { type: 'string', description: 'e.g. Airline, Hotel, Cruise Line, Visa/Documentation — see BOOKMARK_CATEGORIES for Consumer/Travel Agent audiences, or the business-vendor categories (Printing, Web/Hosting, etc.) for the Vendors audience' },
+        audience: { type: 'string', enum: BOOKMARK_AUDIENCES }
+      }
+    }
+  },
+  {
+    name: 'create_bookmark',
+    description: 'Save a new bookmark. A bare domain (e.g. "united.com") is automatically prefixed with https://.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string' },
+        url: { type: 'string' },
+        category: { type: 'string' },
+        audience: { type: 'string', enum: BOOKMARK_AUDIENCES, description: 'Defaults to Consumer if omitted' },
+        notes: { type: 'string' }
+      },
+      required: ['name','url']
+    }
+  },
+  {
+    name: 'update_bookmark',
+    description: 'Update fields on an existing bookmark, found first via find_bookmarks. Only pass the fields that are changing.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string' },
+        name: { type: 'string' },
+        url: { type: 'string' },
+        category: { type: 'string' },
+        audience: { type: 'string', enum: BOOKMARK_AUDIENCES },
+        notes: { type: 'string' }
+      },
+      required: ['id']
     }
   },
   {
@@ -20671,6 +20714,39 @@ async function runAssistantTool(name, input){
     saveDB();
     return {ok:true, message:'Certificate #'+String(input.certNumber).padStart(6,'0')+' marked as used for '+creditClient.name};
   }
+  if(name === 'find_bookmarks'){
+    var bq = (input.query||'').toLowerCase();
+    var bMatches = db.bookmarks.filter(function(b){
+      if(bq && (b.name||'').toLowerCase().indexOf(bq)===-1) return false;
+      if(input.category && b.category!==input.category) return false;
+      if(input.audience && (b.audience||'Consumer')!==input.audience) return false;
+      return true;
+    }).slice(0,15).map(function(b){
+      return {id:b.id, name:b.name, url:b.url, category:b.category, audience:b.audience||'Consumer', notes:b.notes};
+    });
+    return {bookmarks: bMatches};
+  }
+  if(name === 'create_bookmark'){
+    if(!input.name || !input.url) return {error:'Both name and url are required'};
+    var newUrl = input.url;
+    if(!/^https?:\/\//i.test(newUrl)) newUrl = 'https://'+newUrl;
+    snapshot('Assistant: create bookmark');
+    var newBookmark = {id:newId('BM', db.bookmarks), name:input.name, url:newUrl, category:input.category||'', audience:input.audience||'Consumer', notes:input.notes||''};
+    db.bookmarks.push(newBookmark);
+    saveDB();
+    return {ok:true, message:'Bookmark saved: '+newBookmark.name, bookmarkId:newBookmark.id};
+  }
+  if(name === 'update_bookmark'){
+    var bmExisting = db.bookmarks.find(function(x){return x.id===input.id;});
+    if(!bmExisting) return {error:'No bookmark found with id '+input.id};
+    snapshot('Assistant: update bookmark');
+    var bmUpdated = Object.assign({}, bmExisting);
+    ['name','category','audience','notes'].forEach(function(f){ if(input[f]!==undefined) bmUpdated[f] = input[f]; });
+    if(input.url!==undefined) bmUpdated.url = /^https?:\/\//i.test(input.url) ? input.url : 'https://'+input.url;
+    db.bookmarks = db.bookmarks.map(function(b){ return b.id===input.id ? bmUpdated : b; });
+    saveDB();
+    return {ok:true, message:'Bookmark updated: '+bmUpdated.name};
+  }
   if(name === 'update_trip'){
     var tripExisting = db.trips.find(function(t){return t.id===input.id;});
     if(!tripExisting) return {error:'No trip found with id '+input.id};
@@ -20709,6 +20785,7 @@ function describeToolResult(name, input, result){
   if(name==='find_trips') return 'Found '+((result.trips||[]).length)+' trip(s)';
   if(name==='find_marketing_plan_items') return 'Found '+((result.items||[]).length)+' marketing plan item(s)';
   if(name==='find_vendors') return 'Found '+((result.vendors||[]).length)+' vendor(s) for "'+(input.query||'')+'"';
+  if(name==='find_bookmarks') return 'Found '+((result.bookmarks||[]).length)+' bookmark(s)';
   if(name==='get_analytics_summary'){
     var connected = ['wordpress','ga4','facebookAds'].filter(function(k){return result[k]&&result[k].connected;});
     return connected.length ? 'Fetched analytics ('+connected.join(', ')+')' : 'No analytics sources connected';
