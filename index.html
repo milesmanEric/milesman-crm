@@ -20357,7 +20357,7 @@ async function closeApp(){
 // maps straight onto an existing CRM action. Every mutating tool calls
 // snapshot() first, so any assistant-made change is undoable with the same
 // Undo button as everything else in the app.
-const ASSISTANT_SYSTEM_PROMPT = 'You are the in-app assistant for a travel agency CRM. Help the user look up and update their own clients, trips, marketing plan, vendors, and follow-up tasks, and answer questions about blog/website traffic and Facebook Ads performance, using only the provided tools. Always resolve a client by name to a clientId with find_clients before acting on them — if more than one client matches, ask which one rather than guessing. Same idea for a marketing plan item (find_marketing_plan_items) or a trip (find_trips) — always find its id before calling update_trip or update_marketing_plan_item, rather than guessing one, and if more than one trip matches ask which before changing anything. When asked to add something to the marketing plan/calendar (a blog post, social post, email, ad, or sales task) without every field spelled out, use sensible defaults instead of asking for each one — channel matching the kind of content described, target group \'General/All Clients\' unless a specific audience was mentioned, status \'Planned\', and today\'s date if no date was given. For any traffic, blog, or ad-performance question, call get_analytics_summary — if a source comes back connected:false, tell the user that integration isn\'t connected rather than saying you can\'t access it. Be concise. After taking an action, briefly confirm what you did.';
+const ASSISTANT_SYSTEM_PROMPT = 'You are the in-app assistant for a travel agency CRM. Help the user look up and update their own clients, trips, marketing plan, vendors, referral credits, and follow-up tasks, and answer questions about blog/website traffic and Facebook Ads performance, using only the provided tools. Always resolve a client by name to a clientId with find_clients before acting on them — if more than one client matches, ask which one rather than guessing. Same idea for a marketing plan item (find_marketing_plan_items) or a trip (find_trips) — always find its id before calling update_trip or update_marketing_plan_item, rather than guessing one, and if more than one trip matches ask which before changing anything. When asked to add something to the marketing plan/calendar (a blog post, social post, email, ad, or sales task) without every field spelled out, use sensible defaults instead of asking for each one — channel matching the kind of content described, target group \'General/All Clients\' unless a specific audience was mentioned, status \'Planned\', and today\'s date if no date was given. For any traffic, blog, or ad-performance question, call get_analytics_summary — if a source comes back connected:false, tell the user that integration isn\'t connected rather than saying you can\'t access it. Be concise. After taking an action, briefly confirm what you did.';
 
 const ASSISTANT_TOOLS = [
   {
@@ -20483,6 +20483,29 @@ const ASSISTANT_TOOLS = [
       type: 'object',
       properties: { query: { type: 'string' } },
       required: ['query']
+    }
+  },
+  {
+    name: 'find_referral_credits',
+    description: 'Look up $100 referral bonus certificates logged on client records. Pass clientId to see one client\'s referral credit history, unusedOnly:true to list every not-yet-redeemed certificate across all clients (e.g. "who has an outstanding referral certificate I should follow up with"), or both together. Returns up to 25 entries with clientId, clientName, referredName, date, amount, used, certNumber.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        clientId: { type: 'string' },
+        unusedOnly: { type: 'boolean' }
+      }
+    }
+  },
+  {
+    name: 'mark_referral_credit_used',
+    description: 'Marks one client\'s referral certificate as redeemed/used, identified by clientId + certNumber (from find_referral_credits). Does not issue new referral credit — that stays a manual step in the app (Add/Edit Client → Referral Credits, or the Referral Credit email flow) since it involves an outbound email/PDF a human should review before it goes out, and consumes a certificate number that can\'t be un-consumed.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        clientId: { type: 'string' },
+        certNumber: { type: 'number' }
+      },
+      required: ['clientId','certNumber']
     }
   },
   {
@@ -20620,6 +20643,33 @@ async function runAssistantTool(name, input){
       return (v.name||'').toLowerCase().indexOf(vq)!==-1;
     }).slice(0,10).map(function(v){ return {id:v.id, name:v.name, category:v.category, website:v.website}; });
     return {vendors: vMatches};
+  }
+  if(name === 'find_referral_credits'){
+    var creditRows = [];
+    db.clients.forEach(function(c){
+      (Array.isArray(c.referralCredits) ? c.referralCredits : []).forEach(function(rc){
+        if(input.clientId && c.id!==input.clientId) return;
+        if(input.unusedOnly && rc.used) return;
+        creditRows.push({clientId:c.id, clientName:c.name, referredName:rc.referredName, date:rc.date, amount:rc.amount, used:!!rc.used, certNumber:rc.certNumber});
+      });
+    });
+    return {credits: creditRows.slice(0,25)};
+  }
+  if(name === 'mark_referral_credit_used'){
+    var creditClient = db.clients.find(function(c){return c.id===input.clientId;});
+    if(!creditClient) return {error:'No client found with id '+input.clientId};
+    var hasMatch = (creditClient.referralCredits||[]).some(function(rc){return rc.certNumber===input.certNumber;});
+    if(!hasMatch) return {error:'No certificate #'+input.certNumber+' found on '+creditClient.name+'\'s record'};
+    snapshot('Assistant: mark referral credit used');
+    db.clients = db.clients.map(function(c){
+      if(c.id!==input.clientId) return c;
+      var updatedCredits = (c.referralCredits||[]).map(function(rc){
+        return rc.certNumber===input.certNumber ? Object.assign({},rc,{used:true}) : rc;
+      });
+      return Object.assign({}, c, {referralCredits: updatedCredits});
+    });
+    saveDB();
+    return {ok:true, message:'Certificate #'+String(input.certNumber).padStart(6,'0')+' marked as used for '+creditClient.name};
   }
   if(name === 'update_trip'){
     var tripExisting = db.trips.find(function(t){return t.id===input.id;});
