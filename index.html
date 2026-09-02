@@ -45,6 +45,7 @@ nav{padding:10px 8px}
 .nt-blue{background:#dbeafe;color:#1e40af;}
 .nt-mailchimp{background:#ede9fe;color:#5b21b6;}
 .nt-facebook{background:#dbeafe;color:#1d4ed8;}
+.nt-marketing-plan{background:#cffafe;color:#155e75;}
 .note-ts-link:hover{color:#1d4ed8}
 #note-expand-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:2000;display:none;align-items:center;justify-content:center;padding:20px}
 #note-expand-overlay.open{display:flex}
@@ -929,7 +930,7 @@ function quoteTableStructure(cfg){
 const STATUSES = ['Planning','Confirmed','Upcoming','In Progress','Completed','Cancelled'];
 const TYPES    = ['Leisure','Business','Honeymoon','Family','Adventure','Cruise'];
 const CLASSES  = ['Basic Economy','Economy','Premium Economy','Business','First'];
-const NOTE_TYPES = ['Email Sent','Email Received','Initial Call','Follow-up','Post-Trip Follow-up','General','Trip Import','Text Message Sent','Text Message Received','Lead','Mailchimp Email Sent','Facebook Message'];
+const NOTE_TYPES = ['Email Sent','Email Received','Initial Call','Follow-up','Post-Trip Follow-up','General','Trip Import','Text Message Sent','Text Message Received','Lead','Mailchimp Email Sent','Facebook Message','Marketing Plan'];
 // 'Sales Outreach' is direct 1:1 selling (a call, a personal email, a
 // proposal) rather than content published to an audience — kept distinct
 // from every other channel here so a concrete sales task (call these 10
@@ -9126,7 +9127,7 @@ function render(){
 
 function renderReports(){
   var activeTab = window._rptActiveTab || 'activity';
-  var NOTE_TYPES_R = ['','Trips','Email Sent','Email Received','Initial Call','Follow-up','Post-Trip Follow-up','General','Text Message Sent','Text Message Received','Lead','Mailchimp Email Sent','Facebook Message'];
+  var NOTE_TYPES_R = ['','Trips','Email Sent','Email Received','Initial Call','Follow-up','Post-Trip Follow-up','General','Text Message Sent','Text Message Received','Lead','Mailchimp Email Sent','Facebook Message','Marketing Plan'];
   var typeOpts = NOTE_TYPES_R.map(function(t){return '<option value="'+t+'">'+(t||'All types')+'</option>';}).join('');
 
   $('main').innerHTML =
@@ -9873,7 +9874,7 @@ function runReport(){
     container.innerHTML = '<div class="empty" style="padding:40px">No notes match the selected filters</div>';
     return;
   }
-  var BCLS2 = {'Email Sent':'nt-email-sent','Email Received':'nt-email-received','Initial Call':'nt-initial-call','Follow-up':'nt-follow-up','General':'nt-general','Trips':'nt-blue','Text Message Sent':'nt-text-message','Text Message Received':'nt-text-message','Lead':'nt-lead','Mailchimp Email Sent':'nt-mailchimp','Facebook Message':'nt-facebook'};
+  var BCLS2 = {'Email Sent':'nt-email-sent','Email Received':'nt-email-received','Initial Call':'nt-initial-call','Follow-up':'nt-follow-up','General':'nt-general','Trips':'nt-blue','Text Message Sent':'nt-text-message','Text Message Received':'nt-text-message','Lead':'nt-lead','Mailchimp Email Sent':'nt-mailchimp','Facebook Message':'nt-facebook','Marketing Plan':'nt-marketing-plan'};
   window._reportRows = rows; // store for click handler
   container.innerHTML =
     '<div style="font-size:13px;color:#888;margin-bottom:10px">'+rows.length+' note'+(rows.length!==1?'s':'')+' found</div>'+
@@ -13671,7 +13672,7 @@ function openGroupForm(id){
       '<span>'+escHtml(info.label||'(no client/trip name)')+(info.statusLabel?' &middot; '+escHtml(info.statusLabel):'')+(info.dateRange?' &middot; '+info.dateRange:'')+'</span>'+
     '</label>';
   }).join('');
-  var NOTE_TYPES_GRP = ['Email Sent','Email Received','Initial Call','Follow-up','Post-Trip Follow-up','General','Text Message Sent','Text Message Received','Lead','Facebook Message'];
+  var NOTE_TYPES_GRP = ['Email Sent','Email Received','Initial Call','Follow-up','Post-Trip Follow-up','General','Text Message Sent','Text Message Received','Lead','Facebook Message','Marketing Plan'];
   var notesHtml = (function(){
     var nl = g.notesLog||[];
     var rows = nl.map(function(n,i){
@@ -14460,6 +14461,7 @@ function openClientForm(id){
           '<option value="Lead"'+(n.noteType==='Lead'?' selected':'')+'>Lead</option>'+
           '<option value="Mailchimp Email Sent"'+(n.noteType==='Mailchimp Email Sent'?' selected':'')+'>Mailchimp Email Sent</option>'+
           '<option value="Facebook Message"'+(n.noteType==='Facebook Message'?' selected':'')+'>Facebook Message</option>'+
+          '<option value="Marketing Plan"'+(n.noteType==='Marketing Plan'?' selected':'')+'>Marketing Plan</option>'+
         '</select>'+
       '<button class="del-note-btn" data-note-idx="'+i+'" title="Delete note" style="margin-left:auto;background:none;border:none;cursor:pointer;color:#dc2626;font-size:15px;padding:2px 6px;border-radius:4px;line-height:1">&#128465;&#65039;</button>'+
       '</div>'+
@@ -14633,6 +14635,7 @@ function openClientForm(id){
             '<option value="Text Message Sent">Text Message Sent</option>'+'<option value="Text Message Received">Text Message Received</option>'+'<option value="Lead">Lead</option>'+
             '<option value="Mailchimp Email Sent">Mailchimp Email Sent</option>'+
             '<option value="Facebook Message">Facebook Message</option>'+
+            '<option value="Marketing Plan">Marketing Plan</option>'+
           '</select>'+
           '<span id="note-filter-count" style="font-size:11px;color:#888"></span>'+
         '</div>'+
@@ -16490,6 +16493,7 @@ function taskContactInfo(t){
   // chosen category (falling back to blank, same as the matching
   // auto-detected branch below, when there's no contact-level info to
   // surface) rather than inventing data the override alone doesn't have.
+  if(t.typeOverride==='marketing') return {type:'marketing', badgeCls:'b-purple', badgeLabel:'Marketing Plan', phone:'', email:''};
   if(t.typeOverride==='supplier'){
     var ovVc = t.vendorContactId ? findVendorContact(t.vendorContactId) : null;
     return {type:'supplier', badgeCls:'b-green', badgeLabel:'Supplier', phone:ovVc?ovVc.contact.phone:'', email:ovVc?ovVc.contact.email:''};
@@ -19919,8 +19923,8 @@ function openTaskForm(id){
       fld('Time', inp('tk-time','time',d.dueTime))+
       fld('Status','<select id="tk-done"><option value="0"'+(!d.done?' selected':'')+'>Open</option><option value="1"'+(d.done?' selected':'')+'>Done</option></select>')+
       fld('Type','<select id="tk-type"><option value=""'+(!d.typeOverride?' selected':'')+'>Auto (based on linked records)</option>'+
-        ['client','supplier','vendor','admin'].map(function(v){
-          var label = v==='admin' ? 'Admin' : v.charAt(0).toUpperCase()+v.slice(1);
+        ['client','supplier','vendor','marketing','admin'].map(function(v){
+          var label = v==='admin' ? 'Admin' : (v==='marketing' ? 'Marketing Plan' : v.charAt(0).toUpperCase()+v.slice(1));
           return '<option value="'+v+'"'+(d.typeOverride===v?' selected':'')+'>'+label+'</option>';
         }).join('')+
         '</select><span class="hint" style="text-transform:none;font-weight:400;display:block;margin-top:4px">Overrides the automatic Client/Supplier/Vendor badge below (which normally follows whichever linked record takes precedence) — pick one to force it, or leave on Auto.</span>')+
@@ -20623,7 +20627,7 @@ function bindClick(id, handler){
 
 // ── Note expand ──────────────────────────────────────────────────────────────
 function noteTypeCls(t){
-  var map={'Email Sent':'nt-email-sent','Email Received':'nt-email-received','Initial Call':'nt-initial-call','Follow-up':'nt-follow-up','Post-Trip Follow-up':'nt-follow-up','General':'nt-general','Trip Import':'nt-blue','Text Message Sent':'nt-text-message','Text Message Received':'nt-text-message','Lead':'nt-lead','Mailchimp Email Sent':'nt-mailchimp','Facebook Message':'nt-facebook'};
+  var map={'Email Sent':'nt-email-sent','Email Received':'nt-email-received','Initial Call':'nt-initial-call','Follow-up':'nt-follow-up','Post-Trip Follow-up':'nt-follow-up','General':'nt-general','Trip Import':'nt-blue','Text Message Sent':'nt-text-message','Text Message Received':'nt-text-message','Lead':'nt-lead','Mailchimp Email Sent':'nt-mailchimp','Facebook Message':'nt-facebook','Marketing Plan':'nt-marketing-plan'};
   return map[t]||'nt-general';
 }
 function openNoteExpand(ts, text, noteType){
