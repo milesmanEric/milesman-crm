@@ -20357,7 +20357,7 @@ async function closeApp(){
 // maps straight onto an existing CRM action. Every mutating tool calls
 // snapshot() first, so any assistant-made change is undoable with the same
 // Undo button as everything else in the app.
-const ASSISTANT_SYSTEM_PROMPT = 'You are the in-app assistant for a travel agency CRM. Help the user look up and update their own clients, trips, marketing plan, vendors, referral credits, bookmarks, and follow-up tasks, and answer questions about blog/website traffic and Facebook Ads performance, using only the provided tools. Always resolve a client by name to a clientId with find_clients before acting on them — if more than one client matches, ask which one rather than guessing. Same idea for a marketing plan item (find_marketing_plan_items) or a trip (find_trips) — always find its id before calling update_trip or update_marketing_plan_item, rather than guessing one, and if more than one trip matches ask which before changing anything. When asked to add something to the marketing plan/calendar (a blog post, social post, email, ad, or sales task) without every field spelled out, use sensible defaults instead of asking for each one — channel matching the kind of content described, target group \'General/All Clients\' unless a specific audience was mentioned, status \'Planned\', and today\'s date if no date was given. For any traffic, blog, or ad-performance question, call get_analytics_summary — if a source comes back connected:false, tell the user that integration isn\'t connected rather than saying you can\'t access it. Be concise. After taking an action, briefly confirm what you did.';
+const ASSISTANT_SYSTEM_PROMPT = 'You are the in-app assistant for a travel agency CRM. Help the user look up and update their own clients, trips, groups, marketing plan, vendors, referral credits, bookmarks, and follow-up tasks, and answer questions about blog/website traffic and Facebook Ads performance, using only the provided tools. Always resolve a client by name to a clientId with find_clients before acting on them — if more than one client matches, ask which one rather than guessing. Same idea for a marketing plan item (find_marketing_plan_items) or a trip (find_trips) — always find its id before calling update_trip or update_marketing_plan_item, rather than guessing one, and if more than one trip matches ask which before changing anything. When asked to add something to the marketing plan/calendar (a blog post, social post, email, ad, or sales task) without every field spelled out, use sensible defaults instead of asking for each one — channel matching the kind of content described, target group \'General/All Clients\' unless a specific audience was mentioned, status \'Planned\', and today\'s date if no date was given. For any traffic, blog, or ad-performance question, call get_analytics_summary — if a source comes back connected:false, tell the user that integration isn\'t connected rather than saying you can\'t access it. Be concise. After taking an action, briefly confirm what you did.';
 
 const ASSISTANT_TOOLS = [
   {
@@ -20547,6 +20547,40 @@ const ASSISTANT_TOOLS = [
         category: { type: 'string' },
         audience: { type: 'string', enum: BOOKMARK_AUDIENCES },
         notes: { type: 'string' }
+      },
+      required: ['id']
+    }
+  },
+  {
+    name: 'find_groups',
+    description: 'Search Groups — named collections of trips traveling together (a family reunion, a multi-city trip split across trip records, etc.). Returns up to 10 matches with id, name, tripIds, memberCount.',
+    input_schema: {
+      type: 'object',
+      properties: { query: { type: 'string', description: 'Substring match against the group name' } }
+    }
+  },
+  {
+    name: 'create_group',
+    description: 'Create a new Group. tripIds (found via find_trips) are optional at creation and can be added later with update_group; any id that doesn\'t match a real trip is skipped and reported back rather than failing the whole request.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string' },
+        tripIds: { type: 'array', items: { type: 'string' } }
+      },
+      required: ['name']
+    }
+  },
+  {
+    name: 'update_group',
+    description: 'Update an existing Group, found first via find_groups. Passing tripIds REPLACES the group\'s full trip list (not merges) — read the group\'s current tripIds first if you need to add to rather than replace them. Passing note appends a timestamped note, which also cascades onto every client and trip linked to the group\'s member trips, same as adding a note through the app.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string' },
+        name: { type: 'string' },
+        tripIds: { type: 'array', items: { type: 'string' } },
+        note: { type: 'string' }
       },
       required: ['id']
     }
@@ -20747,6 +20781,46 @@ async function runAssistantTool(name, input){
     saveDB();
     return {ok:true, message:'Bookmark updated: '+bmUpdated.name};
   }
+  if(name === 'find_groups'){
+    var gq = (input.query||'').toLowerCase();
+    var gMatches = db.groups.filter(function(g){
+      return !gq || (g.name||'').toLowerCase().indexOf(gq)!==-1;
+    }).slice(0,10).map(function(g){
+      return {id:g.id, name:g.name, tripIds:g.tripIds||[], memberCount:(g.tripIds||[]).length};
+    });
+    return {groups: gMatches};
+  }
+  if(name === 'create_group'){
+    if(!input.name) return {error:'Group name is required'};
+    var newTripIds = (input.tripIds||[]).filter(function(tid){ return db.trips.some(function(t){return t.id===tid;}); });
+    var skippedTripIds = (input.tripIds||[]).filter(function(tid){ return newTripIds.indexOf(tid)===-1; });
+    snapshot('Assistant: create group');
+    var newGroup = {id:newId('GRP', db.groups), name:input.name, tripIds:newTripIds, notesLog:[]};
+    db.groups.push(newGroup);
+    saveDB();
+    return {ok:true, message:'Group created: '+newGroup.name+' ('+newTripIds.length+' trip(s))', groupId:newGroup.id, skippedTripIds:skippedTripIds};
+  }
+  if(name === 'update_group'){
+    var grpExisting = db.groups.find(function(x){return x.id===input.id;});
+    if(!grpExisting) return {error:'No group found with id '+input.id};
+    snapshot('Assistant: update group');
+    var grpUpdated = Object.assign({}, grpExisting);
+    if(input.name!==undefined) grpUpdated.name = input.name;
+    var groupSkippedTripIds = [];
+    if(input.tripIds!==undefined){
+      var validTripIds = input.tripIds.filter(function(tid){ return db.trips.some(function(t){return t.id===tid;}); });
+      groupSkippedTripIds = input.tripIds.filter(function(tid){ return validTripIds.indexOf(tid)===-1; });
+      grpUpdated.tripIds = validTripIds;
+    }
+    if(input.note){
+      var newGroupNote = {ts:new Date().toLocaleString(), text:input.note, noteType:''};
+      grpUpdated.notesLog = (grpUpdated.notesLog||[]).concat([newGroupNote]);
+    }
+    db.groups = db.groups.map(function(g){ return g.id===input.id ? grpUpdated : g; });
+    if(input.note) cascadeGroupNoteToClientsAndTrips(grpUpdated.tripIds||[], {ts:grpUpdated.notesLog[grpUpdated.notesLog.length-1].ts, text:input.note, noteType:''});
+    saveDB();
+    return {ok:true, message:'Group updated: '+grpUpdated.name, skippedTripIds:groupSkippedTripIds};
+  }
   if(name === 'update_trip'){
     var tripExisting = db.trips.find(function(t){return t.id===input.id;});
     if(!tripExisting) return {error:'No trip found with id '+input.id};
@@ -20786,6 +20860,7 @@ function describeToolResult(name, input, result){
   if(name==='find_marketing_plan_items') return 'Found '+((result.items||[]).length)+' marketing plan item(s)';
   if(name==='find_vendors') return 'Found '+((result.vendors||[]).length)+' vendor(s) for "'+(input.query||'')+'"';
   if(name==='find_bookmarks') return 'Found '+((result.bookmarks||[]).length)+' bookmark(s)';
+  if(name==='find_groups') return 'Found '+((result.groups||[]).length)+' group(s)';
   if(name==='get_analytics_summary'){
     var connected = ['wordpress','ga4','facebookAds'].filter(function(k){return result[k]&&result[k].connected;});
     return connected.length ? 'Fetched analytics ('+connected.join(', ')+')' : 'No analytics sources connected';
