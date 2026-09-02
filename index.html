@@ -1809,7 +1809,23 @@ function updateSyncStatusDisplay(){
 // waiting on the write completing even back when it was a plain
 // synchronous JSON.stringify.
 var _dbSaveChain = Promise.resolve();
+// Set by loadDB() when localStorage held real (non-empty) data that
+// couldn't be decrypted with the current key — wrong password derivation,
+// a corrupted blob, whatever the cause. Left true, the very next saveDB()
+// (e.g. from auto-seeding defaults right after boot) would happily encrypt
+// today's empty in-memory db and overwrite the still-intact-but-locked
+// ciphertext, permanently destroying the only copy of the real data before
+// anyone had a chance to recover it — exactly the failure mode behind a
+// real data-loss incident. So saveDB() refuses to write anything at all
+// while this is true; a successful Restore/Secure Sync Load/local JSON
+// import (see driveRestore()/secureSyncRestore()/importJSON()) is what
+// clears it, since that's the point a real recovery has actually happened.
+var _dbDecryptFailed = false;
 function saveDB(){
+  if(_dbDecryptFailed){
+    console.error('[CRM] Refusing to save — this device could not decrypt its existing data, and saving now would overwrite it before you can recover it. Use Restore from Google Drive, Secure Sync: Load, or the local Restore (JSON file import) to recover — any of those will clear this and allow saving again.');
+    return;
+  }
   try{
     var json = JSON.stringify(db);
     _dbSaveChain = _dbSaveChain.then(function(){
@@ -1837,9 +1853,23 @@ function saveDB(){
   }catch(e){}
 }
 async function loadDB(){
+  var stored = localStorage.getItem(LS_KEY);
+  if(!stored) return; // genuinely fresh device — db stays at its initial empty default, nothing to unlock
+  var jsonStr;
   try{
-    var stored = localStorage.getItem(LS_KEY);
-    var jsonStr = stored ? await decryptDbJson(stored) : '{}';
+    jsonStr = await decryptDbJson(stored);
+  }catch(e){
+    // There IS real data sitting in localStorage — we just failed to
+    // unlock it (wrong key, or the ciphertext itself is corrupted). db is
+    // deliberately left untouched here (still whatever it was — the
+    // initial empty skeleton, on a first boot) rather than reset, and
+    // saveDB() refuses to write at all while _dbDecryptFailed is true, so
+    // nothing overwrites this ciphertext before a real recovery happens.
+    console.error('[CRM] loadDB: could not decrypt existing data —', e);
+    _dbDecryptFailed = true;
+    return;
+  }
+  try{
     const d=JSON.parse(jsonStr);
     db.clients=Array.isArray(d.clients)?d.clients:[];
     db.trips=Array.isArray(d.trips)?d.trips:[];
@@ -3777,6 +3807,19 @@ function driveConflictDetected(existing){
   return !!known && known !== existing.modifiedTime;
 }
 async function driveBackup(silent){
+  // Refuses to run at all while _dbDecryptFailed is set — this device's
+  // local data couldn't be decrypted, so db in memory is an empty stand-in,
+  // not real data. Uploading it would PATCH the existing Drive backup with
+  // that empty state, burying whatever good backup is actually there —
+  // exactly the mechanism (via the periodic auto-backup calling this
+  // silently) that buried a real backup under empty ones during a real
+  // data-loss incident. Restore/Secure Sync Load/local JSON import (which
+  // clear the flag on success) are the only ways to make backing up safe
+  // again.
+  if(_dbDecryptFailed){
+    debugLog('Drive backup skipped — this device could not decrypt its existing data; backing up now would overwrite the real backup with an empty one. Restore first.');
+    return;
+  }
   const btn=$('drive-btn');
   if(!silent){btn.textContent='Saving...';btn.disabled=true;debugLog('Manual backup clicked...');}
   try{
@@ -3835,6 +3878,55 @@ async function driveBackup(silent){
     if(!silent){ debugLog('Manual backup FAILED: '+e.message); toast('Drive backup failed: '+e,'err'); btn.textContent='Backup to Google Drive'; }
   }
   if(!silent) btn.disabled=false;
+}
+// ── Nightly Permanent Backup (11pm local time, never overwritten) ──────────
+// The regular BACKUP_FILENAME above is deliberately a single always-
+// "most recent" copy that Backup/Restore, Secure Sync, and the 5-minute
+// auto-backup all read/write in place — exactly the design that let a real
+// data-loss incident bury a good backup under repeated empty re-saves with
+// no separate history to fall back on. This instead creates one NEW,
+// uniquely-named file per calendar day and never touches an existing one —
+// nothing else in this file ever searches for or patches that name, so a
+// nightly copy, once written, is permanent by construction: never
+// overwritten, never deleted, and never picked up by the normal restore
+// flow's "most recent" lookup (which only ever searches for
+// BACKUP_FILENAME specifically).
+const NIGHTLY_BACKUP_HOUR = 23; // 11pm local time
+function nightlyBackupFilename(dateStr){ return 'milesman-crm-nightly-backup-'+dateStr+'.json'; }
+// Called opportunistically (see startAutosave()'s interval and the boot
+// sequence) rather than on an exact timer — like the rest of this app's
+// "once a day" features (autoSeedDefaultBookmarksOnce, xFollowerSnapshot's
+// daily cache, etc.), this can only actually run while a tab is open, so
+// "at 11pm" really means "the first check at or after 11pm local time,
+// once per calendar day" — it catches up as soon as the CRM is next open
+// past that hour rather than requiring the tab to be open at exactly 11:00.
+async function checkNightlyPermanentBackup(){
+  // Same reasoning as driveBackup()'s own guard — never archive an empty
+  // in-memory stand-in as if it were a real nightly snapshot.
+  if(_dbDecryptFailed) return;
+  if(new Date().getHours() < NIGHTLY_BACKUP_HOUR) return; // not yet time today
+  var todayStr = today();
+  if(localStorage.getItem('mm_last_nightly_backup_date') === todayStr) return; // already done today
+  var token = await getDriveTokenSilent();
+  if(!token){
+    debugLog('Nightly permanent backup skipped — not signed in on this device (no valid token or refresh token); will retry next check');
+    return;
+  }
+  try{
+    var content = JSON.stringify(db, null, 2);
+    var filename = nightlyBackupFilename(todayStr);
+    var meta = new Blob([JSON.stringify({name:filename, mimeType:'application/json'})], {type:'application/json'});
+    var data = new Blob([content], {type:'application/json'});
+    var form = new FormData(); form.append('metadata', meta); form.append('file', data);
+    var r = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,modifiedTime', {
+      method:'POST', headers:{Authorization:'Bearer '+token}, body: form
+    });
+    if(!r.ok) throw new Error('Drive returned '+r.status+' on nightly backup upload');
+    localStorage.setItem('mm_last_nightly_backup_date', todayStr);
+    debugLog('Nightly permanent backup saved: '+filename);
+  }catch(e){
+    debugLog('Nightly permanent backup failed (will retry on next check): '+(e&&e.message||e));
+  }
 }
 async function driveRestore(){
   const btn=$('drive-restore-btn');
@@ -3903,6 +3995,7 @@ async function driveRestore(){
         jetpackRemovalQueue:Array.isArray(d.jetpackRemovalQueue)?d.jetpackRemovalQueue:[]
       };
       db.clients.forEach(function(c){ if(c.name && !c.name.includes(',')) c.name=toLastFirst(c.name); });
+      _dbDecryptFailed = false; // a real recovery just happened — safe to save again
       saveDB();render();
       localStorage.setItem('mm_last_known_remote_modified', existing.modifiedTime);
       const date=new Date(existing.modifiedTime).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
@@ -3937,6 +4030,14 @@ async function getValidDriveIdToken(){
   return localStorage.getItem('mm_drive_id_token');
 }
 async function secureSyncBackup(){
+  // Same reasoning as driveBackup()'s own guard — don't push an empty
+  // in-memory db over a real remote backup while this device's local data
+  // is known to be undecryptable.
+  if(_dbDecryptFailed){
+    debugLog('Secure Sync backup skipped — this device could not decrypt its existing data; backing up now would overwrite the real backup with an empty one. Restore first.');
+    toast('Skipped — this device\'s local data failed to decrypt. Restore first.','err');
+    return;
+  }
   const btn = $('secure-sync-backup-btn');
   if(btn){btn.textContent='Saving...';btn.disabled=true;}
   try{
@@ -4011,6 +4112,7 @@ async function secureSyncRestore(){
         jetpackRemovalQueue:Array.isArray(d.jetpackRemovalQueue)?d.jetpackRemovalQueue:[]
       };
       db.clients.forEach(function(c){ if(c.name && !c.name.includes(',')) c.name=toLastFirst(c.name); });
+      _dbDecryptFailed = false; // a real recovery just happened — safe to save again
       saveDB();render();
       debugLog('Secure Sync: restore success — '+db.clients.length+' clients, '+db.trips.length+' trips');
       toast('Secure Sync loaded — '+db.clients.length+' clients, '+db.trips.length+' trips','ok');
@@ -5110,7 +5212,7 @@ function importJSON(){
     r.onload=function(ev){
       try{
         const d=JSON.parse(ev.target.result);
-        if(Array.isArray(d.clients)&&Array.isArray(d.trips)){db=d;if(!Array.isArray(db.vendors))db.vendors=[];if(!Array.isArray(db.bizVendors))db.bizVendors=[];if(!Array.isArray(db.planner))db.planner=[];if(!Array.isArray(db.bookmarks))db.bookmarks=[];if(!Array.isArray(db.savedReports))db.savedReports=[];if(!Array.isArray(db.groups))db.groups=[];if(!Array.isArray(db.marketingPlan))db.marketingPlan=[];if(!Array.isArray(db.pendingImportMatches))db.pendingImportMatches=[];if(!Array.isArray(db.jetpackRemovalQueue))db.jetpackRemovalQueue=[];(db.clients||[]).forEach(function(c){ if(c.name && !c.name.includes(',')) c.name=toLastFirst(c.name); });saveDB();toast('Data imported');render();}
+        if(Array.isArray(d.clients)&&Array.isArray(d.trips)){db=d;if(!Array.isArray(db.vendors))db.vendors=[];if(!Array.isArray(db.bizVendors))db.bizVendors=[];if(!Array.isArray(db.planner))db.planner=[];if(!Array.isArray(db.bookmarks))db.bookmarks=[];if(!Array.isArray(db.savedReports))db.savedReports=[];if(!Array.isArray(db.groups))db.groups=[];if(!Array.isArray(db.marketingPlan))db.marketingPlan=[];if(!Array.isArray(db.pendingImportMatches))db.pendingImportMatches=[];if(!Array.isArray(db.jetpackRemovalQueue))db.jetpackRemovalQueue=[];(db.clients||[]).forEach(function(c){ if(c.name && !c.name.includes(',')) c.name=toLastFirst(c.name); });_dbDecryptFailed=false;saveDB();toast('Data imported');render();}
         else toast('Invalid backup file','err');
       }catch(ex){toast('Could not read file','err');}
     };r.readAsText(f);
@@ -20808,7 +20910,10 @@ function startAutosave(){
   // Google Drive backup every 5 minutes. Uses a silent token refresh (no login
   // redirect) so it works even if the user never manually clicked Backup/Restore
   // in this tab — as long as they've signed in at some point on this device.
-  setInterval(function(){ runAutoDriveBackup(); }, 5 * 60 * 1000);
+  // Same tick also opportunistically checks whether tonight's permanent
+  // nightly backup is due yet (see checkNightlyPermanentBackup()) — it's a
+  // no-op every check except the first one at or after 11pm each day.
+  setInterval(function(){ runAutoDriveBackup(); checkNightlyPermanentBackup(); }, 5 * 60 * 1000);
 
   // Also back up whenever the tab is hidden/backgrounded or the page is being
   // unloaded — this is the case that matters most on mobile, where someone edits
@@ -21553,6 +21658,22 @@ debugLog('Hash: '+window.location.hash.slice(0,100));
 // this whole tail runs inside the .then() rather than as a flat sequence
 // of statements the way it did back when loadDB() was synchronous.
 loadDB().then(function(){
+  if(_dbDecryptFailed){
+    // Loud and blocking on purpose — this is exactly the situation that
+    // caused a real data-loss incident when it failed silently instead.
+    // Skips auto-seeding entirely (it would just no-op against saveDB()'s
+    // own refusal-to-write anyway) and goes straight to render() so the
+    // sidebar's Restore buttons are usable, without ever calling
+    // startAutosave() — no point running a Drive-backup timer that will
+    // just skip every tick (see driveBackup()'s matching guard).
+    alert('This device\'s CRM data could not be unlocked with the current password and has NOT been touched or overwritten.\n\nUse "Restore from Google Drive", "Secure Sync: Load", or the local "Restore" (JSON file) button in the sidebar to recover your data. Saving is disabled until you do.');
+    render();
+    loadDebugLog();
+    updateUndoBtn();
+    updateSyncStatusDisplay();
+    console.log('[CRM] Ready, but local data failed to decrypt — restore required before normal use.');
+    return;
+  }
   autoSeedDefaultBookmarksOnce();
   autoSeedDefaultMarketingPlanOnce();
   // One-time recovery for the watermark bug pollCheckpointNow() fixes: any
@@ -21572,6 +21693,7 @@ loadDB().then(function(){
   render();
   loadDebugLog();
   startAutosave();
+  checkNightlyPermanentBackup(); // catch up immediately if the CRM is opened after 11pm rather than waiting for the first 5-minute tick
   updateUndoBtn();
   checkDriveRedirect();
   checkWordpressRedirect();
