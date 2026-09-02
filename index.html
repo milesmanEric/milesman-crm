@@ -2207,7 +2207,7 @@ function debugLog(msg){
   try{
     const prev = JSON.parse(localStorage.getItem('mm_debug_log')||'[]');
     prev.push(entry);
-    if(prev.length > 100) prev.shift();
+    if(prev.length > 1000) prev.shift();
     localStorage.setItem('mm_debug_log', JSON.stringify(prev));
   }catch(e){}
   // Update panel DOM, capped to prevent memory leak from unbounded node accumulation
@@ -2218,8 +2218,8 @@ function debugLog(msg){
     line.style.padding='2px 0';
     line.textContent=entry;
     log.appendChild(line);
-    // Cap DOM nodes at 100 to match localStorage cap — remove oldest if exceeded
-    while(log.children.length > 100){
+    // Cap DOM nodes at 1000 to match localStorage cap — remove oldest if exceeded
+    while(log.children.length > 1000){
       log.removeChild(log.firstChild);
     }
     log.scrollTop=log.scrollHeight;
@@ -2757,6 +2757,14 @@ async function getDriveTokenSilent(){
       if(d.id_token) localStorage.setItem('mm_drive_id_token', d.id_token);
       return d.access_token;
     }
+    // The fetch itself succeeded but the server rejected the refresh token
+    // (expired, revoked, or some other server-side problem) — this used to
+    // fall through to "return null" with zero trace, indistinguishable from
+    // simply never having connected Drive at all. Every caller (auto-backup,
+    // the nightly permanent backup, etc.) already treats a null return as
+    // "skip silently for now", so this is the one place that needs to make
+    // the actual reason visible before that happens.
+    debugLog('Silent Drive refresh rejected by server: '+(d.error_description||d.error||('HTTP '+r.status)));
   }catch(e){ debugLog('Silent Drive refresh failed: '+e.message); }
   return null;
 }
