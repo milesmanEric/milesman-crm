@@ -1854,7 +1854,15 @@ function saveDB(){
 }
 async function loadDB(){
   var stored = localStorage.getItem(LS_KEY);
-  if(!stored) return; // genuinely fresh device — db stays at its initial empty default, nothing to unlock
+  if(!stored){
+    // Distinguishing this from every other empty-looking outcome below is
+    // exactly what was missing during the Sept 1/2 investigations — with
+    // only timing gaps in the Drive backup history to go on, there was no
+    // way to tell "localStorage itself came up genuinely empty on boot"
+    // apart from a decrypt failure or a since-cleared browser storage.
+    debugLog('loadDB: localStorage key "'+LS_KEY+'" is empty/missing at boot — treating as a fresh device, nothing to unlock');
+    return; // genuinely fresh device — db stays at its initial empty default, nothing to unlock
+  }
   var jsonStr;
   try{
     jsonStr = await decryptDbJson(stored);
@@ -1866,6 +1874,7 @@ async function loadDB(){
     // saveDB() refuses to write at all while _dbDecryptFailed is true, so
     // nothing overwrites this ciphertext before a real recovery happens.
     console.error('[CRM] loadDB: could not decrypt existing data —', e);
+    debugLog('loadDB: localStorage has data ('+stored.length+' chars) but it FAILED TO DECRYPT — '+(e&&e.message||e)+'. Blocking saves/backups until restored.');
     _dbDecryptFailed = true;
     return;
   }
@@ -2152,8 +2161,17 @@ async function loadDB(){
       saveDB();
       console.log('[CRM] Created '+mpTasksBackfilled+' Planner task(s) for existing Marketing Plan items');
     }
+    debugLog('loadDB: loaded successfully — '+db.clients.length+' clients, '+db.trips.length+' trips, '+db.vendors.length+' suppliers');
   }catch(e){
+    // Decrypted fine, but what came out wasn't valid/expected JSON —
+    // different failure than the decrypt-failure branch above (that one
+    // leaves db untouched and blocks saves; this one is a genuine
+    // corruption/migration bug, so falling back to an empty skeleton is
+    // the existing behavior). Logged to debugLog (not just console.error)
+    // since console output doesn't survive a reload, and this is exactly
+    // the kind of moment a future investigation needs a persisted trace of.
     console.error('[CRM] loadDB failed:', e);
+    debugLog('loadDB: decrypted OK but failed to parse/migrate the data — '+(e&&e.message||e)+'. Reset to an empty skeleton.');
     db={clients:[],trips:[],vendors:[],planner:[]};
   }
 }
