@@ -12798,10 +12798,18 @@ function renderClients(){
         return a+db.trips.filter(function(t){return t.clientId===c.id;}).reduce(function(x,t){return x+(t.totalValue||0);},0);
       },0);
       var totalTrips = list.reduce(function(a,c){return a+countDistinctTrips(c.id);},0);
-      return '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px">'+
+      // Same auto-extracted figures (and same "—" when no report has been
+      // received yet) as the Dashboard's own tiles — see
+      // extractAndStoreReportTotal(). Surfaced here too since Clients is
+      // where collections/receivables questions come up just as often.
+      var eodReport = (db.reportTotals||{}).endOfDaySales;
+      var arReport = (db.reportTotals||{}).arAgingSummary;
+      return '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:16px">'+
         '<div class="stat" id="stat-clients-count"><div class="stat-lbl">Clients</div><div class="stat-val">'+list.length+'</div></div>'+
         '<div class="stat" id="stat-clients-revenue"><div class="stat-lbl">Total Revenue</div><div class="stat-val">$'+money(totalRevenue)+'</div></div>'+
         '<div class="stat" id="stat-clients-trips"><div class="stat-lbl">Total Trips</div><div class="stat-val">'+totalTrips+'</div></div>'+
+        '<div class="stat" id="stat-clients-eod-collections" title="'+(eodReport?escHtml(eodReport.asOf):'No End of Day Sales Report received yet')+'"><div class="stat-lbl">Yesterday\'s Collections</div><div class="stat-val">'+(eodReport?'$'+money(eodReport.amount):'—')+'</div></div>'+
+        '<div class="stat" id="stat-clients-ar-total" title="'+(arReport?escHtml(arReport.asOf):'No A/R Aging Summary received yet')+'"><div class="stat-lbl">Total A/R</div><div class="stat-val">'+(arReport?'$'+money(arReport.amount):'—')+'</div></div>'+
       '</div>';
     })()+
     '<div class="search-row">'+
