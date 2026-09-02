@@ -20357,7 +20357,7 @@ async function closeApp(){
 // maps straight onto an existing CRM action. Every mutating tool calls
 // snapshot() first, so any assistant-made change is undoable with the same
 // Undo button as everything else in the app.
-const ASSISTANT_SYSTEM_PROMPT = 'You are the in-app assistant for a travel agency CRM. Help the user look up and update their own clients, trips, marketing plan, vendors, and follow-up tasks, and answer questions about blog/website traffic and Facebook Ads performance, using only the provided tools. Always resolve a client by name to a clientId with find_clients before acting on them — if more than one client matches, ask which one rather than guessing. Same idea for a marketing plan item: use find_marketing_plan_items to find its id before updating it, rather than guessing one. When asked to add something to the marketing plan/calendar (a blog post, social post, email, ad, or sales task) without every field spelled out, use sensible defaults instead of asking for each one — channel matching the kind of content described, target group \'General/All Clients\' unless a specific audience was mentioned, status \'Planned\', and today\'s date if no date was given. For any traffic, blog, or ad-performance question, call get_analytics_summary — if a source comes back connected:false, tell the user that integration isn\'t connected rather than saying you can\'t access it. Be concise. After taking an action, briefly confirm what you did.';
+const ASSISTANT_SYSTEM_PROMPT = 'You are the in-app assistant for a travel agency CRM. Help the user look up and update their own clients, trips, marketing plan, vendors, and follow-up tasks, and answer questions about blog/website traffic and Facebook Ads performance, using only the provided tools. Always resolve a client by name to a clientId with find_clients before acting on them — if more than one client matches, ask which one rather than guessing. Same idea for a marketing plan item (find_marketing_plan_items) or a trip (find_trips) — always find its id before calling update_trip or update_marketing_plan_item, rather than guessing one, and if more than one trip matches ask which before changing anything. When asked to add something to the marketing plan/calendar (a blog post, social post, email, ad, or sales task) without every field spelled out, use sensible defaults instead of asking for each one — channel matching the kind of content described, target group \'General/All Clients\' unless a specific audience was mentioned, status \'Planned\', and today\'s date if no date was given. For any traffic, blog, or ad-performance question, call get_analytics_summary — if a source comes back connected:false, tell the user that integration isn\'t connected rather than saying you can\'t access it. Be concise. After taking an action, briefly confirm what you did.';
 
 const ASSISTANT_TOOLS = [
   {
@@ -20484,6 +20484,24 @@ const ASSISTANT_TOOLS = [
       properties: { query: { type: 'string' } },
       required: ['query']
     }
+  },
+  {
+    name: 'update_trip',
+    description: 'Update common fields on an existing trip, found first via find_trips. Only pass the fields that are changing. Does not touch the detailed Booked Trip Details line items (individual flight/hotel/cruise segments, points/balance grids) — those still need the Trip Details form in the app, since they\'re too structured/nested for a chat edit.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string' },
+        destination: { type: 'string' },
+        status: { type: 'string', enum: STATUSES },
+        departDate: { type: 'string', description: 'YYYY-MM-DD' },
+        returnDate: { type: 'string', description: 'YYYY-MM-DD' },
+        totalValue: { type: 'number', description: 'Total trip revenue/value in dollars' },
+        bookingRef: { type: 'string' },
+        notes: { type: 'string' }
+      },
+      required: ['id']
+    }
   }
 ];
 
@@ -20602,6 +20620,18 @@ async function runAssistantTool(name, input){
       return (v.name||'').toLowerCase().indexOf(vq)!==-1;
     }).slice(0,10).map(function(v){ return {id:v.id, name:v.name, category:v.category, website:v.website}; });
     return {vendors: vMatches};
+  }
+  if(name === 'update_trip'){
+    var tripExisting = db.trips.find(function(t){return t.id===input.id;});
+    if(!tripExisting) return {error:'No trip found with id '+input.id};
+    snapshot('Assistant: update trip');
+    var tripUpdated = Object.assign({}, tripExisting);
+    ['destination','status','departDate','returnDate','totalValue','bookingRef','notes'].forEach(function(f){
+      if(input[f]!==undefined) tripUpdated[f] = input[f];
+    });
+    db.trips = db.trips.map(function(t){ return t.id===input.id ? tripUpdated : t; });
+    saveDB();
+    return {ok:true, message:'Trip updated: '+(tripUpdated.clientName||'')+' — '+(tripUpdated.destination||'')};
   }
   return {error:'Unknown tool: '+name};
 }
