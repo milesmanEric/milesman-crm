@@ -3577,6 +3577,24 @@ async function gatherAnalyticsSummary(){
   var results = await Promise.all([gatherWordpressSummary(), gatherGa4Summary(), gatherFacebookAdsSummary()]);
   return { wordpress: results[0], ga4: results[1], facebookAds: results[2] };
 }
+// Assistant-facing wrapper around fetchMailchimpSummaryForRange() (defined
+// further down, alongside the Weekly/Monthly Summary machinery it also
+// feeds) — reuses periodRange() so "daily"/"weekly"/"monthly" here mean
+// exactly what they mean there (yesterday / last completed Mon-Sun week /
+// last completed calendar month). Same connected:false convention as
+// gatherWordpressSummary() etc. above, for when no Mailchimp audience has
+// been chosen yet on this device.
+async function gatherMailchimpSummary(period){
+  var listId = localStorage.getItem(MAILCHIMP_LIST_KEY);
+  if(!listId) return {connected:false};
+  var range = periodRange(period||'daily');
+  try{
+    var summary = await fetchMailchimpSummaryForRange(range.start, range.end);
+    return Object.assign({connected:true, periodStart:range.start, periodEnd:range.end}, summary);
+  }catch(e){
+    return {connected:true, error: e.message};
+  }
+}
 async function findBackupFile(token){
   const q=encodeURIComponent("name='"+BACKUP_FILENAME+"' and trashed=false");
   const r=await fetch('https://www.googleapis.com/drive/v3/files?q='+q+'&orderBy=modifiedTime desc&fields=files(id,name,modifiedTime)',{
@@ -18615,78 +18633,55 @@ function fetchFacebookPageStats(start, end){
 // total — there's no date-range parameter on it, so showing that number
 // under "yesterday" was misleading: it never actually reflected the prior
 // day's activity, only ever grew. This instead counts members whose
-// unsubscribe actually happened on a given date, using the same
-// /members?status=unsubscribed + last_changed field the Unsubscribed
+// unsubscribe/signup actually happened within [start,end], using the same
+// /members?status=... + last_changed/timestamp_opt field the Unsubscribed
 // tile's own drill-down (openMailchimpMembersModal) already displays and
-// sorts by — sorted newest-first, so this can stop scanning as soon as it
-// passes the target date. count=1000 mirrors that drill-down's own page
-// size; a list with more than 1000 unsubscribes since the target date
-// would need pagination this doesn't do, but that's far beyond what a
-// single day's worth of unsubscribes would produce for a travel agency's
-// list.
+// sorts by — sorted newest-first, so a page can stop scanning as soon as it
+// passes the range's start date. Originally this only ever fetched one
+// page of PAGE_SIZE and silently undercounted past it; now it keeps
+// fetching subsequent pages (offset += PAGE_SIZE) as long as the page's
+// last member is still within (or after) the range, so a period with more
+// churn than one page — more plausible now this feeds the Weekly/Monthly
+// Summary, not just a single day — doesn't get quietly undercounted.
+// MAX_PAGES caps it at 20,000 members scanned as a sanity backstop against
+// a sort-order surprise from the API turning this into a full-list crawl.
+function countMailchimpMembersInRange(listId, status, dateField, start, end){
+  var PAGE_SIZE = 1000, MAX_PAGES = 20;
+  function scanPage(offset, countSoFar){
+    return mailchimpProxyGet('/lists/'+listId+'/members?status='+status+'&count='+PAGE_SIZE+'&offset='+offset+'&sort_field='+dateField+'&sort_dir=DESC').then(function(resp){
+      if(resp.error) throw new Error(resp.error.message||resp.detail||'Failed to load '+status+' members');
+      var members = resp.members||[];
+      var count = countSoFar;
+      var pastRangeStart = false;
+      for(var i=0;i<members.length;i++){
+        var d = (members[i][dateField]||'').slice(0,10);
+        if(d>=start && d<=end) count++;
+        else if(d && d<start){ pastRangeStart = true; break; } // sorted newest-first — once we're past the range, nothing further on any page can match
+      }
+      var morePagesPossible = !pastRangeStart && members.length===PAGE_SIZE && (offset/PAGE_SIZE+1)<MAX_PAGES;
+      return morePagesPossible ? scanPage(offset+PAGE_SIZE, count) : count;
+    });
+  }
+  return scanPage(0, 0);
+}
 function countMailchimpUnsubscribesOnDate(listId, dateStr){
-  return mailchimpProxyGet('/lists/'+listId+'/members?status=unsubscribed&count=1000&sort_field=last_changed&sort_dir=DESC').then(function(resp){
-    if(resp.error) throw new Error(resp.error.message||resp.detail||'Failed to load unsubscribed members');
-    var members = resp.members||[];
-    var count = 0;
-    for(var i=0;i<members.length;i++){
-      var d = (members[i].last_changed||'').slice(0,10);
-      if(d===dateStr) count++;
-      else if(d && d<dateStr) break; // sorted newest-first — once we're past the target date, nothing further can match
-    }
-    return count;
-  });
+  return countMailchimpMembersInRange(listId, 'unsubscribed', 'last_changed', dateStr, dateStr);
 }
-// Same date-scoped-count approach as countMailchimpUnsubscribesOnDate()
-// above, for the other direction — new subscribers rather than
-// unsubscribes. timestamp_opt is when the member confirmed their opt-in;
-// on a single-opt-in audience (no separate confirmation step) Mailchimp
-// sets it to the same moment as signup, so this works whether or not the
-// audience uses double opt-in.
+// timestamp_opt is when the member confirmed their opt-in; on a
+// single-opt-in audience (no separate confirmation step) Mailchimp sets it
+// to the same moment as signup, so this works whether or not the audience
+// uses double opt-in.
 function countMailchimpSubscribersAddedOnDate(listId, dateStr){
-  return mailchimpProxyGet('/lists/'+listId+'/members?status=subscribed&count=1000&sort_field=timestamp_opt&sort_dir=DESC').then(function(resp){
-    if(resp.error) throw new Error(resp.error.message||resp.detail||'Failed to load subscribed members');
-    var members = resp.members||[];
-    var count = 0;
-    for(var i=0;i<members.length;i++){
-      var d = (members[i].timestamp_opt||'').slice(0,10);
-      if(d===dateStr) count++;
-      else if(d && d<dateStr) break; // sorted newest-first — once we're past the target date, nothing further can match
-    }
-    return count;
-  });
+  return countMailchimpMembersInRange(listId, 'subscribed', 'timestamp_opt', dateStr, dateStr);
 }
-// Range-based counterparts of countMailchimpUnsubscribesOnDate()/
-// countMailchimpSubscribersAddedOnDate() above, for the Weekly/Monthly
-// Summary — same sorted-newest-first early-break scan, just matching a
-// [start,end] window instead of one exact date. The exact-date functions
-// above stay as-is since loadMailchimpStatsTiles() (the always-daily
-// Mailchimp card) still calls them directly.
+// Range-based counterparts of the OnDate functions above, for the
+// Weekly/Monthly Summary — same paginated scan, just a [start,end] window
+// instead of one exact date (an exact date is simply start===end).
 function countMailchimpUnsubscribesInRange(listId, start, end){
-  return mailchimpProxyGet('/lists/'+listId+'/members?status=unsubscribed&count=1000&sort_field=last_changed&sort_dir=DESC').then(function(resp){
-    if(resp.error) throw new Error(resp.error.message||resp.detail||'Failed to load unsubscribed members');
-    var members = resp.members||[];
-    var count = 0;
-    for(var i=0;i<members.length;i++){
-      var d = (members[i].last_changed||'').slice(0,10);
-      if(d>=start && d<=end) count++;
-      else if(d && d<start) break;
-    }
-    return count;
-  });
+  return countMailchimpMembersInRange(listId, 'unsubscribed', 'last_changed', start, end);
 }
 function countMailchimpSubscribersAddedInRange(listId, start, end){
-  return mailchimpProxyGet('/lists/'+listId+'/members?status=subscribed&count=1000&sort_field=timestamp_opt&sort_dir=DESC').then(function(resp){
-    if(resp.error) throw new Error(resp.error.message||resp.detail||'Failed to load subscribed members');
-    var members = resp.members||[];
-    var count = 0;
-    for(var i=0;i<members.length;i++){
-      var d = (members[i].timestamp_opt||'').slice(0,10);
-      if(d>=start && d<=end) count++;
-      else if(d && d<start) break;
-    }
-    return count;
-  });
+  return countMailchimpMembersInRange(listId, 'subscribed', 'timestamp_opt', start, end);
 }
 function fetchMailchimpSummaryForRange(start, end){
   var listId = localStorage.getItem(MAILCHIMP_LIST_KEY);
@@ -20701,7 +20696,7 @@ async function closeApp(){
 // maps straight onto an existing CRM action. Every mutating tool calls
 // snapshot() first, so any assistant-made change is undoable with the same
 // Undo button as everything else in the app.
-const ASSISTANT_SYSTEM_PROMPT = 'You are the in-app assistant for a travel agency CRM. Help the user look up and update their own clients, trips, groups, marketing plan, vendors, referral credits, bookmarks, and follow-up tasks, and answer questions about blog/website traffic and Facebook Ads performance, using only the provided tools. Always resolve a client by name to a clientId with find_clients before acting on them — if more than one client matches, ask which one rather than guessing. Same idea for a marketing plan item (find_marketing_plan_items) or a trip (find_trips) — always find its id before calling update_trip or update_marketing_plan_item, rather than guessing one, and if more than one trip matches ask which before changing anything. When asked to add something to the marketing plan/calendar (a blog post, social post, email, ad, or sales task) without every field spelled out, use sensible defaults instead of asking for each one — channel matching the kind of content described, target group \'General/All Clients\' unless a specific audience was mentioned, status \'Planned\', and today\'s date if no date was given. For any traffic, blog, or ad-performance question, call get_analytics_summary — if a source comes back connected:false, tell the user that integration isn\'t connected rather than saying you can\'t access it. Be concise. After taking an action, briefly confirm what you did.';
+const ASSISTANT_SYSTEM_PROMPT = 'You are the in-app assistant for a travel agency CRM. Help the user look up and update their own clients, trips, groups, marketing plan, vendors, referral credits, bookmarks, and follow-up tasks, and answer questions about blog/website traffic, Facebook Ads performance, and Mailchimp email marketing performance, using only the provided tools. Always resolve a client by name to a clientId with find_clients before acting on them — if more than one client matches, ask which one rather than guessing. Same idea for a marketing plan item (find_marketing_plan_items) or a trip (find_trips) — always find its id before calling update_trip or update_marketing_plan_item, rather than guessing one, and if more than one trip matches ask which before changing anything. When asked to add something to the marketing plan/calendar (a blog post, social post, email, ad, or sales task) without every field spelled out, use sensible defaults instead of asking for each one — channel matching the kind of content described, target group \'General/All Clients\' unless a specific audience was mentioned, status \'Planned\', and today\'s date if no date was given. For any traffic, blog, or ad-performance question, call get_analytics_summary — if a source comes back connected:false, tell the user that integration isn\'t connected rather than saying you can\'t access it. For any email marketing question (subscribers, unsubscribes, campaign opens/clicks), call get_mailchimp_summary or find_mailchimp_campaigns — same connected:false handling if no Mailchimp audience is chosen yet. Be concise. After taking an action, briefly confirm what you did.';
 
 const ASSISTANT_TOOLS = [
   {
@@ -20771,6 +20766,27 @@ const ASSISTANT_TOOLS = [
     name: 'get_analytics_summary',
     description: 'Fetches current marketing/website performance: WordPress.com blog stats, Google Analytics (GA4) website traffic, and Facebook Ads campaign spend/performance. Each source reports connected:false if that integration isn\'t connected on this device — mention that to the user rather than treating it as an error. Use this for any question about site traffic, blog followers, or ad campaign performance/spend.',
     input_schema: { type: 'object', properties: {} }
+  },
+  {
+    name: 'get_mailchimp_summary',
+    description: 'Fetches Mailchimp email marketing stats for the connected audience: total subscribers, subscribers added, subscribers unsubscribed, and the most recently sent campaign\'s open/click rate. Reports connected:false if no Mailchimp audience is chosen yet on this device — mention that to the user rather than treating it as an error. Use this for any question about email list growth, unsubscribes, or campaign open/click performance.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        period: { type: 'string', enum: ['daily','weekly','monthly'], description: '"daily" = yesterday (default), "weekly" = the most recently completed Monday-Sunday week, "monthly" = the most recently completed calendar month' }
+      }
+    }
+  },
+  {
+    name: 'find_mailchimp_campaigns',
+    description: 'Lists the most recently sent Mailchimp campaigns for the connected audience, with subject, send date, emails sent, opens, and clicks. Optionally filter by a substring of the campaign subject. Reports connected:false if no Mailchimp audience is chosen yet.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        titleContains: { type: 'string', description: 'Only return campaigns whose subject contains this substring (case-insensitive)' },
+        limit: { type: 'number', description: 'Max campaigns to return, default 5, max 20' }
+      }
+    }
   },
   {
     name: 'find_marketing_plan_items',
@@ -20994,6 +21010,34 @@ async function runAssistantTool(name, input){
   input = input || {};
   if(name === 'get_analytics_summary'){
     return await gatherAnalyticsSummary();
+  }
+  if(name === 'get_mailchimp_summary'){
+    return await gatherMailchimpSummary(input.period);
+  }
+  if(name === 'find_mailchimp_campaigns'){
+    var mcListId = localStorage.getItem(MAILCHIMP_LIST_KEY);
+    if(!mcListId) return {connected:false};
+    var mcLimit = Math.min(Math.max(Number(input.limit)||5, 1), 20);
+    try{
+      var mcResp = await mailchimpProxyGet('/reports?list_id='+encodeURIComponent(mcListId)+'&count='+mcLimit+'&sort_field=send_time&sort_dir=DESC');
+      if(mcResp.error) return {connected:true, error: mcResp.error.message||mcResp.detail||'Failed to load campaigns'};
+      var mcTitleFilter = (input.titleContains||'').toLowerCase();
+      var mcCampaigns = (mcResp.reports||[]).filter(function(r){
+        return !mcTitleFilter || (r.campaign_title||'').toLowerCase().indexOf(mcTitleFilter)!==-1;
+      }).map(function(r){
+        var opens = r.opens||{}, clicks = r.clicks||{};
+        return {
+          id: r.id, title: r.campaign_title, sentDate: r.send_time?r.send_time.slice(0,10):null,
+          emailsSent: r.emails_sent, opens: opens.opens_total||0,
+          openRatePct: opens.open_rate!=null ? Math.round(opens.open_rate*1000)/10 : null,
+          clicks: clicks.clicks_total||0,
+          clickRatePct: clicks.click_rate!=null ? Math.round(clicks.click_rate*1000)/10 : null
+        };
+      });
+      return {connected:true, campaigns: mcCampaigns};
+    }catch(e){
+      return {connected:true, error: e.message};
+    }
   }
   if(name === 'find_clients'){
     var q = (input.query||'').toLowerCase();
