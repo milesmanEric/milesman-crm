@@ -11486,23 +11486,53 @@ function renderVendors(){
 // sequentially on save (see readVendorProperties) rather than tracked
 // through add/remove, since nothing else keys off a property's id — the
 // Booked Trip Details Property picklist matches on name, not id.
+// Builds an <option>'s visible label from its data-name/city/country/email
+// attributes — the single source of truth for what's actually stored (see
+// readVendorProperties()) — so city/country/email edits never have to
+// pattern-match and strip a previous suffix back out of the label text.
+// Plain-text version (for direct assignment to a DOM node's textContent,
+// which needs a literal "—"/"✉", not HTML entities); the HTML-string
+// version below escapes name/city/country for use inside markup instead.
+function propertyOptionLabelText(name, city, country, email){
+  var loc = [city,country].filter(Boolean).join(', ');
+  return name+(loc?' — '+loc:'')+(email?' ✉':'');
+}
+function propertyOptionLabelHtml(name, city, country, email){
+  var loc = [city,country].filter(Boolean).join(', ');
+  return escHtml(name)+(loc?' &mdash; '+escHtml(loc):'')+(email?' &#9993;':'');
+}
+function rebuildPropertyOptionLabel(opt){
+  opt.textContent = propertyOptionLabelText(opt.dataset.name||'', opt.dataset.city||'', opt.dataset.country||'', opt.dataset.email||'');
+}
 function vendorPropertiesListHtml(properties){
-  // data-email rides along on each <option> (not a value/attribute the
-  // <select> itself exposes to the user) purely as scratch storage between
-  // renders — see the Property Email field below, which reads/writes it
-  // directly on the selected option's DOM node rather than keeping a
-  // parallel array in sync, so "Save Email" doesn't need to know a
-  // property's position/id (which gets renumbered on every save anyway).
+  // data-name/city/country/email ride along on each <option> (not a
+  // value/attribute the <select> itself exposes to the user) purely as
+  // scratch storage between renders — see the Property Email/Location
+  // fields below, which read/write these directly on the selected
+  // option's DOM node rather than keeping a parallel array in sync, so
+  // saving one doesn't need to know a property's position/id (which gets
+  // renumbered on every save anyway).
   var optsHtml = properties.map(function(p){
-    return '<option data-email="'+escHtml(p.email||'')+'">'+escHtml(p.name)+(p.email?' &#9993;':'')+'</option>';
+    return '<option data-name="'+escHtml(p.name)+'" data-email="'+escHtml(p.email||'')+'" data-city="'+escHtml(p.city||'')+'" data-country="'+escHtml(p.country||'')+'">'+propertyOptionLabelHtml(p.name,p.city,p.country,p.email)+'</option>';
   }).join('');
   return '<div style="font-size:11px;color:#888;margin-bottom:4px">'+properties.length+' propert'+(properties.length===1?'y':'ies')+'</div>'+
     '<input type="text" id="vendor-properties-filter" placeholder="Filter properties..." style="width:100%;padding:6px 8px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;font-family:inherit;margin-bottom:6px;box-sizing:border-box">'+
     '<select id="vendor-properties-select" multiple size="8" style="width:100%;padding:4px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;font-family:inherit;box-sizing:border-box">'+optsHtml+'</select>'+
-    '<div style="display:flex;gap:6px;margin-top:6px">'+
-      '<input type="text" id="vendor-property-new" placeholder="Add a property..." style="flex:1;padding:6px 8px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;font-family:inherit;box-sizing:border-box">'+
+    '<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">'+
+      '<input type="text" id="vendor-property-new" placeholder="Property name..." style="flex:2;min-width:120px;padding:6px 8px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;font-family:inherit;box-sizing:border-box">'+
+      '<input type="text" id="vendor-property-new-city" placeholder="City" style="flex:1;min-width:80px;padding:6px 8px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;font-family:inherit;box-sizing:border-box">'+
+      '<input type="text" id="vendor-property-new-country" placeholder="Country" style="flex:1;min-width:80px;padding:6px 8px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;font-family:inherit;box-sizing:border-box">'+
       '<button type="button" id="btn-add-vendor-property" style="padding:5px 12px;border-radius:6px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:11px;font-family:inherit;white-space:nowrap">+ Add</button>'+
       '<button type="button" id="btn-remove-vendor-property" style="padding:5px 12px;border-radius:6px;border:1px solid #d1d5db;background:#fff;color:#dc2626;cursor:pointer;font-size:11px;font-family:inherit;white-space:nowrap">Remove Selected</button>'+
+    '</div>'+
+    '<div style="margin-top:8px;padding-top:8px;border-top:1px solid #f0f0f0">'+
+      '<label style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:.04em">Property Location</label>'+
+      '<div id="vendor-property-location-hint" style="font-size:11px;color:#aaa;margin:2px 0 4px">Select exactly one property above to set its city/country</div>'+
+      '<div style="display:flex;gap:6px">'+
+        '<input type="text" id="vendor-property-city" placeholder="City" disabled style="flex:1;padding:6px 8px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;font-family:inherit;box-sizing:border-box">'+
+        '<input type="text" id="vendor-property-country" placeholder="Country" disabled style="flex:1;padding:6px 8px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;font-family:inherit;box-sizing:border-box">'+
+        '<button type="button" id="btn-save-vendor-property-location" disabled style="padding:5px 12px;border-radius:6px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:11px;font-family:inherit;white-space:nowrap">Save</button>'+
+      '</div>'+
     '</div>'+
     '<div style="margin-top:8px;padding-top:8px;border-top:1px solid #f0f0f0">'+
       '<label style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:.04em">Property Email</label>'+
@@ -11749,7 +11779,7 @@ function readVendorProperties(){
   var sel = document.getElementById('vendor-properties-select');
   if(!sel) return null; // form wasn't showing a Properties section (not a Hotel supplier)
   return Array.from(sel.options).map(function(o, i){
-    return {id:'HP'+(i+1), name:o.textContent.replace(/\s*✉\s*$/,''), email:o.dataset.email||''};
+    return {id:'HP'+(i+1), name:o.dataset.name||o.textContent, email:o.dataset.email||'', city:o.dataset.city||'', country:o.dataset.country||''};
   });
 }
 function openVendorForm(id){
@@ -12060,24 +12090,77 @@ function openVendorForm(id){
     }
     var addPropBtn = document.getElementById('btn-add-vendor-property');
     var newPropInput = document.getElementById('vendor-property-new');
+    var newPropCityInput = document.getElementById('vendor-property-new-city');
+    var newPropCountryInput = document.getElementById('vendor-property-new-country');
     if(addPropBtn && newPropInput && propSelect){
       var addPropertyFromInput = function(){
         var name = newPropInput.value.trim();
         if(!name) return;
+        var city = (newPropCityInput&&newPropCityInput.value.trim())||'';
+        var country = (newPropCountryInput&&newPropCountryInput.value.trim())||'';
         var opt = document.createElement('option');
-        opt.textContent = name;
+        opt.dataset.name = name;
+        opt.dataset.city = city;
+        opt.dataset.country = country;
+        rebuildPropertyOptionLabel(opt);
         propSelect.appendChild(opt);
         newPropInput.value = '';
+        if(newPropCityInput) newPropCityInput.value = '';
+        if(newPropCountryInput) newPropCountryInput.value = '';
         newPropInput.focus();
       };
       addPropBtn.addEventListener('click', addPropertyFromInput);
       newPropInput.addEventListener('keydown', function(e){ if(e.key==='Enter'){ e.preventDefault(); addPropertyFromInput(); } });
+      if(newPropCityInput) newPropCityInput.addEventListener('keydown', function(e){ if(e.key==='Enter'){ e.preventDefault(); addPropertyFromInput(); } });
+      if(newPropCountryInput) newPropCountryInput.addEventListener('keydown', function(e){ if(e.key==='Enter'){ e.preventDefault(); addPropertyFromInput(); } });
     }
     var removePropBtn = document.getElementById('btn-remove-vendor-property');
     if(removePropBtn && propSelect){
       removePropBtn.addEventListener('click', function(){
         Array.from(propSelect.selectedOptions).forEach(function(o){ o.remove(); });
         if(refreshPropertyEmailField) refreshPropertyEmailField();
+        if(refreshPropertyLocationField) refreshPropertyLocationField();
+      });
+    }
+    // Property Location — same pattern as Property Email below: only
+    // enabled with exactly one property selected, reading/writing straight
+    // to/from that <option>'s own data-city/data-country (kept in sync
+    // with the "— City, Country" suffix on its label via
+    // rebuildPropertyOptionLabel), rather than a separate lookup structure.
+    var propCityInput = document.getElementById('vendor-property-city');
+    var propCountryInput = document.getElementById('vendor-property-country');
+    var propLocationHint = document.getElementById('vendor-property-location-hint');
+    var savePropLocationBtn = document.getElementById('btn-save-vendor-property-location');
+    var refreshPropertyLocationField = null;
+    if(propSelect && propCityInput && propCountryInput && propLocationHint && savePropLocationBtn){
+      refreshPropertyLocationField = function(){
+        var selected = propSelect.selectedOptions;
+        if(selected.length===1){
+          propCityInput.disabled = false;
+          propCountryInput.disabled = false;
+          savePropLocationBtn.disabled = false;
+          propCityInput.value = selected[0].dataset.city||'';
+          propCountryInput.value = selected[0].dataset.country||'';
+          propLocationHint.textContent = 'Location for: '+(selected[0].dataset.name||selected[0].textContent);
+        } else {
+          propCityInput.disabled = true;
+          propCountryInput.disabled = true;
+          savePropLocationBtn.disabled = true;
+          propCityInput.value = '';
+          propCountryInput.value = '';
+          propLocationHint.textContent = selected.length>1 ? 'Select only one property to set its city/country' : 'Select exactly one property above to set its city/country';
+        }
+      };
+      propSelect.addEventListener('change', refreshPropertyLocationField);
+      propSelect.addEventListener('click', refreshPropertyLocationField);
+      savePropLocationBtn.addEventListener('click', function(){
+        var selected = propSelect.selectedOptions;
+        if(selected.length!==1) return;
+        var opt = selected[0];
+        opt.dataset.city = propCityInput.value.trim();
+        opt.dataset.country = propCountryInput.value.trim();
+        rebuildPropertyOptionLabel(opt);
+        toast('Property location saved (click Save Supplier below to keep it)','ok');
       });
     }
     // Property Email — only enabled with exactly one property selected in
@@ -12099,7 +12182,7 @@ function openVendorForm(id){
           propEmailInput.disabled = false;
           savePropEmailBtn.disabled = false;
           propEmailInput.value = selected[0].dataset.email||'';
-          propEmailHint.textContent = 'Email for: '+selected[0].textContent.replace(/\s*✉\s*$/,'');
+          propEmailHint.textContent = 'Email for: '+(selected[0].dataset.name||selected[0].textContent);
         } else {
           propEmailInput.disabled = true;
           savePropEmailBtn.disabled = true;
@@ -12113,11 +12196,9 @@ function openVendorForm(id){
         var selected = propSelect.selectedOptions;
         if(selected.length!==1) return;
         var opt = selected[0];
-        var email = propEmailInput.value.trim();
-        opt.dataset.email = email;
-        var bareName = opt.textContent.replace(/\s*✉\s*$/,'');
-        opt.textContent = bareName+(email?' ✉':'');
-        toast(email?'Property email saved (click Save Supplier below to keep it)':'Property email cleared (click Save Supplier below to keep it)','ok');
+        opt.dataset.email = propEmailInput.value.trim();
+        rebuildPropertyOptionLabel(opt);
+        toast(opt.dataset.email?'Property email saved (click Save Supplier below to keep it)':'Property email cleared (click Save Supplier below to keep it)','ok');
       });
     }
     // Property Contacts — mirrors the Property Email panel above: only
@@ -12133,7 +12214,7 @@ function openVendorForm(id){
       var refreshPropertyContactsField = function(){
         var selected = propSelect.selectedOptions;
         if(selected.length===1){
-          var propName = selected[0].textContent.replace(/\s*✉\s*$/,'');
+          var propName = selected[0].dataset.name||selected[0].textContent;
           var linked = (d.contacts||[]).filter(function(c){ return c.propertyName===propName; });
           propContactsHint.textContent = linked.length ? '' : 'No contacts linked to '+propName+' yet.';
           propContactsListEl.innerHTML = linked.map(function(c){
