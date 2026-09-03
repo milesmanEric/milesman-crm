@@ -9475,6 +9475,7 @@ function renderReports(){
       '<button class="rpt-tab-btn'+(activeTab==='invoice'?' active':'')+'" data-tab="invoice">By Invoice #</button>'+
       '<button class="rpt-tab-btn'+(activeTab==='certs'?' active':'')+'" data-tab="certs">Unused Certificates</button>'+
       '<button class="rpt-tab-btn'+(activeTab==='points'?' active':'')+'" data-tab="points">Combined Points</button>'+
+      '<button class="rpt-tab-btn'+(activeTab==='hotelcity'?' active':'')+'" data-tab="hotelcity">Hotels by City</button>'+
       '<button class="rpt-tab-btn'+(activeTab==='ai'?' active':'')+'" data-tab="ai">AI Report</button>'+
     '</div>'+
     (activeTab==='activity' ?
@@ -9543,6 +9544,17 @@ function renderReports(){
         '<button class="report-export-btn" id="rpt-pts-export-pdf">Export PDF</button>'+
       '</div>'+
       '<div id="rpt-pts-results"><div class="empty" style="padding:40px">Select at least one traveler above and click Run Report</div></div>')
+    : activeTab==='hotelcity' ?
+      ('<div class="report-filter">'+
+        '<div><label>City</label><input type="text" id="rpt-city-search" placeholder="e.g. Boston" autocomplete="off"/></div>'+
+        '<div><label>Country</label><input type="text" id="rpt-city-country" placeholder="e.g. USA" autocomplete="off"/></div>'+
+        '<div style="display:flex;gap:8px;align-self:flex-end">'+
+          '<button class="report-run-btn" id="rpt-city-run">Run Report</button>'+
+          '<button class="report-export-btn" id="rpt-city-export">Export CSV</button>'+
+          '<button class="report-export-btn" id="rpt-city-export-pdf">Export PDF</button>'+
+        '</div>'+
+      '</div>'+
+      '<div id="rpt-city-results"><div class="empty" style="padding:40px">Enter a city (and/or country) above and click Run Report — searches every Hotel supplier\'s properties list</div></div>')
     :
       ('<div class="field full" style="margin-bottom:14px">'+
         '<label>Describe the report you want <span class="hint" style="text-transform:none;font-weight:400">(e.g. "Trips over $3,000 booked with Delta in the last year, sorted by value")</span></label>'+
@@ -9611,6 +9623,19 @@ function renderReports(){
     document.getElementById('rpt-pts-run').addEventListener('click', runPointsReport);
     document.getElementById('rpt-pts-export').addEventListener('click', exportPointsReport);
     document.getElementById('rpt-pts-export-pdf').addEventListener('click', exportPointsReportPdf);
+  } else if(activeTab==='hotelcity'){
+    document.getElementById('rpt-city-run').addEventListener('click', function(){
+      runHotelCityReport();
+      setTimeout(function(){
+        document.querySelectorAll('.rpt-city-row').forEach(function(row){
+          row.addEventListener('click', function(){ openVendorForm(row.dataset.vendorId); });
+        });
+      }, 50);
+    });
+    document.getElementById('rpt-city-search').addEventListener('keydown', function(e){ if(e.key==='Enter') document.getElementById('rpt-city-run').click(); });
+    document.getElementById('rpt-city-country').addEventListener('keydown', function(e){ if(e.key==='Enter') document.getElementById('rpt-city-run').click(); });
+    document.getElementById('rpt-city-export').addEventListener('click', exportHotelCityReport);
+    document.getElementById('rpt-city-export-pdf').addEventListener('click', exportHotelCityReportPdf);
   } else {
     document.getElementById('rpt-ai-generate').addEventListener('click', runAiReportGenerate);
     bindSavedReportButtons();
@@ -10039,6 +10064,81 @@ async function exportCertificatesReportPdf(){
   if(!rows.length){ toast('No data to export','err'); return; }
   var subtitle = rows.length+' unused certificate'+(rows.length!==1?'s':'');
   await downloadReportAsPdf('Unused Certificates Report', subtitle, certificatesReportPdfTable(rows), 'milesman-unused-certificates-report.pdf');
+}
+
+// ── Hotels by City Report ────────────────────────────────────────────────
+// Searches every Hotel-category Supplier's own `properties` list (see
+// vendorPropertiesListHtml/readVendorProperties) for a city/country match,
+// rather than any separate index — that list is the single source of
+// truth for a property's location, same as everywhere else that reads it
+// (e.g. hotelPropertyOptionsHtml on a trip's Booked Trip Details). Useful
+// for "does any of our hotel suppliers have a property in <city>?" without
+// having to open every Hotel supplier one at a time.
+function getHotelsByCityReportData(cityQuery, countryQuery){
+  var cq = (cityQuery||'').trim().toLowerCase();
+  var ctq = (countryQuery||'').trim().toLowerCase();
+  var rows = [];
+  db.vendors.forEach(function(v){
+    if(v.category!=='Hotel' || !(v.properties&&v.properties.length)) return;
+    v.properties.forEach(function(p){
+      if(cq && !(p.city||'').toLowerCase().includes(cq)) return;
+      if(ctq && !(p.country||'').toLowerCase().includes(ctq)) return;
+      rows.push({vendorId:v.id, vendorName:v.name, propertyName:p.name, city:p.city||'', country:p.country||'', email:p.email||''});
+    });
+  });
+  rows.sort(function(a,b){
+    return (a.vendorName||'').toLowerCase().localeCompare((b.vendorName||'').toLowerCase()) || (a.propertyName||'').toLowerCase().localeCompare((b.propertyName||'').toLowerCase());
+  });
+  return rows;
+}
+function runHotelCityReport(){
+  var container = document.getElementById('rpt-city-results');
+  if(!container) return;
+  var city = document.getElementById('rpt-city-search').value;
+  var country = document.getElementById('rpt-city-country').value;
+  var rows = getHotelsByCityReportData(city, country);
+  window._hotelCityReportData = rows;
+  if(!rows.length){
+    container.innerHTML = '<div class="empty" style="padding:40px">No hotel properties match'+(city||country?' that city/country':'')+'</div>';
+    return;
+  }
+  var rowsHtml = rows.map(function(r){
+    return '<tr class="rpt-city-row" style="cursor:pointer" data-vendor-id="'+r.vendorId+'">'+
+      '<td>'+escHtml(r.vendorName)+'</td>'+
+      '<td>'+escHtml(r.propertyName)+'</td>'+
+      '<td>'+escHtml(r.city)+'</td>'+
+      '<td>'+escHtml(r.country)+'</td>'+
+      '<td>'+(r.email?'<a href="mailto:'+mailtoAddr(r.email)+'" onclick="event.stopPropagation()">'+escHtml(r.email)+'</a>':'—')+'</td>'+
+    '</tr>';
+  }).join('');
+  container.innerHTML =
+    '<div style="font-size:13px;color:#888;margin-bottom:10px">'+rows.length+' matching propert'+(rows.length!==1?'ies':'y')+'</div>'+
+    '<div class="tbl-wrap"><table class="report-table"><thead><tr>'+
+      '<th>Hotel Supplier</th><th>Property</th><th>City</th><th>Country</th><th>Email</th>'+
+    '</tr></thead><tbody>'+rowsHtml+'</tbody></table></div>';
+}
+function exportHotelCityReport(){
+  var rows = window._hotelCityReportData;
+  if(!rows || !rows.length){ toast('Run the report first','err'); return; }
+  var esc = function(v){ var s=String(v==null?'':v); return s.includes(',')||s.includes('"')||s.includes('\n')?'"'+s.replace(/"/g,'""')+'"':s; };
+  var headers = ['Hotel Supplier','Property','City','Country','Email'];
+  var csvRows = rows.map(function(r){ return [r.vendorName, r.propertyName, r.city, r.country, r.email]; });
+  var csv = [headers].concat(csvRows).map(function(r){return r.map(esc).join(',');}).join('\n');
+  var b = new Blob([csv],{type:'text/csv'});
+  var a = document.createElement('a'); a.href=URL.createObjectURL(b); a.download='milesman-hotels-by-city-report.csv'; a.click();
+  toast('Report exported ✓');
+}
+function hotelCityReportPdfTable(rows){
+  var rowsHtml = rows.map(function(r){
+    return '<tr><td>'+escHtml(r.vendorName)+'</td><td>'+escHtml(r.propertyName)+'</td><td>'+escHtml(r.city)+'</td><td>'+escHtml(r.country)+'</td><td>'+escHtml(r.email||'—')+'</td></tr>';
+  }).join('');
+  return '<table><thead><tr><th>Hotel Supplier</th><th>Property</th><th>City</th><th>Country</th><th>Email</th></tr></thead><tbody>'+rowsHtml+'</tbody></table>';
+}
+async function exportHotelCityReportPdf(){
+  var rows = window._hotelCityReportData;
+  if(!rows || !rows.length){ toast('Run the report first','err'); return; }
+  var subtitle = rows.length+' matching propert'+(rows.length!==1?'ies':'y');
+  await downloadReportAsPdf('Hotels by City Report', subtitle, hotelCityReportPdfTable(rows), 'milesman-hotels-by-city-report.pdf');
 }
 
 // Builds one section per loyalty category (Airline/Hotel/Cruise/Car Rental/
