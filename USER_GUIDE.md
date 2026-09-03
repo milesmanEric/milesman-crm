@@ -293,6 +293,8 @@ Click **+ Load Starter Bookmarks** to add a pre-built set of consumer booking-si
 
 **Travel Agent → Award Tools** now includes a handful of award-booking tools — Seats.aero, ExpertFlyer, Point.me, and AwardWallet — for searching award availability and tracking client mileage balances across programs. These come in through the same "+ Load Starter Bookmarks" button as everything else above.
 
+Two more categories are available when you **+ Add Bookmark**: **Car Service** (private car, chauffeur, and airport-transfer services — the bookmark side of the trip form's "Transfers / Car Service"; use it under either Consumer or Travel Agent) and **Payments** (meant for Travel Agent — where you collect card/ACH payments from clients or pay suppliers). Both start empty, so they won't show in a section until you file your first link under one.
+
 Right below Bookmarks in the sidebar, seven more quick links — **Miles Man Site**, **WordPress Admin**, **Google Drive Folder**, **Mailchimp**, **Canva**, **Vercel**, and **GitHub** — open each in a new tab, without leaving the CRM.
 
 ---
