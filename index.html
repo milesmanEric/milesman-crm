@@ -1277,6 +1277,42 @@ const DEFAULT_BOOKMARKS = [
 ];
 
 let db = {clients:[],trips:[],vendors:[],bizVendors:[],planner:[],bookmarks:[],savedReports:[],groups:[],marketingPlan:[],pendingImportMatches:[],pendingTravelerMatches:[],jetpackRemovalQueue:[],reportTotals:{}};
+// Diagnostic tracer for the repeated data-wipe incidents (Sept 1/2/4) —
+// db.clients/db.trips have gone empty in memory mid-session for a reason
+// never caught in the act, only ever inferred afterward from Drive backup
+// timestamps or the loadDB() boot-time log. A static audit of every
+// db.clients=/db.trips=/db= reassignment in this file (grep for them)
+// turned up nothing that looked like an obvious unattended culprit — every
+// site found is either a deliberate, already-logged/guarded user action
+// (Undo, Restore, Import) or a .map()/.filter() producing a new array of
+// the same records, not an emptying. So instead of guessing further, this
+// wraps db.clients/db.trips as accessors: any assignment that empties
+// either one while it was previously non-empty gets a debugLog entry with
+// a real stack trace, pointing straight at the actual responsible line
+// the next time this happens — including a call site this audit missed
+// entirely, or one added later. Re-armed after every place `db` itself
+// gets wholesale-reassigned (see instrumentDbWipeTracing() call sites),
+// since a plain object replacing `db` isn't wrapped until re-armed.
+// Deliberately verbose and left in place — cheap insurance, not a
+// performance-sensitive path — until the actual cause is found and fixed.
+function instrumentDbWipeTracing(){
+  ['clients','trips'].forEach(function(field){
+    var backing = db[field];
+    Object.defineProperty(db, field, {
+      get: function(){ return backing; },
+      set: function(v){
+        if(Array.isArray(backing) && backing.length>0 && Array.isArray(v) && v.length===0){
+          var stack = (new Error('db.'+field+' set to empty (was '+backing.length+')')).stack||'';
+          debugLog('WIPE TRACE: db.'+field+' just became empty (was '+backing.length+') — '+stack.split('\n').slice(0,6).join(' | '));
+        }
+        backing = v;
+      },
+      enumerable: true,
+      configurable: true
+    });
+  });
+}
+instrumentDbWipeTracing();
 const UNDO_STACK = [];
 const MAX_UNDO = 20;
 function snapshot(label){
@@ -1287,7 +1323,7 @@ function snapshot(label){
 function undo(){
   if(!UNDO_STACK.length){toast('Nothing to undo','err');return;}
   const prev = UNDO_STACK.pop();
-  try{ db = JSON.parse(prev.data); }catch(e){ toast('Undo failed','err');return; }
+  try{ db = JSON.parse(prev.data); instrumentDbWipeTracing(); }catch(e){ toast('Undo failed','err');return; }
   saveDB(); render();
   updateUndoBtn();
   toast('Undid: '+prev.label,'ok');
@@ -2248,6 +2284,7 @@ async function loadDB(){
     console.error('[CRM] loadDB failed:', e);
     debugLog('loadDB: decrypted OK but failed to parse/migrate the data — '+(e&&e.message||e)+'. Reset to an empty skeleton.');
     db={clients:[],trips:[],vendors:[],planner:[]};
+    instrumentDbWipeTracing();
   }
 }
 // Lives here (inside bootApp(), alongside saveDB()/loadDB() and the same
@@ -4118,6 +4155,7 @@ async function driveRestore(){
         pendingTravelerMatches:Array.isArray(d.pendingTravelerMatches)?d.pendingTravelerMatches:[],
         jetpackRemovalQueue:Array.isArray(d.jetpackRemovalQueue)?d.jetpackRemovalQueue:[]
       };
+      instrumentDbWipeTracing();
       db.clients.forEach(function(c){ if(c.name && !c.name.includes(',')) c.name=toLastFirst(c.name); });
       _dbDecryptFailed = false; // a real recovery just happened — safe to save again
       saveDB();render();
@@ -4241,6 +4279,7 @@ async function secureSyncRestore(){
         pendingTravelerMatches:Array.isArray(d.pendingTravelerMatches)?d.pendingTravelerMatches:[],
         jetpackRemovalQueue:Array.isArray(d.jetpackRemovalQueue)?d.jetpackRemovalQueue:[]
       };
+      instrumentDbWipeTracing();
       db.clients.forEach(function(c){ if(c.name && !c.name.includes(',')) c.name=toLastFirst(c.name); });
       _dbDecryptFailed = false; // a real recovery just happened — safe to save again
       saveDB();render();
@@ -5342,7 +5381,7 @@ function importJSON(){
     r.onload=function(ev){
       try{
         const d=JSON.parse(ev.target.result);
-        if(Array.isArray(d.clients)&&Array.isArray(d.trips)){db=d;if(!Array.isArray(db.vendors))db.vendors=[];if(!Array.isArray(db.bizVendors))db.bizVendors=[];if(!Array.isArray(db.planner))db.planner=[];if(!Array.isArray(db.bookmarks))db.bookmarks=[];if(!Array.isArray(db.savedReports))db.savedReports=[];if(!Array.isArray(db.groups))db.groups=[];if(!Array.isArray(db.marketingPlan))db.marketingPlan=[];if(!Array.isArray(db.pendingImportMatches))db.pendingImportMatches=[];if(!Array.isArray(db.jetpackRemovalQueue))db.jetpackRemovalQueue=[];(db.clients||[]).forEach(function(c){ if(c.name && !c.name.includes(',')) c.name=toLastFirst(c.name); });_dbDecryptFailed=false;saveDB();toast('Data imported');render();}
+        if(Array.isArray(d.clients)&&Array.isArray(d.trips)){db=d;instrumentDbWipeTracing();if(!Array.isArray(db.vendors))db.vendors=[];if(!Array.isArray(db.bizVendors))db.bizVendors=[];if(!Array.isArray(db.planner))db.planner=[];if(!Array.isArray(db.bookmarks))db.bookmarks=[];if(!Array.isArray(db.savedReports))db.savedReports=[];if(!Array.isArray(db.groups))db.groups=[];if(!Array.isArray(db.marketingPlan))db.marketingPlan=[];if(!Array.isArray(db.pendingImportMatches))db.pendingImportMatches=[];if(!Array.isArray(db.jetpackRemovalQueue))db.jetpackRemovalQueue=[];(db.clients||[]).forEach(function(c){ if(c.name && !c.name.includes(',')) c.name=toLastFirst(c.name); });_dbDecryptFailed=false;saveDB();toast('Data imported');render();}
         else toast('Invalid backup file','err');
       }catch(ex){toast('Could not read file','err');}
     };r.readAsText(f);
