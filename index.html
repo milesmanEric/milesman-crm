@@ -1133,7 +1133,7 @@ const CAR_SIZES = ['Economy','Compact','Midsize','Full-size','SUV','Minivan','Lu
 // Mirrored on intake-form.html's "Transfer N Car Type" select.
 const TRANSFER_CAR_TYPES = ['Car','SUV','Van','Any'];
 const ROOM_TYPES = ['Room','Suite'];
-const BOOKMARK_CATEGORIES = ['Airline','Hotel','Cruise Line','Car Rental','Tour/Activity','Theme Park','Visa/Documentation','Currency/Weather','Award Tools','Other'];
+const BOOKMARK_CATEGORIES = ['Airline','Hotel','Cruise Line','Car Rental','Car Service','Tour/Activity','Theme Park','Visa/Documentation','Currency/Weather','Award Tools','Payments','Other'];
 // Separate from category (the business type — Airline/Hotel/etc.): which
 // audience the link is for. A bookmark missing this field is treated as
 // Consumer (see renderBookmarks) so older saved bookmarks default sensibly.
@@ -11927,6 +11927,14 @@ function openVendorForm(id){
     return '<option value="'+c+'"'+(c===d.category?' selected':'')+'>'+c+'</option>';
   }).join('');
 
+  // "This is actually a property of another supplier" picker (only when
+  // editing an existing record) — every other supplier, by name.
+  var mergeTargetOpts = id ? [...db.vendors]
+    .filter(function(v){ return v.id!==id; })
+    .sort(function(a,b){ return (a.name||'').localeCompare(b.name||''); })
+    .map(function(v){ return '<option value="'+v.id+'">'+escHtml(v.name||'(no name)')+(v.category?' — '+escHtml(v.category):'')+'</option>'; })
+    .join('') : '';
+
   $('modal').innerHTML =
     '<div class="modal-hdr"><div class="modal-title">'+(id?'Edit Supplier':'Add Supplier')+'</div><button class="close-btn" id="modal-close">&#x2715;</button></div>'+
     '<div class="fg">'+
@@ -12103,6 +12111,14 @@ function openVendorForm(id){
         }).join('');
       })()+
     '</div>'+
+    (id ? '<div style="margin-top:16px;border-top:1px solid #e5e7eb;padding-top:16px">'+
+      '<div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:6px">Actually a property of another supplier?</div>'+
+      '<div style="font-size:11px;color:#888;margin-bottom:8px">Moves this record in as a named property of the supplier you pick. Its linked trips get re-pointed, and its contacts, notes and linked clients move over. This standalone record is then deleted. Undo with Ctrl+Z.</div>'+
+      '<div style="display:flex;gap:6px;align-items:flex-start">'+
+        '<div style="flex:1">'+searchableSelectWrap('<select id="vendor-merge-target"><option value="">Select the parent supplier...</option>'+mergeTargetOpts+'</select>','Search suppliers...')+'</div>'+
+        '<button type="button" id="btn-merge-vendor" data-id="'+id+'" style="padding:7px 12px;border-radius:6px;border:1px solid #dc2626;background:#fff;color:#dc2626;cursor:pointer;font-size:12px;font-family:inherit;white-space:nowrap">Move as Property</button>'+
+      '</div>'+
+    '</div>' : '')+
     '<div class="form-actions form-actions-sticky"><button class="cancel-btn" id="modal-cancel">Cancel</button><button class="save-btn" id="modal-save-vendor" data-id="'+(id||'')+'">Save Supplier</button></div>';
 
   $('overlay').classList.add('open');
@@ -12125,6 +12141,14 @@ function openVendorForm(id){
   document.querySelectorAll('.vendor-client-cb').forEach(function(cb){
     cb.addEventListener('change', refreshVendorClientsSummary);
   });
+  var mergeVendorBtn = document.getElementById('btn-merge-vendor');
+  if(mergeVendorBtn){
+    mergeVendorBtn.addEventListener('click', function(){
+      var targetId = gv('vendor-merge-target');
+      if(!targetId){ toast('Pick the parent supplier first','err'); return; }
+      moveSupplierIntoParent(this.dataset.id, targetId);
+    });
+  }
   document.querySelectorAll('.supplier-client-link').forEach(function(el){
     el.addEventListener('click', function(e){
       e.stopPropagation();
@@ -12394,6 +12418,119 @@ function saveVendor(id){
   }
   saveDB(); closeModal(); render();
   return id||data.id;
+}
+
+// Reclassifies a standalone Supplier record as a single property of another
+// supplier — for when a record (often auto-created by a revenue import from
+// one hotel's invoice) turns out to be one property of a parent brand/group
+// already in the CRM. Folds the child in: its name becomes an entry in the
+// parent's `properties` list (carrying its email), its contacts move to the
+// parent tagged to that property name, its notes/linked-clients merge in,
+// every trip pointing at it is re-pointed to the parent, and the child
+// record is deleted. One snapshot() up front so the whole thing is a single
+// Ctrl+Z. Hotel brand/property fields on affected trips are only filled when
+// the parent's name is a recognized Hotel brand (in HOTELS) and the field is
+// currently blank — never overwriting an existing value.
+function moveSupplierIntoParent(childId, parentId){
+  var child = db.vendors.find(function(v){ return v.id===childId; });
+  var parent = db.vendors.find(function(v){ return v.id===parentId; });
+  if(!child || !parent || childId===parentId){ toast('Invalid supplier to move into','err'); return; }
+  var propName = (child.name||'').trim();
+  if(!propName){ toast('This supplier has no name to use as a property','err'); return; }
+  var childNameLc = propName.toLowerCase();
+
+  var affectedTrips = db.trips.filter(function(t){
+    return t.supplierId===childId ||
+      (!t.supplierId && (t.supplierName||'').toLowerCase().trim()===childNameLc);
+  });
+  var contactCount = (child.contacts||[]).length;
+  var noteCount = (child.notesLog||[]).length;
+
+  if(!confirm(
+    'Move "'+child.name+'" in as a property of "'+parent.name+'"?\n\n'+
+    '• '+affectedTrips.length+' trip'+(affectedTrips.length!==1?'s':'')+' re-pointed to '+parent.name+'\n'+
+    '• '+contactCount+' contact'+(contactCount!==1?'s':'')+' and '+noteCount+' note'+(noteCount!==1?'s':'')+' moved over\n'+
+    '• the standalone "'+child.name+'" record deleted\n\n'+
+    'Undo with Ctrl+Z.'
+  )) return;
+
+  snapshot('Move "'+child.name+'" into '+parent.name+' as a property');
+
+  var brandKnown = HOTELS.indexOf(parent.name)!==-1;
+
+  // 1. Property entry on the parent
+  parent.properties = parent.properties || [];
+  var existingProp = parent.properties.find(function(p){
+    return (p.name||'').toLowerCase().trim()===childNameLc;
+  });
+  if(existingProp){
+    if(!existingProp.email && child.email) existingProp.email = child.email;
+  } else {
+    parent.properties.push({id:'HP'+(parent.properties.length+1), name:propName, email:child.email||''});
+  }
+  // Any sub-properties the child itself carried
+  (child.properties||[]).forEach(function(p){
+    var pLc = (p.name||'').toLowerCase().trim();
+    if(pLc && !parent.properties.some(function(x){ return (x.name||'').toLowerCase().trim()===pLc; })){
+      parent.properties.push({id:'HP'+(parent.properties.length+1), name:p.name, email:p.email||''});
+    }
+  });
+  if(!parent.category) parent.category = 'Hotel';
+
+  // 2. Contacts -> parent, tagged to this property
+  parent.contacts = parent.contacts || [];
+  (child.contacts||[]).forEach(function(c){
+    parent.contacts.push(Object.assign({}, c, {propertyName: c.propertyName || propName}));
+  });
+  // Fold the child's own top-level contact fields into a parent contact
+  if(child.contactName || child.phone){
+    parent.contacts.push({
+      id: newId('VC', allVendorContacts().map(function(x){ return x.contact; })),
+      name: child.contactName || propName, title:'',
+      email: child.email||'', phone: child.phone||'',
+      propertyName: propName, notesLog:[]
+    });
+  }
+
+  // 3. Linked clients
+  var mergedClientIds = (parent.clientIds||[]).slice();
+  (child.clientIds||[]).forEach(function(cid){ if(mergedClientIds.indexOf(cid)===-1) mergedClientIds.push(cid); });
+  parent.clientIds = mergedClientIds;
+
+  // 4. Notes — a marker entry, then the child's own log, prefixed
+  parent.notesLog = (parent.notesLog||[]).concat(
+    [{ ts:new Date().toLocaleString(),
+       text:'Merged standalone supplier "'+child.name+'" ('+child.id+') into this record as a property.'+(child.website?' Website: '+child.website:''),
+       noteType:'General' }],
+    (child.notesLog||[]).map(function(n){
+      return Object.assign({}, n, {text:'[from '+child.name+'] '+(n.text||'')});
+    })
+  );
+
+  // 5. Re-point trips
+  affectedTrips.forEach(function(t){
+    t.supplierId = parentId;
+    t.supplierName = parent.name;
+    if(brandKnown){
+      if(!t.hotel) t.hotel = parent.name;
+      if(!t.hotelProperty) t.hotelProperty = propName;
+      if(t.booked && Array.isArray(t.booked.hotel)){
+        t.booked.hotel.forEach(function(h){
+          if(!h.hotelBrand) h.hotelBrand = parent.name;
+          if(!h.property) h.property = propName;
+        });
+      }
+    }
+  });
+
+  // 6. Delete the standalone record
+  db.vendors = db.vendors.filter(function(v){ return v.id!==childId; });
+
+  saveDB();
+  closeModal();
+  render();
+  toast('Moved "'+child.name+'" into '+parent.name+(affectedTrips.length?(' — '+affectedTrips.length+' trip'+(affectedTrips.length!==1?'s':'')+' re-pointed'):''),'ok');
+  openVendorForm(parentId);
 }
 
 // A supplier contact's own record — same notes-timeline + task-list shape as
