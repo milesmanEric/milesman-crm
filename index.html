@@ -1833,26 +1833,66 @@ var _dbDecryptFailed = false;
 // A device's automatic Drive backups (the 5-minute interval, tab-hide, and
 // page-unload triggers — see startAutosave()) upload whatever `db`
 // currently holds in memory, with no human in the loop to notice if
-// that's wrong. Twice now (Sept 1, and again today), something emptied out
-// `db` in memory mid-session for a reason never pinned down, and the very
-// next silent auto-backup then dutifully overwrote the real Drive backup
-// with that emptiness — the actual mechanism behind both incidents, not
-// just a coincidence of timing. This tracks the record counts last known
-// to be real (updated on every save) so an automatic backup can refuse to
-// persist a suspicious drop to zero, regardless of what caused it —
-// closing the hole even without knowing why `db` emptied in the first
-// place.
+// that's wrong. This has now happened three times (Sept 1, Sept 2, and
+// again Sept 4) with something emptying out `db` in memory mid-session for
+// a reason never pinned down, and the very next silent auto-backup then
+// dutifully overwrote the real Drive backup with that emptiness. This
+// tracks the record counts last known to be real (updated on every save,
+// as a high-water mark that never regresses — see recordGoodDbCounts) so
+// an automatic backup can refuse to persist a suspicious drop, regardless
+// of what caused it — closing the hole even without knowing why `db`
+// emptied in the first place.
+//
+// The Sept 4 incident revealed the original version of this guard
+// (checking only "both clients AND trips are zero") wasn't enough:
+// syncBlogFollowersToClients() runs automatically the moment the Analytics
+// page's WordPress card loads, and treats every email subscriber as
+// unmatched once `db.clients` is empty (matching is by email against
+// EXISTING clients) — silently refilling `clients` with dozens of
+// synthetic subscriber-only records (fresh IDs starting at C001 again)
+// before the next save ever ran. That made clients.length look non-zero
+// again while every real client, every trip, and everything else was
+// still gone (confirmed: 143 real clients/149 trips became 143 WordPress-
+// subscriber clients/0 trips), sailing straight past the old AND check.
+// trips is checked independently now, since nothing in this app ever
+// auto-creates a trip — only manual entry or a deliberate revenue-report
+// import — making a trip count that was once positive dropping to exactly
+// zero an extremely reliable wipe signal on its own, regardless of what
+// clients.length happens to say.
 var LAST_GOOD_COUNTS_KEY = 'mm_last_good_counts';
 function recordGoodDbCounts(){
-  if(db.clients.length===0 && db.trips.length===0) return; // nothing to raise the high-water mark with
-  try{ localStorage.setItem(LAST_GOOD_COUNTS_KEY, JSON.stringify({clients:db.clients.length, trips:db.trips.length})); }catch(e){}
+  var last;
+  try{ last = JSON.parse(localStorage.getItem(LAST_GOOD_COUNTS_KEY)||'null'); }catch(e){ last = null; }
+  var current = {clients:db.clients.length, trips:db.trips.length};
+  // Never let the recorded high-water mark regress — a save where either
+  // count just dropped versus what's already on record reflects a wipe in
+  // progress (or, per the Sept 4 incident, a wipe already partially masked
+  // by a refill), not genuine new data, and must not be allowed to
+  // overwrite the mark that's supposed to catch exactly that.
+  if(last && (current.trips<last.trips || current.clients<last.clients)) return;
+  if(current.clients===0 && current.trips===0) return; // nothing to raise the mark with
+  try{ localStorage.setItem(LAST_GOOD_COUNTS_KEY, JSON.stringify(current)); }catch(e){}
 }
 function dbAppearsWiped(){
-  if(db.clients.length>0 || db.trips.length>0) return false;
   try{
     var last = JSON.parse(localStorage.getItem(LAST_GOOD_COUNTS_KEY)||'null');
-    return !!(last && (last.clients>0 || last.trips>0));
+    if(!last) return false;
+    if(db.trips.length===0 && last.trips>0) return true;
+    if(db.clients.length===0 && last.clients>0) return true;
+    return false;
   }catch(e){ return false; }
+}
+// Describes specifically which field(s) look wiped, for the warning
+// messages below — a trips-only wipe (Sept 4: clients got refilled with
+// synthetic subscriber records, masking a clients-count check) reads very
+// differently from an everything-empty wipe (Sept 1/2), and the message
+// should say which actually happened rather than always claiming both.
+function dbWipedDescription(){
+  var clientsWiped = db.clients.length===0;
+  var tripsWiped = db.trips.length===0;
+  if(clientsWiped && tripsWiped) return '0 clients and 0 trips';
+  if(tripsWiped) return '0 trips (with '+db.clients.length+' client'+(db.clients.length!==1?'s':'')+' — possibly refilled by an auto-import after a wipe)';
+  return '0 clients (with '+db.trips.length+' trip'+(db.trips.length!==1?'s':'')+')';
 }
 function saveDB(){
   if(_dbDecryptFailed){
@@ -3887,13 +3927,13 @@ async function driveBackup(silent){
   // manual click gets an explicit confirm() instead, since a human is
   // actually present to make that call.
   if(dbAppearsWiped()){
-    var wipeMsg = 'Local data shows 0 clients and 0 trips, but this device previously had real data — this looks like the in-memory data got wiped, not a deliberate deletion.';
+    var wipeMsg = 'Local data shows '+dbWipedDescription()+', but this device previously had real data — this looks like the in-memory data got wiped, not a deliberate deletion.';
     if(silent){
       debugLog('Auto Drive backup BLOCKED — '+wipeMsg+' Skipping to avoid overwriting the real Drive backup with emptiness. Reload the page, or use Restore if your data appears missing.');
       return;
     }
-    if(!confirm(wipeMsg+'\n\nBack up anyway and overwrite the existing Google Drive backup with this empty state?')){
-      debugLog('Manual backup cancelled — local data appears wiped (0 clients, 0 trips) versus a previously known-good count.');
+    if(!confirm(wipeMsg+'\n\nBack up anyway and overwrite the existing Google Drive backup with this state?')){
+      debugLog('Manual backup cancelled — local data appears wiped ('+dbWipedDescription()+') versus a previously known-good count.');
       return;
     }
   }
@@ -3985,7 +4025,7 @@ async function checkNightlyPermanentBackup(){
   // unattended (no human to confirm), so a suspicious drop to zero just
   // skips rather than permanently archiving emptiness under today's date.
   if(dbAppearsWiped()){
-    debugLog('Nightly permanent backup BLOCKED — local data shows 0 clients and 0 trips, but this device previously had real data. Skipping rather than archiving emptiness; will retry next check.');
+    debugLog('Nightly permanent backup BLOCKED — local data shows '+dbWipedDescription()+', but this device previously had real data. Skipping rather than archiving emptiness; will retry next check.');
     return;
   }
   if(new Date().getHours() < NIGHTLY_BACKUP_HOUR) return; // not yet time today
@@ -4124,8 +4164,8 @@ async function secureSyncBackup(){
   }
   // Same reasoning as driveBackup()'s dbAppearsWiped() guard — this is a
   // manual click, so a human is present to confirm rather than skip outright.
-  if(dbAppearsWiped() && !confirm('Local data shows 0 clients and 0 trips, but this device previously had real data — this looks like the in-memory data got wiped, not a deliberate deletion.\n\nBack up anyway and overwrite the existing Secure Sync backup with this empty state?')){
-    debugLog('Secure Sync backup cancelled — local data appears wiped (0 clients, 0 trips) versus a previously known-good count.');
+  if(dbAppearsWiped() && !confirm('Local data shows '+dbWipedDescription()+', but this device previously had real data — this looks like the in-memory data got wiped, not a deliberate deletion.\n\nBack up anyway and overwrite the existing Secure Sync backup with this state?')){
+    debugLog('Secure Sync backup cancelled — local data appears wiped ('+dbWipedDescription()+') versus a previously known-good count.');
     return;
   }
   const btn = $('secure-sync-backup-btn');
@@ -20507,6 +20547,19 @@ function loadWordpressFollowers(token, containerId){
 // change (which re-runs this): the second pass finds every email already
 // synced and makes no further changes, so it doesn't loop.
 function syncBlogFollowersToClients(token){
+  // Refuses to run while local data looks wiped (see dbAppearsWiped) —
+  // this is the actual mechanism behind the Sept 4 incident: with
+  // db.clients emptied by some other bug, every real subscriber's email
+  // matched no existing client, so this silently created 143 fresh
+  // subscriber-only client records, masking the wipe just enough (clients
+  // no longer read as zero) to slip past the backup guards below before
+  // anyone noticed. Skipping the sync entirely while wiped leaves clients
+  // genuinely empty instead of plausibly non-empty, so dbAppearsWiped()
+  // still catches it on the next save/backup.
+  if(_dbDecryptFailed || dbAppearsWiped()){
+    debugLog('Blog follower sync skipped — local data appears wiped or undecryptable; restore first.');
+    return;
+  }
   fetchAllWordpressFollowerPages(token, 'email').then(function(d){
     if(d.error) return;
     var subs = d.subscribers||[];
