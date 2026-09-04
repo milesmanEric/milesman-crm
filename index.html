@@ -1531,7 +1531,16 @@ function matchClientByName(name){
   function segMatches(inputSeg, candidateSeg){
     if(isTruncatedSeg(inputSeg)){
       var prefix = stripTruncation(inputSeg);
-      return prefix ? candidateSeg.indexOf(prefix)===0 : true;
+      // An empty prefix means the report truncated this segment down to
+      // nothing at all (e.g. a long first name swallowing the entire last
+      // name into "..."), so there's zero real information to match
+      // on — treating that as "matches anything" is exactly how a
+      // transaction got silently attributed to the wrong same-first-name
+      // client (Jennifer Gartenberg's revenue landing on Jennifer
+      // Colamedici) instead of falling through to manual review the way
+      // the comment above this function promises. Matching nothing here
+      // forces that fallthrough instead of guessing.
+      return prefix ? candidateSeg.indexOf(prefix)===0 : false;
     }
     return candidateSeg===inputSeg;
   }
