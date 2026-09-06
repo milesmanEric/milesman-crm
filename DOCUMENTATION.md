@@ -604,12 +604,17 @@ The Ticket Type field is a real `<select multiple>`. Since a browser would other
 ### Auto-resizing iframe
 When embedded via `<iframe>` (as it is on the WordPress page), a fixed pixel height goes stale the instant a field is added or the page reflows for a different viewport width — silently clipping the bottom of the form, including the submit button. The page reports its real height to `window.parent` via `postMessage` (`ResizeObserver` + `MutationObserver` + a 1s poll fallback, since a parent-driven width change reflows content without firing either of those inside the frame). The **embedding page** needs a matching listener to actually resize the iframe element — see the snippet at the bottom of this section.
 
+**Scroll-to-top on submit**: Submit sits at the bottom of a long form — without help, the thank-you message swaps in right where the form was and the page stays scrolled to wherever the traveler already was, so the message renders off-screen above the fold. On success the form calls `window.scrollTo({top:0, behavior:'smooth'})` on its own document (handles the form opened standalone, outside an iframe) and also `postMessage`s a `milesman-intake-scroll-top` message to `window.parent` (handles the embedded case — an iframe can't scroll its own parent page directly, only ask it to). The embedding page's listener needs both message types handled, as in the snippet below.
+
 ```html
 <iframe id="milesman-intake-frame" src="https://milesmaneric.github.io/milesman-crm/intake-form.html" style="width:100%;height:2600px;border:none;"></iframe>
 <script>
 window.addEventListener('message', function(e){
   if (e.data && e.data.type === 'milesman-intake-height') {
     document.getElementById('milesman-intake-frame').style.height = e.data.height + 'px';
+  }
+  if (e.data && e.data.type === 'milesman-intake-scroll-top') {
+    document.getElementById('milesman-intake-frame').scrollIntoView({behavior:'smooth', block:'start'});
   }
 });
 </script>

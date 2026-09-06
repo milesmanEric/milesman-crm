@@ -1092,6 +1092,20 @@
       if(resp.ok){
         form.style.display = 'none';
         document.getElementById('ok-msg').style.display = 'block';
+        // Submit is way down at the bottom of a long form — without this,
+        // the thank-you message swaps in right where the form used to be
+        // and the page (or, embedded via <iframe> on the WordPress page,
+        // the PARENT page) stays scrolled to wherever the traveler already
+        // was, so the message renders off-screen above the fold. Scrolling
+        // this frame's own document handles the standalone case; the
+        // postMessage handles the embedded case, since this frame can't
+        // scroll its own parent page directly — the embedding page's
+        // listener (see DOCUMENTATION.md's Auto-resizing iframe snippet)
+        // needs the matching handler added for this message type.
+        window.scrollTo({top:0, behavior:'smooth'});
+        if(window.parent !== window){
+          window.parent.postMessage({type:'milesman-intake-scroll-top'}, '*');
+        }
       } else {
         alert('Something went wrong submitting the form. Please try again or call us directly.');
       }
