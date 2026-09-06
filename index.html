@@ -6628,9 +6628,13 @@ function itineraryEmailBodyHtml(opts){
       itineraryDetailRow('Confirmation Number', t.confirmationNumber);
     return itineraryDetailBox(tourEntries.length>1 ? 'Tour '+(i+1)+' Details' : 'Tour Details', rows);
   }).join('');
-  var themeParkRows = itineraryDetailRow('Park', opts.themePark) +
-    itineraryDetailRow('Ticket Type', opts.themeParkTicketType) +
-    itineraryDetailRow('Confirmation Number', opts.themeParkConfirmationNumber);
+  var themeParkEntries = opts.themeParkEntries || [];
+  var themeParkBoxesHtml = themeParkEntries.map(function(p, i){
+    var rows = itineraryDetailRow('Park', p.park) +
+      itineraryDetailRow('Ticket Type', p.ticketType) +
+      itineraryDetailRow('Confirmation Number', p.confirmationNumber);
+    return itineraryDetailBox(themeParkEntries.length>1 ? 'Theme Park '+(i+1)+' Details' : 'Theme Park Details', rows);
+  }).join('');
   var trainRows = itineraryDetailRow('Route', opts.trainDepartureCity&&opts.trainArrivalCity ? (opts.trainDepartureCity+' → '+opts.trainArrivalCity) : '') +
     itineraryDetailRow('Departure Date', opts.trainDepartureDate) +
     itineraryDetailRow('Return Date', opts.trainReturnDate) +
@@ -6699,7 +6703,7 @@ itineraryDetailBox('Cruise Details', cruiseRows, CRUISE_LOGOS[opts.cruiseLine])+
 itineraryDetailBox('Car Rental Details', carRentalRows, CAR_RENTAL_LOGOS[opts.carRentalCompany])+
 transfersBoxesHtml+
 toursBoxesHtml+
-itineraryDetailBox('Theme Park Details', themeParkRows)+
+themeParkBoxesHtml+
 itineraryDetailBox('Train Details', trainRows, opts.trainLogoUrl)+
 itineraryDetailBox('Bus Details', busRows, opts.busLogoUrl)+
 itineraryDetailBox('Insurance', insuranceRows)+
@@ -6844,10 +6848,13 @@ function tripItineraryPlainText(opts){
     out += itineraryPlainTextSection(tourEntries.length>1?'Tour '+(i+1)+' Details':'Tour Details', rows);
   });
 
-  var themeRows = itineraryDetailRowText('Park', opts.themePark) +
-    itineraryDetailRowText('Ticket Type', opts.themeParkTicketType) +
-    itineraryDetailRowText('Confirmation Number', opts.themeParkConfirmationNumber);
-  out += itineraryPlainTextSection('Theme Park Details', themeRows);
+  var themeParkEntriesText = opts.themeParkEntries || [];
+  themeParkEntriesText.forEach(function(p,i){
+    var rows = itineraryDetailRowText('Park', p.park) +
+      itineraryDetailRowText('Ticket Type', p.ticketType) +
+      itineraryDetailRowText('Confirmation Number', p.confirmationNumber);
+    out += itineraryPlainTextSection(themeParkEntriesText.length>1?'Theme Park '+(i+1)+' Details':'Theme Park Details', rows);
+  });
 
   var trainRows = itineraryDetailRowText('Route', opts.trainDepartureCity&&opts.trainArrivalCity?(opts.trainDepartureCity+' → '+opts.trainArrivalCity):'') +
     itineraryDetailRowText('Departure Date', opts.trainDepartureDate) +
@@ -6888,8 +6895,9 @@ function tripItineraryPlainText(opts){
 function tripToItineraryOpts(trip, client, extraNotes){
   var sup = trip.supplierId ? db.vendors.find(function(v){return v.id===trip.supplierId;}) : null;
   var b = trip.booked || {};
-  var air = b.airline||{}, cru = b.cruise||{}, car = b.carRental||{}, tp = b.themePark||{}, tra = b.train||{}, bus = b.bus||{};
+  var air = b.airline||{}, cru = b.cruise||{}, car = b.carRental||{}, tra = b.train||{}, bus = b.bus||{};
   var tourEntries = Array.isArray(b.tours) ? b.tours : (b.tours && Object.keys(b.tours).length ? [b.tours] : []);
+  var themeParkEntries = Array.isArray(b.themePark) ? b.themePark : (b.themePark && Object.keys(b.themePark).length ? [b.themePark] : []);
   var transferEntries = Array.isArray(b.transfers) ? b.transfers : [];
   // Booked Trip Details is the source of truth whenever it actually has
   // something recorded for a category — a trip can have real flight
@@ -6966,9 +6974,7 @@ function tripToItineraryOpts(trip, client, extraNotes){
       };
     }),
     tourEntries: tourEntries,
-    themePark: tp.park||'',
-    themeParkTicketType: tp.ticketType||'',
-    themeParkConfirmationNumber: tp.confirmationNumber||'',
+    themeParkEntries: themeParkEntries,
     trainDepartureCity: tra.departureCity||'',
     trainArrivalCity: tra.arrivalCity||'',
     trainDepartureDate: tra.departureDate?fmtDate(tra.departureDate):'',
@@ -6993,7 +6999,9 @@ function tripToItineraryOpts(trip, client, extraNotes){
     carInsurance: car.insurancePremium||0,
     transfersInsurance: b.transfersInsurancePremium||0,
     toursInsurance: b.toursInsurancePremium||0,
-    themeParkInsurance: tp.insurancePremium||0,
+    // Same fallback shape as themeParkEntries above — an old, not-yet-
+    // resaved trip only has insurancePremium on the single legacy object.
+    themeParkInsurance: b.themeParkInsurancePremium || (!Array.isArray(b.themePark) && b.themePark ? (b.themePark.insurancePremium||0) : 0),
     trainInsurance: tra.insurancePremium||0,
     busInsurance: bus.insurancePremium||0,
     bookingRef: trip.bookingRef||'',
@@ -8112,8 +8120,14 @@ function processTripFormRow(getVal, counters){
   // Hotel 1's Brand/Nights already drove hotelBrand/tripDepartDate above
   // for the trip's simple top-level columns — every entry, Hotel 1
   // included, also gets its own readable Notes line here, and every
-  // entry's brand is collected for supplier matching below.
+  // entry's brand is collected for supplier matching below. Each entry
+  // also becomes a real Booked Trip Details hotel entry (booked.hotel[])
+  // on the trip created below, not just Notes text — the request-stage
+  // Location/Room Type/People Per Room/Number of Rooms fields have no
+  // matching Booked Trip Details column, so they're folded into that
+  // entry's own Notes field instead of being dropped.
   var hotelBrandNames = [];
+  var hotelBookedEntries = [];
   for(var hi=1; hi<=10; hi++){
     var hLocation = getVal('Hotel '+hi+' - Location');
     var hBrand = resolveOther(getVal('Hotel '+hi+' - Brand'), getVal('Hotel '+hi+' - Brand Other'));
@@ -8133,6 +8147,11 @@ function processTripFormRow(getVal, counters){
       hPeoplePerRoom?(hPeoplePerRoom+' per room'):'',
       hNumRooms?(hNumRooms+' room'+(hNumRooms==1?'':'s')):''
     ].filter(Boolean).join(' | '));
+    hotelBookedEntries.push({
+      hotelBrand: hBrand, property: hProperty, confirmationNumber: '', checkInDate: hCheckIn, nights: parseInt(hNights,10)||0, price: 0,
+      notes: [hLocation, hRoomType?('Room type: '+hRoomType):'', hPeoplePerRoom?(hPeoplePerRoom+' per room'):'', hNumRooms?(hNumRooms+' room'+(hNumRooms==1?'':'s')):''].filter(Boolean).join(' | '),
+      pts: []
+    });
   }
   addLine('Car Rental Company', carRentalCompany);
   addLine('Car Size', getVal('Car Size'));
@@ -8167,23 +8186,31 @@ function processTripFormRow(getVal, counters){
   // addThemeParkRow/addTourRow). Neither ever fed a structured top-level
   // trip field (unlike Hotel's hotelBrand/hotelNights), so there's no
   // "entry 1 is special" backward-compatibility concern here — every
-  // entry is just its own Notes line, and every park/vendor name is
-  // collected for supplier matching below.
+  // entry is just its own Notes line, every park/vendor name is collected
+  // for supplier matching below, and every entry also becomes a real
+  // Booked Trip Details entry (booked.themePark[]/booked.tours[]) on the
+  // trip created below — the field names already match 1:1 (Park/Ticket
+  // Type, Vendor/Description), no folding into Notes needed the way
+  // Hotel's extra fields required.
   var themeParkNames = [];
+  var themeParkBookedEntries = [];
   for(var tpi=1; tpi<=10; tpi++){
     var tpPark = getVal('Theme Park '+tpi+' - Park');
     var tpTickets = getVal('Theme Park '+tpi+' - Ticket Type');
     if(!(tpPark||tpTickets)) continue;
     if(tpPark) themeParkNames.push(tpPark);
     addLine('Theme Park '+tpi, [tpPark, tpTickets].filter(Boolean).join(' | '));
+    themeParkBookedEntries.push({park: tpPark, confirmationNumber: '', ticketType: tpTickets, price: 0, notes: ''});
   }
   var tourVendorNames = [];
+  var tourBookedEntries = [];
   for(var tri=1; tri<=10; tri++){
     var trVendor = resolveOther(getVal('Tour '+tri+' - Vendor'), getVal('Tour '+tri+' - Vendor Other'));
     var trDesc = getVal('Tour '+tri+' - Description');
     if(!(trVendor||trDesc)) continue;
     if(trVendor) tourVendorNames.push(trVendor);
     addLine('Tour '+tri, [trVendor, trDesc].filter(Boolean).join(' | '));
+    tourBookedEntries.push({confirmationNumber: '', vendor: trVendor, price: 0, description: trDesc});
   }
   addLine('Train Departure Date', getVal('Train Departure Date'));
   addLine('Train Return Date', getVal('Train Return Date'));
@@ -8351,7 +8378,14 @@ function processTripFormRow(getVal, counters){
       pointsUsed:0, cashPaid:0, totalValue:0, bookingRef:'', product:'',
       supplierId:primarySupplier?primarySupplier.id:'', supplierName:primarySupplier?primarySupplier.name:'',
       discounts:discounts, discountOther:discountOther, interests:interests, interestOther:interestOther,
-      notes: tripLines.join('\n')
+      notes: tripLines.join('\n'),
+      // Every requested Hotel/Theme Park/Tour also lands as a real Booked
+      // Trip Details entry (not just a Notes line) — see the hotelBookedEntries/
+      // themeParkBookedEntries/tourBookedEntries comments above. Empty arrays
+      // here are the normal, already-handled "nothing requested" shape
+      // (bookedTripDetailsHtml() shows one blank entry row either way), not
+      // a special case.
+      booked: {hotel: hotelBookedEntries, themePark: themeParkBookedEntries, tours: tourBookedEntries}
     });
     counters.tripsCreated++;
   }
@@ -13449,7 +13483,11 @@ function tripBookedPoints(t){
   total += sumPts(b.carRental && b.carRental.pts);
   total += sumPts(b.transfersPts);
   total += sumPts(b.toursPts);
-  total += sumPts(b.themePark && b.themePark.pts);
+  // booked.themePark moved from a single object (with its own pts) to a
+  // list, with points promoted up to the section-level themeParkPts field
+  // like Tours' toursPts — an old, not-yet-resaved trip only has pts on
+  // that one object.
+  total += sumPts(Array.isArray(b.themeParkPts) ? b.themeParkPts : (b.themePark && !Array.isArray(b.themePark) ? b.themePark.pts : null));
   total += sumPts(b.train && b.train.pts);
   total += sumPts(b.bus && b.bus.pts);
   // A hotel entry's points moved from a single program/amount pair to a
@@ -13484,13 +13522,20 @@ function tripBookedPriceTotal(t){
     num(b.airline && b.airline.price);
   total += num(b.cruise && b.cruise.price);
   total += num(b.carRental && b.carRental.price);
-  total += num(b.themePark && b.themePark.price);
   total += num(b.train && b.train.price);
   total += num(b.bus && b.bus.price);
   var hotels = Array.isArray(b.hotel) ? b.hotel : [];
   total += hotels.reduce(function(a,h){return a+num(h&&h.price);},0);
   var tours = Array.isArray(b.tours) ? b.tours : [];
   total += tours.reduce(function(a,x){return a+num(x&&x.price);},0);
+  // booked.themePark moved from one flat price field to a list, same shape
+  // change as booked.airline's records — sum the list for current trips,
+  // only falling back to the old flat field for a legacy trip that never
+  // got resaved into the new shape.
+  var themeParks = Array.isArray(b.themePark) ? b.themePark : [];
+  total += themeParks.length ?
+    themeParks.reduce(function(a,x){return a+num(x&&x.price);},0) :
+    num(b.themePark && b.themePark.price);
   var transfers = Array.isArray(b.transfers) ? b.transfers : [];
   total += transfers.reduce(function(a,x){return a+num(x&&x.price);},0);
   // Insurance premiums are real cash cost too, same as each category's own
@@ -13502,7 +13547,7 @@ function tripBookedPriceTotal(t){
   total += num(b.carRental && b.carRental.insurancePremium);
   total += num(b.transfersInsurancePremium);
   total += num(b.toursInsurancePremium);
-  total += num(b.themePark && b.themePark.insurancePremium);
+  total += num(b.themeParkInsurancePremium) + (Array.isArray(b.themePark) ? 0 : num(b.themePark && b.themePark.insurancePremium));
   total += num(b.train && b.train.insurancePremium);
   total += num(b.bus && b.bus.insurancePremium);
   return total;
@@ -16106,7 +16151,7 @@ function computeBookedTripSummary(bd){
     .concat(bd.carRental.pts||[])
     .concat(bd.transfersPts||[])
     .concat(bd.toursPts||[])
-    .concat(bd.themePark.pts||[])
+    .concat(bd.themeParkPts||[])
     .concat(bd.train.pts||[])
     .concat(bd.bus.pts||[]);
   var byProgram = {};
@@ -16124,7 +16169,7 @@ function computeBookedTripSummary(bd){
     + (bd.carRental.price||0)
     + (bd.transfers||[]).reduce(function(a,t){return a+(t.price||0);},0)
     + (bd.tours||[]).reduce(function(a,t){return a+(t.price||0);},0)
-    + (bd.themePark.price||0)
+    + (bd.themePark||[]).reduce(function(a,t){return a+(t.price||0);},0)
     + (bd.train.price||0)
     + (bd.bus.price||0);
   // Insurance premiums are real cash cost too — same reasoning as
@@ -16135,7 +16180,7 @@ function computeBookedTripSummary(bd){
     + (bd.carRental.insurancePremium||0)
     + (bd.transfersInsurancePremium||0)
     + (bd.toursInsurancePremium||0)
-    + (bd.themePark.insurancePremium||0)
+    + (bd.themeParkInsurancePremium||0)
     + (bd.train.insurancePremium||0)
     + (bd.bus.insurancePremium||0);
   return {rows:rows, totalCash: totalPrice + totalPtsCost + totalInsurance};
@@ -16441,6 +16486,48 @@ function readTourEntries(){
     return e.confirmationNumber||e.vendor||e.price||e.description;
   });
 }
+// Theme Park entries are the same dynamic add/remove pattern as Tours
+// above (a trip can now request/book more than one park — see the Book a
+// Trip form's own "+ Add Another Theme Park", which this exists to
+// receive structured data from) — read back by class selector in DOM
+// order, added/removed as real DOM nodes. Insurance and Points Used stay
+// section-level shared fields (bd.themeParkInsurancePremium/
+// themeParkInsuranceCoverage/themeParkPts), the same as Tours' own
+// toursInsurancePremium/toursInsuranceCoverage/toursPts, rather than
+// per-entry the way Hotel's are — a single insurance policy or points
+// redemption covering the whole park-tickets purchase is the common case.
+function themeParkEntryRowInnerHtml(entry){
+  entry = entry || {};
+  return '<div style="display:flex;justify-content:flex-end;margin-bottom:4px">'+
+      '<button type="button" class="del-themepark-entry-btn" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:12px">&#128465;&#65039; Remove</button>'+
+    '</div>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
+      '<div class="field"><label>Park</label><select class="themepark-entry-park"><option value="">-- Select --</option>'+selOpts(THEME_PARKS,entry.park)+'</select></div>'+
+      '<div class="field"><label>Confirmation Number</label><input class="themepark-entry-conf" type="text" value="'+(entry.confirmationNumber||'').toString().replace(/"/g,'&quot;')+'" placeholder="e.g. TP-334455"></div>'+
+      '<div class="field"><label>Ticket Type</label><input class="themepark-entry-ticket" type="text" value="'+(entry.ticketType||'').toString().replace(/"/g,'&quot;')+'" placeholder="e.g. Park Hopper"></div>'+
+      '<div class="field"><label>Price ($)</label><input class="themepark-entry-price" type="number" value="'+(entry.price||'')+'"></div>'+
+      '<div class="field full"><label>Notes</label><textarea class="themepark-entry-notes">'+(entry.notes||'')+'</textarea></div>'+
+    '</div>';
+}
+function themeParkEntryRowHtml(entry){
+  return '<div class="themepark-entry-row" style="border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin-bottom:10px;background:#fafafa">'+themeParkEntryRowInnerHtml(entry)+'</div>';
+}
+function themeParkEntriesListHtml(entries){
+  return entries.length ? entries.map(themeParkEntryRowHtml).join('') : '<div id="tb-themepark-entries-empty" style="color:#aaa;font-size:12px;padding:6px 0">No theme parks added yet</div>';
+}
+function readThemeParkEntries(){
+  return Array.from(document.querySelectorAll('#tb-themepark-entries .themepark-entry-row')).map(function(row){
+    return {
+      park: (row.querySelector('.themepark-entry-park')||{}).value||'',
+      confirmationNumber: (row.querySelector('.themepark-entry-conf')||{}).value||'',
+      ticketType: (row.querySelector('.themepark-entry-ticket')||{}).value||'',
+      price: Number((row.querySelector('.themepark-entry-price')||{}).value)||0,
+      notes: (row.querySelector('.themepark-entry-notes')||{}).value||''
+    };
+  }).filter(function(e){
+    return e.park||e.confirmationNumber||e.ticketType||e.price||e.notes;
+  });
+}
 // Transfer / car-service entries are the same dynamic add/remove pattern
 // as hotel/tour entries above — a trip often needs several individual
 // rides (airport pickup, hotel-to-restaurant, day trip). Each ride carries
@@ -16683,10 +16770,11 @@ function bookedCatSectionHtml(key, title, innerHtml){
 function bookedTripDetailsHtml(bd){
   bd = bd || {};
   var air = bd.airline||{}, cru = bd.cruise||{}, car = bd.carRental||{},
-      tp = bd.themePark||{}, tra = bd.train||{}, bus = bd.bus||{};
-  // bd.hotel/bd.tours used to each be a single object (one hotel, one tour
-  // per trip); now they're lists, so an old single-object shape gets
-  // wrapped into a one-entry list rather than losing that data.
+      tra = bd.train||{}, bus = bd.bus||{};
+  // bd.hotel/bd.tours/bd.themePark used to each be a single object (one
+  // hotel, one tour, one park per trip); now they're lists, so an old
+  // single-object shape gets wrapped into a one-entry list rather than
+  // losing that data.
   var hotelEntries = Array.isArray(bd.hotel) ? bd.hotel : (bd.hotel && Object.keys(bd.hotel).length ? [bd.hotel] : []);
   if(!hotelEntries.length) hotelEntries = [{}];
   // Each hotel stay used to carry one program/amount pair directly; now it
@@ -16698,6 +16786,19 @@ function bookedTripDetailsHtml(bd){
   });
   var tourEntries = Array.isArray(bd.tours) ? bd.tours : (bd.tours && Object.keys(bd.tours).length ? [bd.tours] : []);
   if(!tourEntries.length) tourEntries = [{}];
+  // Old single-object themePark ({park, confirmationNumber, ticketType,
+  // price, insurancePremium, insuranceCoverage, notes, pts}) has its
+  // insurance/notes/pts fields promoted up to the section-level
+  // bd.themeParkInsurancePremium/themeParkInsuranceCoverage/themeParkPts
+  // (same shared-across-the-section shape Tours already uses) the first
+  // time this trip is saved through readBookedTripDetails() — until then,
+  // fall back to the old object's own fields so nothing already saved
+  // appears to vanish.
+  var themeParkEntries = Array.isArray(bd.themePark) ? bd.themePark : (bd.themePark && Object.keys(bd.themePark).length ? [bd.themePark] : []);
+  if(!themeParkEntries.length) themeParkEntries = [{}];
+  var themeParkInsurancePremium = bd.themeParkInsurancePremium || (!Array.isArray(bd.themePark) && bd.themePark ? bd.themePark.insurancePremium : 0) || 0;
+  var themeParkInsuranceCoverage = bd.themeParkInsuranceCoverage || (!Array.isArray(bd.themePark) && bd.themePark ? bd.themePark.insuranceCoverage : 0) || 0;
+  var themeParkPts = bd.themeParkPts || (!Array.isArray(bd.themePark) && bd.themePark ? bd.themePark.pts : null) || [];
   var transferEntries = Array.isArray(bd.transfers) ? bd.transfers : [];
   if(!transferEntries.length) transferEntries = [{}];
   // booked.cruise used to hold one cabinType/peopleInCabin pair directly —
@@ -16798,14 +16899,13 @@ function bookedTripDetailsHtml(bd){
       fld('Coverage Amount ($)',inp('tb-tours-coverage','number',bd.toursInsuranceCoverage,'Total coverage provided by the policy above'))+
       pointsEntriesSectionHtml(bd.toursPts||[], 'tb-tours-pts-entries', 'tb-tours-pts-add-btn'))+
     bookedCatSectionHtml('themepark','Theme Park',
-      fld('Confirmation Number',inp('tb-tp-conf','text',tp.confirmationNumber,'e.g. TP-334455'))+
-      fld('Park',sel('tb-tp-park',THEME_PARKS,tp.park))+
-      fld('Ticket Type',inp('tb-tp-ticket','text',tp.ticketType,'e.g. Park Hopper'))+
-      fld('Price ($)',inp('tb-tp-price','number',tp.price))+
-      fld('Insurance Premium ($)',inp('tb-tp-insurance','number',tp.insurancePremium,'If purchased for these tickets, through the park or a separate insurer'))+
-      fld('Coverage Amount ($)',inp('tb-tp-coverage','number',tp.insuranceCoverage,'Total coverage provided by the policy above'))+
-      fld('Notes','<textarea id="tb-tp-notes">'+(tp.notes||'')+'</textarea>',true)+
-      pointsEntriesSectionHtml(tp.pts||[], 'tb-tp-pts-entries', 'tb-tp-pts-add-btn'))+
+      '<div class="field full"><label>Theme Parks <span class="hint" style="text-transform:none;font-weight:400">(add one entry per park/ticket purchase on this trip)</span></label>'+
+        '<div id="tb-themepark-entries">'+themeParkEntriesListHtml(themeParkEntries)+'</div>'+
+        '<button type="button" id="tb-themepark-add-btn" style="padding:5px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit">+ Add Theme Park</button>'+
+      '</div>'+
+      fld('Insurance Premium ($)',inp('tb-tp-insurance','number',themeParkInsurancePremium,'If purchased for these tickets, through the park or a separate insurer'))+
+      fld('Coverage Amount ($)',inp('tb-tp-coverage','number',themeParkInsuranceCoverage,'Total coverage provided by the policy above'))+
+      pointsEntriesSectionHtml(themeParkPts, 'tb-tp-pts-entries', 'tb-tp-pts-add-btn'))+
     bookedCatSectionHtml('train','Train',
       fld('Confirmation Number',inp('tb-train-conf','text',tra.confirmationNumber,'e.g. AMTK-556677'))+
       fld('Departure City',inp('tb-train-depcity','text',tra.departureCity,'e.g. New York, NY'))+
@@ -17075,6 +17175,30 @@ function bindBookedTripDetailsListeners(){
       }
     });
   }
+  var themeParkEntriesEl = document.getElementById('tb-themepark-entries');
+  var themeParkAddBtn = document.getElementById('tb-themepark-add-btn');
+  if(themeParkAddBtn && themeParkEntriesEl){
+    themeParkAddBtn.addEventListener('click', function(){
+      var empty = document.getElementById('tb-themepark-entries-empty');
+      if(empty) empty.remove();
+      var div = document.createElement('div');
+      div.className = 'themepark-entry-row';
+      div.style.cssText = 'border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin-bottom:10px;background:#fafafa';
+      div.innerHTML = themeParkEntryRowInnerHtml({});
+      themeParkEntriesEl.appendChild(div);
+    });
+  }
+  if(themeParkEntriesEl){
+    themeParkEntriesEl.addEventListener('click', function(e){
+      var btn = e.target.closest ? e.target.closest('.del-themepark-entry-btn') : null;
+      if(!btn) return;
+      var row = btn.closest('.themepark-entry-row');
+      if(row) row.remove();
+      if(!themeParkEntriesEl.querySelector('.themepark-entry-row')){
+        themeParkEntriesEl.innerHTML = '<div id="tb-themepark-entries-empty" style="color:#aaa;font-size:12px;padding:6px 0">No theme parks added yet</div>';
+      }
+    });
+  }
   var transferEntriesEl = document.getElementById('tb-transfer-entries');
   var transferAddBtn = document.getElementById('tb-transfer-add-btn');
   if(transferAddBtn && transferEntriesEl){
@@ -17143,10 +17267,10 @@ function readBookedTripDetails(){
     toursPts: readPointsEntriesFrom(document.getElementById('tb-tours-pts-entries')),
     toursInsurancePremium: gn('tb-tours-insurance'),
     toursInsuranceCoverage: gn('tb-tours-coverage'),
-    themePark: {
-      confirmationNumber: gv('tb-tp-conf'), park: gv('tb-tp-park'), ticketType: gv('tb-tp-ticket'), price: gn('tb-tp-price'), insurancePremium: gn('tb-tp-insurance'), insuranceCoverage: gn('tb-tp-coverage'), notes: gv('tb-tp-notes'),
-      pts: readPointsEntriesFrom(document.getElementById('tb-tp-pts-entries'))
-    },
+    themePark: readThemeParkEntries(),
+    themeParkPts: readPointsEntriesFrom(document.getElementById('tb-tp-pts-entries')),
+    themeParkInsurancePremium: gn('tb-tp-insurance'),
+    themeParkInsuranceCoverage: gn('tb-tp-coverage'),
     train: {
       confirmationNumber: gv('tb-train-conf'), departureCity: gv('tb-train-depcity'), arrivalCity: gv('tb-train-arrcity'),
       departureDate: gv('tb-train-depdate'), returnDate: gv('tb-train-retdate'), classOfService: gv('tb-train-class'),
