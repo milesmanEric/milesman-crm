@@ -8054,10 +8054,15 @@ function processTripFormRow(getVal, counters){
   var destination = getVal('Destination');
   var airline = resolveOther(getVal('Airline'), getVal('Airline Other'));
   var cruiseLine = resolveOther(getVal('Cruise Line'), getVal('Cruise Line Other'));
-  var hotelBrand = resolveOther(getVal('Hotel Brand'), getVal('Hotel Brand Other'));
+  // Hotel/Theme Park/Tours can each have any number of entries (see the
+  // "Hotel N - ..."/"Theme Park N - ..."/"Tour N - ..." loops below) — Hotel
+  // 1 specifically still drives the trip's simple top-level hotel/
+  // hotelNights columns, the same backward-compatible role the single
+  // unnumbered "Hotel Brand"/"Hotel Nights" fields used to play, since a
+  // trip only has one such slot regardless of how many hotels were
+  // requested.
+  var hotelBrand = resolveOther(getVal('Hotel 1 - Brand'), getVal('Hotel 1 - Brand Other'));
   var carRentalCompany = resolveOther(getVal('Car Rental Company'), getVal('Car Rental Company Other'));
-  var themePark = getVal('Theme Park');
-  var tourVendor = resolveOther(getVal('Tour Vendor'), getVal('Tour Vendor Other'));
   // Depart/Return Date only exist in the Airline Details section, which is
   // hidden unless "Airline" is checked — a cruise-only or car-rental-only
   // request still has real dates (Sailing Date, Pickup/Dropoff Date), so
@@ -8065,14 +8070,12 @@ function processTripFormRow(getVal, counters){
   // departDate drives the Calendar view (trips with no departDate are
   // skipped entirely), sorting, and "Upcoming" status, so this isn't
   // cosmetic — a blank departDate makes the trip invisible on the Calendar.
-  var tripDepartDate = getVal('Depart Date') || getVal('Sailing Date') || getVal('Pickup Date') || getVal('Transfer 1 Pickup Date') || getVal('Hotel Check-in Date') || getVal('Train Departure Date') || getVal('Bus Departure Date');
+  var tripDepartDate = getVal('Depart Date') || getVal('Sailing Date') || getVal('Pickup Date') || getVal('Transfer 1 Pickup Date') || getVal('Hotel 1 - Check-in Date') || getVal('Train Departure Date') || getVal('Bus Departure Date');
   var tripReturnDate = getVal('Return Date') || getVal('Dropoff Date') || getVal('Train Return Date') || getVal('Bus Return Date');
   var tripLines=[];
   function addLine(label,val){ if(val) tripLines.push(label+': '+val); }
   var travelNeeded = ['Airline','Hotel','Tours','Cruise','Car Rental','Transfers','Theme Park Tickets','Train','Bus'].filter(function(t){return getVal('Need - '+t);}).join(', ');
   addLine('Type of Travel Needed', travelNeeded);
-  addLine('Tour Vendor', tourVendor);
-  addLine('Tours Description', getVal('Tours Description'));
   addLine('Airline', airline);
   addLine('Origin', getVal('Origin'));
   addLine('Destination', destination);
@@ -8101,14 +8104,36 @@ function processTripFormRow(getVal, counters){
   addLine('Cruisetour', getVal('Cruisetour'));
   addLine('Class of Service', getVal('Class of Service'));
   addLine('Non-Stop Flights Only', getVal('Non-Stop Flights Only'));
-  addLine('Hotel Location', getVal('Hotel Location'));
-  addLine('Hotel Brand', hotelBrand);
-  addLine('Hotel Property', getVal('Hotel Property'));
-  addLine('Hotel Check-in Date', getVal('Hotel Check-in Date'));
-  addLine('Hotel Nights', getVal('Hotel Nights'));
-  addLine('Room Type', getVal('Room Type'));
-  addLine('People Per Room', getVal('People Per Room'));
-  addLine('Number of Rooms', getVal('Number of Rooms'));
+  // Hotel Details — the form submits any number of hotel stays as
+  // "Hotel N - Location/Brand/Brand Other/Property/Check-in Date/Nights/
+  // Room Type/People Per Room/Number of Rooms" (see intake-form.html's
+  // addHotelRow); flatten each stay onto one summary line, the same
+  // combined-line-per-entry style the Transfers loop below already uses.
+  // Hotel 1's Brand/Nights already drove hotelBrand/tripDepartDate above
+  // for the trip's simple top-level columns — every entry, Hotel 1
+  // included, also gets its own readable Notes line here, and every
+  // entry's brand is collected for supplier matching below.
+  var hotelBrandNames = [];
+  for(var hi=1; hi<=10; hi++){
+    var hLocation = getVal('Hotel '+hi+' - Location');
+    var hBrand = resolveOther(getVal('Hotel '+hi+' - Brand'), getVal('Hotel '+hi+' - Brand Other'));
+    var hProperty = getVal('Hotel '+hi+' - Property');
+    var hCheckIn = getVal('Hotel '+hi+' - Check-in Date');
+    var hNights = getVal('Hotel '+hi+' - Nights');
+    var hRoomType = getVal('Hotel '+hi+' - Room Type');
+    var hPeoplePerRoom = getVal('Hotel '+hi+' - People Per Room');
+    var hNumRooms = getVal('Hotel '+hi+' - Number of Rooms');
+    if(!(hLocation||hBrand||hProperty||hCheckIn||hNights||hRoomType||hPeoplePerRoom||hNumRooms)) continue;
+    if(hBrand) hotelBrandNames.push(hBrand);
+    addLine('Hotel '+hi, [
+      hLocation, hBrand, hProperty,
+      hCheckIn?('Check-in '+hCheckIn):'',
+      hNights?(hNights+' night'+(hNights==1?'':'s')):'',
+      hRoomType,
+      hPeoplePerRoom?(hPeoplePerRoom+' per room'):'',
+      hNumRooms?(hNumRooms+' room'+(hNumRooms==1?'':'s')):''
+    ].filter(Boolean).join(' | '));
+  }
   addLine('Car Rental Company', carRentalCompany);
   addLine('Car Size', getVal('Car Size'));
   addLine('Pickup Location', getVal('Pickup Location'));
@@ -8136,8 +8161,30 @@ function processTripFormRow(getVal, counters){
   addLine('Number of Travelers', getVal('Number of Travelers'));
   addLine('Notes', getVal('Notes'));
   addLine('Trip Insurance', getVal('Trip Insurance'));
-  addLine('Theme Park', themePark);
-  addLine('Theme Park Ticket Type', getVal('Theme Park Ticket Type'));
+  // Theme Park Details and Tours Details are each the same any-number-of-
+  // entries pattern as Hotel above ("Theme Park N - Park/Ticket Type",
+  // "Tour N - Vendor/Vendor Other/Description" — see intake-form.html's
+  // addThemeParkRow/addTourRow). Neither ever fed a structured top-level
+  // trip field (unlike Hotel's hotelBrand/hotelNights), so there's no
+  // "entry 1 is special" backward-compatibility concern here — every
+  // entry is just its own Notes line, and every park/vendor name is
+  // collected for supplier matching below.
+  var themeParkNames = [];
+  for(var tpi=1; tpi<=10; tpi++){
+    var tpPark = getVal('Theme Park '+tpi+' - Park');
+    var tpTickets = getVal('Theme Park '+tpi+' - Ticket Type');
+    if(!(tpPark||tpTickets)) continue;
+    if(tpPark) themeParkNames.push(tpPark);
+    addLine('Theme Park '+tpi, [tpPark, tpTickets].filter(Boolean).join(' | '));
+  }
+  var tourVendorNames = [];
+  for(var tri=1; tri<=10; tri++){
+    var trVendor = resolveOther(getVal('Tour '+tri+' - Vendor'), getVal('Tour '+tri+' - Vendor Other'));
+    var trDesc = getVal('Tour '+tri+' - Description');
+    if(!(trVendor||trDesc)) continue;
+    if(trVendor) tourVendorNames.push(trVendor);
+    addLine('Tour '+tri, [trVendor, trDesc].filter(Boolean).join(' | '));
+  }
   addLine('Train Departure Date', getVal('Train Departure Date'));
   addLine('Train Return Date', getVal('Train Return Date'));
   addLine('Train Departure City', getVal('Train Departure City'));
@@ -8257,15 +8304,18 @@ function processTripFormRow(getVal, counters){
     }
   }
 
-  // Match the requested Airline/Cruise Line/Hotel Brand/Car Rental Company/
-  // Theme Park/Tour Vendor against existing Supplier records by exact name,
-  // same as the revenue importer's supplier matching (extractRevenueRow) —
-  // never creates a new vendor, only links the client onto one that's
-  // already there. A trip only has one supplier slot, so the first match
-  // wins in that priority order; every match still gets the client linked
-  // onto it regardless. Tours Description is deliberately excluded — it's
-  // freeform text, not a name from a fixed list, so there's no safe exact
-  // match.
+  // Match the requested Airline/Cruise Line/Hotel Brand(s)/Car Rental
+  // Company/Theme Park(s)/Tour Vendor(s) against existing Supplier records
+  // by exact name, same as the revenue importer's supplier matching
+  // (extractRevenueRow) — never creates a new vendor, only links the
+  // client onto one that's already there. A trip only has one supplier
+  // slot, so the first match wins in that priority order (Hotel 1's brand,
+  // then the first matching Theme Park, then the first matching Tour
+  // vendor, for the fields that can now have more than one entry); every
+  // match, across every hotel/theme park/tour entry, still gets the client
+  // linked onto it regardless. Tour descriptions are deliberately
+  // excluded — they're freeform text, not a name from a fixed list, so
+  // there's no safe exact match.
   function matchVendorByName(n){
     if(!n) return null;
     return db.vendors.find(function(v){return (v.name||'').toLowerCase().trim()===n.toLowerCase().trim();}) || null;
@@ -8280,12 +8330,12 @@ function processTripFormRow(getVal, counters){
   }
   var airlineVendor = matchVendorByName(airline);
   var cruiseVendor = matchVendorByName(cruiseLine);
-  var hotelVendor = matchVendorByName(hotelBrand);
   var carRentalVendor = matchVendorByName(carRentalCompany);
-  var themeParkVendor = matchVendorByName(themePark);
-  var tourVendorMatch = matchVendorByName(tourVendor);
-  [airlineVendor, cruiseVendor, hotelVendor, carRentalVendor, themeParkVendor, tourVendorMatch].forEach(linkClientToVendor);
-  var primarySupplier = airlineVendor || cruiseVendor || hotelVendor || carRentalVendor || themeParkVendor || tourVendorMatch || null;
+  var hotelVendors = hotelBrandNames.map(matchVendorByName).filter(Boolean);
+  var themeParkVendors = themeParkNames.map(matchVendorByName).filter(Boolean);
+  var tourVendorMatches = tourVendorNames.map(matchVendorByName).filter(Boolean);
+  [airlineVendor, cruiseVendor, carRentalVendor].concat(hotelVendors, themeParkVendors, tourVendorMatches).forEach(linkClientToVendor);
+  var primarySupplier = airlineVendor || cruiseVendor || hotelVendors[0] || carRentalVendor || themeParkVendors[0] || tourVendorMatches[0] || null;
 
   var newTripId = null;
   if(destination || tripLines.length){
@@ -8296,7 +8346,7 @@ function processTripFormRow(getVal, counters){
       departDate:tripDepartDate, returnDate:tripReturnDate,
       status:'Planning', type:getVal('Trip Type')||'Leisure',
       airline:airline, flightClass:getVal('Class of Service'), hotel:hotelBrand,
-      hotelNights:parseInt(getVal('Hotel Nights'),10)||0,
+      hotelNights:parseInt(getVal('Hotel 1 - Nights'),10)||0,
       cruiseLine:cruiseLine, shipName:getVal('Ship Name'),
       pointsUsed:0, cashPaid:0, totalValue:0, bookingRef:'', product:'',
       supplierId:primarySupplier?primarySupplier.id:'', supplierName:primarySupplier?primarySupplier.name:'',
@@ -8404,14 +8454,23 @@ function buildTripFormFieldLabels(){
   labels.push('Need - Airline','Need - Hotel','Need - Tours','Need - Cruise','Need - Car Rental','Need - Transfers','Need - Theme Park Tickets','Need - Train','Need - Bus',
     'Airline','Airline Other','Origin','Destination','Trip Direction','Depart Date','Return Date','Class of Service','Non-Stop Flights Only','Trip Type',
     'Cruise Line','Cruise Line Other','Ship Name','Cruise Nights','Sailing Date','Departure Port','Cabin Type','People In Cabin','Cruise Loyalty Number','Cruisetour',
-    'Hotel Location','Hotel Brand','Hotel Brand Other','Hotel Property','Hotel Check-in Date','Hotel Nights','Room Type','People Per Room','Number of Rooms',
     'Car Rental Company','Car Rental Company Other','Car Size','Pickup Location','Dropoff Location','Pickup Date','Dropoff Date','Pickup Time','Dropoff Time',
-    'Theme Park','Theme Park Ticket Type','Tour Vendor','Tour Vendor Other',
     'Train Departure Date','Train Return Date','Train Departure City','Train Arrival City','Train Class of Service',
     'Bus Departure Date','Bus Return Date','Bus Departure City','Bus Arrival City','Bus Class of Service',
-    'Payment Preference','Tours Description','Notes','Trip Insurance');
+    'Payment Preference','Notes','Trip Insurance');
   for(var ci=1; ci<=20; ci++){ labels.push('City '+ci, 'City '+ci+' Departure Date'); }
   for(var xi=1; xi<=20; xi++){ labels.push('Transfer '+xi+' Pickup Date','Transfer '+xi+' Pickup Time','Transfer '+xi+' Origin','Transfer '+xi+' Destination','Transfer '+xi+' Car Type'); }
+  // Hotel/Theme Park/Tours can each have any number of entries on the
+  // public form (see intake-form.html's addHotelRow/addThemeParkRow/
+  // addTourRow) — same numbered-field-name pattern as Transfer N/City N
+  // above, capped at 10 since that's a generous number of hotels/parks/
+  // tours for one trip request.
+  for(var hi=1; hi<=10; hi++){
+    labels.push('Hotel '+hi+' - Location','Hotel '+hi+' - Brand','Hotel '+hi+' - Brand Other','Hotel '+hi+' - Property',
+      'Hotel '+hi+' - Check-in Date','Hotel '+hi+' - Nights','Hotel '+hi+' - Room Type','Hotel '+hi+' - People Per Room','Hotel '+hi+' - Number of Rooms');
+  }
+  for(var tpi=1; tpi<=10; tpi++){ labels.push('Theme Park '+tpi+' - Park','Theme Park '+tpi+' - Ticket Type'); }
+  for(var tri=1; tri<=10; tri++){ labels.push('Tour '+tri+' - Vendor','Tour '+tri+' - Vendor Other','Tour '+tri+' - Description'); }
   for(var tn=2; tn<=12; tn++){
     var p = 'Traveler '+tn;
     // A companion traveler gets the exact same field set as the primary
