@@ -7951,6 +7951,160 @@ function processTripFormRow(getVal, counters){
     return out;
   }
 
+  // One "Traveler N" block's worth of matching/create/pending-review logic —
+  // shared by the inline companion-traveler loop below (Traveler 2+ arriving
+  // on the same submission as the primary contact) and the additional-
+  // travelers hand-off branch just below this (Traveler 5+ arriving on a
+  // later, separate submission once a party outgrows one Book a Trip form).
+  // Returns null when the block is empty (no Full Name typed in), otherwise
+  // {clientId, line} — clientId is null for a queued pending match (pushed
+  // onto pendingAccumulator instead, same db.pendingTravelerMatches shape
+  // either way; the caller fills in tripId/tripDestination once the trip
+  // this traveler belongs to is known, since that differs between the two
+  // callers — a brand new trip for the inline loop, an already-existing one
+  // for the hand-off branch).
+  function processTravelerBlock(tn, pendingAccumulator){
+    var tp='Traveler '+tn;
+    var tName=getVal(tp+' - Full Name');
+    if(!tName) return null;
+    var tEmail=getVal(tp+' - Email');
+    var tPhone=getVal(tp+' - Phone');
+    var tStreetAddress=getVal(tp+' - Street Address');
+    var tCity=getVal(tp+' - City');
+    var tState=getVal(tp+' - State');
+    var tZip=getVal(tp+' - Zip Code');
+    var tBirthdate=getVal(tp+' - Birthdate');
+    var tCountryOfCitizenship=getVal(tp+' - Country of Citizenship');
+    var tCountryOfBirth=getVal(tp+' - Country of Birth');
+    var tReferredBy=getVal(tp+' - Referred By');
+    var tReferredByDetail=getVal(tp+' - Referred By Detail');
+    var tDiscounts=extractChecklistWithOther(DISCOUNT_TYPES, tp+' - Discount');
+    var tDiscountOther=getVal(tp+' - Discount - Other Detail');
+    var tInterests=extractChecklistWithOther(INTEREST_TYPES, tp+' - Interest');
+    var tInterestOther=getVal(tp+' - Interest - Other Detail');
+    var tAirline=resolveOther(getVal(tp+' - Preferred Airline'), getVal(tp+' - Preferred Airline Other'));
+    var tHotel=resolveOther(getVal(tp+' - Preferred Hotel'), getVal(tp+' - Preferred Hotel Other'));
+    var tCruise=resolveOther(getVal(tp+' - Preferred Cruise Line'), getVal(tp+' - Preferred Cruise Line Other'));
+    var tAirlineBal=extractBalances(AIRLINES,tp+' Airline',true);
+    var tHotelBal=extractBalances(HOTELS,tp+' Hotel',true);
+    var tCruiseBal=extractBalances(CRUISE_LINES,tp+' Cruise',true);
+    var tCarRentalBal=extractBalances(CAR_RENTALS,tp+' Car Rental',true);
+    var tCcBal=extractBalances(CREDIT_CARDS,tp+' Credit Card',false);
+    var tAirlineCc=extractCardChecklist(AIRLINE_CREDIT_CARDS, tp+' Airline Credit Card');
+    var tHotelCc=extractCardChecklist(HOTEL_CREDIT_CARDS, tp+' Hotel Credit Card');
+    var tFields={email:tEmail, phone:tPhone, streetAddress:tStreetAddress, city:tCity, state:tState, zip:tZip,
+      birthdate:tBirthdate, countryOfCitizenship:tCountryOfCitizenship, countryOfBirth:tCountryOfBirth,
+      referredBy:tReferredBy, referredByDetail:tReferredByDetail, discountOther:tDiscountOther, interestOther:tInterestOther,
+      preferredAirline:tAirline, preferredHotel:tHotel, preferredCruiseLine:tCruise};
+
+    var tFirst=getFirstName(tName).toLowerCase(), tLast=getLastName(tName).toLowerCase();
+    var tClient = db.clients.find(function(c){
+      if((c.name||'').toLowerCase().trim()===tName.toLowerCase().trim()) return true;
+      var cFirst=getFirstName(c.name).toLowerCase(), cLast=getLastName(c.name).toLowerCase();
+      return tFirst && tLast && tFirst!==tLast && cFirst===tFirst && cLast===tLast;
+    });
+
+    if(tClient){
+      var tFilled=[];
+      Object.keys(tFields).forEach(function(k){
+        if(tFields[k] && tFields[k]!==tClient[k]){tClient[k]=tFields[k];tFilled.push(k);}
+      });
+      if(tDiscounts.length){var tdcm=mergeCardChecklist(tClient.discounts,tDiscounts); if(tdcm.added.length){tClient.discounts=tdcm.merged;tFilled.push('discounts');}}
+      if(tInterests.length){var ticm=mergeCardChecklist(tClient.interests,tInterests); if(ticm.added.length){tClient.interests=ticm.merged;tFilled.push('interests');}}
+      if(tAirlineBal){var tmm=mergeBalanceObjects(tClient.mileageBalances,tAirlineBal); if(tmm.added.length){tClient.mileageBalances=tmm.merged;tFilled.push('mileageBalances');}}
+      if(tHotelBal){var thm=mergeBalanceObjects(tClient.hotelBalances,tHotelBal); if(thm.added.length){tClient.hotelBalances=thm.merged;tFilled.push('hotelBalances');}}
+      if(tCruiseBal){var tcbm=mergeBalanceObjects(tClient.cruiseBalances,tCruiseBal); if(tcbm.added.length){tClient.cruiseBalances=tcbm.merged;tFilled.push('cruiseBalances');}}
+      if(tCarRentalBal){var tcrbm=mergeBalanceObjects(tClient.carRentalBalances,tCarRentalBal); if(tcrbm.added.length){tClient.carRentalBalances=tcrbm.merged;tFilled.push('carRentalBalances');}}
+      if(tCcBal){var tcm=mergeCreditCardBalances(tClient.creditCardBalances,tCcBal); if(tcm.added.length){tClient.creditCardBalances=tcm.merged;tFilled.push('creditCardBalances');}}
+      if(tAirlineCc){var taccm=mergeCardChecklist(tClient.airlineCreditCards,tAirlineCc); if(taccm.added.length){tClient.airlineCreditCards=taccm.merged;tFilled.push('airlineCreditCards');}}
+      if(tHotelCc){var thccm=mergeCardChecklist(tClient.hotelCreditCards,tHotelCc); if(thccm.added.length){tClient.hotelCreditCards=thccm.merged;tFilled.push('hotelCreditCards');}}
+      if(tFilled.length) counters.enriched++;
+      return {clientId: tClient.id, line: 'Traveling with: '+tClient.name+' (client '+tClient.id+')'};
+    } else {
+      var sameLastNameCandidates = tLast ? db.clients.filter(function(c){ return getLastName(c.name).toLowerCase()===tLast; }) : [];
+      if(sameLastNameCandidates.length){
+        var pendingNoteLine = 'Traveling with: '+tName+' — NEEDS REVIEW (possible match with an existing '+getLastName(tName)+' client), see Pending Traveler Matches';
+        pendingAccumulator.push({
+          id: newId('PM', (db.pendingTravelerMatches||[]).concat(pendingAccumulator)),
+          name: tName, fields: tFields, discounts: tDiscounts, interests: tInterests,
+          mileageBalances: tAirlineBal||{}, hotelBalances: tHotelBal||{}, cruiseBalances: tCruiseBal||{}, carRentalBalances: tCarRentalBal||{}, creditCardBalances: tCcBal||{},
+          airlineCreditCards: tAirlineCc||[], hotelCreditCards: tHotelCc||[],
+          candidateClientIds: sameLastNameCandidates.map(function(c){return c.id;}),
+          noteLine: pendingNoteLine,
+          createdAt: today()
+        });
+        counters.pendingReview = (counters.pendingReview||0)+1;
+        return {clientId: null, line: pendingNoteLine};
+      } else {
+        tClient = Object.assign({id:newId('C',db.clients), name:toLastFirst(tName),
+          discounts:tDiscounts, interests:tInterests,
+          mileageBalances:tAirlineBal||{}, hotelBalances:tHotelBal||{}, cruiseBalances:tCruiseBal||{}, carRentalBalances:tCarRentalBal||{}, creditCardBalances:tCcBal||{}, airlineCreditCards:tAirlineCc||[], hotelCreditCards:tHotelCc||[],
+          notes:'', joined:today(), totalTrips:0, notesLog:[]}, tFields);
+        db.clients.push(tClient);
+        counters.added++;
+        return {clientId: tClient.id, line: 'Traveling with: '+tClient.name+' (client '+tClient.id+')'};
+      }
+    }
+  }
+
+  // A submission from additional-travelers-form.html (see intake-form.html's
+  // MAX_TRAVELERS_PER_SUBMISSION hand-off, and DOCUMENTATION.md's "Traveler
+  // cap and the additional-travelers hand-off form") carries no primary Full
+  // Name/Email of its own — only "Traveler N - ..." fields for whoever
+  // didn't fit in the original submission, plus a Primary Contact Name/Email
+  // pair identifying whose trip these travelers belong to. Route it onto
+  // that existing trip instead of falling through to the "no Full Name,
+  // skip" guard below, which would otherwise just drop it.
+  if(getVal('Additional Travelers Submission')==='Yes'){
+    var primaryName = getVal('Primary Contact Name');
+    var primaryEmail = getVal('Primary Contact Email');
+    if(!primaryName){ counters.skipped++; return; }
+    var pFirst=getFirstName(primaryName).toLowerCase(), pLast=getLastName(primaryName).toLowerCase();
+    var primaryClient = db.clients.find(function(c){
+      if(primaryEmail && c.email && c.email.toLowerCase()===primaryEmail.toLowerCase()) return true;
+      if((c.name||'').toLowerCase().trim()===primaryName.toLowerCase().trim()) return true;
+      var cFirst=getFirstName(c.name).toLowerCase(), cLast=getLastName(c.name).toLowerCase();
+      return pFirst && pLast && pFirst!==pLast && cFirst===pFirst && cLast===pLast;
+    });
+    if(!primaryClient){ counters.skipped++; return; }
+    // The trip these travelers belong to is whichever of the primary
+    // contact's trips was created most recently — db.trips is always
+    // appended to in order (never reordered), so the last matching entry
+    // is the newest one, i.e. the trip the original Book a Trip submission
+    // just created.
+    var targetTrip = null;
+    for(var ti=db.trips.length-1; ti>=0; ti--){
+      var candidateTrip = db.trips[ti];
+      if(candidateTrip.clientId===primaryClient.id || (candidateTrip.clientIds||[]).indexOf(primaryClient.id)!==-1){ targetTrip = candidateTrip; break; }
+    }
+    if(!targetTrip){ counters.skipped++; return; }
+
+    var newPendingMatches = [];
+    var addedClientIds = [];
+    var addedLines = [];
+    for(var atn=2; atn<=20; atn++){
+      var atResult = processTravelerBlock(atn, newPendingMatches);
+      if(!atResult) continue;
+      if(atResult.clientId) addedClientIds.push(atResult.clientId);
+      addedLines.push(atResult.line);
+    }
+    if(!addedClientIds.length && !newPendingMatches.length){ counters.skipped++; return; }
+
+    if(!targetTrip.clientIds) targetTrip.clientIds=[];
+    addedClientIds.forEach(function(cid){ if(targetTrip.clientIds.indexOf(cid)===-1) targetTrip.clientIds.push(cid); });
+    if(addedLines.length) targetTrip.notes = (targetTrip.notes ? targetTrip.notes+'\n' : '') + addedLines.join('\n');
+    if(newPendingMatches.length){
+      if(!db.pendingTravelerMatches) db.pendingTravelerMatches=[];
+      newPendingMatches.forEach(function(pm){
+        pm.tripId = targetTrip.id;
+        pm.tripDestination = targetTrip.destination;
+        db.pendingTravelerMatches.push(pm);
+      });
+    }
+    counters.travelersAdded = (counters.travelersAdded||0) + addedClientIds.length + newPendingMatches.length;
+    return;
+  }
+
   var name = getVal('Full Name');
   if(!name){ counters.skipped++; return; }
   var email = getVal('Email');
@@ -8246,89 +8400,10 @@ function processTripFormRow(getVal, counters){
   var pendingMatches = [];
   var travelerCount = parseInt(getVal('Number of Travelers'),10)||1;
   for(var tn=2; tn<=travelerCount; tn++){
-    var tp='Traveler '+tn;
-    var tName=getVal(tp+' - Full Name');
-    if(!tName) continue;
-    var tEmail=getVal(tp+' - Email');
-    var tPhone=getVal(tp+' - Phone');
-    var tStreetAddress=getVal(tp+' - Street Address');
-    var tCity=getVal(tp+' - City');
-    var tState=getVal(tp+' - State');
-    var tZip=getVal(tp+' - Zip Code');
-    var tBirthdate=getVal(tp+' - Birthdate');
-    var tCountryOfCitizenship=getVal(tp+' - Country of Citizenship');
-    var tCountryOfBirth=getVal(tp+' - Country of Birth');
-    var tReferredBy=getVal(tp+' - Referred By');
-    var tReferredByDetail=getVal(tp+' - Referred By Detail');
-    var tDiscounts=extractChecklistWithOther(DISCOUNT_TYPES, tp+' - Discount');
-    var tDiscountOther=getVal(tp+' - Discount - Other Detail');
-    var tInterests=extractChecklistWithOther(INTEREST_TYPES, tp+' - Interest');
-    var tInterestOther=getVal(tp+' - Interest - Other Detail');
-    var tAirline=resolveOther(getVal(tp+' - Preferred Airline'), getVal(tp+' - Preferred Airline Other'));
-    var tHotel=resolveOther(getVal(tp+' - Preferred Hotel'), getVal(tp+' - Preferred Hotel Other'));
-    var tCruise=resolveOther(getVal(tp+' - Preferred Cruise Line'), getVal(tp+' - Preferred Cruise Line Other'));
-    var tAirlineBal=extractBalances(AIRLINES,tp+' Airline',true);
-    var tHotelBal=extractBalances(HOTELS,tp+' Hotel',true);
-    var tCruiseBal=extractBalances(CRUISE_LINES,tp+' Cruise',true);
-    var tCarRentalBal=extractBalances(CAR_RENTALS,tp+' Car Rental',true);
-    var tCcBal=extractBalances(CREDIT_CARDS,tp+' Credit Card',false);
-    var tAirlineCc=extractCardChecklist(AIRLINE_CREDIT_CARDS, tp+' Airline Credit Card');
-    var tHotelCc=extractCardChecklist(HOTEL_CREDIT_CARDS, tp+' Hotel Credit Card');
-    var tFields={email:tEmail, phone:tPhone, streetAddress:tStreetAddress, city:tCity, state:tState, zip:tZip,
-      birthdate:tBirthdate, countryOfCitizenship:tCountryOfCitizenship, countryOfBirth:tCountryOfBirth,
-      referredBy:tReferredBy, referredByDetail:tReferredByDetail, discountOther:tDiscountOther, interestOther:tInterestOther,
-      preferredAirline:tAirline, preferredHotel:tHotel, preferredCruiseLine:tCruise};
-
-    var tFirst=getFirstName(tName).toLowerCase(), tLast=getLastName(tName).toLowerCase();
-    var tClient = db.clients.find(function(c){
-      if((c.name||'').toLowerCase().trim()===tName.toLowerCase().trim()) return true;
-      var cFirst=getFirstName(c.name).toLowerCase(), cLast=getLastName(c.name).toLowerCase();
-      return tFirst && tLast && tFirst!==tLast && cFirst===tFirst && cLast===tLast;
-    });
-
-    if(tClient){
-      var tFilled=[];
-      Object.keys(tFields).forEach(function(k){
-        if(tFields[k] && tFields[k]!==tClient[k]){tClient[k]=tFields[k];tFilled.push(k);}
-      });
-      if(tDiscounts.length){var tdcm=mergeCardChecklist(tClient.discounts,tDiscounts); if(tdcm.added.length){tClient.discounts=tdcm.merged;tFilled.push('discounts');}}
-      if(tInterests.length){var ticm=mergeCardChecklist(tClient.interests,tInterests); if(ticm.added.length){tClient.interests=ticm.merged;tFilled.push('interests');}}
-      if(tAirlineBal){var tmm=mergeBalanceObjects(tClient.mileageBalances,tAirlineBal); if(tmm.added.length){tClient.mileageBalances=tmm.merged;tFilled.push('mileageBalances');}}
-      if(tHotelBal){var thm=mergeBalanceObjects(tClient.hotelBalances,tHotelBal); if(thm.added.length){tClient.hotelBalances=thm.merged;tFilled.push('hotelBalances');}}
-      if(tCruiseBal){var tcbm=mergeBalanceObjects(tClient.cruiseBalances,tCruiseBal); if(tcbm.added.length){tClient.cruiseBalances=tcbm.merged;tFilled.push('cruiseBalances');}}
-      if(tCarRentalBal){var tcrbm=mergeBalanceObjects(tClient.carRentalBalances,tCarRentalBal); if(tcrbm.added.length){tClient.carRentalBalances=tcrbm.merged;tFilled.push('carRentalBalances');}}
-      if(tCcBal){var tcm=mergeCreditCardBalances(tClient.creditCardBalances,tCcBal); if(tcm.added.length){tClient.creditCardBalances=tcm.merged;tFilled.push('creditCardBalances');}}
-      if(tAirlineCc){var taccm=mergeCardChecklist(tClient.airlineCreditCards,tAirlineCc); if(taccm.added.length){tClient.airlineCreditCards=taccm.merged;tFilled.push('airlineCreditCards');}}
-      if(tHotelCc){var thccm=mergeCardChecklist(tClient.hotelCreditCards,tHotelCc); if(thccm.added.length){tClient.hotelCreditCards=thccm.merged;tFilled.push('hotelCreditCards');}}
-      if(tFilled.length) counters.enriched++;
-      linkedClientIds.push(tClient.id);
-      tripLines.push('Traveling with: '+tClient.name+' (client '+tClient.id+')');
-    } else {
-      var sameLastNameCandidates = tLast ? db.clients.filter(function(c){ return getLastName(c.name).toLowerCase()===tLast; }) : [];
-      if(sameLastNameCandidates.length){
-        var pendingNoteLine = 'Traveling with: '+tName+' — NEEDS REVIEW (possible match with an existing '+getLastName(tName)+' client), see Pending Traveler Matches';
-        pendingMatches.push({
-          id: newId('PM', (db.pendingTravelerMatches||[]).concat(pendingMatches)),
-          name: tName, fields: tFields, discounts: tDiscounts, interests: tInterests,
-          mileageBalances: tAirlineBal||{}, hotelBalances: tHotelBal||{}, cruiseBalances: tCruiseBal||{}, carRentalBalances: tCarRentalBal||{}, creditCardBalances: tCcBal||{},
-          airlineCreditCards: tAirlineCc||[], hotelCreditCards: tHotelCc||[],
-          candidateClientIds: sameLastNameCandidates.map(function(c){return c.id;}),
-          noteLine: pendingNoteLine,
-          createdAt: today()
-        });
-        tripLines.push(pendingNoteLine);
-        counters.pendingReview = (counters.pendingReview||0)+1;
-      } else {
-        tClient = Object.assign({id:newId('C',db.clients), name:toLastFirst(tName),
-          discounts:tDiscounts, interests:tInterests,
-          mileageBalances:tAirlineBal||{}, hotelBalances:tHotelBal||{}, cruiseBalances:tCruiseBal||{}, carRentalBalances:tCarRentalBal||{}, creditCardBalances:tCcBal||{}, airlineCreditCards:tAirlineCc||[], hotelCreditCards:tHotelCc||[],
-          notes:'', joined:today(), totalTrips:0, notesLog:[]}, tFields);
-        db.clients.push(tClient);
-        counters.added++;
-        linkedClientIds.push(tClient.id);
-        tripLines.push('Traveling with: '+tClient.name+' (client '+tClient.id+')');
-      }
-    }
+    var result = processTravelerBlock(tn, pendingMatches);
+    if(!result) continue;
+    if(result.clientId) linkedClientIds.push(result.clientId);
+    tripLines.push(result.line);
   }
 
   // Match the requested Airline/Cruise Line/Hotel Brand(s)/Car Rental
@@ -8435,7 +8510,7 @@ function importFormspreeSubmissions(){
       }
       snapshot('Import Formspree submissions');
       saveDB(); render();
-      toast('Imported '+counters.added+' new client'+(counters.added!==1?'s':'')+(counters.enriched?', enriched '+counters.enriched+' existing':'')+', created '+counters.tripsCreated+' trip'+(counters.tripsCreated!==1?'s':'')+' and '+counters.tasksCreated+' follow-up task'+(counters.tasksCreated!==1?'s':'')+(counters.skipped?' ('+counters.skipped+' skipped)':'')+(counters.pendingReview?', '+counters.pendingReview+' traveler'+(counters.pendingReview!==1?'s':'')+' need review — see Pending Traveler Matches':''),'ok');
+      toast('Imported '+counters.added+' new client'+(counters.added!==1?'s':'')+(counters.enriched?', enriched '+counters.enriched+' existing':'')+', created '+counters.tripsCreated+' trip'+(counters.tripsCreated!==1?'s':'')+' and '+counters.tasksCreated+' follow-up task'+(counters.tasksCreated!==1?'s':'')+(counters.skipped?' ('+counters.skipped+' skipped)':'')+(counters.pendingReview?', '+counters.pendingReview+' traveler'+(counters.pendingReview!==1?'s':'')+' need review — see Pending Traveler Matches':'')+(counters.travelersAdded?', added '+counters.travelersAdded+' additional traveler'+(counters.travelersAdded!==1?'s':'')+' to an existing trip':''),'ok');
     }catch(err){
       console.error(err);
       toast('Could not read file: '+err.message,'err');
@@ -8466,7 +8541,11 @@ function buildTripFormFieldLabels(){
     'Discount - Military','Discount - AAA','Discount - First Responder','Discount - Educator','Discount - Other','Discount - Other Detail',
     'Interest - Beach','Interest - Skiing','Interest - Boating','Interest - Fishing','Interest - Snorkeling','Interest - Horseback Riding','Interest - Adventure','Interest - Other','Interest - Other Detail',
     'Preferred Airline','Preferred Airline Other','Preferred Hotel','Preferred Hotel Other',
-    'Preferred Cruise Line','Preferred Cruise Line Other'];
+    'Preferred Cruise Line','Preferred Cruise Line Other',
+    // additional-travelers-form.html's own fields (see processTripFormRow()'s
+    // "Additional Travelers Submission" branch) — no Full Name/Email of its
+    // own, just these three plus its own "Traveler N - ..." blocks below.
+    'Additional Travelers Submission','Primary Contact Name','Primary Contact Email'];
   function addBalanceLabels(prefix, list, includeStatus){
     list.forEach(function(brand){
       labels.push(prefix+' - '+brand);
@@ -8505,7 +8584,10 @@ function buildTripFormFieldLabels(){
   }
   for(var tpi=1; tpi<=10; tpi++){ labels.push('Theme Park '+tpi+' - Park','Theme Park '+tpi+' - Ticket Type'); }
   for(var tri=1; tri<=10; tri++){ labels.push('Tour '+tri+' - Vendor','Tour '+tri+' - Vendor Other','Tour '+tri+' - Description'); }
-  for(var tn=2; tn<=12; tn++){
+  // 20, not 12, so a large party's later additional-travelers-form.html
+  // batches (Traveler 13+, chained 4 at a time) still parse correctly out
+  // of an automatically-polled email, not just a manual CSV import.
+  for(var tn=2; tn<=20; tn++){
     var p = 'Traveler '+tn;
     // A companion traveler gets the exact same field set as the primary
     // contact (Email/Phone/Address/Referred By/Discounts/Interests
@@ -8656,10 +8738,10 @@ async function checkForNewTripFormEmails(silent){
     if(processedIds.length > 500) processedIds = processedIds.slice(processedIds.length-500);
     localStorage.setItem('mm_tripform_processed_ids', JSON.stringify(processedIds));
 
-    if(counters.tripsCreated || counters.added || counters.enriched || counters.pendingReview){
+    if(counters.tripsCreated || counters.added || counters.enriched || counters.pendingReview || counters.travelersAdded){
       snapshot('Auto-import trip form emails');
       saveDB(); render();
-      toast('Auto-imported '+counters.tripsCreated+' trip'+(counters.tripsCreated!==1?'s':'')+' from email ('+counters.added+' new client'+(counters.added!==1?'s':'')+')'+(counters.pendingReview?' — '+counters.pendingReview+' traveler'+(counters.pendingReview!==1?'s':'')+' need review, see Pending Traveler Matches':''),'ok');
+      toast('Auto-imported '+counters.tripsCreated+' trip'+(counters.tripsCreated!==1?'s':'')+' from email ('+counters.added+' new client'+(counters.added!==1?'s':'')+')'+(counters.pendingReview?' — '+counters.pendingReview+' traveler'+(counters.pendingReview!==1?'s':'')+' need review, see Pending Traveler Matches':'')+(counters.travelersAdded?' — added '+counters.travelersAdded+' additional traveler'+(counters.travelersAdded!==1?'s':'')+' to an existing trip':''),'ok');
     }
   }catch(e){
     debugLog('Trip form email check failed: '+e.message);
