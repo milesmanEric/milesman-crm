@@ -337,6 +337,15 @@
   form.addEventListener('submit', function(e){
     e.preventDefault();
     var data = new URLSearchParams(new FormData(form));
+    // Same blank-field cleanup as intake-form.html's submit handler — drop
+    // anything left empty so Formspark's notification email only shows
+    // fields this batch of travelers actually filled in, keeping the
+    // control fields that need to stay present regardless.
+    var TRIPFORM_ALWAYS_KEEP_FIELDS = ['_gotcha','_subject','_replyto','Additional Travelers Submission','Primary Contact Name','Primary Contact Email'];
+    Array.from(new Set(Array.from(data.keys()))).forEach(function(key){
+      if(TRIPFORM_ALWAYS_KEEP_FIELDS.indexOf(key)!==-1) return;
+      if(!data.getAll(key).some(function(v){ return v && v.trim(); })) data.delete(key);
+    });
     fetch(form.action, {
       method: 'POST',
       body: data,
