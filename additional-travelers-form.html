@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Miles Man — Additional Travelers</title>
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:#f7f8fa;color:#111;padding:24px 16px 60px}
+  .wrap{max-width:640px;margin:0 auto}
+  .hdr{text-align:center;margin-bottom:24px}
+  .hdr .tag{font-size:13px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#2563eb}
+  .hdr h1{font-size:24px;margin:6px 0 8px}
+  .hdr p{font-size:14px;color:#666;margin:0}
+  .context-box{background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:12px 14px;font-size:13px;color:#1e3a8a;margin-bottom:20px}
+  .context-box strong{font-weight:700}
+  form{background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:28px 24px;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+  .section-title{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#2563eb;margin:28px 0 14px;padding-top:14px;border-top:1px solid #f0f0f0}
+  .section-title:first-of-type{margin-top:0;padding-top:0;border-top:none}
+  .fg{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .field{display:flex;flex-direction:column;gap:5px;min-width:0;margin-bottom:14px}
+  .field.full{grid-column:1/-1}
+  .field label{font-size:12px;font-weight:600;color:#444}
+  .field .hint{font-size:11px;color:#888;font-weight:400}
+  .field input,.field select,.field textarea{padding:10px 12px;border-radius:8px;border:1px solid #d1d5db;font-size:14px;font-family:inherit;color:#111;background:#fafafa}
+  .field input:focus,.field select:focus,.field textarea:focus{outline:2px solid #93c5fd;border-color:#2563eb}
+  .radio-row{display:flex;flex-wrap:wrap;gap:14px}
+  .radio-row label{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:500;color:#333;cursor:pointer}
+  .radio-row input{width:15px;height:15px}
+  .balance-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:8px;border:1px solid #e5e7eb;border-radius:8px;padding:10px;background:#fafafa}
+  .balance-row{display:flex;align-items:center;gap:6px}
+  .balance-row span{flex:1;font-size:12px;color:#374151;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .balance-row input[type="number"]{width:88px;padding:6px 8px;font-size:12px;flex:none}
+  .balance-row select{width:96px;padding:6px 8px;font-size:12px;flex:none}
+  .balance-row input.balance-status-other{width:110px;padding:6px 8px;font-size:12px;flex:none}
+  .cc-checklist{border:1px solid #e5e7eb;border-radius:8px;padding:10px;background:#fafafa;max-height:260px;overflow-y:auto}
+  .cc-checklist .cc-group-label{font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.03em;margin:8px 0 3px}
+  .cc-checklist .cc-group-label:first-child{margin-top:0}
+  .cc-checklist label{display:flex;align-items:center;gap:8px;padding:2px 0;font-size:13px;font-weight:400;color:#333;cursor:pointer}
+  .cc-checklist input[type="checkbox"]{width:14px;height:14px}
+  .submit-row{margin-top:24px}
+  button[type="submit"]{width:100%;padding:13px;border-radius:9px;border:none;background:#2563eb;color:#fff;font-size:15px;font-weight:600;font-family:inherit;cursor:pointer}
+  button[type="submit"]:hover{background:#1d4ed8}
+  .footnote{text-align:center;font-size:12px;color:#999;margin-top:16px}
+  #ok-msg{display:none;background:#d1fae5;color:#065f46;border:1px solid #6ee7b7;border-radius:10px;padding:16px;text-align:center;font-size:14px;font-weight:600;margin-bottom:20px}
+  #more-travelers-notice{display:none;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:12px 14px;color:#92400e;font-size:13px;line-height:1.5;margin-bottom:20px}
+  @media(max-width:520px){.fg{grid-template-columns:1fr}.field.full{grid-column:auto}.field input,.field select,.field textarea{font-size:16px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hdr">
+    <div class="tag">Miles Man</div>
+    <h1>Additional Travelers</h1>
+    <p>Let's finish getting everyone in your group set up.</p>
+  </div>
+
+  <div class="context-box">Continuing the trip request for <strong id="context-name">your group</strong><span id="context-email"></span>.</div>
+
+  <div id="more-travelers-notice"></div>
+
+  <div id="ok-msg">Thanks! This batch of travelers has been sent — we'll be in touch shortly.</div>
+
+  <form id="additional-travelers-form" action="https://submit-form.com/oFQ4LGF1w" method="POST">
+    <input type="hidden" name="_subject" value="Additional Travelers — Miles Man website">
+    <input type="hidden" name="Additional Travelers Submission" value="Yes">
+    <input type="hidden" id="primary-name-field" name="Primary Contact Name">
+    <input type="hidden" id="primary-email-field" name="Primary Contact Email">
+    <input type="hidden" id="replyto-field" name="_replyto">
+    <input type="text" name="_gotcha" style="display:none">
+
+    <div id="travelers-container"></div>
+
+    <div class="submit-row">
+      <button type="submit">Send Travelers</button>
+    </div>
+  </form>
+  <div class="footnote">We'll never share your information. Questions? Call (908) 419-7700.</div>
+</div>
+
+<script>
+  // Mirrors the exact brand/status lists used by the CRM's own client
+  // balance grids (kept in sync by hand with intake-form.html and the
+  // CRM's index.html — same convention as intake-form.html's own copies).
+  var AIRLINES = ['American','United','Delta','Southwest','JetBlue','Qatar Airways','ANA','Emirates','Lufthansa','British Airways','Air France','Virgin Atlantic','Qantas','Etihad','JAL','Air Canada','Frontier','Alaska/Hawaiian Air'];
+  var HOTELS = ['Marriott','Hilton','Hyatt','Accor','IHG','Wyndham','Four Seasons','Ritz-Carlton','W Hotels','Kimpton','Conrad'];
+  var DISCOUNT_TYPES = ['Military','AAA','First Responder','Educator'];
+  var INTEREST_TYPES = ['Beach','Skiing','Boating','Fishing','Snorkeling','Horseback Riding','Adventure'];
+  var CRUISE_LINES = ['Virgin Voyages','Royal Caribbean','Carnival','Norwegian','Princess','Celebrity','Disney Cruise Line','Holland America','MSC Cruises','Viking','Explora Journeys','Seabourn','Ritz Carlton Yachts','Windstar'];
+  var CAR_RENTALS = ['Hertz','Avis','Enterprise','National','Budget','Alamo','Sixt','Europcar','Thrifty','Dollar'];
+  var CREDIT_CARDS = ['Chase Sapphire Preferred','Chase Sapphire Reserve','Chase Ink Business Preferred','Amex Platinum','Amex Gold','Amex Business Platinum','Amex Business Gold','Capital One Venture X','Citi Premier','Citi Prestige','Bilt Mastercard'];
+  var AIRLINE_CREDIT_CARDS = {
+    'American': ['Citi / AAdvantage Platinum Select','CitiBusiness / AAdvantage Platinum Select','Barclays AAdvantage Aviator Red','Barclays Aviator Business'],
+    'United': ['United Gateway Card','United Explorer Card','United Quest Card','United Club Infinite Card','United Business Card','United Club Business Card'],
+    'Delta': ['Delta SkyMiles Blue','Delta SkyMiles Gold','Delta SkyMiles Platinum','Delta SkyMiles Reserve','Delta SkyMiles Gold Business','Delta SkyMiles Platinum Business','Delta SkyMiles Reserve Business'],
+    'Southwest': ['Southwest Rapid Rewards Plus','Southwest Rapid Rewards Premier','Southwest Rapid Rewards Priority','Southwest Rapid Rewards Performance Business'],
+    'JetBlue': ['JetBlue Plus Card','JetBlue Business Card'],
+    'British Airways': ['British Airways Visa Signature'],
+    'Frontier': ['Frontier Airlines World Mastercard'],
+    'Alaska/Hawaiian Air': ['Alaska Airlines Visa Signature','Alaska Airlines Business Card','Hawaiian Airlines World Elite Mastercard']
+  };
+  var HOTEL_CREDIT_CARDS = {
+    'Marriott': ['Marriott Bonvoy Boundless','Marriott Bonvoy Bold','Marriott Bonvoy Brilliant','Marriott Bonvoy Business'],
+    'Hilton': ['Hilton Honors Card','Hilton Honors Surpass','Hilton Honors Aspire','Hilton Honors Business'],
+    'Hyatt': ['World of Hyatt Credit Card','World of Hyatt Business Credit Card'],
+    'IHG': ['IHG One Rewards Traveler','IHG One Rewards Select','IHG One Rewards Premier','IHG One Rewards Premier Business'],
+    'Wyndham': ['Wyndham Rewards Earner','Wyndham Rewards Earner Plus','Wyndham Rewards Earner Business']
+  };
+  var AIRLINE_STATUS = {
+    'American': ['Gold','Platinum','Platinum Pro','Executive Platinum'],
+    'United': ['Premier Silver','Premier Gold','Premier Platinum','Premier 1K'],
+    'Delta': ['Silver Medallion','Gold Medallion','Platinum Medallion','Diamond Medallion'],
+    'Southwest': ['A-List','A-List Preferred'],
+    'JetBlue': ['Mosaic 1','Mosaic 2','Mosaic 3','Mosaic 4'],
+    'Qatar Airways': ['Burgundy','Silver','Gold','Platinum'],
+    'ANA': ['Bronze Service','Platinum Service','Diamond Service'],
+    'Emirates': ['Blue','Silver','Gold','Platinum'],
+    'Lufthansa': ['Frequent Traveller','Senator','HON Circle Member'],
+    'British Airways': ['Bronze','Silver','Gold','Gold Guest List'],
+    'Air France': ['Explorer','Silver','Gold','Platinum'],
+    'Virgin Atlantic': ['Red','Silver','Gold'],
+    'Qantas': ['Bronze','Silver','Gold','Platinum','Platinum One'],
+    'Etihad': ['Silver','Gold','Platinum'],
+    'JAL': ['Crystal','Sapphire','Diamond'],
+    'Air Canada': ['25K','35K','50K','75K','Super Elite 100K'],
+    'Frontier': ['Elite Silver','Elite Gold','Elite Platinum'],
+    'Alaska/Hawaiian Air': ['MVP','MVP Gold','MVP Gold 75K']
+  };
+  var HOTEL_STATUS = {
+    'Marriott': ['Silver Elite','Gold Elite','Platinum Elite','Titanium Elite','Ambassador Elite'],
+    'Hilton': ['Silver','Gold','Diamond'],
+    'Hyatt': ['Discoverist','Explorist','Globalist'],
+    'IHG': ['Silver Elite','Gold Elite','Platinum Elite','Diamond Elite','Spire Elite'],
+    'Wyndham': ['Blue','Gold','Platinum','Diamond'],
+    'Four Seasons': ['Preferred Partner'],
+    'Ritz-Carlton': ['Silver Elite','Gold Elite','Platinum Elite','Titanium Elite','Ambassador Elite'],
+    'W Hotels': ['Silver Elite','Gold Elite','Platinum Elite','Titanium Elite','Ambassador Elite'],
+    'Kimpton': ['Silver Elite','Gold Elite','Platinum Elite','Diamond Elite','Spire Elite'],
+    'Conrad': ['Silver','Gold','Diamond']
+  };
+  var CRUISE_STATUS = {
+    'Virgin Voyages': ['Sailor'],
+    'Royal Caribbean': ['Gold','Platinum','Emerald','Diamond','Diamond Plus','Pinnacle Club'],
+    'Carnival': ['Blue','Red','Gold','Platinum','Diamond'],
+    'Norwegian': ['Bronze','Silver','Gold','Platinum','Ambassador'],
+    'Princess': ['Gold','Ruby','Platinum','Elite'],
+    'Celebrity': ['Preview','Classic','Select','Elite','Elite Plus','Zenith'],
+    'Disney Cruise Line': ['Silver','Gold','Platinum','Platinum Plus'],
+    'Holland America': ['Mariner','2-Star Mariner','3-Star Mariner','4-Star Mariner','5-Star Mariner'],
+    'MSC Cruises': ['Classic','Silver','Gold','Platinum','Diamond'],
+    'Viking': ['Explorer Society Member']
+  };
+  var CAR_RENTAL_STATUS = {
+    'Hertz': ['Gold Plus Rewards','Five Star','Six Star',"President's Circle"],
+    'Avis': ['Preferred','Preferred Plus',"President's Club"],
+    'Enterprise': ['Silver','Gold','Platinum'],
+    'National': ['Emerald Club','Executive','Executive Elite'],
+    'Budget': ['Fastbreak','Fastbreak Elite'],
+    'Alamo': ['Insiders'],
+    'Sixt': ['Silver','Gold','Platinum','Platinum Plus'],
+    'Europcar': ['Silver','Gold','Platinum'],
+    'Thrifty': ['Blue Chip Rewards'],
+    'Dollar': ['Express Rewards']
+  };
+
+  function referredByFieldGroupHtml(namePrefix, selectId){
+    return '<div class="field"><label'+(selectId?' for="'+selectId+'"':'')+'>How did you hear about us?</label>'+
+      '<select class="ref-select"'+(selectId?' id="'+selectId+'"':'')+' name="'+namePrefix+'">'+
+        '<option value="">-- Select --</option>'+
+        '<option value="Subscriber">Newsletter Subscriber</option><option value="Ad">Ad</option><option value="Event">Event</option>'+
+        '<option value="Person">Referred by a Person</option><option value="Outbound Solicit">Outbound Solicit</option>'+
+        '<option value="ChatGPT">ChatGPT</option><option value="Claude">Claude</option><option value="CoPilot">CoPilot</option>'+
+        '<option value="Gemini">Gemini</option><option value="Other">Other</option>'+
+      '</select></div>'+
+      '<div class="field full ref-detail-wrap" style="display:none"><label class="ref-detail-label">Details</label>'+
+      '<input type="text" class="ref-detail-input" name="'+namePrefix+' Detail" placeholder="Event or person\'s name"></div>';
+  }
+  function discountsFieldGroupHtml(namePrefix){
+    return '<div class="field full"><label>Discounts <span class="hint">(check any that apply)</span></label><div class="radio-row">'+
+      DISCOUNT_TYPES.map(function(d){return '<label><input type="checkbox" name="'+namePrefix+' - '+d+'" value="Yes"> '+d+'</label>';}).join('')+
+      '<label><input type="checkbox" class="discount-other-cb" name="'+namePrefix+' - Other" value="Yes"> Other</label>'+
+    '</div></div>'+
+    '<div class="field full discount-other-wrap" style="display:none"><label>Please specify discount</label>'+
+    '<input type="text" class="discount-other-detail-input" name="'+namePrefix+' - Other Detail" placeholder="e.g. Senior, AARP, Teacher Union"></div>';
+  }
+  function interestsFieldGroupHtml(namePrefix){
+    return '<div class="field full"><label>Interests <span class="hint">(check any that apply)</span></label><div class="radio-row">'+
+      INTEREST_TYPES.map(function(t){return '<label><input type="checkbox" name="'+namePrefix+' - '+t+'" value="Yes"> '+t+'</label>';}).join('')+
+      '<label><input type="checkbox" class="interest-other-cb" name="'+namePrefix+' - Other" value="Yes"> Other</label>'+
+    '</div></div>'+
+    '<div class="field full interest-other-wrap" style="display:none"><label>Please specify interest</label>'+
+    '<input type="text" class="interest-other-detail-input" name="'+namePrefix+' - Other Detail" placeholder="e.g. Golf, Wine Tasting, Photography"></div>';
+  }
+  function balanceGridHtml(list, prefix, statusMap){
+    return list.map(function(name){
+      var opts = statusMap ? (statusMap[name]||[]) : [];
+      var statusHtml = statusMap
+        ? '<select class="balance-status-sel" name="'+prefix+' Status - '+name+'"><option value="">Status</option>'+opts.map(function(s){return '<option>'+s+'</option>';}).join('')+'<option value="Other">Other</option></select>'+
+          '<input type="text" class="balance-status-other" name="'+prefix+' Status Other - '+name+'" placeholder="Specify" style="display:none">'
+        : '';
+      return '<div class="balance-row"><span>'+name+'</span><input type="number" min="0" name="'+prefix+' - '+name+'" placeholder="0">'+statusHtml+'</div>';
+    }).join('');
+  }
+  function brandedCcChecklistHtml(cardsByBrand, prefix){
+    return Object.keys(cardsByBrand).map(function(brand){
+      return '<div class="cc-group-label">'+brand+'</div>'+
+        cardsByBrand[brand].map(function(card){
+          return '<label><input type="checkbox" name="'+prefix+' - '+card+'" value="Yes"><span>'+card+'</span></label>';
+        }).join('');
+    }).join('');
+  }
+  function selectOptionsHtml(list){
+    return '<option value="">No preference</option>'+list.map(function(x){return '<option>'+x+'</option>';}).join('')+'<option>Other</option>';
+  }
+  // Identical to travelerBlockHtml() in intake-form.html — kept in sync by
+  // hand (same no-shared-module convention as every other duplicated list/
+  // builder here) so a traveler entered on this follow-up form produces the
+  // exact same "Traveler N - ..." field names the CRM importer expects.
+  function travelerBlockHtml(n){
+    var p = 'Traveler '+n;
+    return (
+      '<div class="section-title">'+p+'</div>'+
+      '<div class="fg">'+
+        '<div class="field full"><label>Name as shown on passport or license</label><input type="text" name="'+p+' - Full Name" placeholder="'+p+' full name"></div>'+
+        '<div class="field"><label>Email</label><input type="email" name="'+p+' - Email" placeholder="jane@example.com"></div>'+
+        '<div class="field"><label>Phone</label><input type="tel" name="'+p+' - Phone" placeholder="(555) 555-5555"></div>'+
+        '<div class="field full"><label>Street Address</label><input type="text" name="'+p+' - Street Address" placeholder="123 Main St"></div>'+
+        '<div class="field"><label>City</label><input type="text" name="'+p+' - City"></div>'+
+        '<div class="field"><label>State</label><input type="text" name="'+p+' - State"></div>'+
+        '<div class="field"><label>Zip Code</label><input type="text" name="'+p+' - Zip Code"></div>'+
+        '<div class="field"><label>Birthdate</label><input type="date" name="'+p+' - Birthdate"></div>'+
+        '<div class="field"><label>Country of Citizenship</label><input type="text" name="'+p+' - Country of Citizenship"></div>'+
+        '<div class="field"><label>Country of Birth</label><input type="text" name="'+p+' - Country of Birth"></div>'+
+        referredByFieldGroupHtml(p+' - Referred By', 't'+n+'-ref-select')+
+        discountsFieldGroupHtml(p+' - Discount')+
+        interestsFieldGroupHtml(p+' - Interest')+
+        '<div class="field"><label for="t'+n+'-pref-airline">Preferred Airline</label><select class="pref-other-sel" id="t'+n+'-pref-airline" name="'+p+' - Preferred Airline">'+selectOptionsHtml(AIRLINES)+'</select></div>'+
+        '<div class="field pref-other-wrap" style="display:none"><label>Please specify airline</label><input type="text" class="pref-other-input" name="'+p+' - Preferred Airline Other"></div>'+
+        '<div class="field"><label for="t'+n+'-pref-hotel">Preferred Hotel Brand</label><select class="pref-other-sel" id="t'+n+'-pref-hotel" name="'+p+' - Preferred Hotel">'+selectOptionsHtml(HOTELS)+'</select></div>'+
+        '<div class="field pref-other-wrap" style="display:none"><label>Please specify hotel brand</label><input type="text" class="pref-other-input" name="'+p+' - Preferred Hotel Other"></div>'+
+        '<div class="field"><label for="t'+n+'-pref-cruise">Preferred Cruise Line</label><select class="pref-other-sel" id="t'+n+'-pref-cruise" name="'+p+' - Preferred Cruise Line">'+selectOptionsHtml(CRUISE_LINES)+'</select></div>'+
+        '<div class="field pref-other-wrap" style="display:none"><label>Please specify cruise line</label><input type="text" class="pref-other-input" name="'+p+' - Preferred Cruise Line Other"></div>'+
+        '<div class="field full"><label>Airline Mileage Balances <span class="hint">(optional)</span></label><div class="balance-grid">'+balanceGridHtml(AIRLINES,p+' Airline',AIRLINE_STATUS)+'</div></div>'+
+        '<div class="field full"><label>Hotel Points Balances <span class="hint">(optional)</span></label><div class="balance-grid">'+balanceGridHtml(HOTELS,p+' Hotel',HOTEL_STATUS)+'</div></div>'+
+        '<div class="field full"><label>Cruise Line Loyalty <span class="hint">(optional)</span></label><div class="balance-grid">'+balanceGridHtml(CRUISE_LINES,p+' Cruise',CRUISE_STATUS)+'</div></div>'+
+        '<div class="field full"><label>Car Rental Loyalty <span class="hint">(optional)</span></label><div class="balance-grid">'+balanceGridHtml(CAR_RENTALS,p+' Car Rental',CAR_RENTAL_STATUS)+'</div></div>'+
+        '<div class="field full"><label>Credit Card Points Balances <span class="hint">(optional)</span></label><div class="balance-grid">'+balanceGridHtml(CREDIT_CARDS,p+' Credit Card',null)+'</div></div>'+
+        '<div class="field full"><label>Airline Credit Cards <span class="hint">(check any that apply)</span></label><div class="cc-checklist">'+brandedCcChecklistHtml(AIRLINE_CREDIT_CARDS,p+' Airline Credit Card')+'</div></div>'+
+        '<div class="field full"><label>Hotel Credit Cards <span class="hint">(check any that apply)</span></label><div class="cc-checklist">'+brandedCcChecklistHtml(HOTEL_CREDIT_CARDS,p+' Hotel Credit Card')+'</div></div>'+
+      '</div>'
+    );
+  }
+
+  // Same field-count/payload ceiling as intake-form.html's own
+  // MAX_TRAVELERS_PER_SUBMISSION — this follow-up form chains itself
+  // (via the "next batch" link after a successful submit) rather than
+  // ever rendering more than this many travelers at once.
+  var MAX_PER_BATCH = 4;
+
+  var params = new URLSearchParams(window.location.search);
+  var primaryName = params.get('name') || '';
+  var primaryEmail = params.get('email') || '';
+  var start = Math.max(2, parseInt(params.get('start'), 10) || 4);
+  var remaining = Math.max(1, parseInt(params.get('remaining'), 10) || 1);
+  var batchSize = Math.min(remaining, MAX_PER_BATCH);
+  var batchEnd = start + batchSize - 1;
+
+  document.getElementById('primary-name-field').value = primaryName;
+  document.getElementById('primary-email-field').value = primaryEmail;
+  document.getElementById('replyto-field').value = primaryEmail;
+  document.getElementById('context-name').textContent = primaryName || 'your group';
+  document.getElementById('context-email').textContent = primaryEmail ? ' (' + primaryEmail + ')' : '';
+
+  if(remaining > MAX_PER_BATCH){
+    var notice = document.getElementById('more-travelers-notice');
+    notice.style.display = 'block';
+    notice.textContent = 'Your group has more travelers than fit in one batch. This page will collect Travelers ' + start + '–' + batchEnd + ' — after you submit, we\'ll show you a link to add the rest.';
+  }
+
+  var travelersContainer = document.getElementById('travelers-container');
+  var html = '';
+  for(var n = start; n <= batchEnd; n++){ html += travelerBlockHtml(n); }
+  travelersContainer.innerHTML = html;
+
+  // Delegated so it works for every "Other"/status select regardless of
+  // which traveler block it lives in — same pattern as intake-form.html.
+  document.addEventListener('change', function(e){
+    if(e.target.classList.contains('balance-status-sel')){
+      var otherInput = e.target.nextElementSibling;
+      if(otherInput && otherInput.classList.contains('balance-status-other')){
+        otherInput.style.display = e.target.value==='Other' ? 'inline-block' : 'none';
+        if(e.target.value!=='Other') otherInput.value='';
+      }
+    }
+    if(e.target.classList.contains('pref-other-sel')){
+      var fieldDiv = e.target.closest('.field');
+      var wrap = fieldDiv ? fieldDiv.nextElementSibling : null;
+      if(wrap && wrap.classList.contains('pref-other-wrap')){
+        wrap.style.display = e.target.value==='Other' ? 'flex' : 'none';
+        if(e.target.value!=='Other'){
+          var input = wrap.querySelector('.pref-other-input');
+          if(input) input.value='';
+        }
+      }
+    }
+    if(e.target.classList.contains('ref-select')){
+      var refFieldDiv = e.target.closest('.field');
+      var refWrap = refFieldDiv ? refFieldDiv.nextElementSibling : null;
+      if(refWrap && refWrap.classList.contains('ref-detail-wrap')){
+        var show = (e.target.value==='Event' || e.target.value==='Person' || e.target.value==='Other');
+        refWrap.style.display = show ? 'flex' : 'none';
+        var refLabelEl = refWrap.querySelector('.ref-detail-label');
+        if(refLabelEl) refLabelEl.textContent = e.target.value==='Person' ? 'Person\'s Name' : (e.target.value==='Event' ? 'Event Name' : 'Please specify');
+        if(!show){
+          var refInput = refWrap.querySelector('.ref-detail-input');
+          if(refInput) refInput.value='';
+        }
+      }
+    }
+    if(e.target.classList.contains('discount-other-cb') || e.target.classList.contains('interest-other-cb')){
+      var isDiscount = e.target.classList.contains('discount-other-cb');
+      var otherFieldDiv = e.target.closest('.field.full');
+      var otherWrap = otherFieldDiv ? otherFieldDiv.nextElementSibling : null;
+      var wrapClass = isDiscount ? 'discount-other-wrap' : 'interest-other-wrap';
+      var inputClass = isDiscount ? 'discount-other-detail-input' : 'interest-other-detail-input';
+      if(otherWrap && otherWrap.classList.contains(wrapClass)){
+        otherWrap.style.display = e.target.checked ? 'flex' : 'none';
+        if(!e.target.checked){
+          var otherInput2 = otherWrap.querySelector('.'+inputClass);
+          if(otherInput2) otherInput2.value='';
+        }
+      }
+    }
+  });
+
+  var form = document.getElementById('additional-travelers-form');
+  form.addEventListener('submit', function(e){
+    e.preventDefault();
+    var data = new URLSearchParams(new FormData(form));
+    fetch(form.action, {
+      method: 'POST',
+      body: data,
+      headers: { 'Accept': 'application/json' }
+    }).then(function(resp){
+      if(resp.ok){
+        form.style.display = 'none';
+        document.getElementById('more-travelers-notice').style.display = 'none';
+        var okMsg = document.getElementById('ok-msg');
+        if(remaining > MAX_PER_BATCH){
+          var nextStart = batchEnd + 1;
+          var nextRemaining = remaining - batchSize;
+          var nextUrl = 'additional-travelers-form.html'+
+            '?name='+encodeURIComponent(primaryName)+
+            '&email='+encodeURIComponent(primaryEmail)+
+            '&start='+nextStart+
+            '&remaining='+nextRemaining;
+          okMsg.innerHTML = 'Thanks! Travelers '+start+'–'+batchEnd+' have been sent.'+
+            '<div style="margin-top:12px;padding-top:12px;border-top:1px solid #6ee7b7">'+
+            '<a href="'+nextUrl+'" style="color:#065f46;font-weight:700;text-decoration:underline">Click here to add the rest of your group</a>.</div>';
+        }
+        okMsg.style.display = 'block';
+        window.scrollTo({top:0, behavior:'smooth'});
+      } else {
+        alert('Something went wrong submitting the form. Please try again or call us at (908) 419-7700.');
+      }
+    }).catch(function(){
+      alert('Something went wrong submitting the form. Please try again or call us at (908) 419-7700.');
+    });
+  });
+</script>
+</body>
+</html>
