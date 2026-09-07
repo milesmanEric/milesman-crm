@@ -1176,6 +1176,25 @@
             '<div style="margin-top:16px;padding-top:16px;border-top:1px solid #6ee7b7">You told us there are '+totalTravelers+' travelers in your group.<br>'+
             '<a href="'+followUpUrl+'" target="_blank" rel="noopener" style="display:inline-block;margin-top:12px;padding:14px 24px;background:#065f46;color:#fff;font-size:17px;font-weight:700;text-decoration:none;border-radius:9px">Click here to give us the rest of your group\'s information</a></div>';
         }
+        // Next step on the thank-you screen: the credit card authorization
+        // form. Download link is the PDF hosted on the WordPress site; the
+        // upload link is the standalone cc-auth-upload.html page, handed the
+        // name/email so the client only has to attach the completed file
+        // (that page shows the identify fields pre-filled and correctable).
+        var ccNameField = form.querySelector('input[name="Full Name"]');
+        var ccName = ccNameField ? ccNameField.value : '';
+        var ccEmail = document.getElementById('email-field').value || '';
+        var ccUploadUrl = 'https://milesmaneric.github.io/milesman-crm/cc-auth-upload.html'+
+          '?name='+encodeURIComponent(ccName)+'&email='+encodeURIComponent(ccEmail);
+        okMsg.innerHTML +=
+          '<div style="margin-top:16px;padding-top:16px;border-top:1px solid #6ee7b7;text-align:left;font-weight:400">'+
+            '<div style="font-weight:700;margin-bottom:6px">Next step: credit card authorization</div>'+
+            'To book flights, hotels, or cruises for you we need a signed credit card authorization form. Nothing is charged until your booking is complete.'+
+            '<div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:10px">'+
+              '<a href="https://themilesman.com/wp-content/uploads/2026/05/cc-authorization.pdf" target="_blank" rel="noopener" style="display:inline-block;padding:11px 18px;background:#065f46;color:#fff;font-weight:600;font-size:14px;text-decoration:none;border-radius:8px">Download the form (PDF)</a>'+
+              '<a href="'+ccUploadUrl+'" target="_blank" rel="noopener" style="display:inline-block;padding:11px 18px;background:#fff;color:#065f46;font-weight:600;font-size:14px;text-decoration:none;border-radius:8px;border:1px solid #065f46">Upload the completed form</a>'+
+            '</div>'+
+          '</div>';
         okMsg.style.display = 'block';
         // Submit is way down at the bottom of a long form — without this,
         // the thank-you message swaps in right where the form used to be
