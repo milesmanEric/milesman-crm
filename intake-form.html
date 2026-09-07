@@ -1141,8 +1141,8 @@
             '&start='+(MAX_TRAVELERS_PER_SUBMISSION+1)+
             '&remaining='+(totalTravelers-MAX_TRAVELERS_PER_SUBMISSION);
           okMsg.innerHTML = 'Thanks! Your request for the first '+MAX_TRAVELERS_PER_SUBMISSION+' travelers has been sent — we\'ll be in touch shortly.'+
-            '<div style="margin-top:12px;padding-top:12px;border-top:1px solid #6ee7b7">You told us there are '+totalTravelers+' travelers in your group. '+
-            '<a href="'+followUpUrl+'" target="_blank" rel="noopener" style="color:#065f46;font-weight:700;text-decoration:underline">Click here to give us the rest of your group\'s information</a>.</div>';
+            '<div style="margin-top:16px;padding-top:16px;border-top:1px solid #6ee7b7">You told us there are '+totalTravelers+' travelers in your group.<br>'+
+            '<a href="'+followUpUrl+'" target="_blank" rel="noopener" style="display:inline-block;margin-top:12px;padding:14px 24px;background:#065f46;color:#fff;font-size:17px;font-weight:700;text-decoration:none;border-radius:9px">Click here to give us the rest of your group\'s information</a></div>';
         }
         okMsg.style.display = 'block';
         // Submit is way down at the bottom of a long form — without this,
