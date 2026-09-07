@@ -8017,8 +8017,17 @@ function processTripFormRow(getVal, counters){
       referredBy:tReferredBy, referredByDetail:tReferredByDetail, discountOther:tDiscountOther, interestOther:tInterestOther,
       preferredAirline:tAirline, preferredHotel:tHotel, preferredCruiseLine:tCruise};
 
+    // Match a companion traveler to an existing client the same priority
+    // order the primary contact uses: email first (the trip form now
+    // requires a traveler email), then exact name, then format-independent
+    // first+last. Email-first is what lets a legal name entered here
+    // ("Jacqueline B Rogers") resolve to a differently-filed record
+    // ("Jakki Rogers") instead of silently creating a duplicate or landing
+    // in the same-last-name Pending queue below.
+    var tEmailLc = (tEmail||'').trim().toLowerCase();
     var tFirst=getFirstName(tName).toLowerCase(), tLast=getLastName(tName).toLowerCase();
     var tClient = db.clients.find(function(c){
+      if(tEmailLc && c.email && c.email.toLowerCase()===tEmailLc) return true;
       if((c.name||'').toLowerCase().trim()===tName.toLowerCase().trim()) return true;
       var cFirst=getFirstName(c.name).toLowerCase(), cLast=getLastName(c.name).toLowerCase();
       return tFirst && tLast && tFirst!==tLast && cFirst===tFirst && cLast===tLast;
