@@ -98,6 +98,9 @@
         <label>Number of Travelers <span class="hint">(including you)</span></label>
         <input type="number" id="num-travelers" name="Number of Travelers" min="1" value="1">
       </div>
+      <div class="field full" id="too-many-travelers-notice" style="display:none;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:12px 14px;color:#92400e;font-size:13px;line-height:1.5">
+        Any travelers above 4 will be submitted in a separate form. Please fill in yourself and 3 more below, submit, and we'll show you a follow-up form for the rest of your group.
+      </div>
       <div class="field">
         <label>Birthdate</label>
         <input type="date" name="Birthdate">
@@ -817,13 +820,25 @@
     container.querySelectorAll('input, select').forEach(function(el){ if(el.name && vals[el.name]!==undefined) el.value = vals[el.name]; });
   }
   var travelersContainer = document.getElementById('additional-travelers');
+  // A submission with full details (personal info, address, discounts,
+  // interests, and every airline/hotel/cruise/car-rental/credit-card
+  // balance grid) for more than 4 travelers gets big enough that
+  // Formspark silently drops/truncates fields before the notification
+  // email goes out — real data was going missing with 6+ travelers. Capping
+  // rendering at 4 total travelers (this form always submits cleanly)
+  // and handing the rest off to additional-travelers-form.html — a
+  // separate, equally complete follow-up submission — keeps every
+  // traveler's full data intact instead of silently losing it.
+  var MAX_TRAVELERS_PER_SUBMISSION = 4;
   function renderAdditionalTravelers(){
     var count = Math.max(1, parseInt(document.getElementById('num-travelers').value, 10) || 1);
+    var renderCount = Math.min(count, MAX_TRAVELERS_PER_SUBMISSION);
     var savedValues = collectValues(travelersContainer);
     var html = '';
-    for(var n=2; n<=count; n++){ html += travelerBlockHtml(n); }
+    for(var n=2; n<=renderCount; n++){ html += travelerBlockHtml(n); }
     travelersContainer.innerHTML = html;
     restoreValues(travelersContainer, savedValues);
+    document.getElementById('too-many-travelers-notice').style.display = count>MAX_TRAVELERS_PER_SUBMISSION ? 'flex' : 'none';
   }
   document.getElementById('num-travelers').addEventListener('input', renderAdditionalTravelers);
   renderAdditionalTravelers();
@@ -1109,7 +1124,27 @@
     }).then(function(resp){
       if(resp.ok){
         form.style.display = 'none';
-        document.getElementById('ok-msg').style.display = 'block';
+        var okMsg = document.getElementById('ok-msg');
+        // A submitted Number of Travelers beyond what this form actually
+        // rendered/sent (see MAX_TRAVELERS_PER_SUBMISSION above) means real
+        // people are missing from this submission entirely — point straight
+        // at the follow-up form rather than letting that data just never
+        // get collected. name/email carry over so the follow-up page can
+        // show which trip request this belongs to, and start/remaining let
+        // it number the travelers correctly and know how many more to expect.
+        var totalTravelers = parseInt(document.getElementById('num-travelers').value,10)||1;
+        if(totalTravelers > MAX_TRAVELERS_PER_SUBMISSION){
+          var fullNameField = form.querySelector('input[name="Full Name"]');
+          var followUpUrl = 'additional-travelers-form.html'+
+            '?name='+encodeURIComponent(fullNameField ? fullNameField.value : '')+
+            '&email='+encodeURIComponent(document.getElementById('email-field').value||'')+
+            '&start='+(MAX_TRAVELERS_PER_SUBMISSION+1)+
+            '&remaining='+(totalTravelers-MAX_TRAVELERS_PER_SUBMISSION);
+          okMsg.innerHTML = 'Thanks! Your request for the first '+MAX_TRAVELERS_PER_SUBMISSION+' travelers has been sent — we\'ll be in touch shortly.'+
+            '<div style="margin-top:12px;padding-top:12px;border-top:1px solid #6ee7b7">You told us there are '+totalTravelers+' travelers in your group. '+
+            '<a href="'+followUpUrl+'" target="_blank" rel="noopener" style="color:#065f46;font-weight:700;text-decoration:underline">Click here to give us the rest of your group\'s information</a>.</div>';
+        }
+        okMsg.style.display = 'block';
         // Submit is way down at the bottom of a long form — without this,
         // the thank-you message swaps in right where the form used to be
         // and the page (or, embedded via <iframe> on the WordPress page,
