@@ -1125,6 +1125,21 @@
     // the traveler actually filled in — except the handful of control
     // fields that need to stay present (and empty) regardless.
     var TRIPFORM_ALWAYS_KEEP_FIELDS = ['_gotcha','_subject','_replyto','Full Name','Email','Number of Travelers'];
+    // A select-with-"Other" field whose value IS "Other" needs its paired
+    // free-text detail field to stay present in the email — even blank —
+    // or index.html's parseTripFormEmailText() loses track of the selection
+    // entirely: its sentinel-swap logic detects an "Other" selection by
+    // finding the literal text "<Base> Other <Base> Other" (the base
+    // field's own value happens to read the same as the detail field's
+    // label), and that pattern only exists in the email if the detail
+    // field's label is there to find, blank value or not.
+    document.querySelectorAll('.pref-other-sel').forEach(function(sel){
+      if(sel.value !== 'Other') return;
+      var fieldDiv = sel.closest('.field');
+      var wrap = fieldDiv ? fieldDiv.nextElementSibling : null;
+      var input = wrap && wrap.classList.contains('pref-other-wrap') ? wrap.querySelector('.pref-other-input') : null;
+      if(input && input.name) TRIPFORM_ALWAYS_KEEP_FIELDS.push(input.name);
+    });
     Array.from(new Set(Array.from(data.keys()))).forEach(function(key){
       if(TRIPFORM_ALWAYS_KEEP_FIELDS.indexOf(key)!==-1) return;
       if(!data.getAll(key).some(function(v){ return v && v.trim(); })) data.delete(key);
