@@ -342,6 +342,15 @@
     // fields this batch of travelers actually filled in, keeping the
     // control fields that need to stay present regardless.
     var TRIPFORM_ALWAYS_KEEP_FIELDS = ['_gotcha','_subject','_replyto','Additional Travelers Submission','Primary Contact Name','Primary Contact Email'];
+    // Same "Other" pairing preservation as intake-form.html — see its
+    // submit handler for why this is needed, not just cosmetic.
+    document.querySelectorAll('.pref-other-sel').forEach(function(sel){
+      if(sel.value !== 'Other') return;
+      var fieldDiv = sel.closest('.field');
+      var wrap = fieldDiv ? fieldDiv.nextElementSibling : null;
+      var input = wrap && wrap.classList.contains('pref-other-wrap') ? wrap.querySelector('.pref-other-input') : null;
+      if(input && input.name) TRIPFORM_ALWAYS_KEEP_FIELDS.push(input.name);
+    });
     Array.from(new Set(Array.from(data.keys()))).forEach(function(key){
       if(TRIPFORM_ALWAYS_KEEP_FIELDS.indexOf(key)!==-1) return;
       if(!data.getAll(key).some(function(v){ return v && v.trim(); })) data.delete(key);
