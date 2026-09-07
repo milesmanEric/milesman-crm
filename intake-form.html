@@ -1117,6 +1117,18 @@
       data.delete(ticketSel.name);
       if(selectedTickets.length) data.set(ticketSel.name, selectedTickets.join(', '));
     });
+    // A blank text/number input or an unselected "-- Select --" dropdown
+    // still gets submitted with an empty value by FormData — across a form
+    // this size (balance grids alone are 60+ fields per traveler) that's a
+    // notification email that's mostly blank lines. Drop anything with no
+    // actual value before sending so Formspark's email only shows fields
+    // the traveler actually filled in — except the handful of control
+    // fields that need to stay present (and empty) regardless.
+    var TRIPFORM_ALWAYS_KEEP_FIELDS = ['_gotcha','_subject','_replyto','Full Name','Email','Number of Travelers'];
+    Array.from(new Set(Array.from(data.keys()))).forEach(function(key){
+      if(TRIPFORM_ALWAYS_KEEP_FIELDS.indexOf(key)!==-1) return;
+      if(!data.getAll(key).some(function(v){ return v && v.trim(); })) data.delete(key);
+    });
     fetch(form.action, {
       method: 'POST',
       body: data,
