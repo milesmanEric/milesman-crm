@@ -1971,10 +1971,11 @@ function dbWipedDescription(){
 // each one carries its own stack trace, and losing that trail is exactly
 // what made a prior incident hard to root-cause after the fact.
 var _lastWipeWarningAt = 0;
+var _lastSaveFailWarningAt = 0;
 function saveDB(){
   if(_dbDecryptFailed){
     console.error('[CRM] Refusing to save — this device could not decrypt its existing data, and saving now would overwrite it before you can recover it. Use Restore from Google Drive, Secure Sync: Load, or the local Restore (JSON file import) to recover — any of those will clear this and allow saving again.');
-    return;
+    return Promise.resolve(false);
   }
   // dbAppearsWiped() blocking driveBackup() only protects the *remote*
   // Drive copy — this is the only place LOCAL data (what every reload
@@ -1999,39 +2000,73 @@ function saveDB(){
     var json = JSON.stringify(db);
     recordGoodDbCounts();
     _dbSavesInFlight++;
+    var savingLbl=document.getElementById('sync-lbl');
+    if(savingLbl && !_driveBackupStale){ savingLbl.innerHTML='&#9679; Saving...'; savingLbl.style.color=''; }
+    // The write itself used to be assumed to succeed the moment it was
+    // kicked off — the "Saved HH:MM" label flipped, and every awaiting
+    // caller (see importJSON()/driveRestore()/secureSyncRestore()) treated
+    // a resolved promise as proof the data was safely persisted. It isn't:
+    // a full localStorage (QuotaExceededError is the realistic case here —
+    // restoring a bigger backup than what's currently stored is exactly
+    // the moment this is most likely to happen) or any other encrypt/write
+    // failure was being silently swallowed by the .catch() below, so
+    // `await saveDB()` could resolve clean while nothing actually reached
+    // localStorage — the in-memory db looked right until the next reload
+    // silently brought back whatever was there before. Now the chain
+    // resolves to true/false so a caller that cares can tell the
+    // difference, and a failure is loud (Debug Log + toast + a persistent
+    // "Save failed" status) instead of a console.error nobody sees.
     _dbSaveChain = _dbSaveChain.then(function(){
       return encryptDbJson(json);
     }).then(function(encoded){
       localStorage.setItem(LS_KEY, encoded);
+      return true;
     }).catch(function(e){
+      var reason = (e && e.name==='QuotaExceededError') ? 'local storage is full' : (e && e.message || String(e));
       console.error('[CRM] Encrypted save failed:', e);
-    }).then(function(){
-      _dbSavesInFlight--;
-    });
-    var lbl=document.getElementById('sync-lbl');
-    if(lbl){
-      if(_driveBackupStale){
-        updateSyncStatusDisplay();
-      }else{
-        var now=new Date();
-        var timeStr=now.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
-        lbl.innerHTML='&#9679; Saved '+timeStr;
-        lbl.style.color='#059669';
-        clearTimeout(window._syncLblTimer);
-        window._syncLblTimer=setTimeout(function(){
-          if(lbl) lbl.style.color='';
-        },2000);
+      debugLog('ERROR: saveDB() could not persist this save — '+reason+'. This change exists only in memory and will be LOST on reload/close until this is fixed.');
+      if(Date.now()-_lastSaveFailWarningAt > 60000){
+        _lastSaveFailWarningAt = Date.now();
+        toast('Save failed ('+reason+') — this change is NOT saved to this device. Do not reload or close this tab — export a backup now (sidebar > Export) before doing anything else.','err');
       }
-    }
+      return false;
+    }).then(function(ok){
+      _dbSavesInFlight--;
+      var lbl=document.getElementById('sync-lbl');
+      if(lbl){
+        if(!ok){
+          lbl.innerHTML='&#9679; Save failed';
+          lbl.style.color='#dc2626';
+        }else if(_driveBackupStale){
+          updateSyncStatusDisplay();
+        }else{
+          var now=new Date();
+          var timeStr=now.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+          lbl.innerHTML='&#9679; Saved '+timeStr;
+          lbl.style.color='#059669';
+          clearTimeout(window._syncLblTimer);
+          window._syncLblTimer=setTimeout(function(){
+            if(lbl) lbl.style.color='';
+          },2000);
+        }
+      }
+      return ok;
+    });
     // Every one of this function's 100+ existing call sites ignores the
     // return value (saveDB() was always fire-and-forget by design, see
     // _dbSaveChain's own comment above) — returning the chain here changes
     // nothing for them. It only matters to a caller that explicitly
     // `await`s it, which a handful of high-stakes flows (restoring from a
     // backup) now do specifically so they can't report success before the
-    // encrypted write has actually landed in localStorage.
+    // encrypted write has actually landed in localStorage, and can now also
+    // tell a real failure apart from success.
     return _dbSaveChain;
-  }catch(e){ return Promise.resolve(); }
+  }catch(e){
+    console.error('[CRM] saveDB() failed before it could persist:', e);
+    debugLog('ERROR: saveDB() threw before persisting — '+(e&&e.message||e)+'. This change exists only in memory.');
+    toast('Save failed unexpectedly — see Debug Log','err');
+    return Promise.resolve(false);
+  }
 }
 async function loadDB(){
   var stored = localStorage.getItem(LS_KEY);
@@ -4254,12 +4289,20 @@ async function driveRestore(){
       // the moment someone is most likely to reload immediately after
       // seeing success, and saveDB()'s encrypted write is otherwise fire-
       // and-forget: a reload racing ahead of it would silently bring back
-      // whatever was in localStorage before this restore.
-      await saveDB();render();
-      localStorage.setItem('mm_last_known_remote_modified', existing.modifiedTime);
-      const date=new Date(existing.modifiedTime).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
-      debugLog('Restore: success — '+db.clients.length+' clients, '+db.trips.length+' trips');
-      toast('Restored from Drive ('+date+') — '+db.clients.length+' clients, '+db.trips.length+' trips','ok');
+      // whatever was in localStorage before this restore. The boolean also
+      // catches the write itself failing (e.g. a full localStorage), which
+      // used to resolve just as cleanly as a real success.
+      var saved = await saveDB();
+      render();
+      if(saved===false){
+        debugLog('Restore: saveDB() failed — restored data is only in memory, NOT persisted to this device');
+        toast('Restored in memory, but saving to this device FAILED — do NOT reload or close this tab yet. Export a backup now, then check the Debug Log.','err');
+      }else{
+        localStorage.setItem('mm_last_known_remote_modified', existing.modifiedTime);
+        const date=new Date(existing.modifiedTime).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+        debugLog('Restore: success — '+db.clients.length+' clients, '+db.trips.length+' trips');
+        toast('Restored from Drive ('+date+') — '+db.clients.length+' clients, '+db.trips.length+' trips','ok');
+      }
     }else{
       debugLog('Restore: JSON parsed but missing clients/trips arrays. Keys: '+Object.keys(d||{}).join(','));
       toast('Backup file appears corrupted','err');
@@ -4379,10 +4422,18 @@ async function secureSyncRestore(){
       instrumentDbWipeTracing();
       db.clients.forEach(function(c){ if(c.name && !c.name.includes(',')) c.name=toLastFirst(c.name); });
       _dbDecryptFailed = false; // a real recovery just happened — safe to save again
-      // Awaited — see importJSON()/driveRestore()'s matching comment.
-      await saveDB();render();
-      debugLog('Secure Sync: restore success — '+db.clients.length+' clients, '+db.trips.length+' trips');
-      toast('Secure Sync loaded — '+db.clients.length+' clients, '+db.trips.length+' trips','ok');
+      // Awaited — see importJSON()/driveRestore()'s matching comment. The
+      // boolean also catches the write itself failing (e.g. a full
+      // localStorage), which used to resolve just as cleanly as success.
+      var saved = await saveDB();
+      render();
+      if(saved===false){
+        debugLog('Secure Sync: saveDB() failed — restored data is only in memory, NOT persisted to this device');
+        toast('Restored in memory, but saving to this device FAILED — do NOT reload or close this tab yet. Export a backup now, then check the Debug Log.','err');
+      }else{
+        debugLog('Secure Sync: restore success — '+db.clients.length+' clients, '+db.trips.length+' trips');
+        toast('Secure Sync loaded — '+db.clients.length+' clients, '+db.trips.length+' trips','ok');
+      }
     }else{
       debugLog('Secure Sync: JSON missing clients/trips arrays');
       toast('Backup file appears corrupted','err');
@@ -5480,15 +5531,27 @@ function importJSON(){
       try{
         const d=JSON.parse(ev.target.result);
         if(Array.isArray(d.clients)&&Array.isArray(d.trips)){
+          debugLog('Local restore: parsed backup file — '+d.clients.length+' clients, '+d.trips.length+' trips');
           db=d;instrumentDbWipeTracing();if(!Array.isArray(db.vendors))db.vendors=[];if(!Array.isArray(db.bizVendors))db.bizVendors=[];if(!Array.isArray(db.planner))db.planner=[];if(!Array.isArray(db.bookmarks))db.bookmarks=[];if(!Array.isArray(db.savedReports))db.savedReports=[];if(!Array.isArray(db.groups))db.groups=[];if(!Array.isArray(db.marketingPlan))db.marketingPlan=[];if(!Array.isArray(db.pendingImportMatches))db.pendingImportMatches=[];if(!Array.isArray(db.jetpackRemovalQueue))db.jetpackRemovalQueue=[];(db.clients||[]).forEach(function(c){ if(c.name && !c.name.includes(',')) c.name=toLastFirst(c.name); });_dbDecryptFailed=false;
           // Awaited specifically because this is a restore: the natural next
           // move after seeing "Data imported" is to reload to confirm it
           // stuck, and saveDB()'s encrypted write is otherwise fire-and-
           // forget — a reload fired before that write actually reaches
           // localStorage would silently bring back whatever was there
-          // before the restore, with no error at all.
-          await saveDB();
-          toast('Data imported');render();
+          // before the restore, with no error at all. The boolean it now
+          // resolves to also catches the case where the write itself failed
+          // (e.g. a full localStorage) — awaiting alone isn't enough, since
+          // a failed write used to resolve just as cleanly as a successful
+          // one.
+          var saved = await saveDB();
+          render();
+          if(saved===false){
+            debugLog('Local restore: saveDB() failed — restored data is only in memory, NOT persisted to this device');
+            toast('Restored in memory, but saving to this device FAILED — do NOT reload or close this tab. Export a backup now, then check the Debug Log.','err');
+          }else{
+            debugLog('Local restore: success — '+db.clients.length+' clients, '+db.trips.length+' trips');
+            toast('Data imported');
+          }
         }
         else toast('Invalid backup file','err');
       }catch(ex){toast('Could not read file','err');}
