@@ -1859,6 +1859,18 @@ function updateSyncStatusDisplay(){
 // waiting on the write completing even back when it was a plain
 // synchronous JSON.stringify.
 var _dbSaveChain = Promise.resolve();
+// Count (not a boolean — saveDB() calls can overlap while an earlier one
+// is still encrypting, and a boolean reset by whichever settles first
+// would clobber a still-pending later call) of queued encrypt+writes not
+// yet actually persisted. Lets beforeunload (below) warn if the page is
+// about to close/reload with a save still pending — that write racing a
+// reload and losing was exactly how a "restore, then refresh to confirm"
+// step re-surfaced already-fixed old data: the restore's own saveDB()
+// call is just as fire-and-forget as every other call site, so a refresh
+// fired the instant the success toast appeared could beat the encrypted
+// write to localStorage, leaving the OLD ciphertext in place for the
+// reload to read back.
+var _dbSavesInFlight = 0;
 // Set by loadDB() when localStorage held real (non-empty) data that
 // couldn't be decrypted with the current key — wrong password derivation,
 // a corrupted blob, whatever the cause. Left true, the very next saveDB()
@@ -1952,20 +1964,49 @@ function dbWipedDescription(){
   if(countLooksWiped(db.vendors.length,last&&last.vendors)) parts.push(db.vendors.length+' supplier'+(db.vendors.length!==1?'s':'')+' (had '+last.vendors+')');
   return parts.length ? parts.join(', ') : (db.clients.length+' clients and '+db.trips.length+' trips');
 }
+// Throttles the user-facing wipe-warning toast below (saveDB() can fire on
+// nearly every keystroke, and once db looks wiped it stays looking wiped
+// until someone actually restores — without this a stuck session would
+// spam the same toast over and over). The debugLog line is NOT throttled —
+// each one carries its own stack trace, and losing that trail is exactly
+// what made a prior incident hard to root-cause after the fact.
+var _lastWipeWarningAt = 0;
 function saveDB(){
   if(_dbDecryptFailed){
     console.error('[CRM] Refusing to save — this device could not decrypt its existing data, and saving now would overwrite it before you can recover it. Use Restore from Google Drive, Secure Sync: Load, or the local Restore (JSON file import) to recover — any of those will clear this and allow saving again.');
     return;
   }
+  // dbAppearsWiped() blocking driveBackup() only protects the *remote*
+  // Drive copy — this is the only place LOCAL data (what every reload
+  // actually reads back) gets persisted at all, and it had no wipe
+  // protection whatsoever. Deliberately not blocking the save itself:
+  // we can't reliably tell an actual bug from a legitimate bulk delete
+  // here, and refusing every future save until some explicit "recovery"
+  // action would risk losing real work done afterward. Instead, a save
+  // this suspicious gets a loud, hard-to-miss warning — with a stack
+  // trace pointing at the actual call site — instead of silently
+  // vanishing into the Debug Log the way a prior incident did.
+  if(dbAppearsWiped()){
+    var wipeMsg = dbWipedDescription();
+    var wipeStack = (new Error('saveDB() called with suspiciously low counts')).stack||'';
+    debugLog('WARNING: saveDB() about to persist '+wipeMsg+' — '+wipeStack.split('\n').slice(0,6).join(' | '));
+    if(Date.now()-_lastWipeWarningAt > 60000){
+      _lastWipeWarningAt = Date.now();
+      toast('Warning: local data just dropped to '+wipeMsg+' — if this wasn\'t intentional, stop editing and use Restore before more changes get saved over it','err');
+    }
+  }
   try{
     var json = JSON.stringify(db);
     recordGoodDbCounts();
+    _dbSavesInFlight++;
     _dbSaveChain = _dbSaveChain.then(function(){
       return encryptDbJson(json);
     }).then(function(encoded){
       localStorage.setItem(LS_KEY, encoded);
     }).catch(function(e){
       console.error('[CRM] Encrypted save failed:', e);
+    }).then(function(){
+      _dbSavesInFlight--;
     });
     var lbl=document.getElementById('sync-lbl');
     if(lbl){
@@ -1982,7 +2023,15 @@ function saveDB(){
         },2000);
       }
     }
-  }catch(e){}
+    // Every one of this function's 100+ existing call sites ignores the
+    // return value (saveDB() was always fire-and-forget by design, see
+    // _dbSaveChain's own comment above) — returning the chain here changes
+    // nothing for them. It only matters to a caller that explicitly
+    // `await`s it, which a handful of high-stakes flows (restoring from a
+    // backup) now do specifically so they can't report success before the
+    // encrypted write has actually landed in localStorage.
+    return _dbSaveChain;
+  }catch(e){ return Promise.resolve(); }
 }
 async function loadDB(){
   var stored = localStorage.getItem(LS_KEY);
@@ -4201,7 +4250,12 @@ async function driveRestore(){
       instrumentDbWipeTracing();
       db.clients.forEach(function(c){ if(c.name && !c.name.includes(',')) c.name=toLastFirst(c.name); });
       _dbDecryptFailed = false; // a real recovery just happened — safe to save again
-      saveDB();render();
+      // Awaited — see importJSON()'s matching comment. A restore is exactly
+      // the moment someone is most likely to reload immediately after
+      // seeing success, and saveDB()'s encrypted write is otherwise fire-
+      // and-forget: a reload racing ahead of it would silently bring back
+      // whatever was in localStorage before this restore.
+      await saveDB();render();
       localStorage.setItem('mm_last_known_remote_modified', existing.modifiedTime);
       const date=new Date(existing.modifiedTime).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
       debugLog('Restore: success — '+db.clients.length+' clients, '+db.trips.length+' trips');
@@ -4325,7 +4379,8 @@ async function secureSyncRestore(){
       instrumentDbWipeTracing();
       db.clients.forEach(function(c){ if(c.name && !c.name.includes(',')) c.name=toLastFirst(c.name); });
       _dbDecryptFailed = false; // a real recovery just happened — safe to save again
-      saveDB();render();
+      // Awaited — see importJSON()/driveRestore()'s matching comment.
+      await saveDB();render();
       debugLog('Secure Sync: restore success — '+db.clients.length+' clients, '+db.trips.length+' trips');
       toast('Secure Sync loaded — '+db.clients.length+' clients, '+db.trips.length+' trips','ok');
     }else{
@@ -5421,10 +5476,20 @@ function importJSON(){
   i.onchange=function(e){
     const f=e.target.files[0];if(!f)return;
     const r=new FileReader();
-    r.onload=function(ev){
+    r.onload=async function(ev){
       try{
         const d=JSON.parse(ev.target.result);
-        if(Array.isArray(d.clients)&&Array.isArray(d.trips)){db=d;instrumentDbWipeTracing();if(!Array.isArray(db.vendors))db.vendors=[];if(!Array.isArray(db.bizVendors))db.bizVendors=[];if(!Array.isArray(db.planner))db.planner=[];if(!Array.isArray(db.bookmarks))db.bookmarks=[];if(!Array.isArray(db.savedReports))db.savedReports=[];if(!Array.isArray(db.groups))db.groups=[];if(!Array.isArray(db.marketingPlan))db.marketingPlan=[];if(!Array.isArray(db.pendingImportMatches))db.pendingImportMatches=[];if(!Array.isArray(db.jetpackRemovalQueue))db.jetpackRemovalQueue=[];(db.clients||[]).forEach(function(c){ if(c.name && !c.name.includes(',')) c.name=toLastFirst(c.name); });_dbDecryptFailed=false;saveDB();toast('Data imported');render();}
+        if(Array.isArray(d.clients)&&Array.isArray(d.trips)){
+          db=d;instrumentDbWipeTracing();if(!Array.isArray(db.vendors))db.vendors=[];if(!Array.isArray(db.bizVendors))db.bizVendors=[];if(!Array.isArray(db.planner))db.planner=[];if(!Array.isArray(db.bookmarks))db.bookmarks=[];if(!Array.isArray(db.savedReports))db.savedReports=[];if(!Array.isArray(db.groups))db.groups=[];if(!Array.isArray(db.marketingPlan))db.marketingPlan=[];if(!Array.isArray(db.pendingImportMatches))db.pendingImportMatches=[];if(!Array.isArray(db.jetpackRemovalQueue))db.jetpackRemovalQueue=[];(db.clients||[]).forEach(function(c){ if(c.name && !c.name.includes(',')) c.name=toLastFirst(c.name); });_dbDecryptFailed=false;
+          // Awaited specifically because this is a restore: the natural next
+          // move after seeing "Data imported" is to reload to confirm it
+          // stuck, and saveDB()'s encrypted write is otherwise fire-and-
+          // forget — a reload fired before that write actually reaches
+          // localStorage would silently bring back whatever was there
+          // before the restore, with no error at all.
+          await saveDB();
+          toast('Data imported');render();
+        }
         else toast('Invalid backup file','err');
       }catch(ex){toast('Could not read file','err');}
     };r.readAsText(f);
@@ -22088,6 +22153,23 @@ function startAutosave(){
     if(document.visibilityState === 'hidden') runAutoDriveBackup();
   });
   window.addEventListener('pagehide', function(){ runAutoDriveBackup(); });
+
+  // Warns (the browser's native "leave site?" prompt — no custom text is
+  // actually shown by modern browsers, but the prompt itself still forces
+  // a deliberate choice) if the page is about to close/reload while an
+  // encrypted saveDB() write is still in flight. That write is fire-and-
+  // forget everywhere else on purpose (see _dbSavesInFlight's own
+  // comment), so this is the last line of defense against a reload
+  // winning the race and silently discarding it — most likely right after
+  // a restore, when reloading immediately to confirm it stuck is the
+  // natural next thing to do.
+  window.addEventListener('beforeunload', function(e){
+    if(_dbSavesInFlight > 0){
+      e.preventDefault();
+      e.returnValue = '';
+      return '';
+    }
+  });
 }
 
 let _autoBackupInFlight = false;
