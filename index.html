@@ -1904,36 +1904,53 @@ var LAST_GOOD_COUNTS_KEY = 'mm_last_good_counts';
 function recordGoodDbCounts(){
   var last;
   try{ last = JSON.parse(localStorage.getItem(LAST_GOOD_COUNTS_KEY)||'null'); }catch(e){ last = null; }
-  var current = {clients:db.clients.length, trips:db.trips.length};
-  // Never let the recorded high-water mark regress — a save where either
+  var current = {clients:db.clients.length, trips:db.trips.length, vendors:db.vendors.length};
+  // Never let the recorded high-water mark regress — a save where any
   // count just dropped versus what's already on record reflects a wipe in
   // progress (or, per the Sept 4 incident, a wipe already partially masked
   // by a refill), not genuine new data, and must not be allowed to
   // overwrite the mark that's supposed to catch exactly that.
-  if(last && (current.trips<last.trips || current.clients<last.clients)) return;
-  if(current.clients===0 && current.trips===0) return; // nothing to raise the mark with
+  if(last && (current.trips<last.trips || current.clients<last.clients || current.vendors<last.vendors)) return;
+  if(current.clients===0 && current.trips===0 && current.vendors===0) return; // nothing to raise the mark with
   try{ localStorage.setItem(LAST_GOOD_COUNTS_KEY, JSON.stringify(current)); }catch(e){}
+}
+// A count dropping to exactly zero isn't the only shape a wipe can take —
+// the Sept 8 incident had trips fall from ~154 to 9 and suppliers from a
+// couple dozen to 4 while clients (148, briefly, before settling at their
+// real 195) stayed populated enough to look plausible at a glance, sailing
+// straight past a zero-only check with nothing ever hitting exactly zero.
+// Flagged only once the prior good count is large enough that a legitimate
+// manual bulk-delete wouldn't realistically cross this ratio by accident —
+// deleting more than half of 4-or-fewer records is a perfectly normal
+// afternoon of cleanup, not a wipe.
+var WIPE_DROP_RATIO = 0.5;
+var WIPE_DROP_MIN = 5;
+function countLooksWiped(current, prior){
+  if(prior==null) return false;
+  if(current===0 && prior>0) return true;
+  return prior>=WIPE_DROP_MIN && current < prior*WIPE_DROP_RATIO;
 }
 function dbAppearsWiped(){
   try{
     var last = JSON.parse(localStorage.getItem(LAST_GOOD_COUNTS_KEY)||'null');
     if(!last) return false;
-    if(db.trips.length===0 && last.trips>0) return true;
-    if(db.clients.length===0 && last.clients>0) return true;
-    return false;
+    return countLooksWiped(db.trips.length,last.trips) || countLooksWiped(db.clients.length,last.clients) || countLooksWiped(db.vendors.length,last.vendors);
   }catch(e){ return false; }
 }
 // Describes specifically which field(s) look wiped, for the warning
 // messages below — a trips-only wipe (Sept 4: clients got refilled with
 // synthetic subscriber records, masking a clients-count check) reads very
-// differently from an everything-empty wipe (Sept 1/2), and the message
-// should say which actually happened rather than always claiming both.
+// differently from an everything-empty wipe (Sept 1/2) or a big-but-not-
+// zero drop (Sept 8), so the message says which actually happened and by
+// how much rather than always claiming a flat "0 clients and 0 trips".
 function dbWipedDescription(){
-  var clientsWiped = db.clients.length===0;
-  var tripsWiped = db.trips.length===0;
-  if(clientsWiped && tripsWiped) return '0 clients and 0 trips';
-  if(tripsWiped) return '0 trips (with '+db.clients.length+' client'+(db.clients.length!==1?'s':'')+' — possibly refilled by an auto-import after a wipe)';
-  return '0 clients (with '+db.trips.length+' trip'+(db.trips.length!==1?'s':'')+')';
+  var last;
+  try{ last = JSON.parse(localStorage.getItem(LAST_GOOD_COUNTS_KEY)||'null'); }catch(e){ last = null; }
+  var parts = [];
+  if(countLooksWiped(db.clients.length,last&&last.clients)) parts.push(db.clients.length+' client'+(db.clients.length!==1?'s':'')+' (had '+last.clients+')');
+  if(countLooksWiped(db.trips.length,last&&last.trips)) parts.push(db.trips.length+' trip'+(db.trips.length!==1?'s':'')+' (had '+last.trips+')');
+  if(countLooksWiped(db.vendors.length,last&&last.vendors)) parts.push(db.vendors.length+' supplier'+(db.vendors.length!==1?'s':'')+' (had '+last.vendors+')');
+  return parts.length ? parts.join(', ') : (db.clients.length+' clients and '+db.trips.length+' trips');
 }
 function saveDB(){
   if(_dbDecryptFailed){
