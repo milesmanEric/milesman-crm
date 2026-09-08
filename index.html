@@ -2535,6 +2535,12 @@ async function fetchMailbox(token,lastSyncDate){
       }
       all.push.apply(all,(d.value||[]));
       next = d['@odata.nextLink']||null;
+      // A full 5-year first-sync (or one after "Reset Outlook Login", which
+      // also wipes the last-sync watermark) can page through thousands of
+      // messages with nothing else logged in between — without this, the
+      // Debug Log goes quiet for however long that takes and a sync that's
+      // genuinely working looks identical to one that's actually hung.
+      debugLog(label+': fetched page '+pages+' ('+all.length+' message'+(all.length!==1?'s':'')+' so far)'+(next?'...':' — done'));
     }
     if(next){
       debugLog(label+': stopped after '+MAX_PAGES+' pages ('+all.length+' messages) — there may be more');
