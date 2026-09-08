@@ -522,7 +522,7 @@
   var AIRLINES = ['American','United','Delta','Southwest','JetBlue','Qatar Airways','ANA','Emirates','Lufthansa','British Airways','Air France','Virgin Atlantic','Qantas','Etihad','JAL','Air Canada','Frontier','Alaska/Hawaiian Air'];
   var HOTELS = ['Marriott','Disney','Hilton','Hyatt','Accor','IHG','Wyndham','Four Seasons','Ritz-Carlton','W Hotels','Kimpton','Conrad','Universal'];
   // Mirrors DISCOUNT_TYPES/INTEREST_TYPES in the CRM's own index.html.
-  var DISCOUNT_TYPES = ['Military','AAA','First Responder','Educator'];
+  var DISCOUNT_TYPES = ['Military','AAA','First Responder','Educator','USAA'];
   var INTEREST_TYPES = ['Beach','Skiing','Boating','Fishing','Snorkeling','Horseback Riding','Adventure'];
   // Shared field-group builders for Referred By / Discounts / Interests —
   // used for both "Your Information" (the primary contact) and every
@@ -790,10 +790,11 @@
         '<div class="field full"><label>Name as shown on passport or license</label><input type="text" name="'+p+' - Full Name" placeholder="'+p+' full name"></div>'+
         '<div class="field"><label>Email *</label><input type="email" required name="'+p+' - Email" placeholder="jane@example.com"></div>'+
         '<div class="field"><label>Phone</label><input type="tel" name="'+p+' - Phone" placeholder="(555) 555-5555"></div>'+
-        '<div class="field full"><label>Street Address</label><input type="text" name="'+p+' - Street Address" placeholder="123 Main St"></div>'+
-        '<div class="field"><label>City</label><input type="text" name="'+p+' - City"></div>'+
-        '<div class="field"><label>State</label><input type="text" name="'+p+' - State"></div>'+
-        '<div class="field"><label>Zip Code</label><input type="text" name="'+p+' - Zip Code"></div>'+
+        '<div class="field full"><label style="display:flex;align-items:center;gap:6px;font-weight:400;cursor:pointer"><input type="checkbox" class="copy-address-cb" data-n="'+n+'"> Same address as Traveler 1</label></div>'+
+        '<div class="field full"><label>Street Address</label><input type="text" class="traveler-address-input" name="'+p+' - Street Address" placeholder="123 Main St"></div>'+
+        '<div class="field"><label>City</label><input type="text" class="traveler-address-input" name="'+p+' - City"></div>'+
+        '<div class="field"><label>State</label><input type="text" class="traveler-address-input" name="'+p+' - State"></div>'+
+        '<div class="field"><label>Zip Code</label><input type="text" class="traveler-address-input" name="'+p+' - Zip Code"></div>'+
         '<div class="field"><label>Birthdate</label><input type="date" name="'+p+' - Birthdate"></div>'+
         '<div class="field"><label>Country of Citizenship</label><input type="text" name="'+p+' - Country of Citizenship"></div>'+
         '<div class="field"><label>Country of Birth</label><input type="text" name="'+p+' - Country of Birth"></div>'+
@@ -954,6 +955,47 @@
       var ticketSel2 = tpBlock ? tpBlock.querySelector('.theme-park-ticket-sel') : null;
       if(ticketSel2) ticketSel2.innerHTML = themeParkTicketOptionsHtml(e.target.value);
     }
+    if(e.target.classList.contains('copy-address-cb')){
+      setTravelerAddressLocked(e.target.getAttribute('data-n'), e.target.checked);
+      if(e.target.checked) copyPrimaryAddressToTraveler(e.target.getAttribute('data-n'));
+    }
+  });
+
+  // "Same address as Traveler 1" — a plain, unnamed checkbox (never
+  // submitted to Formspark) per traveler block. ADDRESS_FIELD_NAMES are the
+  // primary contact's own field names; each traveler's copy is the same
+  // name prefixed with "Traveler N - ". Locking (readOnly, not disabled —
+  // a disabled input is excluded from FormData, which would silently drop
+  // the very value this checkbox just copied in) makes clear the field is
+  // following Traveler 1 rather than independently editable while checked.
+  var ADDRESS_FIELD_NAMES = ['Street Address','City','State','Zip Code'];
+  function setTravelerAddressLocked(n, locked){
+    ADDRESS_FIELD_NAMES.forEach(function(fieldName){
+      var el = document.querySelector('input[name="Traveler '+n+' - '+fieldName+'"]');
+      if(!el) return;
+      el.readOnly = locked;
+      el.style.background = locked ? '#f0f0f0' : '';
+    });
+  }
+  function copyPrimaryAddressToTraveler(n){
+    ADDRESS_FIELD_NAMES.forEach(function(fieldName){
+      var src = document.querySelector('input[name="'+fieldName+'"]');
+      var dst = document.querySelector('input[name="Traveler '+n+' - '+fieldName+'"]');
+      if(dst) dst.value = src ? src.value : '';
+    });
+  }
+  // Keeps every currently-checked traveler's copied address in sync if the
+  // primary contact's own address is edited afterward — filling the form
+  // out of order (address last) shouldn't leave an already-checked
+  // traveler silently holding a stale, now-wrong address.
+  ADDRESS_FIELD_NAMES.forEach(function(fieldName){
+    var el = document.querySelector('input[name="'+fieldName+'"]');
+    if(!el) return;
+    el.addEventListener('input', function(){
+      document.querySelectorAll('.copy-address-cb:checked').forEach(function(cb){
+        copyPrimaryAddressToTraveler(cb.getAttribute('data-n'));
+      });
+    });
   });
 
   var multiCityCount = 0;
