@@ -8270,9 +8270,19 @@ function processTripFormRow(getVal, counters){
     // ("Jacqueline B Rogers") resolve to a differently-filed record
     // ("Jakki Rogers") instead of silently creating a duplicate or landing
     // in the same-last-name Pending queue below.
+    // Excludes the primary contact and every companion already resolved
+    // earlier in this same submission (excludeClientIds — the same list
+    // sameLastNameCandidates below already uses) for exactly the reason
+    // that list does: a family sharing one contact email is completely
+    // normal, and without this a traveler entered with, say, a parent's
+    // email on file would directly MATCH and get merged straight into the
+    // parent's own client record instead of creating/queuing a distinct
+    // person — a real incident where a companion's own birthdate ended up
+    // overwriting the primary contact's on file this way.
     var tEmailLc = (tEmail||'').trim().toLowerCase();
     var tFirst=getFirstName(tName).toLowerCase(), tLast=getLastName(tName).toLowerCase();
     var tClient = db.clients.find(function(c){
+      if(excludeClientIds.indexOf(c.id)!==-1) return false;
       if(tEmailLc && c.email && c.email.toLowerCase()===tEmailLc) return true;
       if((c.name||'').toLowerCase().trim()===tName.toLowerCase().trim()) return true;
       var cFirst=getFirstName(c.name).toLowerCase(), cLast=getLastName(c.name).toLowerCase();
@@ -8343,7 +8353,7 @@ function processTripFormRow(getVal, counters){
   if(getVal('Additional Travelers Submission')==='Yes'){
     var primaryName = getVal('Primary Contact Name');
     var primaryEmail = getVal('Primary Contact Email');
-    if(!primaryName){ counters.skipped++; return; }
+    if(!primaryName){ debugLog('Additional travelers hand-off: skipped — no Primary Contact Name in this submission'); counters.skipped++; return; }
     var pFirst=getFirstName(primaryName).toLowerCase(), pLast=getLastName(primaryName).toLowerCase();
     var primaryClient = db.clients.find(function(c){
       if(primaryEmail && c.email && c.email.toLowerCase()===primaryEmail.toLowerCase()) return true;
@@ -8351,7 +8361,13 @@ function processTripFormRow(getVal, counters){
       var cFirst=getFirstName(c.name).toLowerCase(), cLast=getLastName(c.name).toLowerCase();
       return pFirst && pLast && pFirst!==pLast && cFirst===pFirst && cLast===pLast;
     });
-    if(!primaryClient){ counters.skipped++; return; }
+    // This can legitimately happen if this hand-off's email got processed
+    // before its own original submission's (a race the chronological sort
+    // in checkForNewTripFormEmails() now prevents within one poll batch,
+    // but a manual CSV import of just this row, or two submissions landing
+    // in different poll cycles, could still hit it) — logged loudly rather
+    // than silently discarded, since there's no queue to retry this from.
+    if(!primaryClient){ debugLog('Additional travelers hand-off: skipped — no existing client matches Primary Contact "'+primaryName+'" ('+(primaryEmail||'no email')+'). If this ran before its own original submission, re-import this email once the primary client exists.'); counters.skipped++; return; }
     // The trip these travelers belong to is whichever of the primary
     // contact's trips was created most recently — db.trips is always
     // appended to in order (never reordered), so the last matching entry
@@ -8362,7 +8378,7 @@ function processTripFormRow(getVal, counters){
       var candidateTrip = db.trips[ti];
       if(candidateTrip.clientId===primaryClient.id || (candidateTrip.clientIds||[]).indexOf(primaryClient.id)!==-1){ targetTrip = candidateTrip; break; }
     }
-    if(!targetTrip){ counters.skipped++; return; }
+    if(!targetTrip){ debugLog('Additional travelers hand-off: skipped — found primary client "'+primaryClient.name+'" ('+primaryClient.id+') but no trip linked to them yet. If this ran before its own original submission, re-import this email once that trip exists.'); counters.skipped++; return; }
 
     var newPendingMatches = [];
     var addedClientIds = [];
@@ -9022,6 +9038,20 @@ async function checkForNewTripFormEmails(silent){
     var messages = (d.value||[]).filter(function(m){
       return TRIPFORM_EMAIL_SUBJECT_RE.test((m.subject||'').trim()) && processedIds.indexOf(m.id)===-1;
     });
+    // The Graph query above fetches newest-first (best for the near-miss
+    // logging just above, and for capping at $top=50 without missing the
+    // most recent activity) — but processing must go oldest-first. The
+    // intake form's own thank-you screen hands a large party straight to
+    // additional-travelers-form.html for the travelers who didn't fit
+    // ("Click here to give us the rest of your group's information"),
+    // which someone naturally clicks right away — landing its follow-up
+    // email in the very same 5-minute poll window as the original. Newest-
+    // first processing would run that hand-off BEFORE the original
+    // submission had created the client/trip it needs to attach to,
+    // permanently discarding those travelers (or, if the primary contact
+    // already had some other, older trip on file, silently attaching them
+    // to that wrong trip instead) — a real incident this fixed.
+    messages.sort(function(a,b){ return new Date(a.receivedDateTime) - new Date(b.receivedDateTime); });
     debugLog('Trip form email check: '+messages.length+' new submission email(s)');
     localStorage.setItem('mm_last_tripform_check', checkedAt);
     if(!messages.length) return;
