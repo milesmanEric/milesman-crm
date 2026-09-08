@@ -505,21 +505,45 @@ function cacheSessionKey(key){
     sessionStorage.setItem(AUTH_SESSION_KEY, bytesToHex(new Uint8Array(raw)));
   });
 }
+function bytesToBase64(bytes){
+  var binary = '';
+  for(var i=0;i<bytes.length;i++) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary);
+}
+function base64ToBytes(b64){
+  var binary = atob(b64);
+  var bytes = new Uint8Array(binary.length);
+  for(var i=0;i<binary.length;i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
 // AES-256-GCM. The random 12-byte IV travels alongside the ciphertext (IVs
 // aren't secret, just must never repeat under the same key — a fresh one
 // every save makes that a non-issue) and GCM's built-in authentication tag
 // is what makes a wrong key fail loudly (decrypt() rejects) instead of
 // silently returning garbage — that rejection IS the "incorrect password"
 // signal everywhere in this file now, not a separate hash comparison.
+// v2 stores iv/data as base64 rather than v1's hex — hex needs 2 characters
+// per byte, base64 about 1.33, so this alone cuts every save's footprint in
+// localStorage by roughly a third. That mattered in practice: a real
+// QuotaExceededError on a device with a large-but-real dataset (hundreds of
+// clients/trips with years of notes) was traced to this exact overhead —
+// the encrypted blob was consistently ~2x the plaintext size before this,
+// eating into the browser's ~5-10MB per-origin localStorage quota faster
+// than the data itself would ever require.
 function encryptDbJson(jsonStr, key){
   var iv = crypto.getRandomValues(new Uint8Array(12));
   return crypto.subtle.encrypt({name:'AES-GCM', iv:iv}, key||_dbEncKey, new TextEncoder().encode(jsonStr)).then(function(cipherBuf){
-    return JSON.stringify({v:1, iv:bytesToHex(iv), data:bytesToHex(new Uint8Array(cipherBuf))});
+    return JSON.stringify({v:2, iv:bytesToBase64(iv), data:bytesToBase64(new Uint8Array(cipherBuf))});
   });
 }
 function decryptDbJson(storedStr, key){
   var parsed = JSON.parse(storedStr);
-  return crypto.subtle.decrypt({name:'AES-GCM', iv:hexToBytes(parsed.iv)}, key||_dbEncKey, hexToBytes(parsed.data)).then(function(plainBuf){
+  // v1 (hex) blobs may still be sitting in localStorage on a device that
+  // hasn't saved since this switch — decrypt still reads them fine, only
+  // saveDB()'s next write upgrades them to the smaller v2 encoding.
+  var ivBytes = parsed.v===2 ? base64ToBytes(parsed.iv) : hexToBytes(parsed.iv);
+  var dataBytes = parsed.v===2 ? base64ToBytes(parsed.data) : hexToBytes(parsed.data);
+  return crypto.subtle.decrypt({name:'AES-GCM', iv:ivBytes}, key||_dbEncKey, dataBytes).then(function(plainBuf){
     return new TextDecoder().decode(plainBuf);
   });
 }
@@ -2019,7 +2043,24 @@ function saveDB(){
     _dbSaveChain = _dbSaveChain.then(function(){
       return encryptDbJson(json);
     }).then(function(encoded){
-      localStorage.setItem(LS_KEY, encoded);
+      try{
+        localStorage.setItem(LS_KEY, encoded);
+      }catch(e){
+        if(e && e.name==='QuotaExceededError'){
+          // One automatic recovery attempt before giving up and reporting
+          // failure: the debug log is pure diagnostic history (capped at
+          // 1000 entries, but still real bytes) — safe to sacrifice
+          // entirely to free room for the actual data this write exists to
+          // protect, since losing debug history is nowhere near as bad as
+          // losing this save. If it still doesn't fit after that, this
+          // rethrows and falls through to the same failure reporting below.
+          localStorage.removeItem('mm_debug_log');
+          localStorage.setItem(LS_KEY, encoded);
+          debugLog('saveDB(): local storage was full — cleared debug log history to free room, retried, succeeded');
+        } else {
+          throw e;
+        }
+      }
       return true;
     }).catch(function(e){
       var reason = (e && e.name==='QuotaExceededError') ? 'local storage is full' : (e && e.message || String(e));
@@ -2027,7 +2068,7 @@ function saveDB(){
       debugLog('ERROR: saveDB() could not persist this save — '+reason+'. This change exists only in memory and will be LOST on reload/close until this is fixed.');
       if(Date.now()-_lastSaveFailWarningAt > 60000){
         _lastSaveFailWarningAt = Date.now();
-        toast('Save failed ('+reason+') — this change is NOT saved to this device. Do not reload or close this tab — export a backup now (sidebar > Export) before doing anything else.','err');
+        toast('Save failed ('+reason+') — this change is NOT saved to this device. Do not reload or close this tab — click File > Backup now to download a safe copy before doing anything else.','err');
       }
       return false;
     }).then(function(ok){
@@ -4296,7 +4337,7 @@ async function driveRestore(){
       render();
       if(saved===false){
         debugLog('Restore: saveDB() failed — restored data is only in memory, NOT persisted to this device');
-        toast('Restored in memory, but saving to this device FAILED — do NOT reload or close this tab yet. Export a backup now, then check the Debug Log.','err');
+        toast('Restored in memory, but saving to this device FAILED — do NOT reload or close this tab yet. Click File > Backup now, then check the Debug Log.','err');
       }else{
         localStorage.setItem('mm_last_known_remote_modified', existing.modifiedTime);
         const date=new Date(existing.modifiedTime).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
@@ -4429,7 +4470,7 @@ async function secureSyncRestore(){
       render();
       if(saved===false){
         debugLog('Secure Sync: saveDB() failed — restored data is only in memory, NOT persisted to this device');
-        toast('Restored in memory, but saving to this device FAILED — do NOT reload or close this tab yet. Export a backup now, then check the Debug Log.','err');
+        toast('Restored in memory, but saving to this device FAILED — do NOT reload or close this tab yet. Click File > Backup now, then check the Debug Log.','err');
       }else{
         debugLog('Secure Sync: restore success — '+db.clients.length+' clients, '+db.trips.length+' trips');
         toast('Secure Sync loaded — '+db.clients.length+' clients, '+db.trips.length+' trips','ok');
@@ -5547,7 +5588,7 @@ function importJSON(){
           render();
           if(saved===false){
             debugLog('Local restore: saveDB() failed — restored data is only in memory, NOT persisted to this device');
-            toast('Restored in memory, but saving to this device FAILED — do NOT reload or close this tab. Export a backup now, then check the Debug Log.','err');
+            toast('Restored in memory, but saving to this device FAILED — do NOT reload or close this tab. Click File > Backup now, then check the Debug Log.','err');
           }else{
             debugLog('Local restore: success — '+db.clients.length+' clients, '+db.trips.length+' trips');
             toast('Data imported');
