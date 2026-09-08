@@ -516,6 +516,40 @@ function base64ToBytes(b64){
   for(var i=0;i<binary.length;i++) bytes[i] = binary.charCodeAt(i);
   return bytes;
 }
+// gzip via the standard Compression Streams API (Chrome/Edge 80+, Firefox
+// 113+, Safari 16.4+) — collects the stream's chunks into one Uint8Array
+// rather than exposing the stream itself, since encryptDbJson/decryptDbJson
+// need a single buffer to hand to crypto.subtle anyway.
+var COMPRESSION_SUPPORTED = (typeof CompressionStream!=='undefined' && typeof DecompressionStream!=='undefined');
+function streamToUint8Array(stream){
+  var reader = stream.getReader();
+  var chunks = [], total = 0;
+  function pump(){
+    return reader.read().then(function(res){
+      if(res.done) return;
+      chunks.push(res.value);
+      total += res.value.length;
+      return pump();
+    });
+  }
+  return pump().then(function(){
+    var out = new Uint8Array(total), offset = 0;
+    for(var i=0;i<chunks.length;i++){ out.set(chunks[i], offset); offset += chunks[i].length; }
+    return out;
+  });
+}
+function gzipCompress(bytes){
+  var cs = new CompressionStream('gzip');
+  var writer = cs.writable.getWriter();
+  writer.write(bytes); writer.close();
+  return streamToUint8Array(cs.readable);
+}
+function gzipDecompress(bytes){
+  var ds = new DecompressionStream('gzip');
+  var writer = ds.writable.getWriter();
+  writer.write(bytes); writer.close();
+  return streamToUint8Array(ds.readable);
+}
 // AES-256-GCM. The random 12-byte IV travels alongside the ciphertext (IVs
 // aren't secret, just must never repeat under the same key — a fresh one
 // every save makes that a non-issue) and GCM's built-in authentication tag
@@ -524,27 +558,47 @@ function base64ToBytes(b64){
 // signal everywhere in this file now, not a separate hash comparison.
 // v2 stores iv/data as base64 rather than v1's hex — hex needs 2 characters
 // per byte, base64 about 1.33, so this alone cuts every save's footprint in
-// localStorage by roughly a third. That mattered in practice: a real
-// QuotaExceededError on a device with a large-but-real dataset (hundreds of
-// clients/trips with years of notes) was traced to this exact overhead —
-// the encrypted blob was consistently ~2x the plaintext size before this,
-// eating into the browser's ~5-10MB per-origin localStorage quota faster
-// than the data itself would ever require.
+// localStorage by roughly a third. That mattered in practice, but wasn't
+// enough on its own: a real device with a genuinely large-but-real dataset
+// (hundreds of clients/trips with years of Outlook-synced email notes) had
+// a 6.7MB plaintext backup — which the v2 encoding alone still puts at
+// ~8.8MB, uncomfortably close to Chrome's real per-origin localStorage cap
+// (commonly ~10MB, and lower in some browsers/configurations) with almost
+// no room for the dataset to keep growing, which it will as more email
+// history syncs in over time.
+// v3 gzip-compresses the plaintext JSON before encrypting it (compression
+// has to happen before encryption — encrypted bytes are indistinguishable
+// from random and don't compress at all). JSON this repetitive (the same
+// field names and note boilerplate repeated across hundreds of records)
+// typically shrinks by 60-90%+ under gzip, turning that same 6.7MB dataset
+// into low single-digit MB even after the base64 overhead — real headroom
+// instead of a fix that just barely fits today. Falls back to the v2 path
+// automatically (COMPRESSION_SUPPORTED, or if compression throws for any
+// reason) rather than ever blocking a save over it.
 function encryptDbJson(jsonStr, key){
   var iv = crypto.getRandomValues(new Uint8Array(12));
-  return crypto.subtle.encrypt({name:'AES-GCM', iv:iv}, key||_dbEncKey, new TextEncoder().encode(jsonStr)).then(function(cipherBuf){
-    return JSON.stringify({v:2, iv:bytesToBase64(iv), data:bytesToBase64(new Uint8Array(cipherBuf))});
+  var plainBytes = new TextEncoder().encode(jsonStr);
+  var prep = COMPRESSION_SUPPORTED
+    ? gzipCompress(plainBytes).then(function(compressed){ return {v:3, bytes:compressed}; }).catch(function(){ return {v:2, bytes:plainBytes}; })
+    : Promise.resolve({v:2, bytes:plainBytes});
+  return prep.then(function(prepped){
+    return crypto.subtle.encrypt({name:'AES-GCM', iv:iv}, key||_dbEncKey, prepped.bytes).then(function(cipherBuf){
+      return JSON.stringify({v:prepped.v, iv:bytesToBase64(iv), data:bytesToBase64(new Uint8Array(cipherBuf))});
+    });
   });
 }
 function decryptDbJson(storedStr, key){
   var parsed = JSON.parse(storedStr);
-  // v1 (hex) blobs may still be sitting in localStorage on a device that
-  // hasn't saved since this switch — decrypt still reads them fine, only
-  // saveDB()'s next write upgrades them to the smaller v2 encoding.
-  var ivBytes = parsed.v===2 ? base64ToBytes(parsed.iv) : hexToBytes(parsed.iv);
-  var dataBytes = parsed.v===2 ? base64ToBytes(parsed.data) : hexToBytes(parsed.data);
+  // v1 (hex, uncompressed) and v2 (base64, uncompressed) blobs may still be
+  // sitting in localStorage on a device that hasn't saved since these
+  // switches — decrypt still reads them fine, only saveDB()'s next write
+  // upgrades them to the current smallest encoding this browser supports.
+  var ivBytes = parsed.v>=2 ? base64ToBytes(parsed.iv) : hexToBytes(parsed.iv);
+  var dataBytes = parsed.v>=2 ? base64ToBytes(parsed.data) : hexToBytes(parsed.data);
   return crypto.subtle.decrypt({name:'AES-GCM', iv:ivBytes}, key||_dbEncKey, dataBytes).then(function(plainBuf){
-    return new TextDecoder().decode(plainBuf);
+    var plainBytes = new Uint8Array(plainBuf);
+    if(parsed.v===3) return gzipDecompress(plainBytes).then(function(decompressed){ return new TextDecoder().decode(decompressed); });
+    return new TextDecoder().decode(plainBytes);
   });
 }
 function authGateBoxHtml(inner){
