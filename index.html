@@ -8006,7 +8006,7 @@ function processTripFormRow(getVal, counters){
   // this traveler belongs to is known, since that differs between the two
   // callers — a brand new trip for the inline loop, an already-existing one
   // for the hand-off branch).
-  function processTravelerBlock(tn, pendingAccumulator){
+  function processTravelerBlock(tn, pendingAccumulator, excludeClientIds){
     var tp='Traveler '+tn;
     var tName=getVal(tp+' - Full Name');
     if(!tName) return null;
@@ -8073,7 +8073,17 @@ function processTripFormRow(getVal, counters){
       if(tFilled.length) counters.enriched++;
       return {clientId: tClient.id, line: 'Traveling with: '+tClient.name+' (client '+tClient.id+')'};
     } else {
-      var sameLastNameCandidates = tLast ? db.clients.filter(function(c){ return getLastName(c.name).toLowerCase()===tLast; }) : [];
+      // Excludes the primary contact and every companion already resolved
+      // earlier in this same submission (or, for the additional-travelers
+      // hand-off, already linked to this same trip) — sharing a last name
+      // with the person who just submitted the form, or with a sibling
+      // traveler on the very same booking, isn't ambiguous, it's the
+      // normal, expected shape of a family trip. Without this exclusion,
+      // the primary (and then each companion as they were added) became a
+      // "candidate" for every traveler processed after them, so a 4-person
+      // family submission queued 2-3 of its own members for manual review
+      // even though every name was a genuinely new, distinct person.
+      var sameLastNameCandidates = tLast ? db.clients.filter(function(c){ return excludeClientIds.indexOf(c.id)===-1 && getLastName(c.name).toLowerCase()===tLast; }) : [];
       if(sameLastNameCandidates.length){
         var pendingNoteLine = 'Traveling with: '+tName+' — NEEDS REVIEW (possible match with an existing '+getLastName(tName)+' client), see Pending Traveler Matches';
         pendingAccumulator.push({
@@ -8134,10 +8144,17 @@ function processTripFormRow(getVal, counters){
     var newPendingMatches = [];
     var addedClientIds = [];
     var addedLines = [];
+    // Starts with the primary contact plus everyone already linked to this
+    // trip from the original submission (or an earlier hand-off batch) —
+    // none of them are "ambiguous" for a traveler on this same booking,
+    // and each newly-resolved traveler joins the set before the next one
+    // is processed, so siblings within this very batch exclude each other
+    // too (see processTravelerBlock's own comment for why this matters).
+    var submissionClientIds = [primaryClient.id].concat(targetTrip.clientIds||[]);
     for(var atn=2; atn<=20; atn++){
-      var atResult = processTravelerBlock(atn, newPendingMatches);
+      var atResult = processTravelerBlock(atn, newPendingMatches, submissionClientIds);
       if(!atResult) continue;
-      if(atResult.clientId) addedClientIds.push(atResult.clientId);
+      if(atResult.clientId){ addedClientIds.push(atResult.clientId); submissionClientIds.push(atResult.clientId); }
       addedLines.push(atResult.line);
     }
     if(!addedClientIds.length && !newPendingMatches.length){ counters.skipped++; return; }
@@ -8450,11 +8467,17 @@ function processTripFormRow(getVal, counters){
   // instead of being auto-created.
   var linkedClientIds = [];
   var pendingMatches = [];
+  // Starts with just the primary contact; each newly-resolved companion
+  // joins the set before the next one is processed, so two siblings on the
+  // same submission (e.g. "Bob Smith" then "Carl Smith") never end up
+  // flagging each other as an ambiguous same-last-name candidate — see
+  // processTravelerBlock's own comment for the incident this fixed.
+  var submissionClientIds = [client.id];
   var travelerCount = parseInt(getVal('Number of Travelers'),10)||1;
   for(var tn=2; tn<=travelerCount; tn++){
-    var result = processTravelerBlock(tn, pendingMatches);
+    var result = processTravelerBlock(tn, pendingMatches, submissionClientIds);
     if(!result) continue;
-    if(result.clientId) linkedClientIds.push(result.clientId);
+    if(result.clientId){ linkedClientIds.push(result.clientId); submissionClientIds.push(result.clientId); }
     tripLines.push(result.line);
   }
 
