@@ -8590,7 +8590,7 @@ var TRIPFORM_EMAIL_SUBJECT_RE = /^New submission\b.*\bBook a trip$/i;
 function buildTripFormFieldLabels(){
   var labels = ['Full Name','Email','Phone','Street Address','City','State','Zip Code','Number of Travelers',
     'Birthdate','Country of Citizenship','Country of Birth','Referred By','Referred By Detail',
-    'Discount - Military','Discount - AAA','Discount - First Responder','Discount - Educator','Discount - Other','Discount - Other Detail',
+    'Discount - Military','Discount - AAA','Discount - First Responder','Discount - Educator','Discount - USAA','Discount - Other','Discount - Other Detail',
     'Interest - Beach','Interest - Skiing','Interest - Boating','Interest - Fishing','Interest - Snorkeling','Interest - Horseback Riding','Interest - Adventure','Interest - Other','Interest - Other Detail',
     'Preferred Airline','Preferred Airline Other','Preferred Hotel','Preferred Hotel Other',
     'Preferred Cruise Line','Preferred Cruise Line Other',
@@ -15591,7 +15591,7 @@ function refDetailLabel(referredBy){
 // strings on client.discounts/trip.discounts, plus an 'Other' entry whose
 // free-text detail lives separately in client.discountOther/trip.discountOther
 // — same detail-field-reveal convention as Referred By's Other.
-const DISCOUNT_TYPES=['Military','AAA','First Responder','Educator'];
+const DISCOUNT_TYPES=['Military','AAA','First Responder','Educator','USAA'];
 function discountsFieldHtml(idPrefix, discounts, otherText){
   discounts = discounts || [];
   var hasOther = discounts.indexOf('Other')!==-1;
