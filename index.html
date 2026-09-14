@@ -259,6 +259,7 @@ tr:last-child td{border-bottom:none}
       <button class="nb" id="nb-groups">&#128193; Groups <span class="nc" id="nc-groups">0</span></button>
       <button class="nb" id="nb-ccconsulting">&#128179; Credit Card Consulting</button>
       <button class="nb" id="nb-referrals">&#129309; Referrals and Promo</button>
+      <button class="nb" id="nb-payments">&#129534; Payments <span class="nc" id="nc-payments">0</span></button>
       <div class="nb-section">Partners</div>
       <button class="nb" id="nb-vendors">&#127981; Suppliers <span class="nc" id="nc-vendors">0</span></button>
       <button class="nb" id="nb-bizvendors">&#127970; Vendors <span class="nc" id="nc-bizvendors">0</span></button>
@@ -1276,7 +1277,7 @@ const DEFAULT_BOOKMARKS = [
   {name:'AwardWallet', url:'https://www.awardwallet.com', category:'Award Tools', audience:'Travel Agent', notes:'tracks client mileage/points balances across programs'}
 ];
 
-let db = {clients:[],trips:[],vendors:[],bizVendors:[],planner:[],bookmarks:[],savedReports:[],groups:[],marketingPlan:[],pendingImportMatches:[],pendingTravelerMatches:[],jetpackRemovalQueue:[],reportTotals:{}};
+let db = {clients:[],trips:[],vendors:[],bizVendors:[],planner:[],bookmarks:[],savedReports:[],groups:[],marketingPlan:[],pendingImportMatches:[],pendingTravelerMatches:[],jetpackRemovalQueue:[],payments:[],reportTotals:{}};
 // Diagnostic tracer for the repeated data-wipe incidents (Sept 1/2/4) —
 // db.clients/db.trips have gone empty in memory mid-session for a reason
 // never caught in the act, only ever inferred afterward from Drive backup
@@ -2001,6 +2002,7 @@ async function loadDB(){
     db.marketingPlan=Array.isArray(d.marketingPlan)?d.marketingPlan:[];
     db.pendingImportMatches=Array.isArray(d.pendingImportMatches)?d.pendingImportMatches:[];
     db.pendingTravelerMatches=Array.isArray(d.pendingTravelerMatches)?d.pendingTravelerMatches:[];
+    db.payments=Array.isArray(d.payments)?d.payments:[];
     // Latest-known figure per auto-detected QuickBooks report (see
     // extractAndStoreReportTotal) — e.g. reportTotals.endOfDaySales for the
     // "Yesterday's Collections" dashboard tile. Purely a display cache that
@@ -2324,7 +2326,7 @@ function toast(msg,type='ok'){
 }
 
 // ── Badges ────────────────────────────────────────────────────────────────
-const BCLS={Confirmed:'b-green',Planning:'b-amber',Completed:'b-blue',Cancelled:'b-red',Upcoming:'b-amber',Elite:'b-amber',Gold:'b-amber',Standard:'b-gray',Platinum:'b-blue',Leisure:'b-blue',Business:'b-gray',Honeymoon:'b-green',Family:'b-green',Adventure:'b-amber',Cruise:'b-blue',First:'b-blue','Premium Economy':'b-amber',Economy:'b-gray'};
+const BCLS={Confirmed:'b-green',Planning:'b-amber',Completed:'b-blue',Cancelled:'b-red',Upcoming:'b-amber',Elite:'b-amber',Gold:'b-amber',Standard:'b-gray',Platinum:'b-blue',Leisure:'b-blue',Business:'b-gray',Honeymoon:'b-green',Family:'b-green',Adventure:'b-amber',Cruise:'b-blue',First:'b-blue','Premium Economy':'b-amber',Economy:'b-gray',Pending:'b-amber',Paid:'b-green'};
 const badge = l => '<span class="badge '+(BCLS[l]||'b-gray')+'">'+(l||'')+'</span>';
 const av = (name,sz) => { sz=sz||30; var fn=getFirstName(name)||name||'?'; return '<div class="av" style="width:'+sz+'px;height:'+sz+'px;font-size:'+Math.round(sz*.4)+'px">'+fn[0].toUpperCase()+'</div>'; };
 
@@ -4153,7 +4155,8 @@ async function driveRestore(){
         marketingPlan:Array.isArray(d.marketingPlan)?d.marketingPlan:[],
         pendingImportMatches:Array.isArray(d.pendingImportMatches)?d.pendingImportMatches:[],
         pendingTravelerMatches:Array.isArray(d.pendingTravelerMatches)?d.pendingTravelerMatches:[],
-        jetpackRemovalQueue:Array.isArray(d.jetpackRemovalQueue)?d.jetpackRemovalQueue:[]
+        jetpackRemovalQueue:Array.isArray(d.jetpackRemovalQueue)?d.jetpackRemovalQueue:[],
+        payments:Array.isArray(d.payments)?d.payments:[]
       };
       instrumentDbWipeTracing();
       db.clients.forEach(function(c){ if(c.name && !c.name.includes(',')) c.name=toLastFirst(c.name); });
@@ -4277,7 +4280,8 @@ async function secureSyncRestore(){
         marketingPlan:Array.isArray(d.marketingPlan)?d.marketingPlan:[],
         pendingImportMatches:Array.isArray(d.pendingImportMatches)?d.pendingImportMatches:[],
         pendingTravelerMatches:Array.isArray(d.pendingTravelerMatches)?d.pendingTravelerMatches:[],
-        jetpackRemovalQueue:Array.isArray(d.jetpackRemovalQueue)?d.jetpackRemovalQueue:[]
+        jetpackRemovalQueue:Array.isArray(d.jetpackRemovalQueue)?d.jetpackRemovalQueue:[],
+        payments:Array.isArray(d.payments)?d.payments:[]
       };
       instrumentDbWipeTracing();
       db.clients.forEach(function(c){ if(c.name && !c.name.includes(',')) c.name=toLastFirst(c.name); });
@@ -5381,7 +5385,7 @@ function importJSON(){
     r.onload=function(ev){
       try{
         const d=JSON.parse(ev.target.result);
-        if(Array.isArray(d.clients)&&Array.isArray(d.trips)){db=d;instrumentDbWipeTracing();if(!Array.isArray(db.vendors))db.vendors=[];if(!Array.isArray(db.bizVendors))db.bizVendors=[];if(!Array.isArray(db.planner))db.planner=[];if(!Array.isArray(db.bookmarks))db.bookmarks=[];if(!Array.isArray(db.savedReports))db.savedReports=[];if(!Array.isArray(db.groups))db.groups=[];if(!Array.isArray(db.marketingPlan))db.marketingPlan=[];if(!Array.isArray(db.pendingImportMatches))db.pendingImportMatches=[];if(!Array.isArray(db.jetpackRemovalQueue))db.jetpackRemovalQueue=[];(db.clients||[]).forEach(function(c){ if(c.name && !c.name.includes(',')) c.name=toLastFirst(c.name); });_dbDecryptFailed=false;saveDB();toast('Data imported');render();}
+        if(Array.isArray(d.clients)&&Array.isArray(d.trips)){db=d;instrumentDbWipeTracing();if(!Array.isArray(db.vendors))db.vendors=[];if(!Array.isArray(db.bizVendors))db.bizVendors=[];if(!Array.isArray(db.planner))db.planner=[];if(!Array.isArray(db.bookmarks))db.bookmarks=[];if(!Array.isArray(db.savedReports))db.savedReports=[];if(!Array.isArray(db.groups))db.groups=[];if(!Array.isArray(db.marketingPlan))db.marketingPlan=[];if(!Array.isArray(db.pendingImportMatches))db.pendingImportMatches=[];if(!Array.isArray(db.jetpackRemovalQueue))db.jetpackRemovalQueue=[];if(!Array.isArray(db.payments))db.payments=[];(db.clients||[]).forEach(function(c){ if(c.name && !c.name.includes(',')) c.name=toLastFirst(c.name); });_dbDecryptFailed=false;saveDB();toast('Data imported');render();}
         else toast('Invalid backup file','err');
       }catch(ex){toast('Could not read file','err');}
     };r.readAsText(f);
@@ -9520,7 +9524,7 @@ function go(v,cid){
   view=v;
   selCid=(v==='trips'&&cid)?cid:null;
   fSearch='';fStatus=STATUSES.filter(function(s){return s!=='Cancelled';});fHideSubOnly=true;
-  ['dashboard','clients','trips','groups','reports','calendar','email','vendors','bizvendors','planner','bookmarks','ccconsulting','referrals','marketing','analytics'].forEach(function(x){var el=$('nb-'+x);if(el)el.classList.toggle('active',x===v);});
+  ['dashboard','clients','trips','groups','reports','calendar','email','vendors','bizvendors','planner','bookmarks','ccconsulting','referrals','payments','marketing','analytics'].forEach(function(x){var el=$('nb-'+x);if(el)el.classList.toggle('active',x===v);});
   render();
 }
 
@@ -9534,6 +9538,7 @@ function render(){
   var ncg=$('nc-groups'); if(ncg) ncg.textContent=db.groups.length;
   var ncpim=$('nc-pending-import-matches'); if(ncpim) ncpim.textContent=db.pendingImportMatches.length;
   var ncptm=$('nc-pending-traveler-matches'); if(ncptm) ncptm.textContent=(db.pendingTravelerMatches||[]).length;
+  var ncpay=$('nc-payments'); if(ncpay) ncpay.textContent=(db.payments||[]).filter(function(p){return p.status==='Pending';}).length;
   if(view==='dashboard') renderDash();
   else if(view==='clients') renderClients();
   else if(view==='trips') renderTrips();
@@ -9549,6 +9554,7 @@ function render(){
   else if(view==='analytics') renderAnalytics();
   else if(view==='ccconsulting') renderCreditCardConsulting();
   else if(view==='referrals') renderReferrals();
+  else if(view==='payments') renderPayments();
 }
 
 function renderReports(){
@@ -17524,6 +17530,157 @@ function renderReferrals(){
   });
 }
 
+// ── Payments (Stripe Payment Links) ─────────────────────────────────────────
+// Card entry itself can never happen inside this app — that would need a
+// server holding the Stripe secret key to create charges, and this is a
+// static file with no server component to add one to. What's realistic
+// client-side-only: track Stripe Payment Links (created ahead of time in
+// the Stripe Dashboard, one per invoice amount) against a client/trip, send
+// them out, and log payment status/date here — the actual card collection
+// happens on Stripe's own hosted page, never in this CRM.
+const PAYMENT_STATUSES = ['Pending','Paid','Cancelled'];
+function renderPayments(){
+  var statusFilter = window._paymentsStatusFilter!==undefined ? window._paymentsStatusFilter : 'Pending';
+  var payments = (db.payments||[]).filter(function(p){ return !statusFilter || p.status===statusFilter; });
+  payments = payments.slice().sort(function(a,b){ return (b.requestedDate||'').localeCompare(a.requestedDate||''); });
+  var pendingTotal = (db.payments||[]).filter(function(p){return p.status==='Pending';}).reduce(function(a,p){return a+(Number(p.amount)||0);},0);
+  var paidTotal = (db.payments||[]).filter(function(p){return p.status==='Paid';}).reduce(function(a,p){return a+(Number(p.amount)||0);},0);
+  function clientName(id){ var c=db.clients.find(function(x){return x.id===id;}); return c?c.name:'(unknown)'; }
+  function tripLabel(id){ if(!id) return '—'; var t=db.trips.find(function(x){return x.id===id;}); return t?(t.destination||'(trip)'):'—'; }
+  var rowsHtml = payments.length ? payments.map(function(p){
+    return '<tr class="payment-row" style="cursor:pointer" data-id="'+p.id+'">'+
+      '<td>'+escHtml(clientName(p.clientId))+'</td>'+
+      '<td>'+escHtml(tripLabel(p.tripId))+'</td>'+
+      '<td style="text-align:right">$'+money(p.amount||0)+'</td>'+
+      '<td>'+badge(p.status)+'</td>'+
+      '<td style="white-space:nowrap">'+(p.requestedDate||'—')+'</td>'+
+      '<td style="white-space:nowrap">'+(p.paidDate||'—')+'</td>'+
+      '<td style="text-align:right" onclick="event.stopPropagation()">'+
+        (p.link ? '<button type="button" class="payment-copy-link-btn" data-id="'+p.id+'" style="padding:4px 8px;border-radius:5px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:11px;font-family:inherit;margin-right:4px">Copy Link</button>' : '')+
+        (p.link ? '<button type="button" class="payment-send-btn" data-id="'+p.id+'" style="padding:4px 8px;border-radius:5px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:11px;font-family:inherit;margin-right:4px">Send to Client</button>' : '')+
+        (p.status==='Pending' ? '<button type="button" class="payment-mark-paid-btn" data-id="'+p.id+'" style="padding:4px 8px;border-radius:5px;border:1px solid #6ee7b7;background:#fff;color:#059669;cursor:pointer;font-size:11px;font-family:inherit">Mark Paid</button>' : '')+
+      '</td>'+
+    '</tr>';
+  }).join('') : '<tr><td colspan="7" class="empty" style="padding:30px;text-align:center">No payment requests'+(statusFilter?' with status "'+statusFilter+'"':'')+'</td></tr>';
+  $('main').innerHTML =
+    '<div class="page-hdr"><div class="page-title">Payments</div><button class="add-btn" id="btn-add-payment">+ New Payment Request</button></div>'+
+    '<div style="font-size:13px;color:#888;margin-bottom:14px">Pending: <strong style="color:#111">$'+money(pendingTotal)+'</strong> &nbsp;·&nbsp; Paid: <strong style="color:#111">$'+money(paidTotal)+'</strong></div>'+
+    '<div style="margin-bottom:14px">'+
+      '<select id="payments-status-filter" style="padding:6px 10px;border-radius:6px;border:1px solid #e5e7eb;font-size:12px;font-family:inherit">'+
+        '<option value=""'+(!statusFilter?' selected':'')+'>All statuses</option>'+
+        PAYMENT_STATUSES.map(function(s){return '<option value="'+s+'"'+(statusFilter===s?' selected':'')+'>'+s+'</option>';}).join('')+
+      '</select>'+
+    '</div>'+
+    '<div class="tbl-wrap"><table class="report-table"><thead><tr>'+
+      '<th>Client</th><th>Trip</th><th style="text-align:right">Amount</th><th>Status</th><th>Requested</th><th>Paid</th><th></th>'+
+    '</tr></thead><tbody>'+rowsHtml+'</tbody></table></div>'+
+    '<div style="font-size:11px;color:#aaa;margin-top:14px">Card entry happens on Stripe\'s own hosted page via the link above — this tab only tracks the request and its status, it never touches card details.</div>';
+
+  $('btn-add-payment').addEventListener('click', function(){ openPaymentForm(null); });
+  var statusSel = document.getElementById('payments-status-filter');
+  if(statusSel) statusSel.addEventListener('change', function(){ window._paymentsStatusFilter = this.value; renderPayments(); });
+  document.querySelectorAll('.payment-row').forEach(function(row){
+    row.addEventListener('click', function(){ openPaymentForm(row.dataset.id); });
+  });
+  document.querySelectorAll('.payment-copy-link-btn').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var p = (db.payments||[]).find(function(x){return x.id===btn.dataset.id;});
+      if(!p||!p.link) return;
+      navigator.clipboard.writeText(p.link).then(function(){ toast('Payment link copied'); }).catch(function(){ toast('Could not copy — copy the link manually from the payment form','err'); });
+    });
+  });
+  document.querySelectorAll('.payment-send-btn').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var p = (db.payments||[]).find(function(x){return x.id===btn.dataset.id;});
+      if(!p) return;
+      var c = db.clients.find(function(x){return x.id===p.clientId;});
+      var email = c ? c.email : '';
+      var subject = encodeURIComponent('Payment request — $'+money(p.amount||0));
+      var body = encodeURIComponent('Hi'+(c&&c.name?' '+getFirstName(c.name):'')+',\n\nPlease use the secure link below to submit payment of $'+money(p.amount||0)+':\n\n'+(p.link||'')+'\n\nThank you!');
+      window.open('mailto:'+mailtoAddr(email)+'?subject='+subject+'&body='+body, '_blank');
+    });
+  });
+  document.querySelectorAll('.payment-mark-paid-btn').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      snapshot('Mark payment as paid');
+      db.payments = (db.payments||[]).map(function(p){ return p.id===btn.dataset.id ? Object.assign({},p,{status:'Paid',paidDate:today()}) : p; });
+      saveDB();
+      toast('Marked as paid');
+      renderPayments();
+    });
+  });
+}
+function openPaymentForm(id){
+  var d = id ? ((db.payments||[]).find(function(x){return x.id===id;}) || {}) : {};
+  var sortedClients = [...db.clients].sort(function(a,b){return (a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase());});
+  var clientOpts = '<option value="">Select a client...</option>'+sortedClients.map(function(c){return '<option value="'+c.id+'"'+(d.clientId===c.id?' selected':'')+'>'+escHtml(c.name)+'</option>';}).join('');
+  var clientTrips = d.clientId ? db.trips.filter(function(t){return t.clientId===d.clientId || (t.clientIds||[]).includes(d.clientId);}) : [];
+  var tripOpts = '<option value="">None</option>'+clientTrips.map(function(t){return '<option value="'+t.id+'"'+(d.tripId===t.id?' selected':'')+'>'+escHtml(t.destination||'(trip)')+(t.departDate?' — '+t.departDate:'')+'</option>';}).join('');
+  $('modal').innerHTML =
+    '<div class="modal-hdr"><div class="modal-title">'+(id?'Edit Payment Request':'New Payment Request')+'</div><button class="close-btn" id="modal-close">&#x2715;</button></div>'+
+    '<div class="fg">'+
+      fld('Client', searchableSelectWrap('<select id="pay-client">'+clientOpts+'</select>','Search clients...'))+
+      fld('Trip <span class="hint" style="text-transform:none;font-weight:400">(optional)</span>', '<select id="pay-trip">'+tripOpts+'</select>')+
+      fld('Amount ($)', inp('pay-amount','number',d.amount||''))+
+      fld('Stripe Payment Link <span class="hint" style="text-transform:none;font-weight:400">(paste the link created in your Stripe Dashboard for this amount)</span>', inp('pay-link','text',d.link||'','https://buy.stripe.com/...'), true)+
+      fld('Status', '<select id="pay-status">'+PAYMENT_STATUSES.map(function(s){return '<option value="'+s+'"'+((d.status||'Pending')===s?' selected':'')+'>'+s+'</option>';}).join('')+'</select>')+
+      fld('Requested Date', inp('pay-requested','date',d.requestedDate||today()))+
+      fld('Paid Date <span class="hint" style="text-transform:none;font-weight:400">(fills in automatically when marked Paid from the list)</span>', inp('pay-paid','date',d.paidDate||''))+
+      fld('Notes', '<textarea id="pay-notes" rows="2">'+(d.notes||'')+'</textarea>', true)+
+    '</div>'+
+    '<div class="form-actions form-actions-sticky">'+
+      (id ? '<button class="cancel-btn" id="btn-delete-payment" style="color:#dc2626;border-color:#fca5a5;margin-right:auto">Delete</button>' : '')+
+      '<button class="cancel-btn" id="modal-cancel">Cancel</button>'+
+      '<button class="save-btn" id="modal-save-payment" data-id="'+(id||'')+'">Save</button>'+
+    '</div>';
+  $('overlay').classList.add('open');
+  $('modal-close').addEventListener('click', closeModal);
+  $('modal-cancel').addEventListener('click', closeModal);
+  $('modal-save-payment').addEventListener('click', function(){ savePayment(this.dataset.id); });
+  var delBtn = document.getElementById('btn-delete-payment');
+  if(delBtn) delBtn.addEventListener('click', function(){ delPayment(id); });
+  $('pay-client').addEventListener('change', function(){
+    var clientId = this.value;
+    var trips = clientId ? db.trips.filter(function(t){return t.clientId===clientId || (t.clientIds||[]).includes(clientId);}) : [];
+    var tripSel = document.getElementById('pay-trip');
+    tripSel.innerHTML = '<option value="">None</option>'+trips.map(function(t){return '<option value="'+t.id+'">'+escHtml(t.destination||'(trip)')+(t.departDate?' — '+t.departDate:'')+'</option>';}).join('');
+  });
+}
+function savePayment(id){
+  var clientId = gv('pay-client');
+  if(!clientId){ toast('Select a client first','err'); return; }
+  var amount = Number(gv('pay-amount'))||0;
+  var data = {
+    clientId: clientId,
+    tripId: gv('pay-trip')||'',
+    amount: amount,
+    link: gv('pay-link').trim(),
+    status: gv('pay-status'),
+    requestedDate: gv('pay-requested')||today(),
+    paidDate: gv('pay-paid')||'',
+    notes: gv('pay-notes')
+  };
+  snapshot(id?'Edit payment request':'Add payment request');
+  if(id){
+    db.payments = (db.payments||[]).map(function(p){ return p.id===id ? Object.assign({},p,data) : p; });
+  } else {
+    db.payments = (db.payments||[]).concat([Object.assign({id:newId('PAY',db.payments||[])},data)]);
+  }
+  saveDB();
+  closeModal();
+  toast('Payment request saved');
+  render();
+}
+function delPayment(id){
+  if(!confirm('Delete this payment request?')) return;
+  snapshot('Delete payment request');
+  db.payments = (db.payments||[]).filter(function(p){return p.id!==id;});
+  saveDB();
+  closeModal();
+  toast('Payment request deleted');
+  render();
+}
+
 // ── Planner ───────────────────────────────────────────────────────────────
 function plannerSortArrow(col){
   var c = window._plannerSortCol || 'dueDate';
@@ -21574,6 +21731,7 @@ function bindClick(id, handler){
   bindClick('nb-analytics', function(){go('analytics');closeMobileNav();});
   bindClick('nb-ccconsulting', function(){go('ccconsulting');closeMobileNav();});
   bindClick('nb-referrals', function(){go('referrals');closeMobileNav();});
+  bindClick('nb-payments', function(){go('payments');closeMobileNav();});
   bindClick('outlook-btn', syncOutlook);
   bindClick('btn-sync-texts', syncTexts);
   // Passing driveBackup directly used to hand it the click Event object as
