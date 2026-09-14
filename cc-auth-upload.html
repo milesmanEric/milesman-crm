@@ -88,23 +88,31 @@
 
 <script>
   // ── Client identification ────────────────────────────────────────────
-  // Two ways this page learns whose upload this is:
+  // Three ways this page learns whose upload this is:
   //  1. A personalized link generated per-client from the CRM (index.html's
   //     "Copy Upload Link" button on a client record), embedding cid/name
   //     in the query string — greets by name, no extra typing needed.
-  //  2. This exact bare URL (no query string at all), meant to be posted
-  //     as one static link on the website itself — since there's no client
-  //     record to attach to yet, this page instead asks for name/email
-  //     directly so staff can still match the upload to the right person.
+  //  2. A name+email link (no cid) handed off from the trip-request form's
+  //     thank-you screen (intake-form.html) — there's no client record yet,
+  //     so the identify fields still show, but pre-filled from the query so
+  //     the client only has to pick the file. They can still correct them.
+  //  3. The bare URL with no query string at all, posted as one static link
+  //     on the website — identify fields show empty for the client to fill.
   var params = new URLSearchParams(window.location.search);
   var clientId = (params.get('cid')||'').trim();
   var clientName = (params.get('name')||'').trim();
+  var clientEmail = (params.get('email')||'').trim();
   var identifyNameInput = document.getElementById('identify-name');
   var identifyEmailInput = document.getElementById('identify-email');
   if(clientName){
     document.getElementById('greeting').textContent = 'Hi '+clientName+' — upload your completed, signed authorization form below.';
-  } else {
+  }
+  if(!clientId){
+    // No CRM record to attach to — the client identifies themselves. Show
+    // the fields (pre-filled from the query when the link carried them).
     document.getElementById('identify-fields').style.display = 'block';
+    if(clientName) identifyNameInput.value = clientName;
+    if(clientEmail) identifyEmailInput.value = clientEmail;
   }
 
   // ── Same milesman-auth Vercel proxy every other integration in this app
@@ -189,10 +197,10 @@
     e.preventDefault();
     clearError();
 
-    // On the generic (no cid) link, name/email typed in here ARE the
-    // client identification — clientName from the query string is empty
-    // in this case, so this becomes what gets sent and what shows up in
-    // the Drive filename for staff to match against.
+    // On any no-cid link, the identify fields ARE the client identification
+    // — whatever's in them now (pre-filled from a name+email query string,
+    // typed fresh on the bare link, or corrected either way) is what gets
+    // sent and what shows up in the Drive filename for staff to match.
     var submittedName = clientName;
     var submittedEmail = '';
     if(!clientId){

@@ -506,22 +506,100 @@ function cacheSessionKey(key){
     sessionStorage.setItem(AUTH_SESSION_KEY, bytesToHex(new Uint8Array(raw)));
   });
 }
+function bytesToBase64(bytes){
+  var binary = '';
+  for(var i=0;i<bytes.length;i++) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary);
+}
+function base64ToBytes(b64){
+  var binary = atob(b64);
+  var bytes = new Uint8Array(binary.length);
+  for(var i=0;i<binary.length;i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+// gzip via the standard Compression Streams API (Chrome/Edge 80+, Firefox
+// 113+, Safari 16.4+) — collects the stream's chunks into one Uint8Array
+// rather than exposing the stream itself, since encryptDbJson/decryptDbJson
+// need a single buffer to hand to crypto.subtle anyway.
+var COMPRESSION_SUPPORTED = (typeof CompressionStream!=='undefined' && typeof DecompressionStream!=='undefined');
+function streamToUint8Array(stream){
+  var reader = stream.getReader();
+  var chunks = [], total = 0;
+  function pump(){
+    return reader.read().then(function(res){
+      if(res.done) return;
+      chunks.push(res.value);
+      total += res.value.length;
+      return pump();
+    });
+  }
+  return pump().then(function(){
+    var out = new Uint8Array(total), offset = 0;
+    for(var i=0;i<chunks.length;i++){ out.set(chunks[i], offset); offset += chunks[i].length; }
+    return out;
+  });
+}
+function gzipCompress(bytes){
+  var cs = new CompressionStream('gzip');
+  var writer = cs.writable.getWriter();
+  writer.write(bytes); writer.close();
+  return streamToUint8Array(cs.readable);
+}
+function gzipDecompress(bytes){
+  var ds = new DecompressionStream('gzip');
+  var writer = ds.writable.getWriter();
+  writer.write(bytes); writer.close();
+  return streamToUint8Array(ds.readable);
+}
 // AES-256-GCM. The random 12-byte IV travels alongside the ciphertext (IVs
 // aren't secret, just must never repeat under the same key — a fresh one
 // every save makes that a non-issue) and GCM's built-in authentication tag
 // is what makes a wrong key fail loudly (decrypt() rejects) instead of
 // silently returning garbage — that rejection IS the "incorrect password"
 // signal everywhere in this file now, not a separate hash comparison.
+// v2 stores iv/data as base64 rather than v1's hex — hex needs 2 characters
+// per byte, base64 about 1.33, so this alone cuts every save's footprint in
+// localStorage by roughly a third. That mattered in practice, but wasn't
+// enough on its own: a real device with a genuinely large-but-real dataset
+// (hundreds of clients/trips with years of Outlook-synced email notes) had
+// a 6.7MB plaintext backup — which the v2 encoding alone still puts at
+// ~8.8MB, uncomfortably close to Chrome's real per-origin localStorage cap
+// (commonly ~10MB, and lower in some browsers/configurations) with almost
+// no room for the dataset to keep growing, which it will as more email
+// history syncs in over time.
+// v3 gzip-compresses the plaintext JSON before encrypting it (compression
+// has to happen before encryption — encrypted bytes are indistinguishable
+// from random and don't compress at all). JSON this repetitive (the same
+// field names and note boilerplate repeated across hundreds of records)
+// typically shrinks by 60-90%+ under gzip, turning that same 6.7MB dataset
+// into low single-digit MB even after the base64 overhead — real headroom
+// instead of a fix that just barely fits today. Falls back to the v2 path
+// automatically (COMPRESSION_SUPPORTED, or if compression throws for any
+// reason) rather than ever blocking a save over it.
 function encryptDbJson(jsonStr, key){
   var iv = crypto.getRandomValues(new Uint8Array(12));
-  return crypto.subtle.encrypt({name:'AES-GCM', iv:iv}, key||_dbEncKey, new TextEncoder().encode(jsonStr)).then(function(cipherBuf){
-    return JSON.stringify({v:1, iv:bytesToHex(iv), data:bytesToHex(new Uint8Array(cipherBuf))});
+  var plainBytes = new TextEncoder().encode(jsonStr);
+  var prep = COMPRESSION_SUPPORTED
+    ? gzipCompress(plainBytes).then(function(compressed){ return {v:3, bytes:compressed}; }).catch(function(){ return {v:2, bytes:plainBytes}; })
+    : Promise.resolve({v:2, bytes:plainBytes});
+  return prep.then(function(prepped){
+    return crypto.subtle.encrypt({name:'AES-GCM', iv:iv}, key||_dbEncKey, prepped.bytes).then(function(cipherBuf){
+      return JSON.stringify({v:prepped.v, iv:bytesToBase64(iv), data:bytesToBase64(new Uint8Array(cipherBuf))});
+    });
   });
 }
 function decryptDbJson(storedStr, key){
   var parsed = JSON.parse(storedStr);
-  return crypto.subtle.decrypt({name:'AES-GCM', iv:hexToBytes(parsed.iv)}, key||_dbEncKey, hexToBytes(parsed.data)).then(function(plainBuf){
-    return new TextDecoder().decode(plainBuf);
+  // v1 (hex, uncompressed) and v2 (base64, uncompressed) blobs may still be
+  // sitting in localStorage on a device that hasn't saved since these
+  // switches — decrypt still reads them fine, only saveDB()'s next write
+  // upgrades them to the current smallest encoding this browser supports.
+  var ivBytes = parsed.v>=2 ? base64ToBytes(parsed.iv) : hexToBytes(parsed.iv);
+  var dataBytes = parsed.v>=2 ? base64ToBytes(parsed.data) : hexToBytes(parsed.data);
+  return crypto.subtle.decrypt({name:'AES-GCM', iv:ivBytes}, key||_dbEncKey, dataBytes).then(function(plainBuf){
+    var plainBytes = new Uint8Array(plainBuf);
+    if(parsed.v===3) return gzipDecompress(plainBytes).then(function(decompressed){ return new TextDecoder().decode(decompressed); });
+    return new TextDecoder().decode(plainBytes);
   });
 }
 function authGateBoxHtml(inner){
@@ -819,7 +897,7 @@ const CANVA_AUTH_SERVER = 'https://milesman-auth.vercel.app';
 const BACKUP_FILENAME  = 'milesman-crm-backup.json';
 
 const AIRLINES = ['American','United','Delta','Southwest','JetBlue','Qatar Airways','ANA','Emirates','Lufthansa','British Airways','Air France','Virgin Atlantic','Qantas','Etihad','JAL','Air Canada','Frontier','Alaska/Hawaiian Air'];
-const HOTELS   = ['Marriott','Disney','Hilton','Hyatt','Accor','IHG','Wyndham','Four Seasons','Ritz-Carlton','W Hotels','Kimpton','Conrad'];
+const HOTELS   = ['Marriott','Disney','Hilton','Hyatt','Accor','IHG','Wyndham','Four Seasons','Ritz-Carlton','W Hotels','Kimpton','Conrad','Universal'];
 // Curated (not exhaustive) flagship/major properties for each Hotel brand —
 // used to seed each matching Supplier record's own editable `properties`
 // list (see the one-time seed in loadDB()) and, from there, to populate the
@@ -842,10 +920,15 @@ const HOTEL_PROPERTY_SEEDS_V1 = {
 // applies to CRUISE_LOGOS doesn't apply here.
 const HOTEL_PROPERTY_SEEDS = {
   'Marriott': ["20 Times Square","Armenia Marriott Hotel Yerevan","Aruba Marriott Resort & Stellaris Casino","Atlanta Marriott Marquis","Bangkok Marriott Hotel The Surawongse","The Bidwell Marriott Portland","Boston Marriott Long Wharf","Cairo Marriott Hotel","Cardiff Marriott Hotel","Montreal Marriott Château Champlain","Des Moines Marriott Hotel","Dubai Marriott Harbour Hotel & Suites","Hanbury Manor Marriott Hotel and Country Club","Hong Kong SkyCity Marriott Hotel","Indianapolis Marriott Downtown","Kochi Marriott Hotel","London Marriott Hotel Canary Wharf","London Marriott Hotel County Hall","London Marriott Hotel Park Lane","Malta Marriott Hotel & Spa","Marriott Hotel Constantine","Marriott Marquis Chicago","Marriott Marquis Houston","Marriott Mena House, Cairo","Niagara Falls Marriott Fallsview Hotel & Spa","Marriott Syracuse Downtown","Marriott Taipei","Miri Marriott Resort & Spa","New York Marriott Marquis","Niagara Falls Marriott on the Falls","Orlando World Center Marriott","Ottawa Marriott Hotel","Portland Marriott Downtown Waterfront","Detroit Marriott at the Renaissance Center","Salt Lake Marriott Downtown at City Creek","San Antonio Marriott Rivercenter on the River Walk","San Francisco Marriott Marquis","Tbilisi Marriott Hotel","The Lincoln Marriott Cornhusker Hotel","Washington Marriott Marquis","Wuxi Maoye City – Marriott Hotel","JW Marriott Anaheim Resort","JW Marriott Atlanta Buckhead","JW Marriott Austin","JW Marriott Charlotte","JW Marriott Chicago","JW Marriott Clearwater Beach Resort & Spa","JW Marriott Dallas Arts District","JW Marriott Desert Springs Resort & Spa","JW Marriott Edmonton ICE District","JW Marriott Essex House New York","JW Marriott Grand Rapids","JW Marriott Houston by The Galleria","JW Marriott Houston Downtown","JW Marriott Indianapolis","JW Marriott Las Vegas Resort & Spa","JW Marriott Los Angeles L.A. LIVE","JW Marriott Marco Island Beach Resort","JW Marriott Marquis Miami","JW Marriott Miami","JW Marriott Miami Turnberry Resort & Spa","JW Marriott Minneapolis Mall of America","JW Marriott Nashville","JW Marriott New Orleans","JW Marriott Orlando Bonnet Creek Resort & Spa","JW Marriott Orlando Grande Lakes","JW Marriott Parq Vancouver","JW Marriott Phoenix Desert Ridge Resort & Spa","JW Marriott San Antonio Hill Country Resort & Spa","JW Marriott San Francisco Union Square","JW Marriott Savannah Plant Riverside District","JW Marriott Scottsdale Camelback Inn Resort & Spa","JW Marriott Tampa Water Street","JW Marriott The Rosseau Muskoka Resort & Spa","JW Marriott Tucson Starr Pass Resort & Spa","JW Marriott Washington, DC","JW Marriott Los Cabos Beach Resort & Spa","JW Marriott Cancun Resort & Spa","JW Marriott Guanacaste Resort & Spa","JW Marriott Hotel Caracas","JW Marriott Hotel Guadalajara","JW Marriott Hotel Mexico City Polanco","JW Marriott Hotel Mexico City Santa Fe","JW Marriott Hotel Monterrey Valle","JW Marriott Hotel Santo Domingo","JW Marriott Panama","JW Marriott St. Maarten Beach Resort & Spa","JW Marriott El Convento Cusco","JW Marriott Hotel Bogota","JW Marriott Hotel Lima","JW Marriott Hotel Rio de Janeiro","JW Marriott Hotel Sao Paulo","JW Marriott Quito","JW Marriott Bucharest Grand Hotel","JW Marriott Cannes","JW Marriott Grosvenor House London","JW Marriott Hotel Ankara","JW Marriott Hotel Berlin","JW Marriott Hotel Frankfurt","JW Marriott Hotel Istanbul Marmara Sea","JW Marriott Istanbul Bosphorus","JW Marriott Venice Resort & Spa","JW Marriott Hotel Kuwait City","JW Marriott Hotel Marina, Dubai","JW Marriott Hotel Muscat","JW Marriott Hotel Riyadh","JW Marriott Marquis City Center Doha","JW Marriott Marquis Hotel Dubai","JW Marriott Hotel Cairo","JW Marriott Hotel Nairobi","JW Marriott Masai Mara Lodge","JW Marriott Mauritius Resort","JW Marriott Absheron Baku","JW Marriott Bengaluru Prestige Golfshire Resort & Spa","JW Marriott Dongdaemun Square Seoul","JW Marriott Goa","JW Marriott Hotel & Suites Saigon","JW Marriott Hotel Bangkok","JW Marriott Hotel Beijing","JW Marriott Hotel Beijing Central","JW Marriott Hotel Bengaluru","JW Marriott Hotel Chandigarh","JW Marriott Hotel Changsha","JW Marriott Hotel Chengdu","JW Marriott Hotel Chongqing","JW Marriott Hotel Hangzhou","JW Marriott Hotel Hanoi","JW Marriott Hotel Harbin River North","JW Marriott Hotel Hong Kong","JW Marriott Hotel Jakarta","JW Marriott Hotel Kolkata","JW Marriott Hotel Kuala Lumpur","JW Marriott Hotel Macau","JW Marriott Hotel Medan","JW Marriott Hotel Nara","JW Marriott Hotel New Delhi Aerocity","JW Marriott Hotel Pune","JW Marriott Hotel Qufu","JW Marriott Hotel Sanya Dadonghai Bay","JW Marriott Hotel Seoul","JW Marriott Hotel Shanghai at Tomorrow Square","JW Marriott Hotel Shanghai Fengxian","JW Marriott Hotel Shanghai Changfeng Park","JW Marriott Hotel Shenzhen","JW Marriott Hotel Shenzhen Bao'an","JW Marriott Hotel Singapore South Beach","JW Marriott Hotel Surabaya","JW Marriott Hotel Tokyo","JW Marriott Hotel Xi'an","JW Marriott Hotel Xi'an Southwest","JW Marriott Hotel Yinchuan","JW Marriott Hotel Zhejiang Anji","JW Marriott Hotel Zhengzhou","JW Marriott Jeju Resort & Spa","JW Marriott Khao Lak Resort & Spa","JW Marriott Khao Lak Resort Suites","JW Marriott Maldives Resort & Spa","JW Marriott Marquis Hotel Shanghai Pudong","JW Marriott Mumbai Juhu","JW Marriott Mumbai Sahar","JW Marriott Mussoorie Walnut Grove Resort & Spa","JW Marriott Phu Quoc Emerald Bay Resort & Spa","JW Marriott Phuket Resort & Spa","JW Marriott Sanya Haitang Bay Resort & Spa","JW Marriott Hotel Johor Bahru","JW Marriott Auckland","JW Marriott Gold Coast Resort & Spa","Gaylord National Resort & Convention Center","Gaylord Opryland Resort & Convention Center","Gaylord Pacific Resort & Convention Center","Gaylord Palms Resort & Convention Center","Gaylord Texan Resort Hotel & Convention Center","Renaissance Barcelona Fira Hotel","Renaissance Cincinnati Downtown Hotel","Renaissance Columbus Downtown Hotel","Renaissance Dallas Hotel","Renaissance Kuala Lumpur Hotel","Renaissance Riverview Plaza Hotel","Battle House Renaissance Mobile Hotel & Spa","Renaissance Nashville Hotel","Renaissance Newport Beach Hotel","Renaissance Pittsburgh Hotel","Renaissance Providence Hotel","Renaissance Reno","Renaissance Schaumburg Convention Center Hotel","Renaissance Seattle Hotel","Renaissance Resort at World Golf Village","Marriott Grand Residence Club, Lake Tahoe","Marriott Vacation Club Pulse at Custom House, Boston","Marriott Vacation Club Pulse at The Mayflower, Washington, D.C.","Marriott Vacation Club Pulse, New York City","Marriott Vacation Club Pulse, San Diego","Marriott Vacation Club Pulse, San Francisco","Marriott Vacation Club Pulse, South Beach","Marriott Vacation Club at Surfers Paradise","Marriott Vacation Club at The Empire Place","Marriott Vacation Club, Khao Lak Beach Resort","Marriott Vacation Club at Los Sueños","Marriott's Aruba Ocean Club","Marriott's Aruba Surf Club","Marriott's Bali Nusa Dua Gardens","Marriott's Bali Nusa Dua Terrace","Marriott's Barony Beach Club","Marriott's BeachPlace Towers","Marriott's Canyon Villas","Marriott's Club Son Antem","Marriott's Crystal Shores","Marriott's Cypress Harbour","Marriott's Desert Springs Villas","Marriott's Desert Springs Villas II","Marriott's Fairway Villas","Marriott's Frenchman's Cove","Marriott's Grand Chateau","Marriott's Grande Ocean","Marriott's Grande Vista","Marriott's Harbour Club","Marriott's Harbour Lake","Marriott's Harbour Point","Marriott's Heritage Club","Marriott's Imperial Palms","Marriott's Kauai Beach Club","Marriott's Kauai Lagoons - Kalanipuʻu","Marriott's Ko Olina Beach Club","Marriott's Lakeshore Reserve","Marriott's Legends Edge at Bay Point","Marriott's Mai Khao Resort - Phuket","Marriott's Manor Club","Marriott's Marbella Beach Resort","Marriott's Maui Ocean Club","Marriott's Monarch","Marriott's Mountain Valley Lodge","Marriott's MountainSide","Marriott's Newport Coast Villas","Marriott's Ocean Pointe","Marriott's Oceana Palms","Marriott's OceanWatch at Grande Dunes","Marriott's Phuket Beach Club","Marriott's Playa Andaluza","Marriott's Royal Palms","Marriott's Sabal Palms","Marriott's Shadow Ridge","Marriott's St. Kitts Beach Club","Marriott's StreamSide","Marriott's Summit Watch","Marriott's Sunset Pointe","Marriott's SurfWatch","Marriott's Timber Lodge","Marriott's Village d'Ile-de-France","Marriott's Villas at Doral","Marriott's Waikoloa Ocean Club","Marriott's Waiohai Beach Club","Marriott's Willow Ridge Lodge","Excelsior Hotel Gallia, a Luxury Collection Hotel, Milan","St. Regis Rome"],
-  'Disney': ["Disney's Animal Kingdom Lodge","Disney's Animal Kingdom Villas – Kidani Village","Disney's Beach Club Resort","Disney's Beach Club Villas","Disney's BoardWalk Inn","Disney's BoardWalk Villas","Disney's Contemporary Resort","Bay Lake Tower at Disney's Contemporary Resort","Disney's Grand Floridian Resort & Spa","The Villas at Disney's Grand Floridian Resort & Spa","Disney's Polynesian Village Resort","Disney's Wilderness Lodge","Copper Creek Villas & Cabins at Disney's Wilderness Lodge","Disney's Yacht Club Resort","Disney's Riviera Resort","Disney's Caribbean Beach Resort","Disney's Coronado Springs Resort","Disney's Port Orleans Resort - French Quarter","Disney's Port Orleans Resort - Riverside","Disney's All-Star Movies Resort","Disney's All-Star Music Resort","Disney's All-Star Sports Resort","Disney's Art of Animation Resort","Disney's Pop Century Resort","Disney's Old Key West Resort","Disney's Saratoga Springs Resort & Spa","Disney's Fort Wilderness Resort & Campground","Disneyland Hotel (California)","Disney's Grand Californian Hotel & Spa","Pixar Place Hotel","Disneyland Hotel (Paris)","Disney's Hotel New York – The Art of Marvel","Disney's Newport Bay Club","Disney's Sequoia Lodge","Disney's Hotel Cheyenne","Disney's Hotel Santa Fe","Disney's Davy Crockett Ranch","Tokyo Disneyland Hotel","Tokyo DisneySea Hotel MiraCosta","Disney Ambassador Hotel","Tokyo Disney Celebration Hotel","Tokyo Disney Resort Toy Story Hotel","Tokyo DisneySea Fantasy Springs Hotel","Hong Kong Disneyland Hotel","Disney's Hollywood Hotel","Disney Explorers Lodge","Shanghai Disneyland Hotel","Shanghai Disney Toy Story Hotel","Aulani, A Disney Resort & Spa"],
+  'Disney': ["Disney's Animal Kingdom Lodge","Disney's Animal Kingdom Villas – Kidani Village","Disney's Beach Club Resort","Disney's Beach Club Villas","Disney's BoardWalk Inn","Disney's BoardWalk Villas","Disney's Contemporary Resort","Bay Lake Tower at Disney's Contemporary Resort","Disney's Grand Floridian Resort & Spa","The Villas at Disney's Grand Floridian Resort & Spa","Disney's Polynesian Village Resort","Disney's Wilderness Lodge","Copper Creek Villas & Cabins at Disney's Wilderness Lodge","Disney's Yacht Club Resort","Walt Disney World Swan","Walt Disney World Dolphin","Disney's Riviera Resort","Disney's Caribbean Beach Resort","Disney's Coronado Springs Resort","Disney's Port Orleans Resort - French Quarter","Disney's Port Orleans Resort - Riverside","Disney's All-Star Movies Resort","Disney's All-Star Music Resort","Disney's All-Star Sports Resort","Disney's Art of Animation Resort","Disney's Pop Century Resort","Disney's Old Key West Resort","Disney's Saratoga Springs Resort & Spa","Disney's Fort Wilderness Resort & Campground","Disneyland Hotel (California)","Disney's Grand Californian Hotel & Spa","Pixar Place Hotel","Disneyland Hotel (Paris)","Disney's Hotel New York – The Art of Marvel","Disney's Newport Bay Club","Disney's Sequoia Lodge","Disney's Hotel Cheyenne","Disney's Hotel Santa Fe","Disney's Davy Crockett Ranch","Tokyo Disneyland Hotel","Tokyo DisneySea Hotel MiraCosta","Disney Ambassador Hotel","Tokyo Disney Celebration Hotel","Tokyo Disney Resort Toy Story Hotel","Tokyo DisneySea Fantasy Springs Hotel","Hong Kong Disneyland Hotel","Disney's Hollywood Hotel","Disney Explorers Lodge","Shanghai Disneyland Hotel","Shanghai Disney Toy Story Hotel","Aulani, A Disney Resort & Spa"],
   'Hilton': ["Hilton Alger","Hilton Amsterdam","Hilton Anaheim","Hilton Anatole","Hilton Austin","Hilton Baltimore Inner Harbor","Hilton Diagonal Mar Barcelona","Hilton Barcelona","Hilton Frankfurt Airport","Hilton Munich Airport","The Beverly Hilton","Hilton Birmingham Metropole","Hilton Boston Park Plaza","Hilton Budapest","Hilton Buenos Aires","Capital Hilton","Hilton Baton Rouge Capitol Center","Hilton Cardiff","Caribe Hilton Hotel","Hilton Chennai","Hilton Chicago","The Palmer House Hilton","Hilton Cincinnati Netherland Plaza","Hilton Cleveland Downtown Hotel","Hilton Columbus Downtown","Hilton Denver City Center","Hilton Dhaka","Hilton Fort Worth","Hilton Glasgow","Hilton Hanoi Opera","Hilton Hawaiian Village","Hilton Helsinki Kalastajatorppa","Hilton Addis","Hilton Colombo","Hilton Colombo Residences","Hilton Kyiv","Hilton Mexico City Reforma","Hilton Minneapolis","Hilton Milwaukee City Center","Hilton Rio de Janeiro Copacabana","Hilton Sandton","Hilton Santa Monica Hotel & Suites","Hilton Indianapolis","Hilton Istanbul Bosphorus","Hilton Izmir","Hilton Leeds Arena","Hilton Lexington/Downtown","London Hilton on Park Lane","Hilton London Hyde Park","Hilton London Metropole","Hilton London Paddington","Hilton Memphis","Hilton Montreal Bonaventure","Hilton Moscow Leningradskaya","Hilton New Orleans Riverside","Hilton New Orleans/St. Charles Avenue","New York Hilton Midtown","Hilton Orlando Lake Buena Vista","Hilton Orlando Buena Vista Palace","Hilton Podgorica Crna Gora","Hilton Portland Downtown","Hilton Prague Atrium","Hilton San Francisco Financial District","Hilton San Francisco Union Square","Parc 55 San Francisco","Signia by Hilton San Jose","Skirvin Hilton Hotel","Hilton Hotel Tallinn Park","Hilton Tel Aviv","The Trafalgar St. James London","Hilton Valencia","Hilton Waikoloa Village","The Waldorf Hilton, London","Washington Hilton","Hilton San Diego Bayfront","Hilton Pittsburgh","Hilton Edinburgh Carlton","Hilton Athens","Hilton Belfast","Hilton Manchester Deansgate","Hilton Paris Opéra","Hilton Belgrade","Hilton Kuala Lumpur","Hilton Cartagena","Hilton Niagara Falls/Fallsview Hotel and Suites","Hilton Albuquerque","Hilton Taba","Hilton Nicosia","The Seelbach Hilton Louisville","Hilton Waterfront Beach Resort","Hilton Molino Stucky Venice","Hilton Sydney","Hilton Princess San Salvador Hotel","Hilton Kampala","DoubleTree by Hilton Arctic Club Hotel Seattle","DoubleTree by Hilton Hotel Billings","DoubleTree by Hilton Brighton Metropole","DoubleTree by Hilton Cheltenham-Cotswolds","Emily Morgan Hotel, a DoubleTree by Hilton","The Grand DoubleTree, Kirkland","Grand Naniloa Hotel Hilo - a DoubleTree by Hilton","DoubleTree by Hilton Hotel Harrogate Majestic","DoubleTree by Hilton Hotel Los Angeles Downtown","DoubleTree by Hilton Hotel Metropolitan New York City","DoubleTree by Hilton Hotel Portland","President Abraham Lincoln Springfield - a DoubleTree by Hilton Hotel","DoubleTree by Hilton Jacksonville Airport","DoubleTree by Hilton Hotel Rochester","DoubleTree by Hilton Oklahoma City Airport","DoubleTree by Hilton Hotel Richardson - Dallas","Embassy Suites by Hilton Newark Wilmington","Embassy Suites by Hilton Charleston","Embassy Suites by Hilton Portland Hillsboro","Embassy Suites by Hilton Rockford","Embassy Suites by Hilton Kansas City Overland Park","Embassy Suites by Hilton Fort Lauderdale 17th Street","Embassy Suites by Hilton Toronto Airport","Embassy Suites by Hilton Minneapolis Brooklyn Center","Embassy Suites by Hilton Santo Domingo","Embassy Suites by Hilton Atlanta Perimeter Center","Embassy Suites by Hilton Miami International Airport"],
   'Hyatt': ["Hyatt Regency Casablanca","Hyatt Regency Addis Ababa","Hyatt Regency Dar es Salaam The Kilimanjaro","Hyatt Regency Nairobi Westlands","Hyatt Regency Cape Town","Hyatt Regency Cairo West","Hyatt Regency Algiers Airport","Hyatt Regency Harare The Meikles","Hyatt Regency Baku","Hyatt Regency Phnom Penh","Hyatt Regency Guam","Hyatt Regency Hong Kong Tsim Sha Tsui","Hyatt Regency Hong Kong Sha Tin","Hyatt Regency Chandigarh","Hyatt Regency Delhi","Hyatt Regency Ahmedabad","Hyatt Regency Gurgaon","Hyatt Regency Dharamshala Resort","Hyatt Regency Thrissur","Hyatt Regency Trivandrum","Hyatt Regency Pune & Residences","Hyatt Regency Amritsar","Hyatt Regency Ludhiana","Hyatt Regency Jaipur Mansarovar","Hyatt Regency Chennai","Hyatt Regency Lucknow","Hyatt Regency Dehradun Resort and Spa","Hyatt Regency Kolkata","Hyatt Regency Bali","Hyatt Regency Yogyakarta","Hyatt Regency Hakone Resort and Spa","Hyatt Regency Kyoto","Hyatt Regency Naha Okinawa","Hyatt Regency Seragaki Island Okinawa","Hyatt Regency Tokyo","Hyatt Regency Tokyo Bay","Hyatt Regency Yokohama","Hyatt Regency Beijing Shiyuan","Hyatt Regency Beijing Wangjing","Hyatt Regency Changbaishan","Hyatt Regency Changchun","Hyatt Regency Changshu Kuncheng Lake","Hyatt Regency Chongming","Hyatt Regency Dongguan","Hyatt Regency Fuzhou Cangshan","Hyatt Regency Guangzhou Zengcheng","Hyatt Regency Guiyang","Hyatt Regency Hainan Ocean Paradise Resort","Hyatt Regency Hangzhou International Airport","Hyatt Regency Hengqin","Hyatt Regency Huangshan Hengjiangwan","Hyatt Regency Jinan","Hyatt Regency Lanzhou","Hyatt Regency Metropolitan Chongqing","Hyatt Regency Ningbo Hangzhou Bay","Hyatt Regency Qingdao","Hyatt Regency Sanya Tianli Bay","Hyatt Regency Shanghai Global Harbor","Hyatt Regency Shanghai Jiading","Hyatt Regency Shanghai Songjiang","Hyatt Regency Shanghai Wujiaochang","Hyatt Regency Shenzhen Airport","Hyatt Regency Shenzhen Yantian","Hyatt Regency Suzhou","Hyatt Regency Tianjin East","Hyatt Regency Wuhan Optics Valley","Hyatt Regency Wuxi","Hyatt Regency Xi'an","Hyatt Regency Xiamen Wuyuanwan","Hyatt Regency Xuzhou","Hyatt Regency Zhenjiang","Hyatt Regency Bishkek","Hyatt Regency Kinabalu","Hyatt Regency Kuantan Resort","Hyatt Regency Kathmandu","Hyatt Regency Hotel at City of Dreams Manila","Hyatt Regency Dushanbe","Hyatt Regency Bangkok Sukhumvit","Hyatt Regency Bangkok Suvarnabhumi Airport","Hyatt Regency Phuket Resort","Hyatt Regency Hua Hin","Hyatt Regency Koh Samui","Hyatt Regency Tashkent","Hyatt Regency Danang Resort and Spa","Hyatt Regency Nha Trang","Hyatt Regency Taoyuan International Airport","Hyatt Regency Aqaba Ayla","Hyatt Regency Al Kout Mall","Hyatt Regency Oryx Doha","Hyatt Regency Riyadh Olaya","Jabal Omar Hyatt Regency Makkah","Hyatt Regency Dubai","Hyatt Regency Dubai Creek Heights","Hyatt Regency Sydney","Hyatt Regency Brisbane","Hyatt Regency Pravets Resort","Hyatt Regency Sofia","Hyatt Regency Zadar","Hyatt Regency Paris Étoile","Hyatt Regency Nice Palais de la Méditerranée","Hyatt Regency Cologne","Hyatt Regency Dusseldorf","Hyatt Regency Mainz","Hyatt Regency Thessaloniki","Hyatt Regency Rome Central","Hyatt Regency Malta","Hyatt Regency Kotor Bay Resort","Hyatt Regency Amsterdam","Hyatt Regency Belgrade","Hyatt Regency Lisbon","Hyatt Regency Barcelona Tower","Hyatt Regency Hesperia Madrid","Hyatt Regency Madrid Residences","Hyatt Regency Zurich Airport The Circle","Hyatt Regency Istanbul Ataköy","Hyatt Regency İzmir İstinyePark","Hyatt Regency Kyiv","Hyatt Regency Birmingham","Hyatt Regency London The Churchill","Hyatt Regency London Albert Embankment","Hyatt Regency London Blackfriars","Hyatt Regency London Stratford","Hyatt Regency Manchester","Hyatt Regency Toronto","Hyatt Regency Vancouver","Hyatt Regency Calgary","Hyatt Regency Birmingham - The Wynfrey Hotel","Hyatt Regency Phoenix","Hyatt Regency Huntington Beach Resort and Spa","Hyatt Regency Irvine","Hyatt Regency La Jolla at Aventine","Hyatt Regency Long Beach","Hyatt Regency Los Angeles International Airport","Hyatt Regency Mission Bay Spa and Marina","Hyatt Regency Monterey Hotel and Spa on Del Monte Golf Course","Hyatt Regency Newport Beach","Hyatt Regency Newport Beach West","Hyatt Regency Orange County","Hyatt Regency Sacramento","Hyatt Regency San Francisco","Hyatt Regency San Francisco Airport","Hyatt Regency San Francisco Downtown SOMA","Hyatt Regency Santa Clara","Hyatt Regency Sonoma Wine Country","Hyatt Regency Valencia","Hyatt Regency Westlake","Hyatt Regency Aurora-Denver Conference Center","Hyatt Regency Denver at Colorado Convention Center","Hyatt Regency Denver Tech Center","Hyatt Regency Greenwich","Hyatt Regency Washington on Capitol Hill","Hyatt Regency Clearwater Beach Resort and Spa","Hyatt Regency Coconut Point Resort and Spa","Hyatt Regency Coral Gables","Hyatt Regency Grand Cypress Resort","Hyatt Regency Jacksonville Riverfront","Hyatt Regency Miami","Hyatt Regency Orlando","Hyatt Regency Orlando International Airport","Hyatt Regency Sarasota","Hyatt Regency Atlanta","Hyatt Regency Atlanta Perimeter at Villa Christina","Hyatt Regency Savannah","Hyatt Regency Suites Atlanta Northwest","Hyatt Regency Maui Resort and Spa","Hyatt Regency Waikiki Beach Resort and Spa","Hyatt Regency Chicago","Hyatt Regency Deerfield","Hyatt Regency Lisle near Naperville","Hyatt Regency McCormick Place","Hyatt Regency O'Hare Chicago","Hyatt Regency Schaumburg","Hyatt Regency Indianapolis","Hyatt Regency Coralville Hotel & Conference Center","Hyatt Regency Wichita","Hyatt Regency Lexington","Hyatt Regency Louisville","Hyatt Regency New Orleans","Hyatt Regency Baltimore Inner Harbor","Hyatt Regency Bethesda","Hyatt Regency Chesapeake Bay Golf Resort Spa and Marina","Hyatt Regency Boston","Hyatt Regency Boston / Cambridge","Hyatt Regency Boston Harbor","Hyatt Regency Bloomington - Minneapolis","Hyatt Regency Minneapolis","Hyatt Regency St. Louis at The Arch","Hyatt Regency Crown Center Kansas City","Hyatt Regency Lake Tahoe Resort Spa and Casino","Hyatt Regency Jersey City on the Hudson","Hyatt Regency Morristown","Hyatt Regency New Brunswick","Hyatt Regency Princeton","Hyatt Regency Tamaya Resort and Spa","Hyatt Regency Buffalo / Hotel and Conference Center","Hyatt Regency JFK Airport at Resorts World New York","Hyatt Regency Long Island","Hyatt Regency Rochester","Hyatt Regency Times Square","Hyatt Regency Cincinnati","Hyatt Regency Cleveland at The Arcade","Hyatt Regency Columbus","Hyatt Regency Tulsa Downtown","Hyatt Regency Portland at the Oregon Convention Center","Hyatt Regency Pittsburgh International Airport","Hyatt Regency Grand Reserve Puerto Rico","Hyatt Regency Greenville","Hyatt Regency Austin","Hyatt Regency Baytown – Houston","Hyatt Regency Conroe","Hyatt Regency Dallas","Hyatt Regency DFW International Airport","Hyatt Regency Frisco - Dallas","Hyatt Regency Hill Country Resort and Spa","Hyatt Regency Houston Downtown","Hyatt Regency Houston West","Hyatt Regency Houston/Galleria","Hyatt Regency Lost Pines Resort and Spa","Hyatt Regency San Antonio Riverwalk","Hyatt Regency Salt Lake City","Hyatt Regency Crystal City at Reagan National Airport","Hyatt Regency Dulles","Hyatt Regency Reston","Hyatt Regency Tysons Corner Center","Hyatt Regency Bellevue on Seattle's Eastside","Hyatt Regency Lake Washington at Seattle's Southport","Hyatt Regency Seattle","Hyatt Regency Green Bay","Hyatt Regency Milwaukee","Hyatt Regency Andares Guadalajara","Hyatt Regency Merida","Hyatt Regency Mexico City","Hyatt Regency Mexico City Insurgentes","Hyatt Regency San Luis Potosí","Hyatt Regency Villahermosa","Hyatt Regency Cartagena","Hyatt Regency Panama City","Hyatt Regency Trinidad and Tobago","Hyatt Grand Central New York","Grand Hyatt Amman","Grand Hyatt Bali","Grand Hyatt Jakarta","Grand Hyatt Manila","Grand Hyatt Singapore","Grand Hyatt Atlanta in Buckhead","Grand Hyatt Beijing","Grand Hyatt Dubai","Grand Hyatt Erawan Bangkok","Grand Hyatt Goa","Grand Hyatt Hong Kong","Grand Hyatt Kochi Bolgatty","Grand Hyatt Mumbai","Grand Hyatt San Antonio","Grand Hyatt San Francisco","Grand Hyatt Seoul","Grand Hyatt Shanghai","Grand Hyatt Taipei","Grand Hyatt Washington","Grand Hyatt Seattle","Grand Hyatt Deer Valley","Grand Hyatt Barcelona","Grand Hyatt Kuwait Residences","Grand Hyatt Indian Wells Resort & Villas","Grand Hyatt Scottsdale Resort","Grand Hyatt Vail","Grand Hyatt Nashville","Grand Hyatt Baha Mar","Grand Hyatt Playa del Carmen","Grand Hyatt Berlin","Manchester Grand Hyatt San Diego","Park Hyatt Abu Dhabi","Park Hyatt Auckland","Park Hyatt Bangkok","Park Hyatt Beaver Creek Resort and Spa","Park Hyatt Beijing","Park Hyatt Buenos Aires","Park Hyatt Busan","Park Hyatt Canberra","Park Hyatt Changbaishan","Park Hyatt Resort Aviara","Park Hyatt Chennai","Park Hyatt Chicago","Park Hyatt Doha","Park Hyatt Dubai","Park Hyatt Guangzhou","Park Hyatt Hangzhou","Park Hyatt Hyderabad","Park Hyatt Istanbul - Macka Palas","Park Hyatt Jakarta","Park Hyatt Jeddah","Park Hyatt Kyoto","Park Hyatt Maldives Hadahaa","Park Hyatt Melbourne","Park Hyatt Mendoza","Park Hyatt Milan","Park Hyatt New York","Park Hyatt Ningbo","Park Hyatt Niseko Hanazono","Park Hyatt Paris-Vendôme","Park Hyatt Saigon","Park Hyatt Sanya","Park Hyatt Seoul","Park Hyatt Shanghai","Park Hyatt Shenzhen","Park Hyatt Siem Reap","Park Hyatt St. Kitts Christophe Harbour","Park Hyatt Suzhou","Park Hyatt Sydney","Park Hyatt Tokyo","Park Hyatt Toronto","Park Hyatt Vienna","Park Hyatt Washington","Park Hyatt Zanzibar","Park Hyatt Zurich","Park Hyatt Marrakech","Park Hyatt London","Park Hyatt Johannesburg","Hyatt Ziva Cancun","Hyatt Ziva Los Cabos","Hyatt Ziva Puerto Vallarta","Hyatt Ziva Rose Hall","Hyatt Ziva Cap Cana","Hyatt Zilara Cancun","Hyatt Zilara Riviera Maya","Hyatt Zilara Cap Cana","Hyatt Zilara Rose Hall"],
-  'Accor': ["Sofitel Strasbourg Grande Île","Sofitel Berlin Gendarmenmarkt","Sofitel Vienna Stephansdom","Sofitel London St James","Sofitel Legend The Grand Amsterdam","Sofitel Minneapolis","Sofitel New York","Sofitel Chicago Water Tower","Sofitel Chicago Magnificent Mile","Sofitel Washington DC Lafayette Square","Sofitel Montreal Golden Mile","Sofitel Marrakech","Sofitel Dubai Downtown","Sofitel Dubai The Obelisk","Sofitel Jeddah Corniche","Sofitel Dubai The Palm Resort & Spa","Sofitel Taba Heights","Sofitel Legend Metropole Hanoi","Sofitel Tokyo","Sofitel Bangkok Sukhumvit","Sofitel So Bangkok","Sofitel So Singapore","Sofitel So Mauritius","Sofitel Bali Nusa Dua Beach Resort","Sofitel Buenos Aires","Sofitel Montevideo Casino Carrasco & Spa","Sofitel Mexico City Reforma","Sofitel Philippine Plaza Manila","Sofitel Frankfurt Opera","Sofitel Macau At Ponte 16","Sofitel Sydney Wentworth","Raffles Hotel Singapore","Raffles Europejski Warsaw","Raffles Grand Hotel d'Angkor","Raffles Hotel Le Royal","Raffles Istanbul","Raffles Makkah Palace","Raffles Praslin Seychelles","Raffles Dubai","Le Royal Monceau Raffles Paris","Raffles Makati","Raffles Hainan","Raffles Jakarta","Raffles Maldives Meradhoo","Raffles Shenzhen","Raffles Bali","Raffles Udaipur","Raffles The Palm Dubai","Raffles Doha","Raffles Boston Back Bay","Raffles London at The OWO","Raffles Al Areen Palace","Raffles at Galaxy Macau","Raffles Jaipur","Raffles Sentosa Resort & Spa","Fairmont Banff Springs","Fairmont Chateau Lake Louise","Fairmont Château Frontenac","Fairmont Château Laurier","Fairmont Le Château Montebello","Fairmont Empress","Fairmont Vancouver Pacific Rim","Fairmont Hotel Vancouver","Fairmont Jasper Park Lodge","Fairmont Hotel Macdonald","Fairmont Palliser","Fairmont Royal York","Fairmont The Queen Elizabeth","Fairmont Winnipeg","Fairmont Le Manoir Richelieu","Fairmont Copley Plaza","Fairmont Century Plaza","Fairmont Miramar Hotel & Bungalows","Fairmont Olympic Hotel","Fairmont Orchid","Fairmont San Francisco","The Fairmont Washington, D.C.","Fairmont Beijing","Fairmont Hotel Vier Jahreszeiten","Fairmont Le Montreux Palace","Fairmont Monte Carlo","Fairmont Nile City","Fairmont The Norfolk Hotel","Fairmont The Palm","Fairmont Peace Hotel","Fairmont Royal Pavilion","Fairmont Singapore","Fairmont St Andrews","Fairmont Makkah Clock Royal Tower","Fairmont Hamilton Princess & Beach Club","Fairmont Baku Flame Towers","Majapahit Hotel Surabaya - MGallery Collection","Hotel de l'Opera Hanoi - MGallery","21c Museum Hotel Louisville","21c Museum Hotel Cincinnati","21c Museum Hotel Bentonville","21c Museum Hotel Durham","21c Museum Hotel Lexington","21c Museum Hotel Chicago","21c Museum Hotel St. Louis","21c Museum Hotel Oklahoma City","21c Museum Hotel Nashville","21c Museum Hotel Kansas City","Pullman Sydney Penrith","Pullman Dubai Mall of the Emirates","Pullman Dubai Jumeirah Lakes Towers","Pullman London St Pancras","Pullman Shanghai South","Pullman Miami Airport","Pullman Tokyo Tamachi","Pullman Brussels Centre Midi","Pullman Bucharest World Trade Center","Pullman Paris Montparnasse","Pullman Paris Tour Eiffel","Pullman Jakarta Indonesia Thamrin CBD","Pullman Shanghai Skyway","Pullman Manila at Primex Tower","Swissôtel Al Ghurair Dubai","Swissôtel Al Maqam Makkah","Swissôtel Al Murooj Dubai","Swissôtel Living Jeddah","Swissôtel Makkah","Swissôtel Sharm El Sheikh","Swissôtel Amsterdam","Swissôtel Büyük Efes İzmir","Swissôtel Kursaal Bern","Swissôtel Krasnye Holmy Moscow","Swissôtel Poiana Brasov","Swissôtel Tallinn","Swissôtel Tbilisi","Swissôtel The Bosphorus Istanbul","Swissôtel Living Bodrum","Swissôtel Resort & Spa Çeşme","Swissôtel Resort Bodrum Beach","Swissôtel Resort Kolašin","Swissôtel Uludağ Bursa","Swissôtel Beijing Hong Kong Macau Center","Swissôtel Clark","Swissôtel Foshan Guangdong","Swissôtel Grand Shanghai","Swissôtel Jakarta PIK Avenue","Swissôtel Nankai Osaka","Swissôtel Nusantara","Swissôtel Resort Changbaishan","Swissôtel Shenyang","Swissôtel Sydney","Swissôtel The Stamford Singapore","Swissôtel Wellness Resort Alatau Almaty","Swissôtel Living Jakarta Mega Kuningan","Swissôtel Chicago","Swissôtel Lima","Swissôtel Quito","Swissôtel Santa Cruz de la Sierra","Swissôtel Resort Sochi Kamelia","Novotel London Canary Wharf","Novotel Century Hong Kong","Novotel Citygate Hong Kong","Novotel Manila Araneta City","Novotel Nathan Road Kowloon Hong Kong","Novotel Saint Petersburg Centre","Novotel Sarajevo Bristol","Novotel Canberra","Novotel Southampton","Novotel Madrid Center","Novotel Miami Brickell","Novotel Ambassador Seoul Dongdaemun","Novotel Paris Vaugirard","Novotel Warszawa Centrum","Mercure Liverpool Atlantic Tower Hotel","Mercure Hotel Potsdam City","Mercure Warszawa Centrum","Grand Mercure Mei Jue","Mövenpick Hotel Zurich Airport","Mövenpick Hotel Zürich Regensdorf","Mövenpick Hotel Jolie Ville Cairo","Mövenpick Ambassador Hotel Accra","Mövenpick Hotel Madinah","Mövenpick Dead Sea Spa and Resort","Mövenpick Hotel and Convention Center KLIA","Mövenpick Hotel Karachi","Mövenpick Resort Petra","Mövenpick BDMS Wellness Resort Bangkok","Ibis Bordeaux","Ibis City West Munich","Ibis Moscow Paveletskaya","Ibis Bandung","Ibis Brisbane Airport","Ibis Berlin Brandenburgische Strasse"]
+  'Accor': ["Sofitel Strasbourg Grande Île","Sofitel Berlin Gendarmenmarkt","Sofitel Vienna Stephansdom","Sofitel London St James","Sofitel Legend The Grand Amsterdam","Sofitel Minneapolis","Sofitel New York","Sofitel Chicago Water Tower","Sofitel Chicago Magnificent Mile","Sofitel Washington DC Lafayette Square","Sofitel Montreal Golden Mile","Sofitel Marrakech","Sofitel Dubai Downtown","Sofitel Dubai The Obelisk","Sofitel Jeddah Corniche","Sofitel Dubai The Palm Resort & Spa","Sofitel Taba Heights","Sofitel Legend Metropole Hanoi","Sofitel Tokyo","Sofitel Bangkok Sukhumvit","Sofitel So Bangkok","Sofitel So Singapore","Sofitel So Mauritius","Sofitel Bali Nusa Dua Beach Resort","Sofitel Buenos Aires","Sofitel Montevideo Casino Carrasco & Spa","Sofitel Mexico City Reforma","Sofitel Philippine Plaza Manila","Sofitel Frankfurt Opera","Sofitel Macau At Ponte 16","Sofitel Sydney Wentworth","Raffles Hotel Singapore","Raffles Europejski Warsaw","Raffles Grand Hotel d'Angkor","Raffles Hotel Le Royal","Raffles Istanbul","Raffles Makkah Palace","Raffles Praslin Seychelles","Raffles Dubai","Le Royal Monceau Raffles Paris","Raffles Makati","Raffles Hainan","Raffles Jakarta","Raffles Maldives Meradhoo","Raffles Shenzhen","Raffles Bali","Raffles Udaipur","Raffles The Palm Dubai","Raffles Doha","Raffles Boston Back Bay","Raffles London at The OWO","Raffles Al Areen Palace","Raffles at Galaxy Macau","Raffles Jaipur","Raffles Sentosa Resort & Spa","Fairmont Banff Springs","Fairmont Chateau Lake Louise","Fairmont Château Frontenac","Fairmont Château Laurier","Fairmont Le Château Montebello","Fairmont Empress","Fairmont Vancouver Pacific Rim","Fairmont Hotel Vancouver","Fairmont Jasper Park Lodge","Fairmont Hotel Macdonald","Fairmont Palliser","Fairmont Royal York","Fairmont The Queen Elizabeth","Fairmont Winnipeg","Fairmont Le Manoir Richelieu","Fairmont Copley Plaza","Fairmont Century Plaza","Fairmont Miramar Hotel & Bungalows","Fairmont Olympic Hotel","Fairmont Orchid","Fairmont San Francisco","The Fairmont Washington, D.C.","Fairmont Beijing","Fairmont Hotel Vier Jahreszeiten","Fairmont Le Montreux Palace","Fairmont Monte Carlo","Fairmont Nile City","Fairmont The Norfolk Hotel","Fairmont The Palm","Fairmont Peace Hotel","Fairmont Royal Pavilion","Fairmont Singapore","Fairmont St Andrews","Fairmont Makkah Clock Royal Tower","Fairmont Hamilton Princess & Beach Club","Fairmont Baku Flame Towers","Majapahit Hotel Surabaya - MGallery Collection","Hotel de l'Opera Hanoi - MGallery","21c Museum Hotel Louisville","21c Museum Hotel Cincinnati","21c Museum Hotel Bentonville","21c Museum Hotel Durham","21c Museum Hotel Lexington","21c Museum Hotel Chicago","21c Museum Hotel St. Louis","21c Museum Hotel Oklahoma City","21c Museum Hotel Nashville","21c Museum Hotel Kansas City","Pullman Sydney Penrith","Pullman Dubai Mall of the Emirates","Pullman Dubai Jumeirah Lakes Towers","Pullman London St Pancras","Pullman Shanghai South","Pullman Miami Airport","Pullman Tokyo Tamachi","Pullman Brussels Centre Midi","Pullman Bucharest World Trade Center","Pullman Paris Montparnasse","Pullman Paris Tour Eiffel","Pullman Jakarta Indonesia Thamrin CBD","Pullman Shanghai Skyway","Pullman Manila at Primex Tower","Swissôtel Al Ghurair Dubai","Swissôtel Al Maqam Makkah","Swissôtel Al Murooj Dubai","Swissôtel Living Jeddah","Swissôtel Makkah","Swissôtel Sharm El Sheikh","Swissôtel Amsterdam","Swissôtel Büyük Efes İzmir","Swissôtel Kursaal Bern","Swissôtel Krasnye Holmy Moscow","Swissôtel Poiana Brasov","Swissôtel Tallinn","Swissôtel Tbilisi","Swissôtel The Bosphorus Istanbul","Swissôtel Living Bodrum","Swissôtel Resort & Spa Çeşme","Swissôtel Resort Bodrum Beach","Swissôtel Resort Kolašin","Swissôtel Uludağ Bursa","Swissôtel Beijing Hong Kong Macau Center","Swissôtel Clark","Swissôtel Foshan Guangdong","Swissôtel Grand Shanghai","Swissôtel Jakarta PIK Avenue","Swissôtel Nankai Osaka","Swissôtel Nusantara","Swissôtel Resort Changbaishan","Swissôtel Shenyang","Swissôtel Sydney","Swissôtel The Stamford Singapore","Swissôtel Wellness Resort Alatau Almaty","Swissôtel Living Jakarta Mega Kuningan","Swissôtel Chicago","Swissôtel Lima","Swissôtel Quito","Swissôtel Santa Cruz de la Sierra","Swissôtel Resort Sochi Kamelia","Novotel London Canary Wharf","Novotel Century Hong Kong","Novotel Citygate Hong Kong","Novotel Manila Araneta City","Novotel Nathan Road Kowloon Hong Kong","Novotel Saint Petersburg Centre","Novotel Sarajevo Bristol","Novotel Canberra","Novotel Southampton","Novotel Madrid Center","Novotel Miami Brickell","Novotel Ambassador Seoul Dongdaemun","Novotel Paris Vaugirard","Novotel Warszawa Centrum","Mercure Liverpool Atlantic Tower Hotel","Mercure Hotel Potsdam City","Mercure Warszawa Centrum","Grand Mercure Mei Jue","Mövenpick Hotel Zurich Airport","Mövenpick Hotel Zürich Regensdorf","Mövenpick Hotel Jolie Ville Cairo","Mövenpick Ambassador Hotel Accra","Mövenpick Hotel Madinah","Mövenpick Dead Sea Spa and Resort","Mövenpick Hotel and Convention Center KLIA","Mövenpick Hotel Karachi","Mövenpick Resort Petra","Mövenpick BDMS Wellness Resort Bangkok","Ibis Bordeaux","Ibis City West Munich","Ibis Moscow Paveletskaya","Ibis Bandung","Ibis Brisbane Airport","Ibis Berlin Brandenburgische Strasse"],
+  // Universal doesn't operate hotels at Universal Studios Hollywood — only
+  // at Universal Orlando Resort. Stella Nova/Terra Luna opened alongside
+  // Epic Universe in 2025 — newer additions, not independently confirmed
+  // the way the long-standing properties above them are.
+  'Universal': ["Loews Portofino Bay Hotel","Hard Rock Hotel at Universal Orlando","Loews Royal Pacific Resort","Loews Sapphire Falls Resort","Universal's Aventura Hotel","Universal's Cabana Bay Beach Resort","Universal's Endless Summer Resort – Surfside Inn and Suites","Universal's Endless Summer Resort – Dockside Inn and Suites","Universal Stella Nova Resort","Universal Terra Luna Resort"]
 };
 const CAR_RENTALS = ['Hertz','Avis','Enterprise','National','Budget','Alamo','Sixt','Europcar','Thrifty','Dollar'];
 const CREDIT_CARDS = ['Chase Sapphire Preferred','Chase Sapphire Reserve','Chase Ink Business Preferred','Amex Platinum','Amex Gold','Amex Business Platinum','Amex Business Gold','Capital One Venture X','Citi Premier','Citi Prestige','Bilt Mastercard'];
@@ -1855,6 +1938,18 @@ function updateSyncStatusDisplay(){
 // waiting on the write completing even back when it was a plain
 // synchronous JSON.stringify.
 var _dbSaveChain = Promise.resolve();
+// Count (not a boolean — saveDB() calls can overlap while an earlier one
+// is still encrypting, and a boolean reset by whichever settles first
+// would clobber a still-pending later call) of queued encrypt+writes not
+// yet actually persisted. Lets beforeunload (below) warn if the page is
+// about to close/reload with a save still pending — that write racing a
+// reload and losing was exactly how a "restore, then refresh to confirm"
+// step re-surfaced already-fixed old data: the restore's own saveDB()
+// call is just as fire-and-forget as every other call site, so a refresh
+// fired the instant the success toast appeared could beat the encrypted
+// write to localStorage, leaving the OLD ciphertext in place for the
+// reload to read back.
+var _dbSavesInFlight = 0;
 // Set by loadDB() when localStorage held real (non-empty) data that
 // couldn't be decrypted with the current key — wrong password derivation,
 // a corrupted blob, whatever the cause. Left true, the very next saveDB()
@@ -1900,68 +1995,174 @@ var LAST_GOOD_COUNTS_KEY = 'mm_last_good_counts';
 function recordGoodDbCounts(){
   var last;
   try{ last = JSON.parse(localStorage.getItem(LAST_GOOD_COUNTS_KEY)||'null'); }catch(e){ last = null; }
-  var current = {clients:db.clients.length, trips:db.trips.length};
-  // Never let the recorded high-water mark regress — a save where either
+  var current = {clients:db.clients.length, trips:db.trips.length, vendors:db.vendors.length};
+  // Never let the recorded high-water mark regress — a save where any
   // count just dropped versus what's already on record reflects a wipe in
   // progress (or, per the Sept 4 incident, a wipe already partially masked
   // by a refill), not genuine new data, and must not be allowed to
   // overwrite the mark that's supposed to catch exactly that.
-  if(last && (current.trips<last.trips || current.clients<last.clients)) return;
-  if(current.clients===0 && current.trips===0) return; // nothing to raise the mark with
+  if(last && (current.trips<last.trips || current.clients<last.clients || current.vendors<last.vendors)) return;
+  if(current.clients===0 && current.trips===0 && current.vendors===0) return; // nothing to raise the mark with
   try{ localStorage.setItem(LAST_GOOD_COUNTS_KEY, JSON.stringify(current)); }catch(e){}
+}
+// A count dropping to exactly zero isn't the only shape a wipe can take —
+// the Sept 8 incident had trips fall from ~154 to 9 and suppliers from a
+// couple dozen to 4 while clients (148, briefly, before settling at their
+// real 195) stayed populated enough to look plausible at a glance, sailing
+// straight past a zero-only check with nothing ever hitting exactly zero.
+// Flagged only once the prior good count is large enough that a legitimate
+// manual bulk-delete wouldn't realistically cross this ratio by accident —
+// deleting more than half of 4-or-fewer records is a perfectly normal
+// afternoon of cleanup, not a wipe.
+var WIPE_DROP_RATIO = 0.5;
+var WIPE_DROP_MIN = 5;
+function countLooksWiped(current, prior){
+  if(prior==null) return false;
+  if(current===0 && prior>0) return true;
+  return prior>=WIPE_DROP_MIN && current < prior*WIPE_DROP_RATIO;
 }
 function dbAppearsWiped(){
   try{
     var last = JSON.parse(localStorage.getItem(LAST_GOOD_COUNTS_KEY)||'null');
     if(!last) return false;
-    if(db.trips.length===0 && last.trips>0) return true;
-    if(db.clients.length===0 && last.clients>0) return true;
-    return false;
+    return countLooksWiped(db.trips.length,last.trips) || countLooksWiped(db.clients.length,last.clients) || countLooksWiped(db.vendors.length,last.vendors);
   }catch(e){ return false; }
 }
 // Describes specifically which field(s) look wiped, for the warning
 // messages below — a trips-only wipe (Sept 4: clients got refilled with
 // synthetic subscriber records, masking a clients-count check) reads very
-// differently from an everything-empty wipe (Sept 1/2), and the message
-// should say which actually happened rather than always claiming both.
+// differently from an everything-empty wipe (Sept 1/2) or a big-but-not-
+// zero drop (Sept 8), so the message says which actually happened and by
+// how much rather than always claiming a flat "0 clients and 0 trips".
 function dbWipedDescription(){
-  var clientsWiped = db.clients.length===0;
-  var tripsWiped = db.trips.length===0;
-  if(clientsWiped && tripsWiped) return '0 clients and 0 trips';
-  if(tripsWiped) return '0 trips (with '+db.clients.length+' client'+(db.clients.length!==1?'s':'')+' — possibly refilled by an auto-import after a wipe)';
-  return '0 clients (with '+db.trips.length+' trip'+(db.trips.length!==1?'s':'')+')';
+  var last;
+  try{ last = JSON.parse(localStorage.getItem(LAST_GOOD_COUNTS_KEY)||'null'); }catch(e){ last = null; }
+  var parts = [];
+  if(countLooksWiped(db.clients.length,last&&last.clients)) parts.push(db.clients.length+' client'+(db.clients.length!==1?'s':'')+' (had '+last.clients+')');
+  if(countLooksWiped(db.trips.length,last&&last.trips)) parts.push(db.trips.length+' trip'+(db.trips.length!==1?'s':'')+' (had '+last.trips+')');
+  if(countLooksWiped(db.vendors.length,last&&last.vendors)) parts.push(db.vendors.length+' supplier'+(db.vendors.length!==1?'s':'')+' (had '+last.vendors+')');
+  return parts.length ? parts.join(', ') : (db.clients.length+' clients and '+db.trips.length+' trips');
 }
+// Throttles the user-facing wipe-warning toast below (saveDB() can fire on
+// nearly every keystroke, and once db looks wiped it stays looking wiped
+// until someone actually restores — without this a stuck session would
+// spam the same toast over and over). The debugLog line is NOT throttled —
+// each one carries its own stack trace, and losing that trail is exactly
+// what made a prior incident hard to root-cause after the fact.
+var _lastWipeWarningAt = 0;
+var _lastSaveFailWarningAt = 0;
 function saveDB(){
   if(_dbDecryptFailed){
     console.error('[CRM] Refusing to save — this device could not decrypt its existing data, and saving now would overwrite it before you can recover it. Use Restore from Google Drive, Secure Sync: Load, or the local Restore (JSON file import) to recover — any of those will clear this and allow saving again.');
-    return;
+    return Promise.resolve(false);
+  }
+  // dbAppearsWiped() blocking driveBackup() only protects the *remote*
+  // Drive copy — this is the only place LOCAL data (what every reload
+  // actually reads back) gets persisted at all, and it had no wipe
+  // protection whatsoever. Deliberately not blocking the save itself:
+  // we can't reliably tell an actual bug from a legitimate bulk delete
+  // here, and refusing every future save until some explicit "recovery"
+  // action would risk losing real work done afterward. Instead, a save
+  // this suspicious gets a loud, hard-to-miss warning — with a stack
+  // trace pointing at the actual call site — instead of silently
+  // vanishing into the Debug Log the way a prior incident did.
+  if(dbAppearsWiped()){
+    var wipeMsg = dbWipedDescription();
+    var wipeStack = (new Error('saveDB() called with suspiciously low counts')).stack||'';
+    debugLog('WARNING: saveDB() about to persist '+wipeMsg+' — '+wipeStack.split('\n').slice(0,6).join(' | '));
+    if(Date.now()-_lastWipeWarningAt > 60000){
+      _lastWipeWarningAt = Date.now();
+      toast('Warning: local data just dropped to '+wipeMsg+' — if this wasn\'t intentional, stop editing and use Restore before more changes get saved over it','err');
+    }
   }
   try{
     var json = JSON.stringify(db);
     recordGoodDbCounts();
+    _dbSavesInFlight++;
+    var savingLbl=document.getElementById('sync-lbl');
+    if(savingLbl && !_driveBackupStale){ savingLbl.innerHTML='&#9679; Saving...'; savingLbl.style.color=''; }
+    // The write itself used to be assumed to succeed the moment it was
+    // kicked off — the "Saved HH:MM" label flipped, and every awaiting
+    // caller (see importJSON()/driveRestore()/secureSyncRestore()) treated
+    // a resolved promise as proof the data was safely persisted. It isn't:
+    // a full localStorage (QuotaExceededError is the realistic case here —
+    // restoring a bigger backup than what's currently stored is exactly
+    // the moment this is most likely to happen) or any other encrypt/write
+    // failure was being silently swallowed by the .catch() below, so
+    // `await saveDB()` could resolve clean while nothing actually reached
+    // localStorage — the in-memory db looked right until the next reload
+    // silently brought back whatever was there before. Now the chain
+    // resolves to true/false so a caller that cares can tell the
+    // difference, and a failure is loud (Debug Log + toast + a persistent
+    // "Save failed" status) instead of a console.error nobody sees.
     _dbSaveChain = _dbSaveChain.then(function(){
       return encryptDbJson(json);
     }).then(function(encoded){
-      localStorage.setItem(LS_KEY, encoded);
-    }).catch(function(e){
-      console.error('[CRM] Encrypted save failed:', e);
-    });
-    var lbl=document.getElementById('sync-lbl');
-    if(lbl){
-      if(_driveBackupStale){
-        updateSyncStatusDisplay();
-      }else{
-        var now=new Date();
-        var timeStr=now.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
-        lbl.innerHTML='&#9679; Saved '+timeStr;
-        lbl.style.color='#059669';
-        clearTimeout(window._syncLblTimer);
-        window._syncLblTimer=setTimeout(function(){
-          if(lbl) lbl.style.color='';
-        },2000);
+      try{
+        localStorage.setItem(LS_KEY, encoded);
+      }catch(e){
+        if(e && e.name==='QuotaExceededError'){
+          // One automatic recovery attempt before giving up and reporting
+          // failure: the debug log is pure diagnostic history (capped at
+          // 1000 entries, but still real bytes) — safe to sacrifice
+          // entirely to free room for the actual data this write exists to
+          // protect, since losing debug history is nowhere near as bad as
+          // losing this save. If it still doesn't fit after that, this
+          // rethrows and falls through to the same failure reporting below.
+          localStorage.removeItem('mm_debug_log');
+          localStorage.setItem(LS_KEY, encoded);
+          debugLog('saveDB(): local storage was full — cleared debug log history to free room, retried, succeeded');
+        } else {
+          throw e;
+        }
       }
-    }
-  }catch(e){}
+      return true;
+    }).catch(function(e){
+      var reason = (e && e.name==='QuotaExceededError') ? 'local storage is full' : (e && e.message || String(e));
+      console.error('[CRM] Encrypted save failed:', e);
+      debugLog('ERROR: saveDB() could not persist this save — '+reason+'. This change exists only in memory and will be LOST on reload/close until this is fixed.');
+      if(Date.now()-_lastSaveFailWarningAt > 60000){
+        _lastSaveFailWarningAt = Date.now();
+        toast('Save failed ('+reason+') — this change is NOT saved to this device. Do not reload or close this tab — click File > Backup now to download a safe copy before doing anything else.','err');
+      }
+      return false;
+    }).then(function(ok){
+      _dbSavesInFlight--;
+      var lbl=document.getElementById('sync-lbl');
+      if(lbl){
+        if(!ok){
+          lbl.innerHTML='&#9679; Save failed';
+          lbl.style.color='#dc2626';
+        }else if(_driveBackupStale){
+          updateSyncStatusDisplay();
+        }else{
+          var now=new Date();
+          var timeStr=now.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+          lbl.innerHTML='&#9679; Saved '+timeStr;
+          lbl.style.color='#059669';
+          clearTimeout(window._syncLblTimer);
+          window._syncLblTimer=setTimeout(function(){
+            if(lbl) lbl.style.color='';
+          },2000);
+        }
+      }
+      return ok;
+    });
+    // Every one of this function's 100+ existing call sites ignores the
+    // return value (saveDB() was always fire-and-forget by design, see
+    // _dbSaveChain's own comment above) — returning the chain here changes
+    // nothing for them. It only matters to a caller that explicitly
+    // `await`s it, which a handful of high-stakes flows (restoring from a
+    // backup) now do specifically so they can't report success before the
+    // encrypted write has actually landed in localStorage, and can now also
+    // tell a real failure apart from success.
+    return _dbSaveChain;
+  }catch(e){
+    console.error('[CRM] saveDB() failed before it could persist:', e);
+    debugLog('ERROR: saveDB() threw before persisting — '+(e&&e.message||e)+'. This change exists only in memory.');
+    toast('Save failed unexpectedly — see Debug Log','err');
+    return Promise.resolve(false);
+  }
 }
 async function loadDB(){
   var stored = localStorage.getItem(LS_KEY);
@@ -2159,6 +2360,21 @@ async function loadDB(){
       saveDB();
       console.log('[CRM] Added Accor as a Hotel supplier with '+accorProps.length+' properties');
     }
+    // One-time add: Disney and Universal as Hotel suppliers with their
+    // official on-site properties — same never-recreate-if-deleted pattern
+    // as Accor above (safe to run repeatedly).
+    if(!db.vendors.some(function(v){return v.name==='Disney';})){
+      var disneyProps = (HOTEL_PROPERTY_SEEDS['Disney']||[]).map(function(name,i){ return {id:'HP'+(i+1), name:name}; });
+      db.vendors.push({id:newId('V',db.vendors), name:'Disney', type:'Supplier', category:'Hotel', notesLog:[], properties:disneyProps});
+      saveDB();
+      console.log('[CRM] Added Disney as a Hotel supplier with '+disneyProps.length+' properties');
+    }
+    if(!db.vendors.some(function(v){return v.name==='Universal';})){
+      var universalProps = (HOTEL_PROPERTY_SEEDS['Universal']||[]).map(function(name,i){ return {id:'HP'+(i+1), name:name}; });
+      db.vendors.push({id:newId('V',db.vendors), name:'Universal', type:'Supplier', category:'Hotel', notesLog:[], properties:universalProps});
+      saveDB();
+      console.log('[CRM] Added Universal as a Hotel supplier with '+universalProps.length+' properties');
+    }
     // One-time backfill: "Fairmont Vancouver Pacific Rim" was missing from
     // the initial Accor research pass — appends it to any Accor supplier
     // that doesn't already have it, without touching the rest of the list
@@ -2194,6 +2410,23 @@ async function loadDB(){
         saveDB();
         console.log('[CRM] Added missing "St. Regis Rome" to Marriott properties');
       }
+    });
+    // One-time backfill: "Walt Disney World Swan" and "Walt Disney World
+    // Dolphin" requested as Disney properties — Marriott-operated but on
+    // Disney property at Walt Disney World and bookable alongside the
+    // on-site Disney-operated resorts, so filed under the single "Disney"
+    // Hotel supplier like the rest of its list rather than as a separate
+    // supplier. Appends whichever of the two a Disney supplier doesn't
+    // already have, without touching the rest of the list (safe to run
+    // repeatedly).
+    ['Walt Disney World Swan','Walt Disney World Dolphin'].forEach(function(propName){
+      db.vendors.forEach(function(v){
+        if(v.name==='Disney' && v.properties && !v.properties.some(function(p){return p.name===propName;})){
+          v.properties.push({id:'HP'+(v.properties.length+1), name:propName});
+          saveDB();
+          console.log('[CRM] Added missing "'+propName+'" to Disney properties');
+        }
+      });
     });
     // One-time fill: each Hotel supplier's dedicated travel-agent booking
     // portal (not the general consumer site) — only fills a blank Website
@@ -2517,6 +2750,12 @@ async function fetchMailbox(token,lastSyncDate){
       }
       all.push.apply(all,(d.value||[]));
       next = d['@odata.nextLink']||null;
+      // A full 5-year first-sync (or one after "Reset Outlook Login", which
+      // also wipes the last-sync watermark) can page through thousands of
+      // messages with nothing else logged in between — without this, the
+      // Debug Log goes quiet for however long that takes and a sync that's
+      // genuinely working looks identical to one that's actually hung.
+      debugLog(label+': fetched page '+pages+' ('+all.length+' message'+(all.length!==1?'s':'')+' so far)'+(next?'...':' — done'));
     }
     if(next){
       debugLog(label+': stopped after '+MAX_PAGES+' pages ('+all.length+' messages) — there may be more');
@@ -4161,11 +4400,24 @@ async function driveRestore(){
       instrumentDbWipeTracing();
       db.clients.forEach(function(c){ if(c.name && !c.name.includes(',')) c.name=toLastFirst(c.name); });
       _dbDecryptFailed = false; // a real recovery just happened — safe to save again
-      saveDB();render();
-      localStorage.setItem('mm_last_known_remote_modified', existing.modifiedTime);
-      const date=new Date(existing.modifiedTime).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
-      debugLog('Restore: success — '+db.clients.length+' clients, '+db.trips.length+' trips');
-      toast('Restored from Drive ('+date+') — '+db.clients.length+' clients, '+db.trips.length+' trips','ok');
+      // Awaited — see importJSON()'s matching comment. A restore is exactly
+      // the moment someone is most likely to reload immediately after
+      // seeing success, and saveDB()'s encrypted write is otherwise fire-
+      // and-forget: a reload racing ahead of it would silently bring back
+      // whatever was in localStorage before this restore. The boolean also
+      // catches the write itself failing (e.g. a full localStorage), which
+      // used to resolve just as cleanly as a real success.
+      var saved = await saveDB();
+      render();
+      if(saved===false){
+        debugLog('Restore: saveDB() failed — restored data is only in memory, NOT persisted to this device');
+        toast('Restored in memory, but saving to this device FAILED — do NOT reload or close this tab yet. Click File > Backup now, then check the Debug Log.','err');
+      }else{
+        localStorage.setItem('mm_last_known_remote_modified', existing.modifiedTime);
+        const date=new Date(existing.modifiedTime).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+        debugLog('Restore: success — '+db.clients.length+' clients, '+db.trips.length+' trips');
+        toast('Restored from Drive ('+date+') — '+db.clients.length+' clients, '+db.trips.length+' trips','ok');
+      }
     }else{
       debugLog('Restore: JSON parsed but missing clients/trips arrays. Keys: '+Object.keys(d||{}).join(','));
       toast('Backup file appears corrupted','err');
@@ -4286,9 +4538,18 @@ async function secureSyncRestore(){
       instrumentDbWipeTracing();
       db.clients.forEach(function(c){ if(c.name && !c.name.includes(',')) c.name=toLastFirst(c.name); });
       _dbDecryptFailed = false; // a real recovery just happened — safe to save again
-      saveDB();render();
-      debugLog('Secure Sync: restore success — '+db.clients.length+' clients, '+db.trips.length+' trips');
-      toast('Secure Sync loaded — '+db.clients.length+' clients, '+db.trips.length+' trips','ok');
+      // Awaited — see importJSON()/driveRestore()'s matching comment. The
+      // boolean also catches the write itself failing (e.g. a full
+      // localStorage), which used to resolve just as cleanly as success.
+      var saved = await saveDB();
+      render();
+      if(saved===false){
+        debugLog('Secure Sync: saveDB() failed — restored data is only in memory, NOT persisted to this device');
+        toast('Restored in memory, but saving to this device FAILED — do NOT reload or close this tab yet. Click File > Backup now, then check the Debug Log.','err');
+      }else{
+        debugLog('Secure Sync: restore success — '+db.clients.length+' clients, '+db.trips.length+' trips');
+        toast('Secure Sync loaded — '+db.clients.length+' clients, '+db.trips.length+' trips','ok');
+      }
     }else{
       debugLog('Secure Sync: JSON missing clients/trips arrays');
       toast('Backup file appears corrupted','err');
@@ -5382,10 +5643,32 @@ function importJSON(){
   i.onchange=function(e){
     const f=e.target.files[0];if(!f)return;
     const r=new FileReader();
-    r.onload=function(ev){
+    r.onload=async function(ev){
       try{
         const d=JSON.parse(ev.target.result);
-        if(Array.isArray(d.clients)&&Array.isArray(d.trips)){db=d;instrumentDbWipeTracing();if(!Array.isArray(db.vendors))db.vendors=[];if(!Array.isArray(db.bizVendors))db.bizVendors=[];if(!Array.isArray(db.planner))db.planner=[];if(!Array.isArray(db.bookmarks))db.bookmarks=[];if(!Array.isArray(db.savedReports))db.savedReports=[];if(!Array.isArray(db.groups))db.groups=[];if(!Array.isArray(db.marketingPlan))db.marketingPlan=[];if(!Array.isArray(db.pendingImportMatches))db.pendingImportMatches=[];if(!Array.isArray(db.jetpackRemovalQueue))db.jetpackRemovalQueue=[];if(!Array.isArray(db.payments))db.payments=[];(db.clients||[]).forEach(function(c){ if(c.name && !c.name.includes(',')) c.name=toLastFirst(c.name); });_dbDecryptFailed=false;saveDB();toast('Data imported');render();}
+        if(Array.isArray(d.clients)&&Array.isArray(d.trips)){
+          debugLog('Local restore: parsed backup file — '+d.clients.length+' clients, '+d.trips.length+' trips');
+          db=d;instrumentDbWipeTracing();if(!Array.isArray(db.vendors))db.vendors=[];if(!Array.isArray(db.bizVendors))db.bizVendors=[];if(!Array.isArray(db.planner))db.planner=[];if(!Array.isArray(db.bookmarks))db.bookmarks=[];if(!Array.isArray(db.savedReports))db.savedReports=[];if(!Array.isArray(db.groups))db.groups=[];if(!Array.isArray(db.marketingPlan))db.marketingPlan=[];if(!Array.isArray(db.pendingImportMatches))db.pendingImportMatches=[];if(!Array.isArray(db.jetpackRemovalQueue))db.jetpackRemovalQueue=[];if(!Array.isArray(db.payments))db.payments=[];(db.clients||[]).forEach(function(c){ if(c.name && !c.name.includes(',')) c.name=toLastFirst(c.name); });_dbDecryptFailed=false;
+          // Awaited specifically because this is a restore: the natural next
+          // move after seeing "Data imported" is to reload to confirm it
+          // stuck, and saveDB()'s encrypted write is otherwise fire-and-
+          // forget — a reload fired before that write actually reaches
+          // localStorage would silently bring back whatever was there
+          // before the restore, with no error at all. The boolean it now
+          // resolves to also catches the case where the write itself failed
+          // (e.g. a full localStorage) — awaiting alone isn't enough, since
+          // a failed write used to resolve just as cleanly as a successful
+          // one.
+          var saved = await saveDB();
+          render();
+          if(saved===false){
+            debugLog('Local restore: saveDB() failed — restored data is only in memory, NOT persisted to this device');
+            toast('Restored in memory, but saving to this device FAILED — do NOT reload or close this tab. Click File > Backup now, then check the Debug Log.','err');
+          }else{
+            debugLog('Local restore: success — '+db.clients.length+' clients, '+db.trips.length+' trips');
+            toast('Data imported');
+          }
+        }
         else toast('Invalid backup file','err');
       }catch(ex){toast('Could not read file','err');}
     };r.readAsText(f);
@@ -6632,9 +6915,13 @@ function itineraryEmailBodyHtml(opts){
       itineraryDetailRow('Confirmation Number', t.confirmationNumber);
     return itineraryDetailBox(tourEntries.length>1 ? 'Tour '+(i+1)+' Details' : 'Tour Details', rows);
   }).join('');
-  var themeParkRows = itineraryDetailRow('Park', opts.themePark) +
-    itineraryDetailRow('Ticket Type', opts.themeParkTicketType) +
-    itineraryDetailRow('Confirmation Number', opts.themeParkConfirmationNumber);
+  var themeParkEntries = opts.themeParkEntries || [];
+  var themeParkBoxesHtml = themeParkEntries.map(function(p, i){
+    var rows = itineraryDetailRow('Park', p.park) +
+      itineraryDetailRow('Ticket Type', p.ticketType) +
+      itineraryDetailRow('Confirmation Number', p.confirmationNumber);
+    return itineraryDetailBox(themeParkEntries.length>1 ? 'Theme Park '+(i+1)+' Details' : 'Theme Park Details', rows);
+  }).join('');
   var trainRows = itineraryDetailRow('Route', opts.trainDepartureCity&&opts.trainArrivalCity ? (opts.trainDepartureCity+' → '+opts.trainArrivalCity) : '') +
     itineraryDetailRow('Departure Date', opts.trainDepartureDate) +
     itineraryDetailRow('Return Date', opts.trainReturnDate) +
@@ -6703,7 +6990,7 @@ itineraryDetailBox('Cruise Details', cruiseRows, CRUISE_LOGOS[opts.cruiseLine])+
 itineraryDetailBox('Car Rental Details', carRentalRows, CAR_RENTAL_LOGOS[opts.carRentalCompany])+
 transfersBoxesHtml+
 toursBoxesHtml+
-itineraryDetailBox('Theme Park Details', themeParkRows)+
+themeParkBoxesHtml+
 itineraryDetailBox('Train Details', trainRows, opts.trainLogoUrl)+
 itineraryDetailBox('Bus Details', busRows, opts.busLogoUrl)+
 itineraryDetailBox('Insurance', insuranceRows)+
@@ -6848,10 +7135,13 @@ function tripItineraryPlainText(opts){
     out += itineraryPlainTextSection(tourEntries.length>1?'Tour '+(i+1)+' Details':'Tour Details', rows);
   });
 
-  var themeRows = itineraryDetailRowText('Park', opts.themePark) +
-    itineraryDetailRowText('Ticket Type', opts.themeParkTicketType) +
-    itineraryDetailRowText('Confirmation Number', opts.themeParkConfirmationNumber);
-  out += itineraryPlainTextSection('Theme Park Details', themeRows);
+  var themeParkEntriesText = opts.themeParkEntries || [];
+  themeParkEntriesText.forEach(function(p,i){
+    var rows = itineraryDetailRowText('Park', p.park) +
+      itineraryDetailRowText('Ticket Type', p.ticketType) +
+      itineraryDetailRowText('Confirmation Number', p.confirmationNumber);
+    out += itineraryPlainTextSection(themeParkEntriesText.length>1?'Theme Park '+(i+1)+' Details':'Theme Park Details', rows);
+  });
 
   var trainRows = itineraryDetailRowText('Route', opts.trainDepartureCity&&opts.trainArrivalCity?(opts.trainDepartureCity+' → '+opts.trainArrivalCity):'') +
     itineraryDetailRowText('Departure Date', opts.trainDepartureDate) +
@@ -6892,8 +7182,9 @@ function tripItineraryPlainText(opts){
 function tripToItineraryOpts(trip, client, extraNotes){
   var sup = trip.supplierId ? db.vendors.find(function(v){return v.id===trip.supplierId;}) : null;
   var b = trip.booked || {};
-  var air = b.airline||{}, cru = b.cruise||{}, car = b.carRental||{}, tp = b.themePark||{}, tra = b.train||{}, bus = b.bus||{};
+  var air = b.airline||{}, cru = b.cruise||{}, car = b.carRental||{}, tra = b.train||{}, bus = b.bus||{};
   var tourEntries = Array.isArray(b.tours) ? b.tours : (b.tours && Object.keys(b.tours).length ? [b.tours] : []);
+  var themeParkEntries = Array.isArray(b.themePark) ? b.themePark : (b.themePark && Object.keys(b.themePark).length ? [b.themePark] : []);
   var transferEntries = Array.isArray(b.transfers) ? b.transfers : [];
   // Booked Trip Details is the source of truth whenever it actually has
   // something recorded for a category — a trip can have real flight
@@ -6970,9 +7261,7 @@ function tripToItineraryOpts(trip, client, extraNotes){
       };
     }),
     tourEntries: tourEntries,
-    themePark: tp.park||'',
-    themeParkTicketType: tp.ticketType||'',
-    themeParkConfirmationNumber: tp.confirmationNumber||'',
+    themeParkEntries: themeParkEntries,
     trainDepartureCity: tra.departureCity||'',
     trainArrivalCity: tra.arrivalCity||'',
     trainDepartureDate: tra.departureDate?fmtDate(tra.departureDate):'',
@@ -6997,7 +7286,9 @@ function tripToItineraryOpts(trip, client, extraNotes){
     carInsurance: car.insurancePremium||0,
     transfersInsurance: b.transfersInsurancePremium||0,
     toursInsurance: b.toursInsurancePremium||0,
-    themeParkInsurance: tp.insurancePremium||0,
+    // Same fallback shape as themeParkEntries above — an old, not-yet-
+    // resaved trip only has insurancePremium on the single legacy object.
+    themeParkInsurance: b.themeParkInsurancePremium || (!Array.isArray(b.themePark) && b.themePark ? (b.themePark.insurancePremium||0) : 0),
     trainInsurance: tra.insurancePremium||0,
     busInsurance: bus.insurancePremium||0,
     bookingRef: trip.bookingRef||'',
@@ -7947,6 +8238,202 @@ function processTripFormRow(getVal, counters){
     return out;
   }
 
+  // One "Traveler N" block's worth of matching/create/pending-review logic —
+  // shared by the inline companion-traveler loop below (Traveler 2+ arriving
+  // on the same submission as the primary contact) and the additional-
+  // travelers hand-off branch just below this (Traveler 5+ arriving on a
+  // later, separate submission once a party outgrows one Book a Trip form).
+  // Returns null when the block is empty (no Full Name typed in), otherwise
+  // {clientId, line} — clientId is null for a queued pending match (pushed
+  // onto pendingAccumulator instead, same db.pendingTravelerMatches shape
+  // either way; the caller fills in tripId/tripDestination once the trip
+  // this traveler belongs to is known, since that differs between the two
+  // callers — a brand new trip for the inline loop, an already-existing one
+  // for the hand-off branch).
+  function processTravelerBlock(tn, pendingAccumulator, excludeClientIds){
+    var tp='Traveler '+tn;
+    var tName=getVal(tp+' - Full Name');
+    if(!tName) return null;
+    var tEmail=getVal(tp+' - Email');
+    var tPhone=getVal(tp+' - Phone');
+    var tStreetAddress=getVal(tp+' - Street Address');
+    var tCity=getVal(tp+' - City');
+    var tState=getVal(tp+' - State');
+    var tZip=getVal(tp+' - Zip Code');
+    var tBirthdate=getVal(tp+' - Birthdate');
+    var tCountryOfCitizenship=getVal(tp+' - Country of Citizenship');
+    var tCountryOfBirth=getVal(tp+' - Country of Birth');
+    var tReferredBy=getVal(tp+' - Referred By');
+    var tReferredByDetail=getVal(tp+' - Referred By Detail');
+    var tDiscounts=extractChecklistWithOther(DISCOUNT_TYPES, tp+' - Discount');
+    var tDiscountOther=getVal(tp+' - Discount - Other Detail');
+    var tInterests=extractChecklistWithOther(INTEREST_TYPES, tp+' - Interest');
+    var tInterestOther=getVal(tp+' - Interest - Other Detail');
+    var tAirline=resolveOther(getVal(tp+' - Preferred Airline'), getVal(tp+' - Preferred Airline Other'));
+    var tHotel=resolveOther(getVal(tp+' - Preferred Hotel'), getVal(tp+' - Preferred Hotel Other'));
+    var tCruise=resolveOther(getVal(tp+' - Preferred Cruise Line'), getVal(tp+' - Preferred Cruise Line Other'));
+    var tAirlineBal=extractBalances(AIRLINES,tp+' Airline',true);
+    var tHotelBal=extractBalances(HOTELS,tp+' Hotel',true);
+    var tCruiseBal=extractBalances(CRUISE_LINES,tp+' Cruise',true);
+    var tCarRentalBal=extractBalances(CAR_RENTALS,tp+' Car Rental',true);
+    var tCcBal=extractBalances(CREDIT_CARDS,tp+' Credit Card',false);
+    var tAirlineCc=extractCardChecklist(AIRLINE_CREDIT_CARDS, tp+' Airline Credit Card');
+    var tHotelCc=extractCardChecklist(HOTEL_CREDIT_CARDS, tp+' Hotel Credit Card');
+    var tFields={email:tEmail, phone:tPhone, streetAddress:tStreetAddress, city:tCity, state:tState, zip:tZip,
+      birthdate:tBirthdate, countryOfCitizenship:tCountryOfCitizenship, countryOfBirth:tCountryOfBirth,
+      referredBy:tReferredBy, referredByDetail:tReferredByDetail, discountOther:tDiscountOther, interestOther:tInterestOther,
+      preferredAirline:tAirline, preferredHotel:tHotel, preferredCruiseLine:tCruise};
+
+    // Match a companion traveler to an existing client the same priority
+    // order the primary contact uses: email first (the trip form now
+    // requires a traveler email), then exact name, then format-independent
+    // first+last. Email-first is what lets a legal name entered here
+    // ("Jacqueline B Rogers") resolve to a differently-filed record
+    // ("Jakki Rogers") instead of silently creating a duplicate or landing
+    // in the same-last-name Pending queue below.
+    // Excludes the primary contact and every companion already resolved
+    // earlier in this same submission (excludeClientIds — the same list
+    // sameLastNameCandidates below already uses) for exactly the reason
+    // that list does: a family sharing one contact email is completely
+    // normal, and without this a traveler entered with, say, a parent's
+    // email on file would directly MATCH and get merged straight into the
+    // parent's own client record instead of creating/queuing a distinct
+    // person — a real incident where a companion's own birthdate ended up
+    // overwriting the primary contact's on file this way.
+    var tEmailLc = (tEmail||'').trim().toLowerCase();
+    var tFirst=getFirstName(tName).toLowerCase(), tLast=getLastName(tName).toLowerCase();
+    var tClient = db.clients.find(function(c){
+      if(excludeClientIds.indexOf(c.id)!==-1) return false;
+      if(tEmailLc && c.email && c.email.toLowerCase()===tEmailLc) return true;
+      if((c.name||'').toLowerCase().trim()===tName.toLowerCase().trim()) return true;
+      var cFirst=getFirstName(c.name).toLowerCase(), cLast=getLastName(c.name).toLowerCase();
+      return tFirst && tLast && tFirst!==tLast && cFirst===tFirst && cLast===tLast;
+    });
+
+    if(tClient){
+      var tFilled=[];
+      Object.keys(tFields).forEach(function(k){
+        if(tFields[k] && tFields[k]!==tClient[k]){tClient[k]=tFields[k];tFilled.push(k);}
+      });
+      if(tDiscounts.length){var tdcm=mergeCardChecklist(tClient.discounts,tDiscounts); if(tdcm.added.length){tClient.discounts=tdcm.merged;tFilled.push('discounts');}}
+      if(tInterests.length){var ticm=mergeCardChecklist(tClient.interests,tInterests); if(ticm.added.length){tClient.interests=ticm.merged;tFilled.push('interests');}}
+      if(tAirlineBal){var tmm=mergeBalanceObjects(tClient.mileageBalances,tAirlineBal); if(tmm.added.length){tClient.mileageBalances=tmm.merged;tFilled.push('mileageBalances');}}
+      if(tHotelBal){var thm=mergeBalanceObjects(tClient.hotelBalances,tHotelBal); if(thm.added.length){tClient.hotelBalances=thm.merged;tFilled.push('hotelBalances');}}
+      if(tCruiseBal){var tcbm=mergeBalanceObjects(tClient.cruiseBalances,tCruiseBal); if(tcbm.added.length){tClient.cruiseBalances=tcbm.merged;tFilled.push('cruiseBalances');}}
+      if(tCarRentalBal){var tcrbm=mergeBalanceObjects(tClient.carRentalBalances,tCarRentalBal); if(tcrbm.added.length){tClient.carRentalBalances=tcrbm.merged;tFilled.push('carRentalBalances');}}
+      if(tCcBal){var tcm=mergeCreditCardBalances(tClient.creditCardBalances,tCcBal); if(tcm.added.length){tClient.creditCardBalances=tcm.merged;tFilled.push('creditCardBalances');}}
+      if(tAirlineCc){var taccm=mergeCardChecklist(tClient.airlineCreditCards,tAirlineCc); if(taccm.added.length){tClient.airlineCreditCards=taccm.merged;tFilled.push('airlineCreditCards');}}
+      if(tHotelCc){var thccm=mergeCardChecklist(tClient.hotelCreditCards,tHotelCc); if(thccm.added.length){tClient.hotelCreditCards=thccm.merged;tFilled.push('hotelCreditCards');}}
+      if(tFilled.length) counters.enriched++;
+      return {clientId: tClient.id, line: 'Traveling with: '+tClient.name+' (client '+tClient.id+')'};
+    } else {
+      // Excludes the primary contact and every companion already resolved
+      // earlier in this same submission (or, for the additional-travelers
+      // hand-off, already linked to this same trip) — sharing a last name
+      // with the person who just submitted the form, or with a sibling
+      // traveler on the very same booking, isn't ambiguous, it's the
+      // normal, expected shape of a family trip. Without this exclusion,
+      // the primary (and then each companion as they were added) became a
+      // "candidate" for every traveler processed after them, so a 4-person
+      // family submission queued 2-3 of its own members for manual review
+      // even though every name was a genuinely new, distinct person.
+      var sameLastNameCandidates = tLast ? db.clients.filter(function(c){ return excludeClientIds.indexOf(c.id)===-1 && getLastName(c.name).toLowerCase()===tLast; }) : [];
+      if(sameLastNameCandidates.length){
+        var pendingNoteLine = 'Traveling with: '+tName+' — NEEDS REVIEW (possible match with an existing '+getLastName(tName)+' client), see Pending Traveler Matches';
+        pendingAccumulator.push({
+          id: newId('PM', (db.pendingTravelerMatches||[]).concat(pendingAccumulator)),
+          name: tName, fields: tFields, discounts: tDiscounts, interests: tInterests,
+          mileageBalances: tAirlineBal||{}, hotelBalances: tHotelBal||{}, cruiseBalances: tCruiseBal||{}, carRentalBalances: tCarRentalBal||{}, creditCardBalances: tCcBal||{},
+          airlineCreditCards: tAirlineCc||[], hotelCreditCards: tHotelCc||[],
+          candidateClientIds: sameLastNameCandidates.map(function(c){return c.id;}),
+          noteLine: pendingNoteLine,
+          createdAt: today()
+        });
+        counters.pendingReview = (counters.pendingReview||0)+1;
+        return {clientId: null, line: pendingNoteLine};
+      } else {
+        tClient = Object.assign({id:newId('C',db.clients), name:toLastFirst(tName),
+          discounts:tDiscounts, interests:tInterests,
+          mileageBalances:tAirlineBal||{}, hotelBalances:tHotelBal||{}, cruiseBalances:tCruiseBal||{}, carRentalBalances:tCarRentalBal||{}, creditCardBalances:tCcBal||{}, airlineCreditCards:tAirlineCc||[], hotelCreditCards:tHotelCc||[],
+          notes:'', joined:today(), totalTrips:0, notesLog:[]}, tFields);
+        db.clients.push(tClient);
+        counters.added++;
+        return {clientId: tClient.id, line: 'Traveling with: '+tClient.name+' (client '+tClient.id+')'};
+      }
+    }
+  }
+
+  // A submission from additional-travelers-form.html (see intake-form.html's
+  // MAX_TRAVELERS_PER_SUBMISSION hand-off, and DOCUMENTATION.md's "Traveler
+  // cap and the additional-travelers hand-off form") carries no primary Full
+  // Name/Email of its own — only "Traveler N - ..." fields for whoever
+  // didn't fit in the original submission, plus a Primary Contact Name/Email
+  // pair identifying whose trip these travelers belong to. Route it onto
+  // that existing trip instead of falling through to the "no Full Name,
+  // skip" guard below, which would otherwise just drop it.
+  if(getVal('Additional Travelers Submission')==='Yes'){
+    var primaryName = getVal('Primary Contact Name');
+    var primaryEmail = getVal('Primary Contact Email');
+    if(!primaryName){ debugLog('Additional travelers hand-off: skipped — no Primary Contact Name in this submission'); counters.skipped++; return; }
+    var pFirst=getFirstName(primaryName).toLowerCase(), pLast=getLastName(primaryName).toLowerCase();
+    var primaryClient = db.clients.find(function(c){
+      if(primaryEmail && c.email && c.email.toLowerCase()===primaryEmail.toLowerCase()) return true;
+      if((c.name||'').toLowerCase().trim()===primaryName.toLowerCase().trim()) return true;
+      var cFirst=getFirstName(c.name).toLowerCase(), cLast=getLastName(c.name).toLowerCase();
+      return pFirst && pLast && pFirst!==pLast && cFirst===pFirst && cLast===pLast;
+    });
+    // This can legitimately happen if this hand-off's email got processed
+    // before its own original submission's (a race the chronological sort
+    // in checkForNewTripFormEmails() now prevents within one poll batch,
+    // but a manual CSV import of just this row, or two submissions landing
+    // in different poll cycles, could still hit it) — logged loudly rather
+    // than silently discarded, since there's no queue to retry this from.
+    if(!primaryClient){ debugLog('Additional travelers hand-off: skipped — no existing client matches Primary Contact "'+primaryName+'" ('+(primaryEmail||'no email')+'). If this ran before its own original submission, re-import this email once the primary client exists.'); counters.skipped++; return; }
+    // The trip these travelers belong to is whichever of the primary
+    // contact's trips was created most recently — db.trips is always
+    // appended to in order (never reordered), so the last matching entry
+    // is the newest one, i.e. the trip the original Book a Trip submission
+    // just created.
+    var targetTrip = null;
+    for(var ti=db.trips.length-1; ti>=0; ti--){
+      var candidateTrip = db.trips[ti];
+      if(candidateTrip.clientId===primaryClient.id || (candidateTrip.clientIds||[]).indexOf(primaryClient.id)!==-1){ targetTrip = candidateTrip; break; }
+    }
+    if(!targetTrip){ debugLog('Additional travelers hand-off: skipped — found primary client "'+primaryClient.name+'" ('+primaryClient.id+') but no trip linked to them yet. If this ran before its own original submission, re-import this email once that trip exists.'); counters.skipped++; return; }
+
+    var newPendingMatches = [];
+    var addedClientIds = [];
+    var addedLines = [];
+    // Starts with the primary contact plus everyone already linked to this
+    // trip from the original submission (or an earlier hand-off batch) —
+    // none of them are "ambiguous" for a traveler on this same booking,
+    // and each newly-resolved traveler joins the set before the next one
+    // is processed, so siblings within this very batch exclude each other
+    // too (see processTravelerBlock's own comment for why this matters).
+    var submissionClientIds = [primaryClient.id].concat(targetTrip.clientIds||[]);
+    for(var atn=2; atn<=20; atn++){
+      var atResult = processTravelerBlock(atn, newPendingMatches, submissionClientIds);
+      if(!atResult) continue;
+      if(atResult.clientId){ addedClientIds.push(atResult.clientId); submissionClientIds.push(atResult.clientId); }
+      addedLines.push(atResult.line);
+    }
+    if(!addedClientIds.length && !newPendingMatches.length){ counters.skipped++; return; }
+
+    if(!targetTrip.clientIds) targetTrip.clientIds=[];
+    addedClientIds.forEach(function(cid){ if(targetTrip.clientIds.indexOf(cid)===-1) targetTrip.clientIds.push(cid); });
+    if(addedLines.length) targetTrip.notes = (targetTrip.notes ? targetTrip.notes+'\n' : '') + addedLines.join('\n');
+    if(newPendingMatches.length){
+      if(!db.pendingTravelerMatches) db.pendingTravelerMatches=[];
+      newPendingMatches.forEach(function(pm){
+        pm.tripId = targetTrip.id;
+        pm.tripDestination = targetTrip.destination;
+        db.pendingTravelerMatches.push(pm);
+      });
+    }
+    counters.travelersAdded = (counters.travelersAdded||0) + addedClientIds.length + newPendingMatches.length;
+    return;
+  }
+
   var name = getVal('Full Name');
   if(!name){ counters.skipped++; return; }
   var email = getVal('Email');
@@ -8058,10 +8545,15 @@ function processTripFormRow(getVal, counters){
   var destination = getVal('Destination');
   var airline = resolveOther(getVal('Airline'), getVal('Airline Other'));
   var cruiseLine = resolveOther(getVal('Cruise Line'), getVal('Cruise Line Other'));
-  var hotelBrand = resolveOther(getVal('Hotel Brand'), getVal('Hotel Brand Other'));
+  // Hotel/Theme Park/Tours can each have any number of entries (see the
+  // "Hotel N - ..."/"Theme Park N - ..."/"Tour N - ..." loops below) — Hotel
+  // 1 specifically still drives the trip's simple top-level hotel/
+  // hotelNights columns, the same backward-compatible role the single
+  // unnumbered "Hotel Brand"/"Hotel Nights" fields used to play, since a
+  // trip only has one such slot regardless of how many hotels were
+  // requested.
+  var hotelBrand = resolveOther(getVal('Hotel 1 - Brand'), getVal('Hotel 1 - Brand Other'));
   var carRentalCompany = resolveOther(getVal('Car Rental Company'), getVal('Car Rental Company Other'));
-  var themePark = getVal('Theme Park');
-  var tourVendor = resolveOther(getVal('Tour Vendor'), getVal('Tour Vendor Other'));
   // Depart/Return Date only exist in the Airline Details section, which is
   // hidden unless "Airline" is checked — a cruise-only or car-rental-only
   // request still has real dates (Sailing Date, Pickup/Dropoff Date), so
@@ -8069,14 +8561,12 @@ function processTripFormRow(getVal, counters){
   // departDate drives the Calendar view (trips with no departDate are
   // skipped entirely), sorting, and "Upcoming" status, so this isn't
   // cosmetic — a blank departDate makes the trip invisible on the Calendar.
-  var tripDepartDate = getVal('Depart Date') || getVal('Sailing Date') || getVal('Pickup Date') || getVal('Transfer 1 Pickup Date') || getVal('Hotel Check-in Date') || getVal('Train Departure Date') || getVal('Bus Departure Date');
+  var tripDepartDate = getVal('Depart Date') || getVal('Sailing Date') || getVal('Pickup Date') || getVal('Transfer 1 Pickup Date') || getVal('Hotel 1 - Check-in Date') || getVal('Train Departure Date') || getVal('Bus Departure Date');
   var tripReturnDate = getVal('Return Date') || getVal('Dropoff Date') || getVal('Train Return Date') || getVal('Bus Return Date');
   var tripLines=[];
   function addLine(label,val){ if(val) tripLines.push(label+': '+val); }
   var travelNeeded = ['Airline','Hotel','Tours','Cruise','Car Rental','Transfers','Theme Park Tickets','Train','Bus'].filter(function(t){return getVal('Need - '+t);}).join(', ');
   addLine('Type of Travel Needed', travelNeeded);
-  addLine('Tour Vendor', tourVendor);
-  addLine('Tours Description', getVal('Tours Description'));
   addLine('Airline', airline);
   addLine('Origin', getVal('Origin'));
   addLine('Destination', destination);
@@ -8105,14 +8595,47 @@ function processTripFormRow(getVal, counters){
   addLine('Cruisetour', getVal('Cruisetour'));
   addLine('Class of Service', getVal('Class of Service'));
   addLine('Non-Stop Flights Only', getVal('Non-Stop Flights Only'));
-  addLine('Hotel Location', getVal('Hotel Location'));
-  addLine('Hotel Brand', hotelBrand);
-  addLine('Hotel Property', getVal('Hotel Property'));
-  addLine('Hotel Check-in Date', getVal('Hotel Check-in Date'));
-  addLine('Hotel Nights', getVal('Hotel Nights'));
-  addLine('Room Type', getVal('Room Type'));
-  addLine('People Per Room', getVal('People Per Room'));
-  addLine('Number of Rooms', getVal('Number of Rooms'));
+  // Hotel Details — the form submits any number of hotel stays as
+  // "Hotel N - Location/Brand/Brand Other/Property/Check-in Date/Nights/
+  // Room Type/People Per Room/Number of Rooms" (see intake-form.html's
+  // addHotelRow); flatten each stay onto one summary line, the same
+  // combined-line-per-entry style the Transfers loop below already uses.
+  // Hotel 1's Brand/Nights already drove hotelBrand/tripDepartDate above
+  // for the trip's simple top-level columns — every entry, Hotel 1
+  // included, also gets its own readable Notes line here, and every
+  // entry's brand is collected for supplier matching below. Each entry
+  // also becomes a real Booked Trip Details hotel entry (booked.hotel[])
+  // on the trip created below, not just Notes text — the request-stage
+  // Location/Room Type/People Per Room/Number of Rooms fields have no
+  // matching Booked Trip Details column, so they're folded into that
+  // entry's own Notes field instead of being dropped.
+  var hotelBrandNames = [];
+  var hotelBookedEntries = [];
+  for(var hi=1; hi<=10; hi++){
+    var hLocation = getVal('Hotel '+hi+' - Location');
+    var hBrand = resolveOther(getVal('Hotel '+hi+' - Brand'), getVal('Hotel '+hi+' - Brand Other'));
+    var hProperty = getVal('Hotel '+hi+' - Property');
+    var hCheckIn = getVal('Hotel '+hi+' - Check-in Date');
+    var hNights = getVal('Hotel '+hi+' - Nights');
+    var hRoomType = getVal('Hotel '+hi+' - Room Type');
+    var hPeoplePerRoom = getVal('Hotel '+hi+' - People Per Room');
+    var hNumRooms = getVal('Hotel '+hi+' - Number of Rooms');
+    if(!(hLocation||hBrand||hProperty||hCheckIn||hNights||hRoomType||hPeoplePerRoom||hNumRooms)) continue;
+    if(hBrand) hotelBrandNames.push(hBrand);
+    addLine('Hotel '+hi, [
+      hLocation, hBrand, hProperty,
+      hCheckIn?('Check-in '+hCheckIn):'',
+      hNights?(hNights+' night'+(hNights==1?'':'s')):'',
+      hRoomType,
+      hPeoplePerRoom?(hPeoplePerRoom+' per room'):'',
+      hNumRooms?(hNumRooms+' room'+(hNumRooms==1?'':'s')):''
+    ].filter(Boolean).join(' | '));
+    hotelBookedEntries.push({
+      hotelBrand: hBrand, property: hProperty, confirmationNumber: '', checkInDate: hCheckIn, nights: parseInt(hNights,10)||0, price: 0,
+      notes: [hLocation, hRoomType?('Room type: '+hRoomType):'', hPeoplePerRoom?(hPeoplePerRoom+' per room'):'', hNumRooms?(hNumRooms+' room'+(hNumRooms==1?'':'s')):''].filter(Boolean).join(' | '),
+      pts: []
+    });
+  }
   addLine('Car Rental Company', carRentalCompany);
   addLine('Car Size', getVal('Car Size'));
   addLine('Pickup Location', getVal('Pickup Location'));
@@ -8140,8 +8663,38 @@ function processTripFormRow(getVal, counters){
   addLine('Number of Travelers', getVal('Number of Travelers'));
   addLine('Notes', getVal('Notes'));
   addLine('Trip Insurance', getVal('Trip Insurance'));
-  addLine('Theme Park', themePark);
-  addLine('Theme Park Ticket Type', getVal('Theme Park Ticket Type'));
+  // Theme Park Details and Tours Details are each the same any-number-of-
+  // entries pattern as Hotel above ("Theme Park N - Park/Ticket Type",
+  // "Tour N - Vendor/Vendor Other/Description" — see intake-form.html's
+  // addThemeParkRow/addTourRow). Neither ever fed a structured top-level
+  // trip field (unlike Hotel's hotelBrand/hotelNights), so there's no
+  // "entry 1 is special" backward-compatibility concern here — every
+  // entry is just its own Notes line, every park/vendor name is collected
+  // for supplier matching below, and every entry also becomes a real
+  // Booked Trip Details entry (booked.themePark[]/booked.tours[]) on the
+  // trip created below — the field names already match 1:1 (Park/Ticket
+  // Type, Vendor/Description), no folding into Notes needed the way
+  // Hotel's extra fields required.
+  var themeParkNames = [];
+  var themeParkBookedEntries = [];
+  for(var tpi=1; tpi<=10; tpi++){
+    var tpPark = getVal('Theme Park '+tpi+' - Park');
+    var tpTickets = getVal('Theme Park '+tpi+' - Ticket Type');
+    if(!(tpPark||tpTickets)) continue;
+    if(tpPark) themeParkNames.push(tpPark);
+    addLine('Theme Park '+tpi, [tpPark, tpTickets].filter(Boolean).join(' | '));
+    themeParkBookedEntries.push({park: tpPark, confirmationNumber: '', ticketType: tpTickets, price: 0, notes: ''});
+  }
+  var tourVendorNames = [];
+  var tourBookedEntries = [];
+  for(var tri=1; tri<=10; tri++){
+    var trVendor = resolveOther(getVal('Tour '+tri+' - Vendor'), getVal('Tour '+tri+' - Vendor Other'));
+    var trDesc = getVal('Tour '+tri+' - Description');
+    if(!(trVendor||trDesc)) continue;
+    if(trVendor) tourVendorNames.push(trVendor);
+    addLine('Tour '+tri, [trVendor, trDesc].filter(Boolean).join(' | '));
+    tourBookedEntries.push({confirmationNumber: '', vendor: trVendor, price: 0, description: trDesc});
+  }
   addLine('Train Departure Date', getVal('Train Departure Date'));
   addLine('Train Return Date', getVal('Train Return Date'));
   addLine('Train Departure City', getVal('Train Departure City'));
@@ -8174,102 +8727,32 @@ function processTripFormRow(getVal, counters){
   // instead of being auto-created.
   var linkedClientIds = [];
   var pendingMatches = [];
+  // Starts with just the primary contact; each newly-resolved companion
+  // joins the set before the next one is processed, so two siblings on the
+  // same submission (e.g. "Bob Smith" then "Carl Smith") never end up
+  // flagging each other as an ambiguous same-last-name candidate — see
+  // processTravelerBlock's own comment for the incident this fixed.
+  var submissionClientIds = [client.id];
   var travelerCount = parseInt(getVal('Number of Travelers'),10)||1;
   for(var tn=2; tn<=travelerCount; tn++){
-    var tp='Traveler '+tn;
-    var tName=getVal(tp+' - Full Name');
-    if(!tName) continue;
-    var tEmail=getVal(tp+' - Email');
-    var tPhone=getVal(tp+' - Phone');
-    var tStreetAddress=getVal(tp+' - Street Address');
-    var tCity=getVal(tp+' - City');
-    var tState=getVal(tp+' - State');
-    var tZip=getVal(tp+' - Zip Code');
-    var tBirthdate=getVal(tp+' - Birthdate');
-    var tCountryOfCitizenship=getVal(tp+' - Country of Citizenship');
-    var tCountryOfBirth=getVal(tp+' - Country of Birth');
-    var tReferredBy=getVal(tp+' - Referred By');
-    var tReferredByDetail=getVal(tp+' - Referred By Detail');
-    var tDiscounts=extractChecklistWithOther(DISCOUNT_TYPES, tp+' - Discount');
-    var tDiscountOther=getVal(tp+' - Discount - Other Detail');
-    var tInterests=extractChecklistWithOther(INTEREST_TYPES, tp+' - Interest');
-    var tInterestOther=getVal(tp+' - Interest - Other Detail');
-    var tAirline=resolveOther(getVal(tp+' - Preferred Airline'), getVal(tp+' - Preferred Airline Other'));
-    var tHotel=resolveOther(getVal(tp+' - Preferred Hotel'), getVal(tp+' - Preferred Hotel Other'));
-    var tCruise=resolveOther(getVal(tp+' - Preferred Cruise Line'), getVal(tp+' - Preferred Cruise Line Other'));
-    var tAirlineBal=extractBalances(AIRLINES,tp+' Airline',true);
-    var tHotelBal=extractBalances(HOTELS,tp+' Hotel',true);
-    var tCruiseBal=extractBalances(CRUISE_LINES,tp+' Cruise',true);
-    var tCarRentalBal=extractBalances(CAR_RENTALS,tp+' Car Rental',true);
-    var tCcBal=extractBalances(CREDIT_CARDS,tp+' Credit Card',false);
-    var tAirlineCc=extractCardChecklist(AIRLINE_CREDIT_CARDS, tp+' Airline Credit Card');
-    var tHotelCc=extractCardChecklist(HOTEL_CREDIT_CARDS, tp+' Hotel Credit Card');
-    var tFields={email:tEmail, phone:tPhone, streetAddress:tStreetAddress, city:tCity, state:tState, zip:tZip,
-      birthdate:tBirthdate, countryOfCitizenship:tCountryOfCitizenship, countryOfBirth:tCountryOfBirth,
-      referredBy:tReferredBy, referredByDetail:tReferredByDetail, discountOther:tDiscountOther, interestOther:tInterestOther,
-      preferredAirline:tAirline, preferredHotel:tHotel, preferredCruiseLine:tCruise};
-
-    var tFirst=getFirstName(tName).toLowerCase(), tLast=getLastName(tName).toLowerCase();
-    var tClient = db.clients.find(function(c){
-      if((c.name||'').toLowerCase().trim()===tName.toLowerCase().trim()) return true;
-      var cFirst=getFirstName(c.name).toLowerCase(), cLast=getLastName(c.name).toLowerCase();
-      return tFirst && tLast && tFirst!==tLast && cFirst===tFirst && cLast===tLast;
-    });
-
-    if(tClient){
-      var tFilled=[];
-      Object.keys(tFields).forEach(function(k){
-        if(tFields[k] && tFields[k]!==tClient[k]){tClient[k]=tFields[k];tFilled.push(k);}
-      });
-      if(tDiscounts.length){var tdcm=mergeCardChecklist(tClient.discounts,tDiscounts); if(tdcm.added.length){tClient.discounts=tdcm.merged;tFilled.push('discounts');}}
-      if(tInterests.length){var ticm=mergeCardChecklist(tClient.interests,tInterests); if(ticm.added.length){tClient.interests=ticm.merged;tFilled.push('interests');}}
-      if(tAirlineBal){var tmm=mergeBalanceObjects(tClient.mileageBalances,tAirlineBal); if(tmm.added.length){tClient.mileageBalances=tmm.merged;tFilled.push('mileageBalances');}}
-      if(tHotelBal){var thm=mergeBalanceObjects(tClient.hotelBalances,tHotelBal); if(thm.added.length){tClient.hotelBalances=thm.merged;tFilled.push('hotelBalances');}}
-      if(tCruiseBal){var tcbm=mergeBalanceObjects(tClient.cruiseBalances,tCruiseBal); if(tcbm.added.length){tClient.cruiseBalances=tcbm.merged;tFilled.push('cruiseBalances');}}
-      if(tCarRentalBal){var tcrbm=mergeBalanceObjects(tClient.carRentalBalances,tCarRentalBal); if(tcrbm.added.length){tClient.carRentalBalances=tcrbm.merged;tFilled.push('carRentalBalances');}}
-      if(tCcBal){var tcm=mergeCreditCardBalances(tClient.creditCardBalances,tCcBal); if(tcm.added.length){tClient.creditCardBalances=tcm.merged;tFilled.push('creditCardBalances');}}
-      if(tAirlineCc){var taccm=mergeCardChecklist(tClient.airlineCreditCards,tAirlineCc); if(taccm.added.length){tClient.airlineCreditCards=taccm.merged;tFilled.push('airlineCreditCards');}}
-      if(tHotelCc){var thccm=mergeCardChecklist(tClient.hotelCreditCards,tHotelCc); if(thccm.added.length){tClient.hotelCreditCards=thccm.merged;tFilled.push('hotelCreditCards');}}
-      if(tFilled.length) counters.enriched++;
-      linkedClientIds.push(tClient.id);
-      tripLines.push('Traveling with: '+tClient.name+' (client '+tClient.id+')');
-    } else {
-      var sameLastNameCandidates = tLast ? db.clients.filter(function(c){ return getLastName(c.name).toLowerCase()===tLast; }) : [];
-      if(sameLastNameCandidates.length){
-        var pendingNoteLine = 'Traveling with: '+tName+' — NEEDS REVIEW (possible match with an existing '+getLastName(tName)+' client), see Pending Traveler Matches';
-        pendingMatches.push({
-          id: newId('PM', (db.pendingTravelerMatches||[]).concat(pendingMatches)),
-          name: tName, fields: tFields, discounts: tDiscounts, interests: tInterests,
-          mileageBalances: tAirlineBal||{}, hotelBalances: tHotelBal||{}, cruiseBalances: tCruiseBal||{}, carRentalBalances: tCarRentalBal||{}, creditCardBalances: tCcBal||{},
-          airlineCreditCards: tAirlineCc||[], hotelCreditCards: tHotelCc||[],
-          candidateClientIds: sameLastNameCandidates.map(function(c){return c.id;}),
-          noteLine: pendingNoteLine,
-          createdAt: today()
-        });
-        tripLines.push(pendingNoteLine);
-        counters.pendingReview = (counters.pendingReview||0)+1;
-      } else {
-        tClient = Object.assign({id:newId('C',db.clients), name:toLastFirst(tName),
-          discounts:tDiscounts, interests:tInterests,
-          mileageBalances:tAirlineBal||{}, hotelBalances:tHotelBal||{}, cruiseBalances:tCruiseBal||{}, carRentalBalances:tCarRentalBal||{}, creditCardBalances:tCcBal||{}, airlineCreditCards:tAirlineCc||[], hotelCreditCards:tHotelCc||[],
-          notes:'', joined:today(), totalTrips:0, notesLog:[]}, tFields);
-        db.clients.push(tClient);
-        counters.added++;
-        linkedClientIds.push(tClient.id);
-        tripLines.push('Traveling with: '+tClient.name+' (client '+tClient.id+')');
-      }
-    }
+    var result = processTravelerBlock(tn, pendingMatches, submissionClientIds);
+    if(!result) continue;
+    if(result.clientId){ linkedClientIds.push(result.clientId); submissionClientIds.push(result.clientId); }
+    tripLines.push(result.line);
   }
 
-  // Match the requested Airline/Cruise Line/Hotel Brand/Car Rental Company/
-  // Theme Park/Tour Vendor against existing Supplier records by exact name,
-  // same as the revenue importer's supplier matching (extractRevenueRow) —
-  // never creates a new vendor, only links the client onto one that's
-  // already there. A trip only has one supplier slot, so the first match
-  // wins in that priority order; every match still gets the client linked
-  // onto it regardless. Tours Description is deliberately excluded — it's
-  // freeform text, not a name from a fixed list, so there's no safe exact
-  // match.
+  // Match the requested Airline/Cruise Line/Hotel Brand(s)/Car Rental
+  // Company/Theme Park(s)/Tour Vendor(s) against existing Supplier records
+  // by exact name, same as the revenue importer's supplier matching
+  // (extractRevenueRow) — never creates a new vendor, only links the
+  // client onto one that's already there. A trip only has one supplier
+  // slot, so the first match wins in that priority order (Hotel 1's brand,
+  // then the first matching Theme Park, then the first matching Tour
+  // vendor, for the fields that can now have more than one entry); every
+  // match, across every hotel/theme park/tour entry, still gets the client
+  // linked onto it regardless. Tour descriptions are deliberately
+  // excluded — they're freeform text, not a name from a fixed list, so
+  // there's no safe exact match.
   function matchVendorByName(n){
     if(!n) return null;
     return db.vendors.find(function(v){return (v.name||'').toLowerCase().trim()===n.toLowerCase().trim();}) || null;
@@ -8284,12 +8767,12 @@ function processTripFormRow(getVal, counters){
   }
   var airlineVendor = matchVendorByName(airline);
   var cruiseVendor = matchVendorByName(cruiseLine);
-  var hotelVendor = matchVendorByName(hotelBrand);
   var carRentalVendor = matchVendorByName(carRentalCompany);
-  var themeParkVendor = matchVendorByName(themePark);
-  var tourVendorMatch = matchVendorByName(tourVendor);
-  [airlineVendor, cruiseVendor, hotelVendor, carRentalVendor, themeParkVendor, tourVendorMatch].forEach(linkClientToVendor);
-  var primarySupplier = airlineVendor || cruiseVendor || hotelVendor || carRentalVendor || themeParkVendor || tourVendorMatch || null;
+  var hotelVendors = hotelBrandNames.map(matchVendorByName).filter(Boolean);
+  var themeParkVendors = themeParkNames.map(matchVendorByName).filter(Boolean);
+  var tourVendorMatches = tourVendorNames.map(matchVendorByName).filter(Boolean);
+  [airlineVendor, cruiseVendor, carRentalVendor].concat(hotelVendors, themeParkVendors, tourVendorMatches).forEach(linkClientToVendor);
+  var primarySupplier = airlineVendor || cruiseVendor || hotelVendors[0] || carRentalVendor || themeParkVendors[0] || tourVendorMatches[0] || null;
 
   var newTripId = null;
   if(destination || tripLines.length){
@@ -8300,12 +8783,19 @@ function processTripFormRow(getVal, counters){
       departDate:tripDepartDate, returnDate:tripReturnDate,
       status:'Planning', type:getVal('Trip Type')||'Leisure',
       airline:airline, flightClass:getVal('Class of Service'), hotel:hotelBrand,
-      hotelNights:parseInt(getVal('Hotel Nights'),10)||0,
+      hotelNights:parseInt(getVal('Hotel 1 - Nights'),10)||0,
       cruiseLine:cruiseLine, shipName:getVal('Ship Name'),
       pointsUsed:0, cashPaid:0, totalValue:0, bookingRef:'', product:'',
       supplierId:primarySupplier?primarySupplier.id:'', supplierName:primarySupplier?primarySupplier.name:'',
       discounts:discounts, discountOther:discountOther, interests:interests, interestOther:interestOther,
-      notes: tripLines.join('\n')
+      notes: tripLines.join('\n'),
+      // Every requested Hotel/Theme Park/Tour also lands as a real Booked
+      // Trip Details entry (not just a Notes line) — see the hotelBookedEntries/
+      // themeParkBookedEntries/tourBookedEntries comments above. Empty arrays
+      // here are the normal, already-handled "nothing requested" shape
+      // (bookedTripDetailsHtml() shows one blank entry row either way), not
+      // a special case.
+      booked: {hotel: hotelBookedEntries, themePark: themeParkBookedEntries, tours: tourBookedEntries}
     });
     counters.tripsCreated++;
   }
@@ -8355,7 +8845,7 @@ function importFormspreeSubmissions(){
       }
       snapshot('Import Formspree submissions');
       saveDB(); render();
-      toast('Imported '+counters.added+' new client'+(counters.added!==1?'s':'')+(counters.enriched?', enriched '+counters.enriched+' existing':'')+', created '+counters.tripsCreated+' trip'+(counters.tripsCreated!==1?'s':'')+' and '+counters.tasksCreated+' follow-up task'+(counters.tasksCreated!==1?'s':'')+(counters.skipped?' ('+counters.skipped+' skipped)':'')+(counters.pendingReview?', '+counters.pendingReview+' traveler'+(counters.pendingReview!==1?'s':'')+' need review — see Pending Traveler Matches':''),'ok');
+      toast('Imported '+counters.added+' new client'+(counters.added!==1?'s':'')+(counters.enriched?', enriched '+counters.enriched+' existing':'')+', created '+counters.tripsCreated+' trip'+(counters.tripsCreated!==1?'s':'')+' and '+counters.tasksCreated+' follow-up task'+(counters.tasksCreated!==1?'s':'')+(counters.skipped?' ('+counters.skipped+' skipped)':'')+(counters.pendingReview?', '+counters.pendingReview+' traveler'+(counters.pendingReview!==1?'s':'')+' need review — see Pending Traveler Matches':'')+(counters.travelersAdded?', added '+counters.travelersAdded+' additional traveler'+(counters.travelersAdded!==1?'s':'')+' to an existing trip':''),'ok');
     }catch(err){
       console.error(err);
       toast('Could not read file: '+err.message,'err');
@@ -8383,10 +8873,14 @@ var TRIPFORM_EMAIL_SUBJECT_RE = /^New submission\b.*\bBook a trip$/i;
 function buildTripFormFieldLabels(){
   var labels = ['Full Name','Email','Phone','Street Address','City','State','Zip Code','Number of Travelers',
     'Birthdate','Country of Citizenship','Country of Birth','Referred By','Referred By Detail',
-    'Discount - Military','Discount - AAA','Discount - First Responder','Discount - Educator','Discount - Other','Discount - Other Detail',
+    'Discount - Military','Discount - AAA','Discount - First Responder','Discount - Educator','Discount - USAA','Discount - Other','Discount - Other Detail',
     'Interest - Beach','Interest - Skiing','Interest - Boating','Interest - Fishing','Interest - Snorkeling','Interest - Horseback Riding','Interest - Adventure','Interest - Other','Interest - Other Detail',
     'Preferred Airline','Preferred Airline Other','Preferred Hotel','Preferred Hotel Other',
-    'Preferred Cruise Line','Preferred Cruise Line Other'];
+    'Preferred Cruise Line','Preferred Cruise Line Other',
+    // additional-travelers-form.html's own fields (see processTripFormRow()'s
+    // "Additional Travelers Submission" branch) — no Full Name/Email of its
+    // own, just these three plus its own "Traveler N - ..." blocks below.
+    'Additional Travelers Submission','Primary Contact Name','Primary Contact Email'];
   function addBalanceLabels(prefix, list, includeStatus){
     list.forEach(function(brand){
       labels.push(prefix+' - '+brand);
@@ -8408,15 +8902,27 @@ function buildTripFormFieldLabels(){
   labels.push('Need - Airline','Need - Hotel','Need - Tours','Need - Cruise','Need - Car Rental','Need - Transfers','Need - Theme Park Tickets','Need - Train','Need - Bus',
     'Airline','Airline Other','Origin','Destination','Trip Direction','Depart Date','Return Date','Class of Service','Non-Stop Flights Only','Trip Type',
     'Cruise Line','Cruise Line Other','Ship Name','Cruise Nights','Sailing Date','Departure Port','Cabin Type','People In Cabin','Cruise Loyalty Number','Cruisetour',
-    'Hotel Location','Hotel Brand','Hotel Brand Other','Hotel Property','Hotel Check-in Date','Hotel Nights','Room Type','People Per Room','Number of Rooms',
     'Car Rental Company','Car Rental Company Other','Car Size','Pickup Location','Dropoff Location','Pickup Date','Dropoff Date','Pickup Time','Dropoff Time',
-    'Theme Park','Theme Park Ticket Type','Tour Vendor','Tour Vendor Other',
     'Train Departure Date','Train Return Date','Train Departure City','Train Arrival City','Train Class of Service',
     'Bus Departure Date','Bus Return Date','Bus Departure City','Bus Arrival City','Bus Class of Service',
-    'Payment Preference','Tours Description','Notes','Trip Insurance');
+    'Payment Preference','Notes','Trip Insurance');
   for(var ci=1; ci<=20; ci++){ labels.push('City '+ci, 'City '+ci+' Departure Date'); }
   for(var xi=1; xi<=20; xi++){ labels.push('Transfer '+xi+' Pickup Date','Transfer '+xi+' Pickup Time','Transfer '+xi+' Origin','Transfer '+xi+' Destination','Transfer '+xi+' Car Type'); }
-  for(var tn=2; tn<=12; tn++){
+  // Hotel/Theme Park/Tours can each have any number of entries on the
+  // public form (see intake-form.html's addHotelRow/addThemeParkRow/
+  // addTourRow) — same numbered-field-name pattern as Transfer N/City N
+  // above, capped at 10 since that's a generous number of hotels/parks/
+  // tours for one trip request.
+  for(var hi=1; hi<=10; hi++){
+    labels.push('Hotel '+hi+' - Location','Hotel '+hi+' - Brand','Hotel '+hi+' - Brand Other','Hotel '+hi+' - Property',
+      'Hotel '+hi+' - Check-in Date','Hotel '+hi+' - Nights','Hotel '+hi+' - Room Type','Hotel '+hi+' - People Per Room','Hotel '+hi+' - Number of Rooms');
+  }
+  for(var tpi=1; tpi<=10; tpi++){ labels.push('Theme Park '+tpi+' - Park','Theme Park '+tpi+' - Ticket Type'); }
+  for(var tri=1; tri<=10; tri++){ labels.push('Tour '+tri+' - Vendor','Tour '+tri+' - Vendor Other','Tour '+tri+' - Description'); }
+  // 20, not 12, so a large party's later additional-travelers-form.html
+  // batches (Traveler 13+, chained 4 at a time) still parse correctly out
+  // of an automatically-polled email, not just a manual CSV import.
+  for(var tn=2; tn<=20; tn++){
     var p = 'Traveler '+tn;
     // A companion traveler gets the exact same field set as the primary
     // contact (Email/Phone/Address/Referred By/Discounts/Interests
@@ -8553,6 +9059,20 @@ async function checkForNewTripFormEmails(silent){
     var messages = (d.value||[]).filter(function(m){
       return TRIPFORM_EMAIL_SUBJECT_RE.test((m.subject||'').trim()) && processedIds.indexOf(m.id)===-1;
     });
+    // The Graph query above fetches newest-first (best for the near-miss
+    // logging just above, and for capping at $top=50 without missing the
+    // most recent activity) — but processing must go oldest-first. The
+    // intake form's own thank-you screen hands a large party straight to
+    // additional-travelers-form.html for the travelers who didn't fit
+    // ("Click here to give us the rest of your group's information"),
+    // which someone naturally clicks right away — landing its follow-up
+    // email in the very same 5-minute poll window as the original. Newest-
+    // first processing would run that hand-off BEFORE the original
+    // submission had created the client/trip it needs to attach to,
+    // permanently discarding those travelers (or, if the primary contact
+    // already had some other, older trip on file, silently attaching them
+    // to that wrong trip instead) — a real incident this fixed.
+    messages.sort(function(a,b){ return new Date(a.receivedDateTime) - new Date(b.receivedDateTime); });
     debugLog('Trip form email check: '+messages.length+' new submission email(s)');
     localStorage.setItem('mm_last_tripform_check', checkedAt);
     if(!messages.length) return;
@@ -8567,10 +9087,10 @@ async function checkForNewTripFormEmails(silent){
     if(processedIds.length > 500) processedIds = processedIds.slice(processedIds.length-500);
     localStorage.setItem('mm_tripform_processed_ids', JSON.stringify(processedIds));
 
-    if(counters.tripsCreated || counters.added || counters.enriched || counters.pendingReview){
+    if(counters.tripsCreated || counters.added || counters.enriched || counters.pendingReview || counters.travelersAdded){
       snapshot('Auto-import trip form emails');
       saveDB(); render();
-      toast('Auto-imported '+counters.tripsCreated+' trip'+(counters.tripsCreated!==1?'s':'')+' from email ('+counters.added+' new client'+(counters.added!==1?'s':'')+')'+(counters.pendingReview?' — '+counters.pendingReview+' traveler'+(counters.pendingReview!==1?'s':'')+' need review, see Pending Traveler Matches':''),'ok');
+      toast('Auto-imported '+counters.tripsCreated+' trip'+(counters.tripsCreated!==1?'s':'')+' from email ('+counters.added+' new client'+(counters.added!==1?'s':'')+')'+(counters.pendingReview?' — '+counters.pendingReview+' traveler'+(counters.pendingReview!==1?'s':'')+' need review, see Pending Traveler Matches':'')+(counters.travelersAdded?' — added '+counters.travelersAdded+' additional traveler'+(counters.travelersAdded!==1?'s':'')+' to an existing trip':''),'ok');
     }
   }catch(e){
     debugLog('Trip form email check failed: '+e.message);
@@ -13396,7 +13916,11 @@ function tripBookedPoints(t){
   total += sumPts(b.carRental && b.carRental.pts);
   total += sumPts(b.transfersPts);
   total += sumPts(b.toursPts);
-  total += sumPts(b.themePark && b.themePark.pts);
+  // booked.themePark moved from a single object (with its own pts) to a
+  // list, with points promoted up to the section-level themeParkPts field
+  // like Tours' toursPts — an old, not-yet-resaved trip only has pts on
+  // that one object.
+  total += sumPts(Array.isArray(b.themeParkPts) ? b.themeParkPts : (b.themePark && !Array.isArray(b.themePark) ? b.themePark.pts : null));
   total += sumPts(b.train && b.train.pts);
   total += sumPts(b.bus && b.bus.pts);
   // A hotel entry's points moved from a single program/amount pair to a
@@ -13431,13 +13955,20 @@ function tripBookedPriceTotal(t){
     num(b.airline && b.airline.price);
   total += num(b.cruise && b.cruise.price);
   total += num(b.carRental && b.carRental.price);
-  total += num(b.themePark && b.themePark.price);
   total += num(b.train && b.train.price);
   total += num(b.bus && b.bus.price);
   var hotels = Array.isArray(b.hotel) ? b.hotel : [];
   total += hotels.reduce(function(a,h){return a+num(h&&h.price);},0);
   var tours = Array.isArray(b.tours) ? b.tours : [];
   total += tours.reduce(function(a,x){return a+num(x&&x.price);},0);
+  // booked.themePark moved from one flat price field to a list, same shape
+  // change as booked.airline's records — sum the list for current trips,
+  // only falling back to the old flat field for a legacy trip that never
+  // got resaved into the new shape.
+  var themeParks = Array.isArray(b.themePark) ? b.themePark : [];
+  total += themeParks.length ?
+    themeParks.reduce(function(a,x){return a+num(x&&x.price);},0) :
+    num(b.themePark && b.themePark.price);
   var transfers = Array.isArray(b.transfers) ? b.transfers : [];
   total += transfers.reduce(function(a,x){return a+num(x&&x.price);},0);
   // Insurance premiums are real cash cost too, same as each category's own
@@ -13449,7 +13980,7 @@ function tripBookedPriceTotal(t){
   total += num(b.carRental && b.carRental.insurancePremium);
   total += num(b.transfersInsurancePremium);
   total += num(b.toursInsurancePremium);
-  total += num(b.themePark && b.themePark.insurancePremium);
+  total += num(b.themeParkInsurancePremium) + (Array.isArray(b.themePark) ? 0 : num(b.themePark && b.themePark.insurancePremium));
   total += num(b.train && b.train.insurancePremium);
   total += num(b.bus && b.bus.insurancePremium);
   return total;
@@ -15359,7 +15890,7 @@ function refDetailLabel(referredBy){
 // strings on client.discounts/trip.discounts, plus an 'Other' entry whose
 // free-text detail lives separately in client.discountOther/trip.discountOther
 // — same detail-field-reveal convention as Referred By's Other.
-const DISCOUNT_TYPES=['Military','AAA','First Responder','Educator'];
+const DISCOUNT_TYPES=['Military','AAA','First Responder','Educator','USAA'];
 function discountsFieldHtml(idPrefix, discounts, otherText){
   discounts = discounts || [];
   var hasOther = discounts.indexOf('Other')!==-1;
@@ -16053,7 +16584,7 @@ function computeBookedTripSummary(bd){
     .concat(bd.carRental.pts||[])
     .concat(bd.transfersPts||[])
     .concat(bd.toursPts||[])
-    .concat(bd.themePark.pts||[])
+    .concat(bd.themeParkPts||[])
     .concat(bd.train.pts||[])
     .concat(bd.bus.pts||[]);
   var byProgram = {};
@@ -16071,7 +16602,7 @@ function computeBookedTripSummary(bd){
     + (bd.carRental.price||0)
     + (bd.transfers||[]).reduce(function(a,t){return a+(t.price||0);},0)
     + (bd.tours||[]).reduce(function(a,t){return a+(t.price||0);},0)
-    + (bd.themePark.price||0)
+    + (bd.themePark||[]).reduce(function(a,t){return a+(t.price||0);},0)
     + (bd.train.price||0)
     + (bd.bus.price||0);
   // Insurance premiums are real cash cost too — same reasoning as
@@ -16082,7 +16613,7 @@ function computeBookedTripSummary(bd){
     + (bd.carRental.insurancePremium||0)
     + (bd.transfersInsurancePremium||0)
     + (bd.toursInsurancePremium||0)
-    + (bd.themePark.insurancePremium||0)
+    + (bd.themeParkInsurancePremium||0)
     + (bd.train.insurancePremium||0)
     + (bd.bus.insurancePremium||0);
   return {rows:rows, totalCash: totalPrice + totalPtsCost + totalInsurance};
@@ -16388,6 +16919,48 @@ function readTourEntries(){
     return e.confirmationNumber||e.vendor||e.price||e.description;
   });
 }
+// Theme Park entries are the same dynamic add/remove pattern as Tours
+// above (a trip can now request/book more than one park — see the Book a
+// Trip form's own "+ Add Another Theme Park", which this exists to
+// receive structured data from) — read back by class selector in DOM
+// order, added/removed as real DOM nodes. Insurance and Points Used stay
+// section-level shared fields (bd.themeParkInsurancePremium/
+// themeParkInsuranceCoverage/themeParkPts), the same as Tours' own
+// toursInsurancePremium/toursInsuranceCoverage/toursPts, rather than
+// per-entry the way Hotel's are — a single insurance policy or points
+// redemption covering the whole park-tickets purchase is the common case.
+function themeParkEntryRowInnerHtml(entry){
+  entry = entry || {};
+  return '<div style="display:flex;justify-content:flex-end;margin-bottom:4px">'+
+      '<button type="button" class="del-themepark-entry-btn" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:12px">&#128465;&#65039; Remove</button>'+
+    '</div>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
+      '<div class="field"><label>Park</label><select class="themepark-entry-park"><option value="">-- Select --</option>'+selOpts(THEME_PARKS,entry.park)+'</select></div>'+
+      '<div class="field"><label>Confirmation Number</label><input class="themepark-entry-conf" type="text" value="'+(entry.confirmationNumber||'').toString().replace(/"/g,'&quot;')+'" placeholder="e.g. TP-334455"></div>'+
+      '<div class="field"><label>Ticket Type</label><input class="themepark-entry-ticket" type="text" value="'+(entry.ticketType||'').toString().replace(/"/g,'&quot;')+'" placeholder="e.g. Park Hopper"></div>'+
+      '<div class="field"><label>Price ($)</label><input class="themepark-entry-price" type="number" value="'+(entry.price||'')+'"></div>'+
+      '<div class="field full"><label>Notes</label><textarea class="themepark-entry-notes">'+(entry.notes||'')+'</textarea></div>'+
+    '</div>';
+}
+function themeParkEntryRowHtml(entry){
+  return '<div class="themepark-entry-row" style="border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin-bottom:10px;background:#fafafa">'+themeParkEntryRowInnerHtml(entry)+'</div>';
+}
+function themeParkEntriesListHtml(entries){
+  return entries.length ? entries.map(themeParkEntryRowHtml).join('') : '<div id="tb-themepark-entries-empty" style="color:#aaa;font-size:12px;padding:6px 0">No theme parks added yet</div>';
+}
+function readThemeParkEntries(){
+  return Array.from(document.querySelectorAll('#tb-themepark-entries .themepark-entry-row')).map(function(row){
+    return {
+      park: (row.querySelector('.themepark-entry-park')||{}).value||'',
+      confirmationNumber: (row.querySelector('.themepark-entry-conf')||{}).value||'',
+      ticketType: (row.querySelector('.themepark-entry-ticket')||{}).value||'',
+      price: Number((row.querySelector('.themepark-entry-price')||{}).value)||0,
+      notes: (row.querySelector('.themepark-entry-notes')||{}).value||''
+    };
+  }).filter(function(e){
+    return e.park||e.confirmationNumber||e.ticketType||e.price||e.notes;
+  });
+}
 // Transfer / car-service entries are the same dynamic add/remove pattern
 // as hotel/tour entries above — a trip often needs several individual
 // rides (airport pickup, hotel-to-restaurant, day trip). Each ride carries
@@ -16630,10 +17203,11 @@ function bookedCatSectionHtml(key, title, innerHtml){
 function bookedTripDetailsHtml(bd){
   bd = bd || {};
   var air = bd.airline||{}, cru = bd.cruise||{}, car = bd.carRental||{},
-      tp = bd.themePark||{}, tra = bd.train||{}, bus = bd.bus||{};
-  // bd.hotel/bd.tours used to each be a single object (one hotel, one tour
-  // per trip); now they're lists, so an old single-object shape gets
-  // wrapped into a one-entry list rather than losing that data.
+      tra = bd.train||{}, bus = bd.bus||{};
+  // bd.hotel/bd.tours/bd.themePark used to each be a single object (one
+  // hotel, one tour, one park per trip); now they're lists, so an old
+  // single-object shape gets wrapped into a one-entry list rather than
+  // losing that data.
   var hotelEntries = Array.isArray(bd.hotel) ? bd.hotel : (bd.hotel && Object.keys(bd.hotel).length ? [bd.hotel] : []);
   if(!hotelEntries.length) hotelEntries = [{}];
   // Each hotel stay used to carry one program/amount pair directly; now it
@@ -16645,6 +17219,19 @@ function bookedTripDetailsHtml(bd){
   });
   var tourEntries = Array.isArray(bd.tours) ? bd.tours : (bd.tours && Object.keys(bd.tours).length ? [bd.tours] : []);
   if(!tourEntries.length) tourEntries = [{}];
+  // Old single-object themePark ({park, confirmationNumber, ticketType,
+  // price, insurancePremium, insuranceCoverage, notes, pts}) has its
+  // insurance/notes/pts fields promoted up to the section-level
+  // bd.themeParkInsurancePremium/themeParkInsuranceCoverage/themeParkPts
+  // (same shared-across-the-section shape Tours already uses) the first
+  // time this trip is saved through readBookedTripDetails() — until then,
+  // fall back to the old object's own fields so nothing already saved
+  // appears to vanish.
+  var themeParkEntries = Array.isArray(bd.themePark) ? bd.themePark : (bd.themePark && Object.keys(bd.themePark).length ? [bd.themePark] : []);
+  if(!themeParkEntries.length) themeParkEntries = [{}];
+  var themeParkInsurancePremium = bd.themeParkInsurancePremium || (!Array.isArray(bd.themePark) && bd.themePark ? bd.themePark.insurancePremium : 0) || 0;
+  var themeParkInsuranceCoverage = bd.themeParkInsuranceCoverage || (!Array.isArray(bd.themePark) && bd.themePark ? bd.themePark.insuranceCoverage : 0) || 0;
+  var themeParkPts = bd.themeParkPts || (!Array.isArray(bd.themePark) && bd.themePark ? bd.themePark.pts : null) || [];
   var transferEntries = Array.isArray(bd.transfers) ? bd.transfers : [];
   if(!transferEntries.length) transferEntries = [{}];
   // booked.cruise used to hold one cabinType/peopleInCabin pair directly —
@@ -16745,14 +17332,13 @@ function bookedTripDetailsHtml(bd){
       fld('Coverage Amount ($)',inp('tb-tours-coverage','number',bd.toursInsuranceCoverage,'Total coverage provided by the policy above'))+
       pointsEntriesSectionHtml(bd.toursPts||[], 'tb-tours-pts-entries', 'tb-tours-pts-add-btn'))+
     bookedCatSectionHtml('themepark','Theme Park',
-      fld('Confirmation Number',inp('tb-tp-conf','text',tp.confirmationNumber,'e.g. TP-334455'))+
-      fld('Park',sel('tb-tp-park',THEME_PARKS,tp.park))+
-      fld('Ticket Type',inp('tb-tp-ticket','text',tp.ticketType,'e.g. Park Hopper'))+
-      fld('Price ($)',inp('tb-tp-price','number',tp.price))+
-      fld('Insurance Premium ($)',inp('tb-tp-insurance','number',tp.insurancePremium,'If purchased for these tickets, through the park or a separate insurer'))+
-      fld('Coverage Amount ($)',inp('tb-tp-coverage','number',tp.insuranceCoverage,'Total coverage provided by the policy above'))+
-      fld('Notes','<textarea id="tb-tp-notes">'+(tp.notes||'')+'</textarea>',true)+
-      pointsEntriesSectionHtml(tp.pts||[], 'tb-tp-pts-entries', 'tb-tp-pts-add-btn'))+
+      '<div class="field full"><label>Theme Parks <span class="hint" style="text-transform:none;font-weight:400">(add one entry per park/ticket purchase on this trip)</span></label>'+
+        '<div id="tb-themepark-entries">'+themeParkEntriesListHtml(themeParkEntries)+'</div>'+
+        '<button type="button" id="tb-themepark-add-btn" style="padding:5px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit">+ Add Theme Park</button>'+
+      '</div>'+
+      fld('Insurance Premium ($)',inp('tb-tp-insurance','number',themeParkInsurancePremium,'If purchased for these tickets, through the park or a separate insurer'))+
+      fld('Coverage Amount ($)',inp('tb-tp-coverage','number',themeParkInsuranceCoverage,'Total coverage provided by the policy above'))+
+      pointsEntriesSectionHtml(themeParkPts, 'tb-tp-pts-entries', 'tb-tp-pts-add-btn'))+
     bookedCatSectionHtml('train','Train',
       fld('Confirmation Number',inp('tb-train-conf','text',tra.confirmationNumber,'e.g. AMTK-556677'))+
       fld('Departure City',inp('tb-train-depcity','text',tra.departureCity,'e.g. New York, NY'))+
@@ -17022,6 +17608,30 @@ function bindBookedTripDetailsListeners(){
       }
     });
   }
+  var themeParkEntriesEl = document.getElementById('tb-themepark-entries');
+  var themeParkAddBtn = document.getElementById('tb-themepark-add-btn');
+  if(themeParkAddBtn && themeParkEntriesEl){
+    themeParkAddBtn.addEventListener('click', function(){
+      var empty = document.getElementById('tb-themepark-entries-empty');
+      if(empty) empty.remove();
+      var div = document.createElement('div');
+      div.className = 'themepark-entry-row';
+      div.style.cssText = 'border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin-bottom:10px;background:#fafafa';
+      div.innerHTML = themeParkEntryRowInnerHtml({});
+      themeParkEntriesEl.appendChild(div);
+    });
+  }
+  if(themeParkEntriesEl){
+    themeParkEntriesEl.addEventListener('click', function(e){
+      var btn = e.target.closest ? e.target.closest('.del-themepark-entry-btn') : null;
+      if(!btn) return;
+      var row = btn.closest('.themepark-entry-row');
+      if(row) row.remove();
+      if(!themeParkEntriesEl.querySelector('.themepark-entry-row')){
+        themeParkEntriesEl.innerHTML = '<div id="tb-themepark-entries-empty" style="color:#aaa;font-size:12px;padding:6px 0">No theme parks added yet</div>';
+      }
+    });
+  }
   var transferEntriesEl = document.getElementById('tb-transfer-entries');
   var transferAddBtn = document.getElementById('tb-transfer-add-btn');
   if(transferAddBtn && transferEntriesEl){
@@ -17090,10 +17700,10 @@ function readBookedTripDetails(){
     toursPts: readPointsEntriesFrom(document.getElementById('tb-tours-pts-entries')),
     toursInsurancePremium: gn('tb-tours-insurance'),
     toursInsuranceCoverage: gn('tb-tours-coverage'),
-    themePark: {
-      confirmationNumber: gv('tb-tp-conf'), park: gv('tb-tp-park'), ticketType: gv('tb-tp-ticket'), price: gn('tb-tp-price'), insurancePremium: gn('tb-tp-insurance'), insuranceCoverage: gn('tb-tp-coverage'), notes: gv('tb-tp-notes'),
-      pts: readPointsEntriesFrom(document.getElementById('tb-tp-pts-entries'))
-    },
+    themePark: readThemeParkEntries(),
+    themeParkPts: readPointsEntriesFrom(document.getElementById('tb-tp-pts-entries')),
+    themeParkInsurancePremium: gn('tb-tp-insurance'),
+    themeParkInsuranceCoverage: gn('tb-tp-coverage'),
     train: {
       confirmationNumber: gv('tb-train-conf'), departureCity: gv('tb-train-depcity'), arrivalCity: gv('tb-train-arrcity'),
       departureDate: gv('tb-train-depdate'), returnDate: gv('tb-train-retdate'), classOfService: gv('tb-train-class'),
@@ -21906,6 +22516,23 @@ function startAutosave(){
     if(document.visibilityState === 'hidden') runAutoDriveBackup();
   });
   window.addEventListener('pagehide', function(){ runAutoDriveBackup(); });
+
+  // Warns (the browser's native "leave site?" prompt — no custom text is
+  // actually shown by modern browsers, but the prompt itself still forces
+  // a deliberate choice) if the page is about to close/reload while an
+  // encrypted saveDB() write is still in flight. That write is fire-and-
+  // forget everywhere else on purpose (see _dbSavesInFlight's own
+  // comment), so this is the last line of defense against a reload
+  // winning the race and silently discarding it — most likely right after
+  // a restore, when reloading immediately to confirm it stuck is the
+  // natural next thing to do.
+  window.addEventListener('beforeunload', function(e){
+    if(_dbSavesInFlight > 0){
+      e.preventDefault();
+      e.returnValue = '';
+      return '';
+    }
+  });
 }
 
 let _autoBackupInFlight = false;
