@@ -19836,15 +19836,32 @@ function loadFacebookPageAnalytics(bodyId){
   });
 }
 // Per-post breakdown for the Page's own feed — deliberately reads
-// likes.summary(true)/comments.summary(true)/shares straight off each post
-// object rather than that post's own /insights edge. loadFacebookPageAnalytics()
-// above already found Page-level Insights metrics coming back as an empty
-// {data:[]} for this Page (most likely Meta suppressing Insights below some
-// audience/activity threshold) — these three fields aren't Insights metrics
-// at all, just plain counts on the post object, so they aren't subject to
-// that same suppression and are far more likely to actually return numbers.
+// shares straight off each post object rather than that post's own
+// /insights edge. loadFacebookPageAnalytics() above already found
+// Page-level Insights metrics coming back as an empty {data:[]} for this
+// Page (most likely Meta suppressing Insights below some audience/activity
+// threshold) — shares isn't an Insights metric at all, just a plain count
+// on the post object, so it isn't subject to that same suppression and is
+// far more likely to actually return a number.
 // Meta omits the "shares" key entirely from a post with zero shares (a
 // documented quirk, not a missing-permission error), hence the fallback to 0.
+// likes.summary(true)/comments.summary(true) were dropped from the fields
+// list entirely (not just left unrendered) — confirmed live that Facebook
+// rejects the WHOLE /posts request if ANY requested field is inaccessible,
+// which is what was actually behind the long-running "(#10)
+// pages_read_engagement" error on this section, even after every
+// permission/Configuration/Business-Asset/API-version fix upstream of this
+// (all of which were real and necessary, just not sufficient on their own).
+// Isolated field-by-field: likes.summary(true) fails with "(#10)
+// pages_read_engagement" even on a token confirmed (Access Token Debugger)
+// to carry that exact permission — near-certainly a platform-wide
+// deprecation of reading like-counts this way, not something grantable.
+// comments.summary(true) fails with a DIFFERENT permission entirely —
+// "(#10) ... requires 'pages_read_user_content'" — never requested
+// anywhere in this app. If Comments are wanted back, add
+// pages_read_user_content to the "Miles Man Pages" Configuration
+// (FB_PAGES_CONFIG_ID) and add the field back here; likes.summary(true)
+// should stay out regardless.
 function loadFacebookPagePosts(bodyId){
   var body = $(bodyId);
   if(!body) return;
@@ -19855,7 +19872,7 @@ function loadFacebookPagePosts(bodyId){
     var pages = pagesResp.data||[];
     if(!pages.length){ body.innerHTML = '<div class="empty">No Facebook Page found on this account.</div>'; return; }
     var page = pages[0];
-    return fbGraph('/'+page.id+'/posts', {token:page.access_token, query:{fields:'id,message,created_time,permalink_url,likes.summary(true),comments.summary(true),shares', limit:'10'}}).then(function(postsResp){
+    return fbGraph('/'+page.id+'/posts', {token:page.access_token, query:{fields:'id,message,created_time,permalink_url,shares', limit:'10'}}).then(function(postsResp){
       if(!body) return;
       if(postsResp.error){ fbLogGraphError('page posts fetch', postsResp.error); body.innerHTML = '<div class="empty">'+escHtml(postsResp.error.message||'Failed to load posts')+'</div>'; return; }
       var posts = postsResp.data||[];
@@ -19864,8 +19881,6 @@ function loadFacebookPagePosts(bodyId){
         '<thead><tr style="text-align:left;color:#888;border-bottom:1px solid #eee">'+
           '<th style="padding:4px 6px 4px 0;font-weight:600">Date</th>'+
           '<th style="padding:4px 6px;font-weight:600">Post</th>'+
-          '<th style="padding:4px 6px;text-align:right;font-weight:600">Likes</th>'+
-          '<th style="padding:4px 6px;text-align:right;font-weight:600">Comments</th>'+
           '<th style="padding:4px 0;text-align:right;font-weight:600">Shares</th>'+
         '</tr></thead><tbody>'+
         posts.map(function(p){
@@ -19873,8 +19888,6 @@ function loadFacebookPagePosts(bodyId){
           var dateStr = (d && !isNaN(d)) ? d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
           var text = (p.message||'(no caption)').replace(/\s+/g,' ').trim();
           if(text.length>80) text = text.slice(0,80)+'…';
-          var likes = (p.likes && p.likes.summary && p.likes.summary.total_count) || 0;
-          var comments = (p.comments && p.comments.summary && p.comments.summary.total_count) || 0;
           var shares = (p.shares && p.shares.count) || 0;
           var postCell = p.permalink_url
             ? '<a href="'+escHtml(p.permalink_url)+'" target="_blank" rel="noopener" style="color:#1a73e8;text-decoration:none">'+escHtml(text)+'</a>'
@@ -19882,8 +19895,6 @@ function loadFacebookPagePosts(bodyId){
           return '<tr style="border-bottom:1px solid #f5f5f5">'+
             '<td style="padding:6px 6px 6px 0;white-space:nowrap;color:#888;vertical-align:top">'+dateStr+'</td>'+
             '<td style="padding:6px;vertical-align:top">'+postCell+'</td>'+
-            '<td style="padding:6px;text-align:right;vertical-align:top">'+fmt(likes)+'</td>'+
-            '<td style="padding:6px;text-align:right;vertical-align:top">'+fmt(comments)+'</td>'+
             '<td style="padding:6px 0;text-align:right;vertical-align:top">'+fmt(shares)+'</td>'+
           '</tr>';
         }).join('')+
