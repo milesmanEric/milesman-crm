@@ -4232,13 +4232,25 @@ async function driveBackup(silent){
     const existing=await findBackupFile(driveToken);
     if(driveConflictDetected(existing)){
       debugLog('Backup BLOCKED — Drive has a newer backup ('+existing.modifiedTime+') than this device last saw ('+localStorage.getItem('mm_last_known_remote_modified')+'). Likely uploaded from another device. Restore first to avoid overwriting it.');
+      // Silent/auto backups never get a confirm() — no human is present to
+      // answer it — so they always hard-block here, same as before. A manual
+      // click is a human actively choosing to back up right now, so (same
+      // pattern as the dbAppearsWiped() confirm() above) they get the choice
+      // to explicitly override instead of a dead end with no way through the
+      // UI. Google Drive's own Version History can still recover whatever
+      // gets overwritten, so this isn't a point of no return either way.
       if(!silent){
-        toast('Google Drive has a newer backup from another device — click "Restore from Google Drive" first, or you\'ll overwrite it','err');
-        btn.textContent='Backup to Google Drive';btn.disabled=false;
+        if(!confirm('Google Drive has a newer backup ('+existing.modifiedTime+') than this device last saw — likely uploaded from another device.\n\nBack up anyway and overwrite it with this device\'s current data? (Drive\'s Version History can still recover the overwritten version if this turns out to be wrong.)')){
+          debugLog('Manual backup cancelled — user declined to overwrite the newer Drive backup.');
+          toast('Backup cancelled','err');
+          btn.textContent='Backup to Google Drive';btn.disabled=false;
+          return;
+        }
+        debugLog('Manual backup: user confirmed overwriting the newer Drive backup.');
       }else{
         updateSyncStatusDisplay();
+        return;
       }
-      return;
     }
     if(existing){
       const r=await fetch('https://www.googleapis.com/upload/drive/v3/files/'+existing.id+'?uploadType=media&fields=modifiedTime',{
