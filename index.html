@@ -828,10 +828,19 @@ const FB_APP_ID       = '1037570602213729';
 // Instagram > Permissions) and re-added under their current real names:
 // instagram_business_basic (replaces instagram_basic) and
 // instagram_business_manage_insights (replaces instagram_manage_insights).
-// If Facebook Connect ever starts failing with a scope error again, these
-// two are the first suspects — but don't just guess a fix this time either;
-// re-confirm against that same Use Cases > Permissions screen first.
-const FB_SCOPE        = 'ads_management,ads_read,business_management,pages_show_list,pages_read_engagement,instagram_business_basic,instagram_business_manage_insights';
+// UPDATE: those two renamed scopes broke login the exact same way a second
+// time — "Invalid Scopes: instagram_business_basic,
+// instagram_business_manage_insights" — so they're pulled back out again
+// here rather than re-guessing new names. This restores Facebook Page
+// login/Recent Posts (pages_read_engagement couldn't actually be granted
+// while the whole OAuth request was being rejected over the Instagram
+// scopes, which was the real cause behind the "(#10) pages_read_engagement"
+// error on Recent Posts). Instagram analytics (loadInstagramAnalytics) will
+// show "not connected" until this is revisited: re-check the Use Cases >
+// Manage messaging & content on Instagram > Permissions screen at
+// developers.facebook.com/apps/1037570602213729 for whatever the current
+// real permission names are before adding anything back.
+const FB_SCOPE        = 'ads_management,ads_read,business_management,pages_show_list,pages_read_engagement';
 const FB_REDIRECT     = 'https://milesmaneric.github.io/milesman-crm/';
 const FB_AUTH_SERVER  = 'https://milesman-auth.vercel.app';
 const FB_AD_ACCOUNT   = 'act_1285326830438388';
