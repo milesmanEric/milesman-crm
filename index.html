@@ -19783,6 +19783,64 @@ function loadFacebookPageAnalytics(bodyId){
     if(body) body.innerHTML = '<div class="empty">Failed to load: '+e.message+'</div>';
   });
 }
+// Per-post breakdown for the Page's own feed — deliberately reads
+// likes.summary(true)/comments.summary(true)/shares straight off each post
+// object rather than that post's own /insights edge. loadFacebookPageAnalytics()
+// above already found Page-level Insights metrics coming back as an empty
+// {data:[]} for this Page (most likely Meta suppressing Insights below some
+// audience/activity threshold) — these three fields aren't Insights metrics
+// at all, just plain counts on the post object, so they aren't subject to
+// that same suppression and are far more likely to actually return numbers.
+// Meta omits the "shares" key entirely from a post with zero shares (a
+// documented quirk, not a missing-permission error), hence the fallback to 0.
+function loadFacebookPagePosts(bodyId){
+  var body = $(bodyId);
+  if(!body) return;
+  fbGraph('/me/accounts', {query:{fields:'id,name,access_token'}}).then(function(pagesResp){
+    if(!body) return;
+    if(pagesResp.error){ fbLogGraphError('page list fetch (posts)', pagesResp.error); body.innerHTML = '<div class="empty">'+escHtml(pagesResp.error.message||'Failed to load Facebook Pages')+'</div>'; return; }
+    var pages = pagesResp.data||[];
+    if(!pages.length){ body.innerHTML = '<div class="empty">No Facebook Page found on this account.</div>'; return; }
+    var page = pages[0];
+    return fbGraph('/'+page.id+'/posts', {token:page.access_token, query:{fields:'id,message,created_time,permalink_url,likes.summary(true),comments.summary(true),shares', limit:'10'}}).then(function(postsResp){
+      if(!body) return;
+      if(postsResp.error){ fbLogGraphError('page posts fetch', postsResp.error); body.innerHTML = '<div class="empty">'+escHtml(postsResp.error.message||'Failed to load posts')+'</div>'; return; }
+      var posts = postsResp.data||[];
+      if(!posts.length){ body.innerHTML = '<div class="empty">No posts found on this Page.</div>'; return; }
+      body.innerHTML = '<table style="width:100%;border-collapse:collapse;font-size:12px">'+
+        '<thead><tr style="text-align:left;color:#888;border-bottom:1px solid #eee">'+
+          '<th style="padding:4px 6px 4px 0;font-weight:600">Date</th>'+
+          '<th style="padding:4px 6px;font-weight:600">Post</th>'+
+          '<th style="padding:4px 6px;text-align:right;font-weight:600">Likes</th>'+
+          '<th style="padding:4px 6px;text-align:right;font-weight:600">Comments</th>'+
+          '<th style="padding:4px 0;text-align:right;font-weight:600">Shares</th>'+
+        '</tr></thead><tbody>'+
+        posts.map(function(p){
+          var d = p.created_time ? new Date(p.created_time) : null;
+          var dateStr = (d && !isNaN(d)) ? d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
+          var text = (p.message||'(no caption)').replace(/\s+/g,' ').trim();
+          if(text.length>80) text = text.slice(0,80)+'…';
+          var likes = (p.likes && p.likes.summary && p.likes.summary.total_count) || 0;
+          var comments = (p.comments && p.comments.summary && p.comments.summary.total_count) || 0;
+          var shares = (p.shares && p.shares.count) || 0;
+          var postCell = p.permalink_url
+            ? '<a href="'+escHtml(p.permalink_url)+'" target="_blank" rel="noopener" style="color:#1a73e8;text-decoration:none">'+escHtml(text)+'</a>'
+            : escHtml(text);
+          return '<tr style="border-bottom:1px solid #f5f5f5">'+
+            '<td style="padding:6px 6px 6px 0;white-space:nowrap;color:#888;vertical-align:top">'+dateStr+'</td>'+
+            '<td style="padding:6px;vertical-align:top">'+postCell+'</td>'+
+            '<td style="padding:6px;text-align:right;vertical-align:top">'+fmt(likes)+'</td>'+
+            '<td style="padding:6px;text-align:right;vertical-align:top">'+fmt(comments)+'</td>'+
+            '<td style="padding:6px 0;text-align:right;vertical-align:top">'+fmt(shares)+'</td>'+
+          '</tr>';
+        }).join('')+
+        '</tbody></table>';
+    });
+  }).catch(function(e){
+    debugLog('Facebook Page posts: request failed before any response — '+e.message);
+    if(body) body.innerHTML = '<div class="empty">Failed to load: '+e.message+'</div>';
+  });
+}
 // Instagram Business/Creator accounts are only reachable through the same
 // connected Facebook Page as loadFacebookPageAnalytics() above — Meta
 // requires an IG professional account to be linked to a Page, and serves
@@ -20939,6 +20997,7 @@ function renderAnalytics(){
           analyticsSectionHtml('fb-ads-daily','Daily Spend & Performance (30 days)')+
           '<div style="font-size:11px;color:#888;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin:16px 0 6px;border-top:1px solid #f0f0f0;padding-top:12px">Page Performance (organic, non-ads)</div>'+
           '<div id="fb-page-analytics-body"><div class="empty">Loading…</div></div>'+
+          analyticsSectionHtml('fb-page-posts','Recent Posts')+
           '<div style="font-size:11px;color:#888;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin:16px 0 6px;border-top:1px solid #f0f0f0;padding-top:12px">Instagram (via connected Page)</div>'+
           '<div id="ig-analytics-body"><div class="empty">Loading…</div></div>'
         : '<div style="padding:8px 0"><button class="add-btn" id="fb-analytics-connect-btn">Connect Facebook</button></div>')+
@@ -21017,6 +21076,7 @@ function renderAnalytics(){
     loadFacebookAdsAnalytics(fbToken);
     if(!analyticsSectionCollapsed('fb-ads-daily')) loadFacebookAdsDaily(fbToken, 'fb-ads-daily-body');
     loadFacebookPageAnalytics('fb-page-analytics-body');
+    if(!analyticsSectionCollapsed('fb-page-posts')) loadFacebookPagePosts('fb-page-posts-body');
     loadInstagramAnalytics('ig-analytics-body');
   }
 
