@@ -818,14 +818,24 @@ const FB_APP_ID       = '1037570602213729';
 // developer-account hold, which is why removing just the Page scopes
 // back then didn't fix it.) Page Insights itself won't work without this
 // permission — re-add it once Advanced Access is granted.
-// instagram_basic/instagram_manage_insights added for the Analytics tab's
-// Instagram section (loadInstagramAnalytics) — same Development Mode risk
-// as read_insights above applies here too, unconfirmed against a live
-// login as of when this was added. If connecting ever starts failing with
-// a scope/"Feature Unavailable" error again, these two are the first
-// suspects — remove them and see if login recovers, the same way
-// read_insights was diagnosed.
-const FB_SCOPE        = 'ads_management,ads_read,business_management,pages_show_list,pages_read_engagement,instagram_basic,instagram_manage_insights';
+// instagram_basic/instagram_manage_insights were added for the Analytics
+// tab's Instagram section (loadInstagramAnalytics) but confirmed dead on a
+// real login attempt: Facebook now rejects the whole OAuth request outright
+// with "Invalid Scopes: instagram_basic, instagram_manage_insights" —
+// blocking Ads/Page login entirely, not just Instagram — rather than the
+// softer Development Mode "Feature Unavailable" this comment used to warn
+// about for read_insights. Meta has been migrating Instagram Graph API
+// permissions to a new naming scheme (e.g. instagram_business_basic /
+// instagram_business_manage_insights under "Instagram API with Instagram
+// Login"); these old names are simply gone for this app now, not something
+// re-adding fixes. Removed rather than swapped to a guessed replacement —
+// the right new scope name/login-flow combination needs confirming against
+// this app's actual Meta Developer Console configuration (Products/
+// Permissions tab) before being added back, since guessing wrong here
+// would re-break login the same way. loadInstagramAnalytics() itself
+// degrades gracefully (its own per-card error message) rather than
+// crashing anything now that these are gone.
+const FB_SCOPE        = 'ads_management,ads_read,business_management,pages_show_list,pages_read_engagement';
 const FB_REDIRECT     = 'https://milesmaneric.github.io/milesman-crm/';
 const FB_AUTH_SERVER  = 'https://milesman-auth.vercel.app';
 const FB_AD_ACCOUNT   = 'act_1285326830438388';
