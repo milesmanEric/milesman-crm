@@ -842,6 +842,25 @@ const FB_APP_ID       = '1037570602213729';
 // actually be granted.
 const FB_SCOPE        = 'ads_management,ads_read,business_management,pages_show_list,pages_read_engagement';
 const FB_CONFIG_ID    = '1532868151925934'; // Facebook Login for Business "Miles Man" configuration — see FB_SCOPE comment above
+// A second, separate Configuration+login+token, for Page reads specifically
+// (loadFacebookPagePosts/loadFacebookPageAnalytics/loadInstagramAnalytics).
+// Turns out a "User access token" Configuration — what FB_CONFIG_ID above
+// is — can never reliably back pages_read_engagement for a Page's own
+// /posts edge when called from a real third-party server: confirmed live
+// that even with the permission showing granted on the Access Token
+// Debugger, the app connected to the Page as a Business Asset, and the
+// Graph API version bumped (v21.0 -> v23.0, ruled out separately), Page
+// tokens derived from that user token via /me/accounts still hit "(#10)
+// This endpoint requires the 'pages_read_engagement' permission" every
+// time from this app's server — while the identical Page/permission
+// combo worked fine through Graph API Explorer's own first-party tooling.
+// The fix: a "System-user access token" Configuration ("Miles Man Pages"),
+// with Pages required as an asset and the Miles Man Page explicitly
+// selected — Facebook Login for Business's actual documented mechanism
+// for a server needing ongoing access to a specific Business asset, as
+// opposed to a personal user token that merely lists pages_read_engagement
+// among its scopes. See facebookPagesLogin()/mm_fb_pages_token.
+const FB_PAGES_CONFIG_ID = '2887693191594544';
 const FB_REDIRECT     = 'https://milesmaneric.github.io/milesman-crm/';
 const FB_AUTH_SERVER  = 'https://milesman-auth.vercel.app';
 const FB_AD_ACCOUNT   = 'act_1285326830438388';
@@ -3321,14 +3340,30 @@ function facebookLogin(){
   debugLog('Redirecting to Facebook login...');
   window.location.href = 'https://www.facebook.com/v23.0/dialog/oauth?'+params.toString(); // kept in sync with GRAPH_VERSION in vercel-endpoints/facebook.js
 }
+// Separate login for Page-level access — see FB_PAGES_CONFIG_ID comment
+// above for why this can't just reuse facebookLogin()'s token.
+function facebookPagesLogin(){
+  const params = new URLSearchParams({
+    client_id:     FB_APP_ID,
+    redirect_uri:  FB_REDIRECT,
+    response_type: 'code',
+    config_id:     FB_PAGES_CONFIG_ID,
+    state:         'fb_pages_auth'
+  });
+  debugLog('Redirecting to Facebook Pages login...');
+  window.location.href = 'https://www.facebook.com/v23.0/dialog/oauth?'+params.toString();
+}
 function checkFacebookRedirect(){
   const params = new URLSearchParams(window.location.search);
   const code  = params.get('code');
   const state = params.get('state');
-  if(!code || state !== 'fb_auth') return;
+  if(!code || (state !== 'fb_auth' && state !== 'fb_pages_auth')) return;
+  var isPages = state === 'fb_pages_auth';
+  var tokenKey = isPages ? 'mm_fb_pages_token' : 'mm_fb_token';
+  var label = isPages ? 'Facebook Pages' : 'Facebook';
 
   window.history.replaceState({},'',window.location.pathname);
-  debugLog('Facebook auth code received, exchanging...');
+  debugLog(label+' auth code received, exchanging...');
 
   fetch(FB_AUTH_SERVER+'/api/facebook-token',{
     method:'POST',
@@ -3336,18 +3371,18 @@ function checkFacebookRedirect(){
     body:JSON.stringify({ code: code, redirect_uri: FB_REDIRECT })
   }).then(function(r){return r.json();}).then(function(d){
     if(d.access_token){
-      localStorage.setItem('mm_fb_token', d.access_token);
-      debugLog('Facebook token obtained successfully');
-      toast('Facebook connected!','ok');
-      go('marketing');
+      localStorage.setItem(tokenKey, d.access_token);
+      debugLog(label+' token obtained successfully');
+      toast(label+' connected!','ok');
+      go(isPages ? 'analytics' : 'marketing');
     } else {
-      debugLog('Facebook token exchange failed: '+JSON.stringify(d.error||d));
+      debugLog(label+' token exchange failed: '+JSON.stringify(d.error||d));
       var msg = (d.error && (d.error.message||d.error.error_description)) || d.error_description || 'unknown error';
-      toast('Facebook auth failed: '+msg,'err');
+      toast(label+' auth failed: '+msg,'err');
     }
   }).catch(function(e){
-    debugLog('Facebook token exchange error: '+e.message);
-    toast('Facebook auth error: '+e.message,'err');
+    debugLog(label+' token exchange error: '+e.message);
+    toast(label+' auth error: '+e.message,'err');
   });
 }
 function fbGraph(path, opts){
@@ -14339,7 +14374,7 @@ function renderDash(){
     var el = document.getElementById('ig-analytics-body');
     if(el) el.scrollIntoView({behavior:'smooth', block:'center'});
   });
-  if(localStorage.getItem('mm_fb_token')){
+  if(localStorage.getItem('mm_fb_pages_token')){
     fetchInstagramAccountId().then(function(acct){
       return fbGraph('/'+acct.igId, {token:acct.pageToken, query:{fields:'followers_count'}});
     }).then(function(d){
@@ -19734,7 +19769,10 @@ function loadFacebookAdsDaily(token, bodyId){
 function loadFacebookPageAnalytics(bodyId){
   var body = $(bodyId);
   if(!body) return;
-  fbGraph('/me/accounts', {query:{fields:'id,name,access_token'}}).then(function(pagesResp){
+  // token override: this needs the separate Pages login (mm_fb_pages_token,
+  // a System-user access token Configuration) — see FB_PAGES_CONFIG_ID's
+  // comment for why the general Ads/Business mm_fb_token can't back this.
+  fbGraph('/me/accounts', {token:localStorage.getItem('mm_fb_pages_token'), query:{fields:'id,name,access_token'}}).then(function(pagesResp){
     if(!body) return;
     if(pagesResp.error){ fbLogGraphError('page list fetch', pagesResp.error); body.innerHTML = '<div class="empty">'+escHtml(pagesResp.error.message||'Failed to load Facebook Pages')+'</div>'; return; }
     var pages = pagesResp.data||[];
@@ -19810,7 +19848,8 @@ function loadFacebookPageAnalytics(bodyId){
 function loadFacebookPagePosts(bodyId){
   var body = $(bodyId);
   if(!body) return;
-  fbGraph('/me/accounts', {query:{fields:'id,name,access_token'}}).then(function(pagesResp){
+  // token override: see loadFacebookPageAnalytics() above — same reason.
+  fbGraph('/me/accounts', {token:localStorage.getItem('mm_fb_pages_token'), query:{fields:'id,name,access_token'}}).then(function(pagesResp){
     if(!body) return;
     if(pagesResp.error){ fbLogGraphError('page list fetch (posts)', pagesResp.error); body.innerHTML = '<div class="empty">'+escHtml(pagesResp.error.message||'Failed to load Facebook Pages')+'</div>'; return; }
     var pages = pagesResp.data||[];
@@ -19860,7 +19899,8 @@ function loadFacebookPagePosts(bodyId){
 // requires an IG professional account to be linked to a Page, and serves
 // its data through that Page's own access token, not a separate IG login.
 function fetchInstagramAccountId(){
-  return fbGraph('/me/accounts', {query:{fields:'id,name,access_token,instagram_business_account'}}).then(function(pagesResp){
+  // token override: see loadFacebookPageAnalytics() above — same reason.
+  return fbGraph('/me/accounts', {token:localStorage.getItem('mm_fb_pages_token'), query:{fields:'id,name,access_token,instagram_business_account'}}).then(function(pagesResp){
     if(pagesResp.error) throw new Error(pagesResp.error.message);
     var pages = pagesResp.data||[];
     var withIg = pages.find(function(p){ return p.instagram_business_account && p.instagram_business_account.id; });
@@ -19933,7 +19973,7 @@ function loadInstagramAnalytics(bodyId){
 // documented on fetchFacebookPageStats() (reach isn't a true dedup across
 // days when summed, but is an accepted approximation here).
 function fetchInstagramStats(start, end){
-  if(!localStorage.getItem('mm_fb_token')) return Promise.reject(new Error('Facebook not connected'));
+  if(!localStorage.getItem('mm_fb_pages_token')) return Promise.reject(new Error('Facebook Pages not connected'));
   return fetchInstagramAccountId().then(function(acct){
     return fbGraph('/'+acct.igId+'/insights', {token:acct.pageToken, query:{metric:'reach,views,profile_views', period:'day', since:start, until:end}}).then(function(resp){
       if(resp.error) throw new Error(resp.error.message);
@@ -20564,8 +20604,8 @@ function fetchFacebookAdsStats(start, end){
   });
 }
 function fetchFacebookPageStats(start, end){
-  if(!localStorage.getItem('mm_fb_token')) return Promise.reject(new Error('Facebook not connected'));
-  return fbGraph('/me/accounts', {query:{fields:'id,name,access_token'}}).then(function(pagesResp){
+  if(!localStorage.getItem('mm_fb_pages_token')) return Promise.reject(new Error('Facebook Pages not connected'));
+  return fbGraph('/me/accounts', {token:localStorage.getItem('mm_fb_pages_token'), query:{fields:'id,name,access_token'}}).then(function(pagesResp){
     if(pagesResp.error) throw new Error(pagesResp.error.message);
     var page = (pagesResp.data||[])[0];
     if(!page) throw new Error('no managed Page found');
@@ -20945,6 +20985,7 @@ function loadPeriodSummary(period, force){
 function renderAnalytics(){
   var wpToken = localStorage.getItem('mm_wp_token');
   var fbToken = localStorage.getItem('mm_fb_token');
+  var fbPagesToken = localStorage.getItem('mm_fb_pages_token');
   var xToken = localStorage.getItem('mm_x_token');
   var tiktokToken = localStorage.getItem('mm_tiktok_token');
   var jetpackSubConfigured = !!getJetpackSubCreds();
@@ -21008,13 +21049,19 @@ function renderAnalytics(){
       (fbToken
         ? '<div style="font-size:11px;color:#888;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">Ads Performance</div>'+
           '<div id="fb-analytics-body"><div class="empty">Loading…</div></div>'+
-          analyticsSectionHtml('fb-ads-daily','Daily Spend & Performance (30 days)')+
-          '<div style="font-size:11px;color:#888;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin:16px 0 6px;border-top:1px solid #f0f0f0;padding-top:12px">Page Performance (organic, non-ads)</div>'+
-          '<div id="fb-page-analytics-body"><div class="empty">Loading…</div></div>'+
+          analyticsSectionHtml('fb-ads-daily','Daily Spend & Performance (30 days)')
+        : '<div style="padding:8px 0"><button class="add-btn" id="fb-analytics-connect-btn">Connect Facebook</button></div>')+
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin:16px 0 6px;border-top:1px solid #f0f0f0;padding-top:12px">'+
+        '<span style="font-size:11px;color:#888;font-weight:700;text-transform:uppercase;letter-spacing:.04em">Page &amp; Instagram (organic, non-ads)</span>'+
+        (fbPagesToken ? '<button class="cancel-btn" id="fb-pages-analytics-disconnect">Disconnect</button>' : '')+
+      '</div>'+
+      (fbPagesToken
+        ? '<div id="fb-page-analytics-body"><div class="empty">Loading…</div></div>'+
           analyticsSectionHtml('fb-page-posts','Recent Posts')+
           '<div style="font-size:11px;color:#888;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin:16px 0 6px;border-top:1px solid #f0f0f0;padding-top:12px">Instagram (via connected Page)</div>'+
           '<div id="ig-analytics-body"><div class="empty">Loading…</div></div>'
-        : '<div style="padding:8px 0"><button class="add-btn" id="fb-analytics-connect-btn">Connect Facebook</button></div>')+
+        : '<div style="padding:8px 0"><button class="add-btn" id="fb-pages-analytics-connect-btn">Connect Facebook Pages</button>'+
+          '<div style="font-size:11px;color:#888;margin-top:6px">Separate login from Ads above — uses a Business Manager System User Configuration scoped specifically to the Miles Man Page, since a personal token can\'t reliably back pages_read_engagement for a Page\'s own posts. See FB_PAGES_CONFIG_ID in the code for the full story.</div></div>')+
     '</div>'+
     '<div class="card" style="margin-bottom:16px">'+
       '<div class="card-hdr"><span class="card-title">X</span>'+
@@ -21089,6 +21136,15 @@ function renderAnalytics(){
   if(fbToken){
     loadFacebookAdsAnalytics(fbToken);
     if(!analyticsSectionCollapsed('fb-ads-daily')) loadFacebookAdsDaily(fbToken, 'fb-ads-daily-body');
+  }
+  var fbPagesConnectBtn = $('fb-pages-analytics-connect-btn');
+  if(fbPagesConnectBtn) fbPagesConnectBtn.addEventListener('click', facebookPagesLogin);
+  var fbPagesDisconnectBtn = $('fb-pages-analytics-disconnect');
+  if(fbPagesDisconnectBtn) fbPagesDisconnectBtn.addEventListener('click', function(){
+    localStorage.removeItem('mm_fb_pages_token');
+    render();
+  });
+  if(fbPagesToken){
     loadFacebookPageAnalytics('fb-page-analytics-body');
     if(!analyticsSectionCollapsed('fb-page-posts')) loadFacebookPagePosts('fb-page-posts-body');
     loadInstagramAnalytics('ig-analytics-body');
