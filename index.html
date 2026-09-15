@@ -805,42 +805,43 @@ const GA4_PROPERTY_ID = '362931402';
 // vercel-endpoints/facebook.js in this repo.)
 const FB_APP_ID       = '1037570602213729';
 // pages_show_list/pages_read_engagement added so the Analytics tab's
-// "Page Performance (organic, non-ads)" section can fetch the connected
-// Page's own access token via /me/accounts — ads_management/ads_read
-// alone don't cover organic Page data.
+// "Page Performance (organic, non-ads)" section and Recent Posts can fetch
+// the connected Page's own access token via /me/accounts and read its
+// posts — ads_management/ads_read alone don't cover organic Page data.
 // read_insights deliberately left OUT: Facebook's login dialog rejects
 // the whole request with "Invalid Scopes: read_insights" until it has
-// Advanced Access approved via a full App Review — unlike the other
-// permissions here, which work in Development Mode for the app's own
-// admin without review. (This was the real, previously-undiagnosed cause
-// of the "Feature Unavailable" error blocking login entirely — earlier
-// diagnostic reverts happened to coincide with a separate, since-cleared
-// developer-account hold, which is why removing just the Page scopes
-// back then didn't fix it.) Page Insights itself won't work without this
-// permission — re-add it once Advanced Access is granted.
+// Advanced Access approved via a full App Review. Page Insights itself
+// won't work without this permission — re-add it once Advanced Access is
+// granted.
 // instagram_basic/instagram_manage_insights (for the Analytics tab's
-// Instagram section, loadInstagramAnalytics) briefly broke login entirely —
-// Facebook rejected the whole OAuth request outright with "Invalid Scopes:
-// instagram_basic, instagram_manage_insights" — because the app's Meta
-// dashboard had no Instagram use case added at all, not because those two
-// names were simply mistyped. Confirmed directly against this app's own
-// Meta Developer Console (Use Cases > Manage messaging & content on
-// Instagram > Permissions) and re-added under their current real names:
-// instagram_business_basic (replaces instagram_basic) and
-// instagram_business_manage_insights (replaces instagram_manage_insights).
-// UPDATE: those two renamed scopes broke login the exact same way a second
-// time — "Invalid Scopes: instagram_business_basic,
-// instagram_business_manage_insights" — so they're pulled back out again
-// here rather than re-guessing new names. This restores Facebook Page
-// login/Recent Posts (pages_read_engagement couldn't actually be granted
-// while the whole OAuth request was being rejected over the Instagram
-// scopes, which was the real cause behind the "(#10) pages_read_engagement"
-// error on Recent Posts). Instagram analytics (loadInstagramAnalytics) will
-// show "not connected" until this is revisited: re-check the Use Cases >
-// Manage messaging & content on Instagram > Permissions screen at
-// developers.facebook.com/apps/1037570602213729 for whatever the current
-// real permission names are before adding anything back.
+// Instagram section, loadInstagramAnalytics) broke login outright twice —
+// first as "Invalid Scopes: instagram_basic, instagram_manage_insights"
+// (no Instagram Use Case existed yet), then again under their renamed
+// replacements instagram_business_basic/instagram_business_manage_insights.
+// Dropped from FB_SCOPE entirely for now — Instagram analytics shows "not
+// connected" until revisited (Use Cases > Manage messaging & content on
+// Instagram > Permissions at developers.facebook.com/apps/1037570602213729).
+//
+// ROOT CAUSE of the "(#10) pages_read_engagement" error on Recent Posts,
+// finally found: this app's Meta console had NO Facebook Login for
+// Business Configuration at all — only Use Cases for Marketing API and
+// Instagram existed. Without a Configuration, pages_read_engagement/
+// pages_show_list can never attach to a token via a plain scope= OAuth
+// request, no matter that the account is an app admin and Page admin (the
+// admin-without-review carve-out only applies to permissions actually
+// provisioned through a Configuration). Fixed by creating one
+// (developers.facebook.com/apps/1037570602213729 > Facebook Login for
+// Business > Configurations > "Miles Man", config_id below) containing
+// all five permissions this app uses — ads_management, ads_read,
+// business_management, pages_read_engagement, pages_show_list — and
+// switching facebookLogin() to send config_id instead of a raw scope
+// string. FB_SCOPE is kept only as the human-readable record of which
+// permissions the Configuration should contain; it is no longer sent to
+// Facebook directly (see facebookLogin()). If a permission is ever added
+// here, add it to the "Miles Man" Configuration too, or it still won't
+// actually be granted.
 const FB_SCOPE        = 'ads_management,ads_read,business_management,pages_show_list,pages_read_engagement';
+const FB_CONFIG_ID    = '1532868151925934'; // Facebook Login for Business "Miles Man" configuration — see FB_SCOPE comment above
 const FB_REDIRECT     = 'https://milesmaneric.github.io/milesman-crm/';
 const FB_AUTH_SERVER  = 'https://milesman-auth.vercel.app';
 const FB_AD_ACCOUNT   = 'act_1285326830438388';
@@ -3306,11 +3307,15 @@ function checkWordpressRedirect(){
   });
 }
 function facebookLogin(){
+  // config_id, not scope — see the FB_SCOPE comment above for why a plain
+  // scope= request can never actually grant pages_read_engagement/
+  // pages_show_list on this app. The "Miles Man" Configuration this
+  // config_id points to contains all five permissions FB_SCOPE lists.
   const params = new URLSearchParams({
     client_id:     FB_APP_ID,
     redirect_uri:  FB_REDIRECT,
     response_type: 'code',
-    scope:         FB_SCOPE,
+    config_id:     FB_CONFIG_ID,
     state:         'fb_auth'
   });
   debugLog('Redirecting to Facebook login...');
