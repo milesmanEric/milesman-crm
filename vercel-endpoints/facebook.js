@@ -38,7 +38,17 @@
 
 const FACEBOOK_APP_ID = '1037570602213729';
 const FACEBOOK_APP_SECRET = process.env.FACEBOOK_CLIENT_SECRET;
-const GRAPH_VERSION = 'v21.0';
+// Bumped from v21.0 (Oct 2024) — that old a version was silently returning
+// empty {data:[]} for /{page-id}/posts against a token that Facebook's own
+// Access Token Debugger confirmed DID carry pages_read_engagement (and
+// which worked fine against the identical Page/token combo when tested
+// through Graph API Explorer, which defaults to a current version).
+// Confirmed live: a Business-Manager-owned Page's /posts edge behaves
+// differently enough across versions that the old pin was the actual root
+// cause of a long-standing "(#10) pages_read_engagement" error on the
+// Analytics tab's Recent Posts, even with the permission properly granted
+// and the app connected to the Page as a Business Asset.
+const GRAPH_VERSION = 'v23.0';
 
 // Exchanges a Facebook OAuth authorization code for an access token,
 // without exposing the App Secret to the browser. Facebook's code->token

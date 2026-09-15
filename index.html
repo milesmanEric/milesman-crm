@@ -3319,7 +3319,7 @@ function facebookLogin(){
     state:         'fb_auth'
   });
   debugLog('Redirecting to Facebook login...');
-  window.location.href = 'https://www.facebook.com/v21.0/dialog/oauth?'+params.toString();
+  window.location.href = 'https://www.facebook.com/v23.0/dialog/oauth?'+params.toString(); // kept in sync with GRAPH_VERSION in vercel-endpoints/facebook.js
 }
 function checkFacebookRedirect(){
   const params = new URLSearchParams(window.location.search);
