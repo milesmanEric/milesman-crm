@@ -228,6 +228,18 @@ A separate directory from Suppliers, for the non-travel businesses you deal with
 
 ---
 
+## Communities
+
+A directory of 55+ active adult communities for group-travel outreach — same shape as Vendors above, just Town and County instead of a Category (every record here is the same "type": a 55+ community). Each Community has a Name, Town, County, Phone, Website, and Notes.
+
+**Contacts work exactly like Vendor/Supplier Contacts** — open a Community and scroll to its own **Contacts** section: **+ Add Contact** opens that person's own record with a filterable Notes Log and a Tasks list with **+ Add Task**. Every contact is also clickable right on the plain Communities list page, each one listed under its community's card.
+
+**A word on who those contacts actually are**: most 55+ communities don't publish a named Social/Activities/Lifestyle Director — that role is usually reached by calling the community's general office line and asking, and many communities run their social calendar through a resident volunteer committee rather than paid staff at all. So a starter batch of real, verified communities near Westfield, NJ was seeded in with their general office phone number as the contact, each one's Notes Log saying plainly that the specific person's name still needs to be collected by phone — not a made-up name. Once you've actually spoken with someone, open that contact and fill in their real name and direct info.
+
+**Planner tasks can link to a Community Contact** the same way they link to a Supplier or Vendor Contact — the task form has its own **Community Contact** dropdown, and picking one auto-fills that contact's phone/email and shows a **Community** badge (teal) on the task. The starter batch above came with one "Call [Community]" task per community already on the Planner, spread out a few days apart rather than all landing on the same day.
+
+---
+
 ## Planner
 
 Your follow-up task list, with the linked client's phone and email shown right in the table. Most tasks get created automatically — one per new trip request and one per new contact-form lead — but you can add your own anytime with **+ Add Task**.
