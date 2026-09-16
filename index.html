@@ -22811,6 +22811,106 @@ function backfillDelWebbFlorhamParkOnce(){
   saveDB();
   debugLog('Backfilled Del Webb Florham Park community record and call task (one-time)');
 }
+// One-time backfill: a second batch of NJ 55+ communities and contacts,
+// supplied directly by the user (not web-research-derived like the first
+// batch above) — 11 new community records plus 3 new named contacts on two
+// communities already in the system (Regency at Denville, Del Webb Florham
+// Park) whose original contact was either a placeholder or has since been
+// superseded by better info. Renaissance at Raritan Valley from this same
+// batch was skipped entirely since it's already in `autoSeedNJCommunitiesOnce()`
+// with the identical phone number — adding it again would just duplicate it.
+function backfillNJCommunitiesBatch2Once(){
+  if(localStorage.getItem('mm_community_batch2_backfilled')) return;
+  localStorage.setItem('mm_community_batch2_backfilled', '1');
+  var ts = new Date().toLocaleString();
+  var tasksCreated = 0, communitiesCreated = 0, contactsAdded = 0;
+
+  function addContactTask(community, contact){
+    db.planner.push({
+      id: newId('PL', db.planner),
+      title: 'Call '+community.name+(contact.name?' — '+contact.name:'')+' about group cruise outreach',
+      dueDate: today(),
+      done: false,
+      typeOverride: 'community',
+      communityContactId: contact.id,
+      desc: (contact.name ? 'Ask for '+contact.name+' ('+contact.title+')' : 'Call and ask for the Social/Activities/Lifestyle Director ('+contact.title+')')+' — introduce Miles Man Travel and pitch a group cruise for residents.',
+      createdAt: today()
+    });
+    tasksCreated++;
+  }
+
+  var newSeeds = [
+    {name:'Canal Walk', town:'Franklin Township', county:'Somerset', phone:'(732) 356-5071', notes:'~21 mi from Westfield.',
+      contact:{name:'Tom Merklinger', title:'Community Manager', phone:'(732) 356-5071'}},
+    {name:'Somerset Run', town:'Franklin Township', county:'Somerset', notes:'~21 mi from Westfield. No direct phone published — contact via FirstService Residential resident portal.',
+      contact:{title:'FirstService Residential (contact via resident portal — no direct phone published; ask for Social/Activities Director)'}},
+    {name:'Gateway at Royce Brook', town:'Hillsborough', county:'Somerset', phone:'(908) 262-2649', notes:'~24 mi from Westfield.',
+      contact:{title:'Clubhouse/HOA Office (ask for Social/Activities Director)'}},
+    {name:'Rossmoor Village', town:'Monroe Township', county:'Middlesex', phone:'(609) 655-1000 x103', notes:'~31 mi from Westfield. Also active on Facebook as "Rossmoor Clubhouse NJ".',
+      contact:{title:'Clubhouse Office (ask for Social/Activities Director)'}},
+    {name:'Clearbrook', town:'Monroe Township', county:'Middlesex', phone:'(609) 655-2706', notes:'~31 mi from Westfield.',
+      contact:{title:'Clubhouse Office (ask for Social/Activities Director)'}},
+    {name:'Concordia', town:'Monroe Township', county:'Middlesex', phone:'(609) 655-4664', notes:'~31 mi from Westfield.',
+      contact:{title:'Clubhouse Office (ask for Social/Activities Director)'}},
+    {name:'Four Seasons at Cedar Grove', town:'Cedar Grove', county:'Essex', phone:'(862) 397-7482', notes:'~15 mi from Westfield.',
+      contact:{title:'Vision Community Management (ask for Social/Activities Director)'}},
+    {name:'Whitfield', town:'Metuchen', county:'Middlesex', notes:'~14 mi from Westfield. No direct phone published.',
+      contact:{title:'RCP Management (general — no direct phone published; ask for Social/Activities Director)'}},
+    {name:'Four Seasons at Manalapan Crossing', town:'Manalapan', county:'Monmouth', phone:'(732) 786-1727',
+      contact:{name:'Susan Schovanec', title:'Lifestyle Director', email:'susans@taylormgt.com', phone:'(732) 786-1727'}},
+    {name:'Riviera at Freehold', town:'Freehold Township', county:'Monmouth', phone:'(732) 294-9290',
+      contact:{name:'Susan Light', title:'Community Manager', email:'slight@premiermanagement.net', phone:'(732) 294-9290'}},
+    {name:'Renaissance at Manalapan', town:'Manalapan', county:'Monmouth', phone:'(732) 866-0788',
+      contact:{name:'Laurie Chernow', title:'Lifestyle Director (unverified — confirm name/role by phone)', phone:'(732) 866-0788'}}
+  ];
+  newSeeds.forEach(function(s){
+    if(db.communities.some(function(c){return c.name===s.name;})) return;
+    var contactId = newId('CMC', allCommunityContacts().map(function(x){return x.contact;}));
+    var contact = {
+      id: contactId,
+      name: s.contact.name||'',
+      title: s.contact.title||'',
+      email: s.contact.email||'',
+      phone: s.contact.phone||s.phone||'',
+      notesLog: [{ts:ts, text:'Auto-added from user-supplied research.', noteType:'General'}]
+    };
+    var community = {
+      id: newId('CM', db.communities),
+      name: s.name, town: s.town, county: s.county,
+      phone: s.phone||'', website:'', notes: s.notes||'',
+      contacts: [contact]
+    };
+    db.communities.push(community);
+    communitiesCreated++;
+    addContactTask(community, contact);
+  });
+
+  var contactAdditions = [
+    {community:'Regency at Denville', contact:{name:"Fran D'Aloisio", title:'Community Manager (Integra Management Corp)', email:'fdaloisio@integramgtcorp.com', phone:'(973) 810-8223'}},
+    {community:'Del Webb Florham Park', contact:{name:'Jacqueline Rogers, PCAM', title:'Community Manager', email:'info@delwebbfp.com', phone:'(973) 291-2319'}},
+    {community:'Del Webb Florham Park', contact:{name:'Jackie Mercer', title:'Lifestyle Director', email:'info@delwebbfp.com', phone:'(973) 969-3495'}}
+  ];
+  contactAdditions.forEach(function(a){
+    var community = db.communities.find(function(c){return c.name===a.community;});
+    if(!community) return;
+    if((community.contacts||[]).some(function(c){return c.name===a.contact.name;})) return;
+    var contactId = newId('CMC', allCommunityContacts().map(function(x){return x.contact;}));
+    var contact = {
+      id: contactId,
+      name: a.contact.name, title: a.contact.title||'',
+      email: a.contact.email||'', phone: a.contact.phone||'',
+      notesLog: [{ts:ts, text:'Auto-added from user-supplied research.', noteType:'General'}]
+    };
+    community.contacts = (community.contacts||[]).concat([contact]);
+    contactsAdded++;
+    addContactTask(community, contact);
+  });
+
+  if(communitiesCreated>0 || contactsAdded>0){
+    saveDB();
+    debugLog('Backfilled '+communitiesCreated+' new NJ community record(s), '+contactsAdded+' new contact(s) on existing communities, and '+tasksCreated+' call task(s) (one-time, batch 2)');
+  }
+}
 
 // Every linked client's email (primary + additional), comma-joined — comma
 // is the mailto: multi-recipient separator, so this string can be dropped
@@ -24542,6 +24642,7 @@ loadDB().then(function(){
   autoSeedNJCommunitiesOnce();
   fixCommunitySeedDueDatesOnce();
   backfillDelWebbFlorhamParkOnce();
+  backfillNJCommunitiesBatch2Once();
   // One-time recovery for the watermark bug pollCheckpointNow() fixes: any
   // checkpoint already saved in this browser from before the fix could sit
   // past the receivedDateTime of a real email that arrived but was never
