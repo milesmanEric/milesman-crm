@@ -22308,7 +22308,9 @@ function autoSeedNJCommunitiesOnce(){
     {name:'Fox Hills', town:'Rockaway', county:'Morris', phone:'(973) 366-1717',
       contact:{title:'Condo Association Office (ask for Social/Activities Director)'}},
     {name:'Cedar Village at East Brunswick', town:'East Brunswick', county:'Middlesex', phone:'(908) 987-2860', website:'https://www.cveb.org',
-      contact:{title:'Condo Association Office (ask for Social/Activities Director)'}}
+      contact:{title:'Condo Association Office (ask for Social/Activities Director)'}},
+    {name:'Del Webb Florham Park', town:'Florham Park', county:'Morris', phone:'(800) 870-0010', website:'https://delwebbfp.com',
+      contact:{title:'FirstService Residential 24/7 Customer Care (managing agent — ask to be routed to Del Webb Florham Park, then for the Social/Activities Director)', note:'Auto-added from web research. Del Webb Florham Park is managed by FirstService Residential; this is their verified national Customer Care line, not a direct line to the clubhouse. A web search surfaced a specific "Social Director" name and direct number for this community, but it could not be corroborated against any real source on a follow-up check, so it was deliberately left out rather than risk publishing a fabricated contact — get the actual name/direct line by phone and update this record.'}}
   ];
   var ts = new Date().toLocaleString();
   var tasksCreated = 0;
@@ -22365,6 +22367,43 @@ function fixCommunitySeedDueDatesOnce(){
     saveDB();
     debugLog('Reset '+fixed+' Community call task due date(s) to today (one-time fix)');
   }
+}
+// One-time backfill: Del Webb Florham Park was identified after the initial
+// NJ Communities seed already ran (and that seed only ever inserts its list
+// on a device's very first run), so anyone who already has the other 9
+// communities needs this 10th one added separately rather than via the
+// main seed array above.
+function backfillDelWebbFlorhamParkOnce(){
+  if(localStorage.getItem('mm_community_delwebb_fp_backfilled')) return;
+  localStorage.setItem('mm_community_delwebb_fp_backfilled', '1');
+  if(db.communities.some(function(c){return c.name==='Del Webb Florham Park';})) return;
+  var contactId = newId('CMC', allCommunityContacts().map(function(x){return x.contact;}));
+  var contact = {
+    id: contactId,
+    name: '',
+    title: 'FirstService Residential 24/7 Customer Care (managing agent — ask to be routed to Del Webb Florham Park, then for the Social/Activities Director)',
+    email: '',
+    phone: '(800) 870-0010',
+    notesLog: [{ts:new Date().toLocaleString(), text:'Auto-added from web research. Del Webb Florham Park is managed by FirstService Residential; this is their verified national Customer Care line, not a direct line to the clubhouse. A web search surfaced a specific "Social Director" name and direct number for this community, but it could not be corroborated against any real source on a follow-up check, so it was deliberately left out rather than risk publishing a fabricated contact — get the actual name/direct line by phone and update this record.', noteType:'General'}]
+  };
+  db.communities.push({
+    id: newId('CM', db.communities),
+    name: 'Del Webb Florham Park', town: 'Florham Park', county: 'Morris',
+    phone: '(800) 870-0010', website: 'https://delwebbfp.com', notes:'',
+    contacts: [contact]
+  });
+  db.planner.push({
+    id: newId('PL', db.planner),
+    title: 'Call Del Webb Florham Park about group travel outreach',
+    dueDate: today(),
+    done: false,
+    typeOverride: 'community',
+    communityContactId: contactId,
+    desc: 'Call and ask for the Social/Activities/Lifestyle Director (FirstService Residential 24/7 Customer Care) — introduce Miles Man Travel and gauge interest in group trip planning for residents.',
+    createdAt: today()
+  });
+  saveDB();
+  debugLog('Backfilled Del Webb Florham Park community record and call task (one-time)');
 }
 
 // Every linked client's email (primary + additional), comma-joined — comma
@@ -24043,6 +24082,7 @@ loadDB().then(function(){
   autoSeedDefaultMarketingPlanOnce();
   autoSeedNJCommunitiesOnce();
   fixCommunitySeedDueDatesOnce();
+  backfillDelWebbFlorhamParkOnce();
   // One-time recovery for the watermark bug pollCheckpointNow() fixes: any
   // checkpoint already saved in this browser from before the fix could sit
   // past the receivedDateTime of a real email that arrived but was never
