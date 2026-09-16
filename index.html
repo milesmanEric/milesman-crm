@@ -197,6 +197,7 @@ tr:last-child td{border-bottom:none}
 .b-red{background:#fee2e2;color:#991b1b}
 .b-gray{background:#f3f4f6;color:#374151}
 .b-purple{background:#ede9fe;color:#5b21b6}
+.b-teal{background:#ccfbf1;color:#0f766e}
 .av{width:30px;height:30px;border-radius:50%;background:#dbeafe;color:#1e40af;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0}
 .search-row{display:flex;gap:8px;margin-bottom:14px}
 .search-row input,.search-row select{padding:8px 12px;border-radius:8px;border:1px solid #d1d5db;font-size:13px;font-family:inherit;color:#111;background:#fff}
@@ -263,6 +264,7 @@ tr:last-child td{border-bottom:none}
       <div class="nb-section">Partners</div>
       <button class="nb" id="nb-vendors">&#127981; Suppliers <span class="nc" id="nc-vendors">0</span></button>
       <button class="nb" id="nb-bizvendors">&#127970; Vendors <span class="nc" id="nc-bizvendors">0</span></button>
+      <button class="nb" id="nb-communities">&#127961;&#65039; Communities <span class="nc" id="nc-communities">0</span></button>
       <div class="nb-section">Work</div>
       <button class="nb" id="nb-planner">&#128203; Planner <span class="nc" id="nc-planner">0</span></button>
       <button class="nb" id="nb-calendar">&#128197; Calendar</button>
@@ -1395,7 +1397,7 @@ const DEFAULT_BOOKMARKS = [
   {name:'AwardWallet', url:'https://www.awardwallet.com', category:'Award Tools', audience:'Travel Agent', notes:'tracks client mileage/points balances across programs'}
 ];
 
-let db = {clients:[],trips:[],vendors:[],bizVendors:[],planner:[],bookmarks:[],savedReports:[],groups:[],marketingPlan:[],pendingImportMatches:[],pendingTravelerMatches:[],jetpackRemovalQueue:[],payments:[],reportTotals:{}};
+let db = {clients:[],trips:[],vendors:[],bizVendors:[],communities:[],planner:[],bookmarks:[],savedReports:[],groups:[],marketingPlan:[],pendingImportMatches:[],pendingTravelerMatches:[],jetpackRemovalQueue:[],payments:[],reportTotals:{}};
 // Diagnostic tracer for the repeated data-wipe incidents (Sept 1/2/4) —
 // db.clients/db.trips have gone empty in memory mid-session for a reason
 // never caught in the act, only ever inferred afterward from Drive backup
@@ -2231,6 +2233,7 @@ async function loadDB(){
     db.trips=Array.isArray(d.trips)?d.trips:[];
     db.vendors=Array.isArray(d.vendors)?d.vendors:[];
     db.bizVendors=Array.isArray(d.bizVendors)?d.bizVendors:[];
+    db.communities=Array.isArray(d.communities)?d.communities:[];
     db.planner=Array.isArray(d.planner)?d.planner:[];
     db.bookmarks=Array.isArray(d.bookmarks)?d.bookmarks:[];
     db.savedReports=Array.isArray(d.savedReports)?d.savedReports:[];
@@ -4454,6 +4457,7 @@ async function driveRestore(){
         trips:Array.isArray(d.trips)?d.trips:[],
         vendors:Array.isArray(d.vendors)?d.vendors:[],
         bizVendors:Array.isArray(d.bizVendors)?d.bizVendors:[],
+        communities:Array.isArray(d.communities)?d.communities:[],
         planner:Array.isArray(d.planner)?d.planner:[],
         bookmarks:Array.isArray(d.bookmarks)?d.bookmarks:[],
         savedReports:Array.isArray(d.savedReports)?d.savedReports:[],
@@ -4592,6 +4596,7 @@ async function secureSyncRestore(){
         trips:Array.isArray(d.trips)?d.trips:[],
         vendors:Array.isArray(d.vendors)?d.vendors:[],
         bizVendors:Array.isArray(d.bizVendors)?d.bizVendors:[],
+        communities:Array.isArray(d.communities)?d.communities:[],
         planner:Array.isArray(d.planner)?d.planner:[],
         bookmarks:Array.isArray(d.bookmarks)?d.bookmarks:[],
         savedReports:Array.isArray(d.savedReports)?d.savedReports:[],
@@ -5715,7 +5720,7 @@ function importJSON(){
         const d=JSON.parse(ev.target.result);
         if(Array.isArray(d.clients)&&Array.isArray(d.trips)){
           debugLog('Local restore: parsed backup file — '+d.clients.length+' clients, '+d.trips.length+' trips');
-          db=d;instrumentDbWipeTracing();if(!Array.isArray(db.vendors))db.vendors=[];if(!Array.isArray(db.bizVendors))db.bizVendors=[];if(!Array.isArray(db.planner))db.planner=[];if(!Array.isArray(db.bookmarks))db.bookmarks=[];if(!Array.isArray(db.savedReports))db.savedReports=[];if(!Array.isArray(db.groups))db.groups=[];if(!Array.isArray(db.marketingPlan))db.marketingPlan=[];if(!Array.isArray(db.pendingImportMatches))db.pendingImportMatches=[];if(!Array.isArray(db.jetpackRemovalQueue))db.jetpackRemovalQueue=[];if(!Array.isArray(db.payments))db.payments=[];(db.clients||[]).forEach(function(c){ if(c.name && !c.name.includes(',')) c.name=toLastFirst(c.name); });_dbDecryptFailed=false;
+          db=d;instrumentDbWipeTracing();if(!Array.isArray(db.vendors))db.vendors=[];if(!Array.isArray(db.bizVendors))db.bizVendors=[];if(!Array.isArray(db.communities))db.communities=[];if(!Array.isArray(db.planner))db.planner=[];if(!Array.isArray(db.bookmarks))db.bookmarks=[];if(!Array.isArray(db.savedReports))db.savedReports=[];if(!Array.isArray(db.groups))db.groups=[];if(!Array.isArray(db.marketingPlan))db.marketingPlan=[];if(!Array.isArray(db.pendingImportMatches))db.pendingImportMatches=[];if(!Array.isArray(db.jetpackRemovalQueue))db.jetpackRemovalQueue=[];if(!Array.isArray(db.payments))db.payments=[];(db.clients||[]).forEach(function(c){ if(c.name && !c.name.includes(',')) c.name=toLastFirst(c.name); });_dbDecryptFailed=false;
           // Awaited specifically because this is a restore: the natural next
           // move after seeing "Data imported" is to reload to confirm it
           // stuck, and saveDB()'s encrypted write is otherwise fire-and-
@@ -10111,7 +10116,7 @@ function go(v,cid){
   view=v;
   selCid=(v==='trips'&&cid)?cid:null;
   fSearch='';fStatus=STATUSES.filter(function(s){return s!=='Cancelled';});fHideSubOnly=true;
-  ['dashboard','clients','trips','groups','reports','calendar','email','vendors','bizvendors','planner','bookmarks','ccconsulting','referrals','payments','marketing','analytics'].forEach(function(x){var el=$('nb-'+x);if(el)el.classList.toggle('active',x===v);});
+  ['dashboard','clients','trips','groups','reports','calendar','email','vendors','bizvendors','communities','planner','bookmarks','ccconsulting','referrals','payments','marketing','analytics'].forEach(function(x){var el=$('nb-'+x);if(el)el.classList.toggle('active',x===v);});
   render();
 }
 
@@ -10121,6 +10126,7 @@ function render(){
   $('nc-trips').textContent=db.trips.length;
   var ncv=$('nc-vendors'); if(ncv) ncv.textContent=db.vendors.length;
   var ncbv=$('nc-bizvendors'); if(ncbv) ncbv.textContent=db.bizVendors.length;
+  var nccm=$('nc-communities'); if(nccm) nccm.textContent=db.communities.length;
   var ncp=$('nc-planner'); if(ncp) ncp.textContent=db.planner.filter(function(t){return !t.done;}).length;
   var ncg=$('nc-groups'); if(ncg) ncg.textContent=db.groups.length;
   var ncpim=$('nc-pending-import-matches'); if(ncpim) ncpim.textContent=db.pendingImportMatches.length;
@@ -10135,6 +10141,7 @@ function render(){
   else if(view==='email') renderEmail();
   else if(view==='vendors') renderVendors();
   else if(view==='bizvendors') renderBizVendors();
+  else if(view==='communities') renderCommunities();
   else if(view==='planner') renderPlanner();
   else if(view==='bookmarks') renderBookmarks();
   else if(view==='marketing') renderMarketing();
@@ -11800,6 +11807,31 @@ function findBizVendorContact(contactId){
     var v = db.bizVendors[i];
     var c = (v.contacts||[]).find(function(x){return x.id===contactId;});
     if(c) return {contact:c, vendor:v};
+  }
+  return null;
+}
+
+// ── Community helpers ────────────────────────────────────────────────────
+// Same shape and same reasoning as Business Vendors above (its own record
+// type, its own contacts array, its own `CM`/`CMC` id prefixes and its own
+// communityContactId field on Planner tasks) — for 55+ active adult
+// communities (HOA-run neighborhoods, not travel suppliers), whose
+// contacts are typically the community's Social/Activities/Lifestyle
+// Director or general office, tracked here so calls to them can be
+// scheduled and logged the same way a Supplier or Vendor contact is.
+function allCommunityContacts(){
+  var out = [];
+  db.communities.forEach(function(v){
+    (v.contacts||[]).forEach(function(c){ out.push({contact:c, community:v}); });
+  });
+  return out;
+}
+function findCommunityContact(contactId){
+  if(!contactId) return null;
+  for(var i=0;i<db.communities.length;i++){
+    var v = db.communities[i];
+    var c = (v.contacts||[]).find(function(x){return x.id===contactId;});
+    if(c) return {contact:c, community:v};
   }
   return null;
 }
@@ -13803,6 +13835,371 @@ function saveBizVendorContact(vendorId, contactId, returnToList){
   saveDB();
   toast(contactId?'Contact updated':'Contact added');
   if(returnToList){ closeModal(); render(); } else { openBizVendorForm(vendorId); }
+  return resultId;
+}
+
+// ── Communities (55+ active adult communities) ──────────────────────────
+// Same list/form/contact/notes/tasks shape as Business Vendors above, just
+// under db.communities/CM/CMC instead of db.bizVendors/BV/BVC, and Town/
+// County in place of a Category select — every community here is the same
+// "type" (a 55+ active adult community), so a category dropdown wouldn't
+// distinguish anything the way it does for Business Vendors.
+function renderCommunities(){
+  var q = (window._communitySearch||'').toLowerCase();
+  var sorted = [...db.communities].filter(function(v){
+    return !q || (v.name||'').toLowerCase().indexOf(q)!==-1 || (v.town||'').toLowerCase().indexOf(q)!==-1 || (v.county||'').toLowerCase().indexOf(q)!==-1;
+  }).sort(function(a,b){return (a.name||'').localeCompare(b.name||'');});
+  var totalContacts = db.communities.reduce(function(a,v){return a+(v.contacts||[]).length;},0);
+
+  $('main').innerHTML =
+    '<div class="page-hdr"><div class="page-title">Communities</div><button class="add-btn" id="btn-add-community">+ Add Community</button></div>'+
+    '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:16px">'+
+      '<div class="stat" id="stat-communities-count"><div class="stat-lbl">Total Communities</div><div class="stat-val">'+db.communities.length+'</div></div>'+
+      '<div class="stat" id="stat-communities-contacts"><div class="stat-lbl">Total Contacts</div><div class="stat-val">'+totalContacts+'</div></div>'+
+    '</div>'+
+    '<div class="search-row"><input id="community-search" placeholder="Search communities..." value="'+escHtml(window._communitySearch||'')+'"/></div>'+
+    (sorted.length ? sorted.map(function(v){
+      var contacts = v.contacts||[];
+      var placeLine = [v.town,v.county?v.county+' County':''].filter(Boolean).join(', ');
+      return '<div class="vendor-card" id="cmc-'+v.id+'">'+
+        '<div style="display:flex;justify-content:space-between;align-items:flex-start">'+
+          '<div>'+
+            '<div style="font-size:15px;font-weight:700;color:#2563eb;cursor:pointer;text-decoration:underline" class="community-name-link" data-id="'+v.id+'">'+escHtml(v.name||'')+'</div>'+
+            (placeLine?'<div style="margin-top:3px"><span class="badge b-gray">'+escHtml(placeLine)+'</span></div>':'')+
+          '</div>'+
+          '<button class="icon-btn del-community" data-id="'+v.id+'" style="color:#dc2626">&#128465;&#65039;</button>'+
+        '</div>'+
+        (v.website||v.phone?'<div style="font-size:12px;margin-top:8px">'+
+          (v.website?'<a href="'+(v.website.indexOf('http')===0?v.website:'https://'+v.website)+'" target="_blank" style="color:#2563eb;text-decoration:none;margin-right:12px">&#127760; '+escHtml(v.website)+'</a>':'')+
+          (v.phone?'<span style="color:#666">&#128222; '+escHtml(v.phone)+'</span>':'')+
+        '</div>':'')+
+        '<div style="margin-top:10px;border-top:1px solid #f0f0f0;padding-top:8px">'+
+          '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'+
+            '<div style="font-size:11px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:.05em">Contacts'+(contacts.length?' ('+contacts.length+')':'')+'</div>'+
+            '<button type="button" class="community-add-contact-btn" data-community-id="'+v.id+'" style="padding:2px 8px;border-radius:6px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:11px;font-family:inherit">+ Add Contact</button>'+
+          '</div>'+
+          (contacts.length ? contacts.map(function(c){
+            return '<div class="community-list-contact-link" data-community-id="'+v.id+'" data-contact-id="'+c.id+'" style="cursor:pointer;padding:5px 8px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;margin-bottom:4px">'+
+              '<span style="font-size:12px;font-weight:600;color:#2563eb;text-decoration:underline">'+escHtml(c.name||'(no name)')+'</span>'+
+              (c.title?' <span style="font-size:11px;color:#888">&mdash; '+escHtml(c.title)+'</span>':'')+
+              '<div style="font-size:11px;color:#888">'+contactEmailPhoneLine(c)+'</div>'+
+            '</div>';
+          }).join('') : '<div style="color:#aaa;font-size:12px;padding:2px 0">No contacts yet.</div>')+
+        '</div>'+
+        (v.notes?'<div style="font-size:12px;color:#666;margin-top:8px;border-top:1px solid #f0f0f0;padding-top:8px">'+escHtml(v.notes)+'</div>':'')+
+      '</div>';
+    }).join('') : '<div class="empty">No communities yet — add 55+ active adult communities to track outreach</div>');
+
+  $('btn-add-community').addEventListener('click', function(){openCommunityForm();});
+  var statCommunitiesCount = $('stat-communities-count');
+  if(statCommunitiesCount) statCommunitiesCount.addEventListener('click', function(){
+    openStatDrilldownModal('Communities', ['Community','Town/County','Contacts'], sorted.map(function(v){
+      return {cells:[v.name||'',[v.town,v.county].filter(Boolean).join(', ')||'—',(v.contacts||[]).length],onClick:function(){openCommunityForm(v.id);}};
+    }));
+  });
+  var statCommunitiesContacts = $('stat-communities-contacts');
+  if(statCommunitiesContacts) statCommunitiesContacts.addEventListener('click', function(){
+    openStatDrilldownModal('Community Contacts', ['Contact','Community','Email','Phone'], allCommunityContacts().map(function(x){
+      return {cells:[x.contact.name||'',x.community.name||'',x.contact.email||'—',x.contact.phone||'—'],onClick:function(){openCommunityContactForm(x.community.id, x.contact.id);}};
+    }));
+  });
+  $('community-search').addEventListener('input', function(){
+    window._communitySearch = this.value;
+    renderCommunities();
+    var el = $('community-search');
+    if(el){ el.focus(); try{ el.setSelectionRange(el.value.length, el.value.length); }catch(e){} }
+  });
+  document.querySelectorAll('.community-name-link').forEach(function(el){
+    el.addEventListener('click', function(){ openCommunityForm(el.dataset.id); });
+  });
+  document.querySelectorAll('.del-community').forEach(function(btn){
+    btn.addEventListener('click', function(){ delCommunity(btn.dataset.id); });
+  });
+  document.querySelectorAll('.community-add-contact-btn').forEach(function(btn){
+    btn.addEventListener('click', function(e){
+      e.stopPropagation();
+      openCommunityContactForm(btn.dataset.communityId, null, true);
+    });
+  });
+  document.querySelectorAll('.community-list-contact-link').forEach(function(el){
+    el.addEventListener('click', function(e){
+      e.stopPropagation();
+      openCommunityContactForm(el.dataset.communityId, el.dataset.contactId, true);
+    });
+  });
+}
+
+function openCommunityForm(id){
+  var d = id ? (db.communities.find(function(v){return v.id===id;})||{}) : {};
+
+  $('modal').innerHTML =
+    '<div class="modal-hdr"><div class="modal-title">'+(id?'Edit Community':'Add Community')+'</div><button class="close-btn" id="modal-close">&#x2715;</button></div>'+
+    '<div class="fg">'+
+      fld('Community Name', inp('cm-name','text',d.name,'e.g. The Savannah'), true)+
+      fld('Town', inp('cm-town','text',d.town))+
+      fld('County', inp('cm-county','text',d.county))+
+      fld('Phone', inp('cm-phone','text',d.phone,'(xxx) xxx-xxxx'))+
+      fld('Website', inp('cm-website','text',d.website,'https://'))+
+      '<div class="field full"><label>Notes</label><textarea id="cm-notes" rows="2">'+(d.notes||'')+'</textarea></div>'+
+    '</div>'+
+    '<div style="margin-top:16px;border-top:1px solid #e5e7eb;padding-top:16px">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">'+
+        '<div style="font-size:13px;font-weight:600;color:#374151">Contacts</div>'+
+        '<button type="button" id="btn-add-community-contact" style="padding:3px 10px;border-radius:6px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:11px;font-family:inherit">+ Add Contact</button>'+
+      '</div>'+
+      (function(){
+        var contacts = d.contacts||[];
+        if(!contacts.length) return '<div style="color:#aaa;font-size:12px;padding:4px 0 8px">No contacts yet.</div>';
+        return contacts.map(function(c){
+          return '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:6px">'+
+            '<div class="community-contact-link" data-contact-id="'+c.id+'" style="cursor:pointer">'+
+              '<div style="font-size:13px;font-weight:600;color:#2563eb;text-decoration:underline">'+escHtml(c.name||'(no name)')+(c.title?' <span style="font-weight:400;color:#888">&mdash; '+escHtml(c.title)+'</span>':'')+'</div>'+
+              '<div style="font-size:11px;color:#888">'+contactEmailPhoneLine(c)+'</div>'+
+            '</div>'+
+            '<button class="del-community-contact-btn" data-contact-id="'+c.id+'" title="Delete contact" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:14px">&#128465;&#65039;</button>'+
+          '</div>';
+        }).join('');
+      })()+
+    '</div>'+
+    '<div class="form-actions form-actions-sticky"><button class="cancel-btn" id="modal-cancel">Cancel</button><button class="save-btn" id="modal-save-community" data-id="'+(id||'')+'">Save Community</button></div>';
+
+  $('overlay').classList.add('open');
+  $('modal-close').addEventListener('click', closeModal);
+  $('modal-cancel').addEventListener('click', closeModal);
+  $('modal-save-community').addEventListener('click', function(){saveCommunity(this.dataset.id);});
+  $('btn-add-community-contact').addEventListener('click', function(){
+    var vid = id;
+    if(!vid){
+      vid = saveCommunity(null);
+      if(!vid) return;
+    }
+    openCommunityContactForm(vid, null);
+  });
+  document.querySelectorAll('.community-contact-link').forEach(function(el){
+    el.addEventListener('click', function(){ openCommunityContactForm(id, el.dataset.contactId); });
+  });
+  document.querySelectorAll('.contact-mailto-link').forEach(function(el){
+    el.addEventListener('click', function(e){ e.stopPropagation(); });
+  });
+  document.querySelectorAll('.del-community-contact-btn').forEach(function(btn){
+    btn.addEventListener('click', function(e){
+      e.stopPropagation();
+      if(!confirm('Delete this contact?')) return;
+      snapshot('Delete community contact');
+      db.communities = db.communities.map(function(v){
+        if(v.id!==id) return v;
+        return Object.assign({},v,{contacts:(v.contacts||[]).filter(function(c){return c.id!==btn.dataset.contactId;})});
+      });
+      saveDB();
+      openCommunityForm(id);
+    });
+  });
+}
+function saveCommunity(id){
+  var name = gv('cm-name');
+  if(!name){toast('Community name is required','err');return;}
+  var data = {name:name, town:gv('cm-town'), county:gv('cm-county'), phone:gv('cm-phone'), website:gv('cm-website'), notes:gv('cm-notes')};
+  var resultId = id||newId('CM', db.communities);
+  if(id){
+    db.communities = db.communities.map(function(v){return v.id===id ? Object.assign({},v,data) : v;});
+    toast('Community updated');
+  } else {
+    data.id = resultId;
+    db.communities.push(data);
+    toast('Community added');
+  }
+  saveDB(); closeModal(); render();
+  return resultId;
+}
+function delCommunity(id){
+  var v = db.communities.find(function(x){return x.id===id;});
+  if(!v || !confirm('Delete community '+v.name+'?')) return;
+  db.communities = db.communities.filter(function(x){return x.id!==id;});
+  saveDB(); toast('Community deleted'); render();
+}
+
+// Same pattern as openBizVendorContactForm/saveBizVendorContact — see the
+// comment there for why the note filter/delete/expand wiring is duplicated
+// rather than shared.
+function openCommunityContactForm(communityId, contactId, returnToList){
+  var community = db.communities.find(function(v){return v.id===communityId;});
+  if(!community){ toast('Community not found','err'); return; }
+  var d = contactId ? ((community.contacts||[]).find(function(c){return c.id===contactId;})||{}) : {};
+  var notesLogSorted = Array.isArray(d.notesLog) ? [...d.notesLog].sort(function(a,b){var ta=new Date(a.ts),tb=new Date(b.ts);return (isNaN(tb)?0:tb)-(isNaN(ta)?0:ta);}) : [];
+  var notesHTML = notesLogSorted.length ? notesLogSorted.map(function(n,i){
+    return '<div class="note-entry" id="note-entry-'+i+'">'+
+      '<div style="display:flex;align-items:center;margin-bottom:4px">'+
+        '<span class="note-ts-link" data-note-idx="'+i+'">'+n.ts+'</span>'+
+        '<select class="note-type-sel" id="note-type-'+i+'">'+
+          '<option value="">-- Type --</option>'+
+          NOTE_TYPES.map(function(t){return '<option value="'+t+'"'+(n.noteType===t?' selected':'')+'>'+t+'</option>';}).join('')+
+        '</select>'+
+        '<button class="del-note-btn" data-note-idx="'+i+'" title="Delete note" style="margin-left:auto;background:none;border:none;cursor:pointer;color:#dc2626;font-size:15px;padding:2px 6px;border-radius:4px;line-height:1">&#128465;&#65039;</button>'+
+      '</div>'+
+      '<textarea class="note-txt" id="note-txt-'+i+'" rows="2">'+n.text+'</textarea>'+
+    '</div>';
+  }).join('') : '<div id="notes-log-empty" style="color:#aaa;font-size:12px;padding:6px 0">No notes yet</div>';
+
+  var contactTasks = contactId ? db.planner.filter(function(t){return t.communityContactId===contactId;}).sort(function(a,b){
+    if(!!a.done !== !!b.done) return a.done ? 1 : -1;
+    var ad=a.dueDate||'9999-99-99', bd=b.dueDate||'9999-99-99';
+    return ad.localeCompare(bd);
+  }) : [];
+  var taskAddBtn = '<button type="button" class="community-contact-add-task-btn" style="padding:3px 10px;border-radius:6px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:11px;font-family:inherit">+ Add Task</button>';
+  var tasksHtml;
+  if(!contactTasks.length){
+    tasksHtml = '<div class="field full" style="margin-bottom:12px">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center"><label>Tasks (0)</label>'+taskAddBtn+'</div>'+
+      '<div style="color:#aaa;font-size:12px;padding:8px 0">No tasks yet.</div>'+
+    '</div>';
+  } else {
+    var taskRows = contactTasks.map(function(t){
+      var overdue = t.dueDate && !t.done && t.dueDate<today();
+      return '<tr class="community-contact-task-row" data-task-id="'+t.id+'" style="cursor:pointer">'+
+        '<td style="font-size:12px;padding:8px 10px;color:'+(t.done?'#aaa':'#111')+';text-decoration:'+(t.done?'line-through':'none')+'">'+t.title+'</td>'+
+        '<td style="font-size:11px;padding:8px 10px;white-space:nowrap;color:'+(overdue?'#dc2626':'#555')+'">'+(t.dueDate||'—')+(overdue?' (overdue)':'')+'</td>'+
+        '<td style="padding:8px 10px">'+(t.done?'<span class="badge b-blue">Done</span>':'<span class="badge b-amber">Open</span>')+'</td>'+
+      '</tr>';
+    }).join('');
+    tasksHtml = '<div class="field full" style="margin-bottom:12px">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center"><label>Tasks ('+contactTasks.length+')</label>'+taskAddBtn+'</div>'+
+      '<div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;max-height:220px;overflow-y:auto">'+
+      '<table style="width:100%;border-collapse:collapse">'+
+      '<thead><tr style="background:#f3f4f6">'+
+        '<th style="text-align:left;padding:6px 10px;font-size:10px;font-weight:700;color:#888;text-transform:uppercase">Task</th>'+
+        '<th style="text-align:left;padding:6px 10px;font-size:10px;font-weight:700;color:#888;text-transform:uppercase">Due</th>'+
+        '<th style="text-align:left;padding:6px 10px;font-size:10px;font-weight:700;color:#888;text-transform:uppercase">Status</th>'+
+      '</tr></thead>'+
+      '<tbody>'+taskRows+'</tbody></table></div></div>';
+  }
+
+  $('modal').innerHTML=
+    '<div class="modal-hdr"><div class="modal-title">'+(contactId?'Edit Contact':'Add Contact')+' <span style="font-weight:400;color:#888;font-size:13px">&mdash; '+escHtml(community.name||'')+'</span></div><button class="close-btn" id="modal-close">&#x2715;</button></div>'+
+    '<div class="fg">'+
+      fld('Name', inp('cmc-name','text',d.name,'e.g. Jane Smith'), true)+
+      fld('Title', inp('cmc-title','text',d.title,'e.g. Social Director'))+
+      fld('Email', inp('cmc-email','email',d.email))+
+      fld('Phone', inp('cmc-phone','text',d.phone,'(xxx) xxx-xxxx'))+
+      tasksHtml+
+      '<div class="field full"><label>Notes Log</label>'+
+        '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'+
+          '<select id="note-type-filter" style="padding:5px 10px;border-radius:6px;border:1px solid #d1d5db;font-size:12px;font-family:inherit;color:#555;background:#fff">'+
+            '<option value="">All types</option>'+
+            NOTE_TYPES.map(function(t){return '<option value="'+t+'">'+t+'</option>';}).join('')+
+          '</select>'+
+          '<span id="note-filter-count" style="font-size:11px;color:#888"></span>'+
+        '</div>'+
+        '<div id="notes-log" style="border:1px solid #e5e7eb;border-radius:8px;padding:10px;background:#fafafa;max-height:220px;overflow-y:auto;margin-bottom:6px">'+notesHTML+'</div>'+
+        '<button type="button" id="btn-add-note" style="align-self:flex-start;padding:5px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit">+ Add Note</button>'+
+      '</div>'+
+    '</div>'+
+    '<div class="form-actions form-actions-sticky"><button class="cancel-btn" id="modal-cancel">Cancel</button><button class="save-btn" id="modal-save-community-contact" data-community-id="'+communityId+'" data-contact-id="'+(contactId||'')+'">Save Contact</button></div>';
+
+  $('overlay').classList.add('open');
+  $('modal-close').addEventListener('click', function(){ if(returnToList){ closeModal(); } else { openCommunityForm(communityId); } });
+  $('modal-cancel').addEventListener('click', function(){ if(returnToList){ closeModal(); } else { openCommunityForm(communityId); } });
+  $('btn-add-note').addEventListener('click', addNoteEntry);
+  $('modal-save-community-contact').addEventListener('click', function(){
+    saveCommunityContact(this.dataset.communityId, this.dataset.contactId||null, returnToList);
+  });
+  document.querySelectorAll('.community-contact-task-row').forEach(function(row){
+    row.addEventListener('click', function(){ openTaskForm(row.dataset.taskId); });
+  });
+  document.querySelectorAll('.community-contact-add-task-btn').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var savedId = saveCommunityContact(communityId, contactId);
+      if(!savedId) return;
+      openTaskForm();
+      var contactSel = document.getElementById('tk-community-contact');
+      if(contactSel){ contactSel.value = savedId; refreshTaskEmailFromCommunityContact(); }
+    });
+  });
+
+  var noteFilterSel = document.getElementById('note-type-filter');
+  var noteFilterCount = document.getElementById('note-filter-count');
+  if(noteFilterSel){
+    function applyNoteFilter(){
+      var val = noteFilterSel.value;
+      var entries = document.querySelectorAll('#notes-log .note-entry');
+      var shown = 0;
+      entries.forEach(function(el){
+        if(!val){el.style.display='';shown++;}
+        else{
+          var sel = el.querySelector('.note-type-sel');
+          var type = sel ? sel.value : '';
+          if(type===val){el.style.display='';shown++;}
+          else{el.style.display='none';}
+        }
+      });
+      if(noteFilterCount) noteFilterCount.textContent = shown+' of '+entries.length+' notes';
+    }
+    noteFilterSel.addEventListener('change', applyNoteFilter);
+    applyNoteFilter();
+  }
+  var notesLogEl = $('notes-log');
+  if(notesLogEl){
+    notesLogEl.addEventListener('click', function(e){
+      var btn = e.target.closest ? e.target.closest('.del-note-btn') : null;
+      if(!btn && e.target.classList.contains('del-note-btn')) btn = e.target;
+      if(btn){
+        var entry = btn.closest('.note-entry');
+        if(entry && confirm('Delete this note?')){
+          entry.remove();
+          var entries = notesLogEl.querySelectorAll('.note-entry');
+          entries.forEach(function(el, newIdx){
+            el.id = 'note-entry-'+newIdx;
+            var tsLink = el.querySelector('.note-ts-link');
+            if(tsLink) tsLink.dataset.noteIdx = newIdx;
+            var sel = el.querySelector('.note-type-sel');
+            if(sel) sel.id = 'note-type-'+newIdx;
+            var ta = el.querySelector('.note-txt');
+            if(ta) ta.id = 'note-txt-'+newIdx;
+            var delBtn = el.querySelector('.del-note-btn');
+            if(delBtn) delBtn.dataset.noteIdx = newIdx;
+          });
+        }
+      }
+    });
+    notesLogEl.addEventListener('click', function(e){
+      var span = e.target.closest ? e.target.closest('.note-ts-link') : null;
+      if(!span && e.target.classList.contains('note-ts-link')) span = e.target;
+      if(span){
+        var idx = parseInt(span.dataset.noteIdx, 10);
+        var note = notesLogSorted[idx];
+        if(note) openNoteExpand(note.ts, note.text, note.noteType||'');
+      }
+    });
+  }
+}
+function saveCommunityContact(communityId, contactId, returnToList){
+  var name = gv('cmc-name');
+  if(!name){ toast('Contact name is required','err'); return null; }
+  var noteEntryEls = Array.from(document.querySelectorAll('.note-entry'));
+  var notesLog = noteEntryEls.map(function(el){
+    var tsEl = el.querySelector('.note-ts-link') || el.querySelector('.note-ts');
+    var ts = (tsEl||{}).textContent||'';
+    var text = (el.querySelector('.note-txt')||{}).value||'';
+    var typeEl = el.querySelector('.note-type-sel');
+    var noteType = (typeEl&&typeEl.value)||'';
+    return {ts:ts.trim(),text:text.trim(),noteType:noteType};
+  }).filter(function(n){return n.text;});
+  var data = {name:name, title:gv('cmc-title'), email:gv('cmc-email'), phone:gv('cmc-phone'), notesLog:notesLog};
+  snapshot(contactId?'Edit community contact':'Add community contact');
+  var resultId = contactId;
+  db.communities = db.communities.map(function(v){
+    if(v.id!==communityId) return v;
+    var contacts = v.contacts||[];
+    if(contactId){
+      contacts = contacts.map(function(c){return c.id===contactId?Object.assign({},c,data):c;});
+    } else {
+      resultId = newId('CMC', allCommunityContacts().map(function(x){return x.contact;}));
+      contacts = contacts.concat([Object.assign({},data,{id:resultId})]);
+    }
+    return Object.assign({},v,{contacts:contacts});
+  });
+  saveDB();
+  toast(contactId?'Contact updated':'Contact added');
+  if(returnToList){ closeModal(); render(); } else { openCommunityForm(communityId); }
   return resultId;
 }
 
@@ -18401,12 +18798,18 @@ function taskContactInfo(t){
     var ovBvc = t.bizVendorContactId ? findBizVendorContact(t.bizVendorContactId) : null;
     return {type:'vendor', badgeCls:'b-amber', badgeLabel:'Vendor', phone:ovBvc?ovBvc.contact.phone:'', email:ovBvc?ovBvc.contact.email:''};
   }
+  if(t.typeOverride==='community'){
+    var ovCmc = t.communityContactId ? findCommunityContact(t.communityContactId) : null;
+    return {type:'community', badgeCls:'b-teal', badgeLabel:'Community', phone:ovCmc?ovCmc.contact.phone:'', email:ovCmc?ovCmc.contact.email:''};
+  }
   if(t.typeOverride==='client') return {type:'client', badgeCls:'b-blue', badgeLabel:'Client', phone:'', email:''};
   if(t.typeOverride==='admin') return {type:'admin', badgeCls:'b-gray', badgeLabel:'Admin', phone:'', email:''};
   var vc = t.vendorContactId ? findVendorContact(t.vendorContactId) : null;
   if(vc) return {type:'supplier', badgeCls:'b-green', badgeLabel:'Supplier', phone:vc.contact.phone, email:vc.contact.email};
   var bvc = t.bizVendorContactId ? findBizVendorContact(t.bizVendorContactId) : null;
   if(bvc) return {type:'vendor', badgeCls:'b-amber', badgeLabel:'Vendor', phone:bvc.contact.phone, email:bvc.contact.email};
+  var cmc = t.communityContactId ? findCommunityContact(t.communityContactId) : null;
+  if(cmc) return {type:'community', badgeCls:'b-teal', badgeLabel:'Community', phone:cmc.contact.phone, email:cmc.contact.email};
   // A Linked Supplier with no specific contact chosen still means this
   // task is about that Supplier, not (just) whatever client also happens
   // to be tagged on it — same precedence-over-client treatment a Supplier
@@ -18495,6 +18898,8 @@ function renderPlanner(){
     if(found) return '<span style="color:#555">'+escHtml(found.contact.name||'')+' <span style="font-size:10px;color:#888">('+escHtml(found.vendor.name||'')+')</span></span>';
     var bizFound = t.bizVendorContactId ? findBizVendorContact(t.bizVendorContactId) : null;
     if(bizFound) return '<span style="color:#555">'+escHtml(bizFound.contact.name||'')+' <span style="font-size:10px;color:#888">('+escHtml(bizFound.vendor.name||'')+')</span></span>';
+    var cmFound = t.communityContactId ? findCommunityContact(t.communityContactId) : null;
+    if(cmFound) return '<span style="color:#555">'+escHtml(cmFound.contact.name||'')+' <span style="font-size:10px;color:#888">('+escHtml(cmFound.community.name||'')+')</span></span>';
     return '<span style="color:#aaa">No client linked</span>';
   }
 
@@ -18543,6 +18948,7 @@ function renderPlanner(){
         '<option value="client"'+(typeFilter==='client'?' selected':'')+'>Client</option>'+
         '<option value="supplier"'+(typeFilter==='supplier'?' selected':'')+'>Supplier</option>'+
         '<option value="vendor"'+(typeFilter==='vendor'?' selected':'')+'>Vendor</option>'+
+        '<option value="community"'+(typeFilter==='community'?' selected':'')+'>Community</option>'+
         '<option value="marketing"'+(typeFilter==='marketing'?' selected':'')+'>Marketing Plan</option>'+
         '<option value="admin"'+(typeFilter==='admin'?' selected':'')+'>Admin</option>'+
       '</select>'+
@@ -21862,6 +22268,82 @@ function seedDefaultBookmarks(){
   saveDB();render();
   toast(toAdd.length+' starter bookmarks added');
 }
+// One-time starter seed: real, verified 55+ active adult communities within
+// roughly 30 miles of Westfield, NJ, researched via web search (each name
+// confirmed against an actual community page/website, not just recalled —
+// several similarly-plausible-sounding names turned up during research that
+// couldn't be verified as real and were deliberately left out rather than
+// guessed at). The "social/activities director" role itself is almost never
+// publicly named for a specific person — these are HOA-run or apartment
+// communities, and that contact is typically reached by calling the general
+// office/clubhouse line and asking, not a published direct line — so every
+// contact here uses the community's own real, verified general office phone
+// (confirmed live, not guessed) as the phone number, with a title/note that
+// says plainly that the specific director's name still needs to be
+// collected by phone. Regency at Denville is the one exception: its
+// Community Manager (Gregg Danieli) turned up with his own name and direct
+// number, so that's used as the named contact there instead of the general
+// office line — still not literally "the Social Director," but a real named
+// person who can route the call as of this writing.
+function autoSeedNJCommunitiesOnce(){
+  if(localStorage.getItem('mm_nj_communities_seeded')) return;
+  localStorage.setItem('mm_nj_communities_seeded', '1');
+  if(db.communities.length) return;
+  var GENERIC_NOTE = 'Auto-added from web research — this is the community\'s general office/clubhouse line, confirmed live. No specific Social/Activities/Lifestyle Director name was publicly available; ask for that person by role when you call, then update this contact with their actual name and direct info.';
+  var seeds = [
+    {name:'The Savannah', town:'Westfield', county:'Union', phone:'(908) 789-0100',
+      contact:{title:'Front Office (ask for Social/Activities Director)'}},
+    {name:'Four Seasons at Great Notch', town:'Woodland Park', county:'Passaic', website:'https://www.fsgn.org',
+      contact:{title:'HOA Office (ask for Social/Activities Director) — no phone found, use website'}},
+    {name:'Four Seasons at Bridgewater', town:'Bridgewater', county:'Somerset', phone:'(908) 306-1109', website:'https://www.fourseasonsbridgewater.com',
+      contact:{title:'Clubhouse Office (ask for the full-time Activities Director — community materials confirm this is a staffed role here)'}},
+    {name:'Renaissance at Raritan Valley', town:'Somerset', county:'Somerset', phone:'(732) 568-0999', website:'https://www.rrvsomerset.org',
+      contact:{title:'Clubhouse Office (ask for Social/Activities Director)'}},
+    {name:'Society Hill at Piscataway', town:'Piscataway', county:'Middlesex', phone:'(732) 463-3434',
+      contact:{title:'Condo Association Office (ask for Social/Activities Director)'}},
+    {name:'The Enclave at Livingston', town:'Livingston', county:'Essex', phone:'(973) 422-9300', website:'https://www.enclaveatlivingston.com',
+      contact:{title:'Leasing/Resident Office (ask for Activities Coordinator — a 55+ rental community, not HOA-run)'}},
+    {name:'Regency at Denville', town:'Denville', county:'Morris', phone:'(973) 586-0103', website:'https://regencyatdenville.org',
+      contact:{name:'Gregg Danieli', title:'Community Manager', phone:'(973) 810-8219', note:'Auto-added from web research — a real named Community Manager (confirmed live), not the Social/Activities Director specifically, but a real point of contact who can route the call. Update once the actual Social/Activities Director is identified.'}},
+    {name:'Fox Hills', town:'Rockaway', county:'Morris', phone:'(973) 366-1717',
+      contact:{title:'Condo Association Office (ask for Social/Activities Director)'}},
+    {name:'Cedar Village at East Brunswick', town:'East Brunswick', county:'Middlesex', phone:'(908) 987-2860', website:'https://www.cveb.org',
+      contact:{title:'Condo Association Office (ask for Social/Activities Director)'}}
+  ];
+  var ts = new Date().toLocaleString();
+  var tasksCreated = 0;
+  seeds.forEach(function(s, i){
+    var contactId = newId('CMC', allCommunityContacts().map(function(x){return x.contact;}));
+    var contact = {
+      id: contactId,
+      name: s.contact.name||'',
+      title: s.contact.title||'',
+      email: '',
+      phone: s.contact.phone||s.phone||'',
+      notesLog: [{ts:ts, text:s.contact.note||GENERIC_NOTE, noteType:'General'}]
+    };
+    var community = {
+      id: newId('CM', db.communities),
+      name: s.name, town: s.town, county: s.county,
+      phone: s.phone||'', website: s.website||'', notes:'',
+      contacts: [contact]
+    };
+    db.communities.push(community);
+    db.planner.push({
+      id: newId('PL', db.planner),
+      title: 'Call '+s.name+(s.contact.name?' — '+s.contact.name:'')+' about group travel outreach',
+      dueDate: addDaysToDateStr(today(), i+1),
+      done: false,
+      typeOverride: 'community',
+      communityContactId: contactId,
+      desc: (s.contact.name ? 'Ask for '+s.contact.name+' ('+s.contact.title+')' : 'Call and ask for the Social/Activities/Lifestyle Director ('+s.contact.title+')')+' — introduce Miles Man Travel and gauge interest in group trip planning for residents.',
+      createdAt: today()
+    });
+    tasksCreated++;
+  });
+  saveDB();
+  debugLog('Auto-seeded '+seeds.length+' NJ 55+ community record(s) and '+tasksCreated+' call task(s) (first run)');
+}
 
 // Every linked client's email (primary + additional), comma-joined — comma
 // is the mailto: multi-recipient separator, so this string can be dropped
@@ -21928,6 +22410,10 @@ function openTaskForm(id){
   var bizVendorContactOpts = sortedBizVendorContacts.map(function(x){
     return '<option value="'+x.contact.id+'"'+(x.contact.id===d.bizVendorContactId?' selected':'')+'>'+x.contact.name+' — '+x.vendor.name+'</option>';
   }).join('');
+  var sortedCommunityContacts = allCommunityContacts().sort(function(a,b){return (a.contact.name||'').toLowerCase().localeCompare((b.contact.name||'').toLowerCase());});
+  var communityContactOpts = sortedCommunityContacts.map(function(x){
+    return '<option value="'+x.contact.id+'"'+(x.contact.id===d.communityContactId?' selected':'')+'>'+x.contact.name+' — '+x.community.name+'</option>';
+  }).join('');
   var tripOpts = sortedTrips.map(function(t){
     var c = db.clients.find(function(x){return x.id===t.clientId;});
     var label = (t.destination||'Trip')+(c?' — '+c.name:'')+(t.departDate?' ('+t.departDate+')':'');
@@ -21963,7 +22449,7 @@ function openTaskForm(id){
       fld('Time', inp('tk-time','time',d.dueTime))+
       fld('Status','<select id="tk-done"><option value="0"'+(!d.done?' selected':'')+'>Open</option><option value="1"'+(d.done?' selected':'')+'>Done</option></select>')+
       fld('Type','<select id="tk-type"><option value=""'+(!d.typeOverride?' selected':'')+'>Auto (based on linked records)</option>'+
-        ['client','supplier','vendor','marketing','admin'].map(function(v){
+        ['client','supplier','vendor','community','marketing','admin'].map(function(v){
           var label = v==='admin' ? 'Admin' : (v==='marketing' ? 'Marketing Plan' : v.charAt(0).toUpperCase()+v.slice(1));
           return '<option value="'+v+'"'+(d.typeOverride===v?' selected':'')+'>'+label+'</option>';
         }).join('')+
@@ -21990,6 +22476,10 @@ function openTaskForm(id){
       fld('Vendor Contact','<div style="display:flex;align-items:center;gap:10px">'+
         searchableSelectWrap('<select id="tk-bizvendor-contact"><option value="">None</option>'+bizVendorContactOpts+'</select>','Search contacts...')+
         '<span id="tk-bizvendor-contact-link"></span>'+
+      '</div>')+
+      fld('Community Contact','<div style="display:flex;align-items:center;gap:10px">'+
+        searchableSelectWrap('<select id="tk-community-contact"><option value="">None</option>'+communityContactOpts+'</select>','Search contacts...')+
+        '<span id="tk-community-contact-link"></span>'+
       '</div>')+
       fld('Linked Trip','<div style="display:flex;align-items:center;gap:10px">'+
         searchableSelectWrap('<select id="tk-trip"><option value="">None</option>'+tripOpts+'</select>','Search trips...')+
@@ -22049,6 +22539,10 @@ function openTaskForm(id){
   $('tk-bizvendor-contact').addEventListener('change', refreshTaskPhoneFromBizVendorContact);
   $('tk-bizvendor-contact').addEventListener('change', refreshTaskBizVendorContactLinkDisplay);
   refreshTaskBizVendorContactLinkDisplay();
+  $('tk-community-contact').addEventListener('change', refreshTaskEmailFromCommunityContact);
+  $('tk-community-contact').addEventListener('change', refreshTaskPhoneFromCommunityContact);
+  $('tk-community-contact').addEventListener('change', refreshTaskCommunityContactLinkDisplay);
+  refreshTaskCommunityContactLinkDisplay();
   $('tk-trip').addEventListener('change', refreshTaskTripLinkDisplay);
   refreshTaskTripLinkDisplay();
 }
@@ -22117,6 +22611,19 @@ function refreshTaskEmailFromBizVendorContact(){
     updateTaskEmailLinkDisplay();
   }
 }
+// Same idea as refreshTaskEmailFromBizVendorContact above, for a Community
+// Contact (db.communities).
+function refreshTaskEmailFromCommunityContact(){
+  var contactSel = document.getElementById('tk-community-contact');
+  if(!contactSel) return;
+  var found = findCommunityContact(contactSel.value);
+  if(!found || !found.contact.email) return;
+  var emailInput = document.getElementById('tk-email');
+  if(emailInput){
+    emailInput.value = found.contact.email;
+    updateTaskEmailLinkDisplay();
+  }
+}
 // Same idea as refreshTaskEmailFromLinkedClients above, for the Phone field.
 function refreshTaskPhoneFromLinkedClients(){
   var phoneInput = document.getElementById('tk-phone');
@@ -22145,6 +22652,16 @@ function refreshTaskPhoneFromBizVendorContact(){
   var contactSel = document.getElementById('tk-bizvendor-contact');
   if(!contactSel) return;
   var found = findBizVendorContact(contactSel.value);
+  if(!found || !found.contact.phone) return;
+  var phoneInput = document.getElementById('tk-phone');
+  if(phoneInput) phoneInput.value = found.contact.phone;
+}
+// Same idea as refreshTaskPhoneFromBizVendorContact above, for a Community
+// Contact (db.communities).
+function refreshTaskPhoneFromCommunityContact(){
+  var contactSel = document.getElementById('tk-community-contact');
+  if(!contactSel) return;
+  var found = findCommunityContact(contactSel.value);
   if(!found || !found.contact.phone) return;
   var phoneInput = document.getElementById('tk-phone');
   if(phoneInput) phoneInput.value = found.contact.phone;
@@ -22258,6 +22775,22 @@ function refreshTaskBizVendorContactLinkDisplay(){
     openBizVendorContactForm(found.vendor.id, found.contact.id);
   });
 }
+// Same as refreshTaskBizVendorContactLinkDisplay() above but for a
+// Community Contact (db.communities — 55+ active adult communities).
+function refreshTaskCommunityContactLinkDisplay(){
+  var contactSelect = document.getElementById('tk-community-contact');
+  var linkSpan = document.getElementById('tk-community-contact-link');
+  if(!contactSelect || !linkSpan) return;
+  var contactId = contactSelect.value;
+  var found = contactId ? findCommunityContact(contactId) : null;
+  if(!found){ linkSpan.innerHTML=''; return; }
+  linkSpan.innerHTML = taskLinkedRecordSpanHtml('tk-community-contact-open-btn','View Contact');
+  var btn = document.getElementById('tk-community-contact-open-btn');
+  if(btn) btn.addEventListener('click', function(){
+    closeModal();
+    openCommunityContactForm(found.community.id, found.contact.id);
+  });
+}
 // Saves the current task as-is, then opens a fresh blank task form for the
 // user to schedule next — carrying forward the same client/supplier/trip
 // links and leaving a history trail (the just-saved task's title + notes)
@@ -22272,6 +22805,7 @@ function saveTaskAndNew(id){
   var vendorId = gv('tk-vendor');
   var vendorContactId = gv('tk-vendor-contact');
   var bizVendorContactId = gv('tk-bizvendor-contact');
+  var communityContactId = gv('tk-community-contact');
   var tripId = gv('tk-trip');
   var typeOverride = gv('tk-type');
   var noteType = gv('tk-note-type');
@@ -22288,6 +22822,7 @@ function saveTaskAndNew(id){
   var vendorSel=document.getElementById('tk-vendor'); if(vendorSel) vendorSel.value=vendorId;
   var vendorContactSel=document.getElementById('tk-vendor-contact'); if(vendorContactSel) vendorContactSel.value=vendorContactId;
   var bizVendorContactSel=document.getElementById('tk-bizvendor-contact'); if(bizVendorContactSel) bizVendorContactSel.value=bizVendorContactId;
+  var communityContactSel=document.getElementById('tk-community-contact'); if(communityContactSel) communityContactSel.value=communityContactId;
   var tripSel=document.getElementById('tk-trip'); if(tripSel) tripSel.value=tripId;
   var typeSel=document.getElementById('tk-type'); if(typeSel) typeSel.value=typeOverride;
   var noteTypeSel=document.getElementById('tk-note-type'); if(noteTypeSel) noteTypeSel.value=noteType;
@@ -22323,6 +22858,7 @@ function saveTask(id){
     vendorId: gv('tk-vendor'),
     vendorContactId: gv('tk-vendor-contact'),
     bizVendorContactId: gv('tk-bizvendor-contact'),
+    communityContactId: gv('tk-community-contact'),
     tripId: gv('tk-trip'),
     desc: gv('tk-desc')
   };
@@ -22530,6 +23066,7 @@ function bindClick(id, handler){
   bindClick('nb-email', function(){go('email');closeMobileNav();});
   bindClick('nb-vendors', function(){go('vendors');closeMobileNav();});
   bindClick('nb-bizvendors', function(){go('bizvendors');closeMobileNav();});
+  bindClick('nb-communities', function(){go('communities');closeMobileNav();});
   bindClick('nb-planner', function(){go('planner');closeMobileNav();});
   bindClick('nb-bookmarks', function(){go('bookmarks');closeMobileNav();});
   bindClick('nb-marketing', function(){go('marketing');closeMobileNav();});
@@ -23482,6 +24019,7 @@ loadDB().then(function(){
   }
   autoSeedDefaultBookmarksOnce();
   autoSeedDefaultMarketingPlanOnce();
+  autoSeedNJCommunitiesOnce();
   // One-time recovery for the watermark bug pollCheckpointNow() fixes: any
   // checkpoint already saved in this browser from before the fix could sit
   // past the receivedDateTime of a real email that arrived but was never
