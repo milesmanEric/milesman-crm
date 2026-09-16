@@ -4221,17 +4221,64 @@ async function gatherMailchimpSummary(period){
     return {connected:true, error: e.message};
   }
 }
+// Same "find-or-create a named Drive folder" pattern as
+// getOrCreateDriveQuotesFolder()/getOrCreateDriveItinerariesFolder() below —
+// database backups (the single most-recent BACKUP_FILENAME and the nightly
+// permanent copies) used to upload with no `parents` at all, landing loose
+// in the root of "My Drive" instead of inside any visible, findable folder —
+// the only Drive-uploaded content in this app that wasn't filed anywhere.
+const DRIVE_BACKUPS_FOLDER_NAME = 'Miles Man Backups';
+let _driveBackupsFolderId = null;
+async function getOrCreateDriveBackupsFolder(token){
+  if(_driveBackupsFolderId) return _driveBackupsFolderId;
+  var q = encodeURIComponent("name='"+DRIVE_BACKUPS_FOLDER_NAME+"' and mimeType='application/vnd.google-apps.folder' and trashed=false");
+  var r = await fetch('https://www.googleapis.com/drive/v3/files?q='+q+'&fields=files(id,name)',{headers:{Authorization:'Bearer '+token}});
+  var d = await r.json();
+  if(!r.ok) throw new Error('Drive returned '+r.status+' looking up backups folder');
+  if(d.files && d.files.length){ _driveBackupsFolderId = d.files[0].id; return _driveBackupsFolderId; }
+  var cr = await fetch('https://www.googleapis.com/drive/v3/files',{
+    method:'POST', headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},
+    body: JSON.stringify({name:DRIVE_BACKUPS_FOLDER_NAME, mimeType:'application/vnd.google-apps.folder'})
+  });
+  var created = await cr.json();
+  if(!cr.ok) throw new Error('Drive returned '+cr.status+' creating backups folder');
+  _driveBackupsFolderId = created.id;
+  return _driveBackupsFolderId;
+}
 async function findBackupFile(token){
-  const q=encodeURIComponent("name='"+BACKUP_FILENAME+"' and trashed=false");
+  const folderId = await getOrCreateDriveBackupsFolder(token);
+  const q=encodeURIComponent("name='"+BACKUP_FILENAME+"' and '"+folderId+"' in parents and trashed=false");
   const r=await fetch('https://www.googleapis.com/drive/v3/files?q='+q+'&orderBy=modifiedTime desc&fields=files(id,name,modifiedTime)',{
     headers:{Authorization:'Bearer '+token}
   });
   const d=await r.json();
   const files = d.files||[];
   if(files.length>1){
-    debugLog('WARNING: found '+files.length+' files named "'+BACKUP_FILENAME+'" in Drive — using most recent ('+files[0].modifiedTime+'). Other copies may be stale duplicates worth deleting manually in Drive.');
+    debugLog('WARNING: found '+files.length+' files named "'+BACKUP_FILENAME+'" in the '+DRIVE_BACKUPS_FOLDER_NAME+' Drive folder — using most recent ('+files[0].modifiedTime+'). Other copies may be stale duplicates worth deleting manually in Drive.');
   }
-  return files[0]||null;
+  if(files[0]) return files[0];
+  // Migration path: a device that backed up before this folder existed has
+  // its file sitting loose in Drive root (or wherever it was at the time).
+  // Rather than leaving it orphaned and silently creating a brand-new file
+  // in the folder (which would duplicate it and lose its version history),
+  // find it by name anywhere in Drive and move it into the folder in place.
+  const legacyQ=encodeURIComponent("name='"+BACKUP_FILENAME+"' and trashed=false");
+  const legacyR=await fetch('https://www.googleapis.com/drive/v3/files?q='+legacyQ+'&orderBy=modifiedTime desc&fields=files(id,name,modifiedTime,parents)',{
+    headers:{Authorization:'Bearer '+token}
+  });
+  const legacyD=await legacyR.json();
+  const legacyFile=(legacyD.files||[])[0];
+  if(!legacyFile) return null;
+  debugLog('Found existing backup file outside the '+DRIVE_BACKUPS_FOLDER_NAME+' folder — moving it in rather than creating a duplicate.');
+  const oldParents=(legacyFile.parents||[]).join(',');
+  const moveR=await fetch('https://www.googleapis.com/drive/v3/files/'+legacyFile.id+'?addParents='+folderId+(oldParents?'&removeParents='+oldParents:'')+'&fields=id,modifiedTime,parents',{
+    method:'PATCH', headers:{Authorization:'Bearer '+token}
+  });
+  if(!moveR.ok){
+    debugLog('Could not move legacy backup file into the '+DRIVE_BACKUPS_FOLDER_NAME+' folder (status '+moveR.status+') — using it in place for now.');
+    return legacyFile;
+  }
+  return await moveR.json();
 }
 // Tracks the modifiedTime of the Drive backup file as of the last time THIS
 // device successfully backed up to or restored from it — i.e. "the remote
@@ -4322,7 +4369,8 @@ async function driveBackup(silent){
       const updated=await r.json();
       if(updated.modifiedTime) localStorage.setItem('mm_last_known_remote_modified', updated.modifiedTime);
     }else{
-      const meta=new Blob([JSON.stringify({name:BACKUP_FILENAME,mimeType:'application/json'})],{type:'application/json'});
+      const folderId=await getOrCreateDriveBackupsFolder(driveToken);
+      const meta=new Blob([JSON.stringify({name:BACKUP_FILENAME,mimeType:'application/json',parents:[folderId]})],{type:'application/json'});
       const data=new Blob([content],{type:'application/json'});
       const form=new FormData();form.append('metadata',meta);form.append('file',data);
       const r=await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=modifiedTime',{
@@ -4390,7 +4438,8 @@ async function checkNightlyPermanentBackup(){
   try{
     var content = JSON.stringify(db, null, 2);
     var filename = nightlyBackupFilename(todayStr);
-    var meta = new Blob([JSON.stringify({name:filename, mimeType:'application/json'})], {type:'application/json'});
+    var folderId = await getOrCreateDriveBackupsFolder(token);
+    var meta = new Blob([JSON.stringify({name:filename, mimeType:'application/json', parents:[folderId]})], {type:'application/json'});
     var data = new Blob([content], {type:'application/json'});
     var form = new FormData(); form.append('metadata', meta); form.append('file', data);
     var r = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,modifiedTime', {
