@@ -22312,7 +22312,7 @@ function autoSeedNJCommunitiesOnce(){
   ];
   var ts = new Date().toLocaleString();
   var tasksCreated = 0;
-  seeds.forEach(function(s, i){
+  seeds.forEach(function(s){
     var contactId = newId('CMC', allCommunityContacts().map(function(x){return x.contact;}));
     var contact = {
       id: contactId,
@@ -22332,7 +22332,7 @@ function autoSeedNJCommunitiesOnce(){
     db.planner.push({
       id: newId('PL', db.planner),
       title: 'Call '+s.name+(s.contact.name?' — '+s.contact.name:'')+' about group travel outreach',
-      dueDate: addDaysToDateStr(today(), i+1),
+      dueDate: today(),
       done: false,
       typeOverride: 'community',
       communityContactId: contactId,
@@ -22343,6 +22343,28 @@ function autoSeedNJCommunitiesOnce(){
   });
   saveDB();
   debugLog('Auto-seeded '+seeds.length+' NJ 55+ community record(s) and '+tasksCreated+' call task(s) (first run)');
+}
+// One-time fix: the initial NJ Communities seed above staggered its "Call
+// ..." tasks a few days apart so they wouldn't all land on the same day —
+// the user wanted them all due today instead. Only touches tasks that
+// carry a communityContactId (i.e. the ones that seed just created — this
+// feature is brand new, so nothing else could have set that field yet) and
+// only runs once, so a task someone later reschedules by hand isn't reset
+// back on a future reload.
+function fixCommunitySeedDueDatesOnce(){
+  if(localStorage.getItem('mm_community_seed_dates_fixed')) return;
+  localStorage.setItem('mm_community_seed_dates_fixed', '1');
+  var fixed = 0;
+  db.planner.forEach(function(t){
+    if(t.communityContactId && t.dueDate !== today()){
+      t.dueDate = today();
+      fixed++;
+    }
+  });
+  if(fixed>0){
+    saveDB();
+    debugLog('Reset '+fixed+' Community call task due date(s) to today (one-time fix)');
+  }
 }
 
 // Every linked client's email (primary + additional), comma-joined — comma
@@ -24020,6 +24042,7 @@ loadDB().then(function(){
   autoSeedDefaultBookmarksOnce();
   autoSeedDefaultMarketingPlanOnce();
   autoSeedNJCommunitiesOnce();
+  fixCommunitySeedDueDatesOnce();
   // One-time recovery for the watermark bug pollCheckpointNow() fixes: any
   // checkpoint already saved in this browser from before the fix could sit
   // past the receivedDateTime of a real email that arrived but was never
