@@ -198,6 +198,7 @@ tr:last-child td{border-bottom:none}
 .b-gray{background:#f3f4f6;color:#374151}
 .b-purple{background:#ede9fe;color:#5b21b6}
 .b-teal{background:#ccfbf1;color:#0f766e}
+.b-indigo{background:#e0e7ff;color:#4338ca}
 .av{width:30px;height:30px;border-radius:50%;background:#dbeafe;color:#1e40af;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0}
 .search-row{display:flex;gap:8px;margin-bottom:14px}
 .search-row input,.search-row select{padding:8px 12px;border-radius:8px;border:1px solid #d1d5db;font-size:13px;font-family:inherit;color:#111;background:#fff}
@@ -255,7 +256,8 @@ tr:last-child td{border-bottom:none}
     <nav>
       <button class="nb active" id="nb-dashboard">&#128202; Dashboard</button>
       <div class="nb-section">Clients &amp; Trips</div>
-      <button class="nb" id="nb-clients">&#128100; Clients <span class="nc" id="nc-clients">0</span></button>
+      <button class="nb" id="nb-clients">&#128100; Individual Clients <span class="nc" id="nc-clients">0</span></button>
+      <button class="nb" id="nb-corporate">&#127970; Corporate <span class="nc" id="nc-corporate">0</span></button>
       <button class="nb" id="nb-trips">&#9992;&#65039; Trips <span class="nc" id="nc-trips">0</span></button>
       <button class="nb" id="nb-groups">&#128193; Groups <span class="nc" id="nc-groups">0</span></button>
       <button class="nb" id="nb-communities">&#127961;&#65039; Communities <span class="nc" id="nc-communities">0</span></button>
@@ -1397,7 +1399,7 @@ const DEFAULT_BOOKMARKS = [
   {name:'AwardWallet', url:'https://www.awardwallet.com', category:'Award Tools', audience:'Travel Agent', notes:'tracks client mileage/points balances across programs'}
 ];
 
-let db = {clients:[],trips:[],vendors:[],bizVendors:[],communities:[],planner:[],bookmarks:[],savedReports:[],groups:[],marketingPlan:[],pendingImportMatches:[],pendingTravelerMatches:[],jetpackRemovalQueue:[],payments:[],reportTotals:{}};
+let db = {clients:[],trips:[],vendors:[],bizVendors:[],communities:[],corporateClients:[],planner:[],bookmarks:[],savedReports:[],groups:[],marketingPlan:[],pendingImportMatches:[],pendingTravelerMatches:[],jetpackRemovalQueue:[],payments:[],reportTotals:{}};
 // Diagnostic tracer for the repeated data-wipe incidents (Sept 1/2/4) —
 // db.clients/db.trips have gone empty in memory mid-session for a reason
 // never caught in the act, only ever inferred afterward from Drive backup
@@ -2234,6 +2236,7 @@ async function loadDB(){
     db.vendors=Array.isArray(d.vendors)?d.vendors:[];
     db.bizVendors=Array.isArray(d.bizVendors)?d.bizVendors:[];
     db.communities=Array.isArray(d.communities)?d.communities:[];
+    db.corporateClients=Array.isArray(d.corporateClients)?d.corporateClients:[];
     db.planner=Array.isArray(d.planner)?d.planner:[];
     db.bookmarks=Array.isArray(d.bookmarks)?d.bookmarks:[];
     db.savedReports=Array.isArray(d.savedReports)?d.savedReports:[];
@@ -4458,6 +4461,7 @@ async function driveRestore(){
         vendors:Array.isArray(d.vendors)?d.vendors:[],
         bizVendors:Array.isArray(d.bizVendors)?d.bizVendors:[],
         communities:Array.isArray(d.communities)?d.communities:[],
+        corporateClients:Array.isArray(d.corporateClients)?d.corporateClients:[],
         planner:Array.isArray(d.planner)?d.planner:[],
         bookmarks:Array.isArray(d.bookmarks)?d.bookmarks:[],
         savedReports:Array.isArray(d.savedReports)?d.savedReports:[],
@@ -4597,6 +4601,7 @@ async function secureSyncRestore(){
         vendors:Array.isArray(d.vendors)?d.vendors:[],
         bizVendors:Array.isArray(d.bizVendors)?d.bizVendors:[],
         communities:Array.isArray(d.communities)?d.communities:[],
+        corporateClients:Array.isArray(d.corporateClients)?d.corporateClients:[],
         planner:Array.isArray(d.planner)?d.planner:[],
         bookmarks:Array.isArray(d.bookmarks)?d.bookmarks:[],
         savedReports:Array.isArray(d.savedReports)?d.savedReports:[],
@@ -5720,7 +5725,7 @@ function importJSON(){
         const d=JSON.parse(ev.target.result);
         if(Array.isArray(d.clients)&&Array.isArray(d.trips)){
           debugLog('Local restore: parsed backup file — '+d.clients.length+' clients, '+d.trips.length+' trips');
-          db=d;instrumentDbWipeTracing();if(!Array.isArray(db.vendors))db.vendors=[];if(!Array.isArray(db.bizVendors))db.bizVendors=[];if(!Array.isArray(db.communities))db.communities=[];if(!Array.isArray(db.planner))db.planner=[];if(!Array.isArray(db.bookmarks))db.bookmarks=[];if(!Array.isArray(db.savedReports))db.savedReports=[];if(!Array.isArray(db.groups))db.groups=[];if(!Array.isArray(db.marketingPlan))db.marketingPlan=[];if(!Array.isArray(db.pendingImportMatches))db.pendingImportMatches=[];if(!Array.isArray(db.jetpackRemovalQueue))db.jetpackRemovalQueue=[];if(!Array.isArray(db.payments))db.payments=[];(db.clients||[]).forEach(function(c){ if(c.name && !c.name.includes(',')) c.name=toLastFirst(c.name); });_dbDecryptFailed=false;
+          db=d;instrumentDbWipeTracing();if(!Array.isArray(db.vendors))db.vendors=[];if(!Array.isArray(db.bizVendors))db.bizVendors=[];if(!Array.isArray(db.communities))db.communities=[];if(!Array.isArray(db.corporateClients))db.corporateClients=[];if(!Array.isArray(db.planner))db.planner=[];if(!Array.isArray(db.bookmarks))db.bookmarks=[];if(!Array.isArray(db.savedReports))db.savedReports=[];if(!Array.isArray(db.groups))db.groups=[];if(!Array.isArray(db.marketingPlan))db.marketingPlan=[];if(!Array.isArray(db.pendingImportMatches))db.pendingImportMatches=[];if(!Array.isArray(db.jetpackRemovalQueue))db.jetpackRemovalQueue=[];if(!Array.isArray(db.payments))db.payments=[];(db.clients||[]).forEach(function(c){ if(c.name && !c.name.includes(',')) c.name=toLastFirst(c.name); });_dbDecryptFailed=false;
           // Awaited specifically because this is a restore: the natural next
           // move after seeing "Data imported" is to reload to confirm it
           // stuck, and saveDB()'s encrypted write is otherwise fire-and-
@@ -10116,7 +10121,7 @@ function go(v,cid){
   view=v;
   selCid=(v==='trips'&&cid)?cid:null;
   fSearch='';fStatus=STATUSES.filter(function(s){return s!=='Cancelled';});fHideSubOnly=true;
-  ['dashboard','clients','trips','groups','reports','calendar','email','vendors','bizvendors','communities','planner','bookmarks','ccconsulting','referrals','payments','marketing','analytics'].forEach(function(x){var el=$('nb-'+x);if(el)el.classList.toggle('active',x===v);});
+  ['dashboard','clients','corporate','trips','groups','reports','calendar','email','vendors','bizvendors','communities','planner','bookmarks','ccconsulting','referrals','payments','marketing','analytics'].forEach(function(x){var el=$('nb-'+x);if(el)el.classList.toggle('active',x===v);});
   render();
 }
 
@@ -10127,6 +10132,7 @@ function render(){
   var ncv=$('nc-vendors'); if(ncv) ncv.textContent=db.vendors.length;
   var ncbv=$('nc-bizvendors'); if(ncbv) ncbv.textContent=db.bizVendors.length;
   var nccm=$('nc-communities'); if(nccm) nccm.textContent=db.communities.length;
+  var ncc=$('nc-corporate'); if(ncc) ncc.textContent=db.corporateClients.length;
   var ncp=$('nc-planner'); if(ncp) ncp.textContent=db.planner.filter(function(t){return !t.done;}).length;
   var ncg=$('nc-groups'); if(ncg) ncg.textContent=db.groups.length;
   var ncpim=$('nc-pending-import-matches'); if(ncpim) ncpim.textContent=db.pendingImportMatches.length;
@@ -10142,6 +10148,7 @@ function render(){
   else if(view==='vendors') renderVendors();
   else if(view==='bizvendors') renderBizVendors();
   else if(view==='communities') renderCommunities();
+  else if(view==='corporate') renderCorporateClients();
   else if(view==='planner') renderPlanner();
   else if(view==='bookmarks') renderBookmarks();
   else if(view==='marketing') renderMarketing();
@@ -11794,6 +11801,7 @@ function findVendorContact(contactId){
 // bizVendorContactId field on Planner tasks, so the two contact systems
 // never collide even though a task could in principle reference both.
 const BIZ_VENDOR_CATS = ['Printing','Web/Hosting','Accounting','Legal','Marketing','Insurance','Office/Supplies','Software','Other'];
+const CORPORATE_CLIENT_INDUSTRIES = ['Law Firm','Real Estate','Finance/Banking','Healthcare','Technology','Manufacturing','Retail','Construction','Insurance','Nonprofit','Government','Other'];
 function allBizVendorContacts(){
   var out = [];
   db.bizVendors.forEach(function(v){
@@ -11832,6 +11840,30 @@ function findCommunityContact(contactId){
     var v = db.communities[i];
     var c = (v.contacts||[]).find(function(x){return x.id===contactId;});
     if(c) return {contact:c, community:v};
+  }
+  return null;
+}
+
+// ── Corporate Client helpers ─────────────────────────────────────────────
+// Same shape as Business Vendors/Communities above — its own record type,
+// its own contacts array, its own `CC`/`CCC` id prefixes and its own
+// corporateContactId field on Planner tasks — for corporate clients (a
+// company account, as opposed to an individual traveler in db.clients),
+// whose contacts are the company's own employees (HR/travel coordinator,
+// executive assistant, etc.).
+function allCorporateClientContacts(){
+  var out = [];
+  db.corporateClients.forEach(function(v){
+    (v.contacts||[]).forEach(function(c){ out.push({contact:c, company:v}); });
+  });
+  return out;
+}
+function findCorporateClientContact(contactId){
+  if(!contactId) return null;
+  for(var i=0;i<db.corporateClients.length;i++){
+    var v = db.corporateClients[i];
+    var c = (v.contacts||[]).find(function(x){return x.id===contactId;});
+    if(c) return {contact:c, company:v};
   }
   return null;
 }
@@ -14200,6 +14232,371 @@ function saveCommunityContact(communityId, contactId, returnToList){
   saveDB();
   toast(contactId?'Contact updated':'Contact added');
   if(returnToList){ closeModal(); render(); } else { openCommunityForm(communityId); }
+  return resultId;
+}
+
+// ── Corporate Clients (company accounts) ─────────────────────────────────
+// Same list/form/contact/notes/tasks shape as Business Vendors/Communities
+// above, just under db.corporateClients/CC/CCC instead of db.bizVendors/BV/
+// BVC, and an Industry select in place of Town/County — a corporate client
+// is a company account (as opposed to an individual traveler in db.clients),
+// whose contacts are the company's own employees (HR/travel coordinator,
+// executive assistant, etc.) rather than a Social/Activities Director.
+function renderCorporateClients(){
+  var q = (window._corporateSearch||'').toLowerCase();
+  var sorted = [...db.corporateClients].filter(function(v){
+    return !q || (v.name||'').toLowerCase().indexOf(q)!==-1 || (v.industry||'').toLowerCase().indexOf(q)!==-1;
+  }).sort(function(a,b){return (a.name||'').localeCompare(b.name||'');});
+  var totalContacts = db.corporateClients.reduce(function(a,v){return a+(v.contacts||[]).length;},0);
+
+  $('main').innerHTML =
+    '<div class="page-hdr"><div class="page-title">Corporate Clients</div><button class="add-btn" id="btn-add-corporate">+ Add Corporate Client</button></div>'+
+    '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:16px">'+
+      '<div class="stat" id="stat-corporate-count"><div class="stat-lbl">Total Corporate Clients</div><div class="stat-val">'+db.corporateClients.length+'</div></div>'+
+      '<div class="stat" id="stat-corporate-contacts"><div class="stat-lbl">Total Contacts</div><div class="stat-val">'+totalContacts+'</div></div>'+
+    '</div>'+
+    '<div class="search-row"><input id="corporate-search" placeholder="Search corporate clients..." value="'+escHtml(window._corporateSearch||'')+'"/></div>'+
+    (sorted.length ? sorted.map(function(v){
+      var contacts = v.contacts||[];
+      return '<div class="vendor-card" id="ccc-'+v.id+'">'+
+        '<div style="display:flex;justify-content:space-between;align-items:flex-start">'+
+          '<div>'+
+            '<div style="font-size:15px;font-weight:700;color:#2563eb;cursor:pointer;text-decoration:underline" class="corporate-name-link" data-id="'+v.id+'">'+escHtml(v.name||'')+'</div>'+
+            (v.industry?'<div style="margin-top:3px"><span class="badge b-gray">'+escHtml(v.industry)+'</span></div>':'')+
+          '</div>'+
+          '<button class="icon-btn del-corporate" data-id="'+v.id+'" style="color:#dc2626">&#128465;&#65039;</button>'+
+        '</div>'+
+        (v.website||v.phone?'<div style="font-size:12px;margin-top:8px">'+
+          (v.website?'<a href="'+(v.website.indexOf('http')===0?v.website:'https://'+v.website)+'" target="_blank" style="color:#2563eb;text-decoration:none;margin-right:12px">&#127760; '+escHtml(v.website)+'</a>':'')+
+          (v.phone?'<span style="color:#666">&#128222; '+escHtml(v.phone)+'</span>':'')+
+        '</div>':'')+
+        '<div style="margin-top:10px;border-top:1px solid #f0f0f0;padding-top:8px">'+
+          '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'+
+            '<div style="font-size:11px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:.05em">Contacts'+(contacts.length?' ('+contacts.length+')':'')+'</div>'+
+            '<button type="button" class="corporate-add-contact-btn" data-corporate-id="'+v.id+'" style="padding:2px 8px;border-radius:6px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:11px;font-family:inherit">+ Add Contact</button>'+
+          '</div>'+
+          (contacts.length ? contacts.map(function(c){
+            return '<div class="corporate-list-contact-link" data-corporate-id="'+v.id+'" data-contact-id="'+c.id+'" style="cursor:pointer;padding:5px 8px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;margin-bottom:4px">'+
+              '<span style="font-size:12px;font-weight:600;color:#2563eb;text-decoration:underline">'+escHtml(c.name||'(no name)')+'</span>'+
+              (c.title?' <span style="font-size:11px;color:#888">&mdash; '+escHtml(c.title)+'</span>':'')+
+              '<div style="font-size:11px;color:#888">'+contactEmailPhoneLine(c)+'</div>'+
+            '</div>';
+          }).join('') : '<div style="color:#aaa;font-size:12px;padding:2px 0">No contacts yet.</div>')+
+        '</div>'+
+        (v.notes?'<div style="font-size:12px;color:#666;margin-top:8px;border-top:1px solid #f0f0f0;padding-top:8px">'+escHtml(v.notes)+'</div>':'')+
+      '</div>';
+    }).join('') : '<div class="empty">No corporate clients yet — add company accounts to track outreach</div>');
+
+  $('btn-add-corporate').addEventListener('click', function(){openCorporateClientForm();});
+  var statCorporateCount = $('stat-corporate-count');
+  if(statCorporateCount) statCorporateCount.addEventListener('click', function(){
+    openStatDrilldownModal('Corporate Clients', ['Company','Industry','Contacts'], sorted.map(function(v){
+      return {cells:[v.name||'',v.industry||'—',(v.contacts||[]).length],onClick:function(){openCorporateClientForm(v.id);}};
+    }));
+  });
+  var statCorporateContacts = $('stat-corporate-contacts');
+  if(statCorporateContacts) statCorporateContacts.addEventListener('click', function(){
+    openStatDrilldownModal('Corporate Client Contacts', ['Contact','Company','Email','Phone'], allCorporateClientContacts().map(function(x){
+      return {cells:[x.contact.name||'',x.company.name||'',x.contact.email||'—',x.contact.phone||'—'],onClick:function(){openCorporateClientContactForm(x.company.id, x.contact.id);}};
+    }));
+  });
+  $('corporate-search').addEventListener('input', function(){
+    window._corporateSearch = this.value;
+    renderCorporateClients();
+    var el = $('corporate-search');
+    if(el){ el.focus(); try{ el.setSelectionRange(el.value.length, el.value.length); }catch(e){} }
+  });
+  document.querySelectorAll('.corporate-name-link').forEach(function(el){
+    el.addEventListener('click', function(){ openCorporateClientForm(el.dataset.id); });
+  });
+  document.querySelectorAll('.del-corporate').forEach(function(btn){
+    btn.addEventListener('click', function(){ delCorporateClient(btn.dataset.id); });
+  });
+  document.querySelectorAll('.corporate-add-contact-btn').forEach(function(btn){
+    btn.addEventListener('click', function(e){
+      e.stopPropagation();
+      openCorporateClientContactForm(btn.dataset.corporateId, null, true);
+    });
+  });
+  document.querySelectorAll('.corporate-list-contact-link').forEach(function(el){
+    el.addEventListener('click', function(e){
+      e.stopPropagation();
+      openCorporateClientContactForm(el.dataset.corporateId, el.dataset.contactId, true);
+    });
+  });
+}
+
+function openCorporateClientForm(id){
+  var d = id ? (db.corporateClients.find(function(v){return v.id===id;})||{}) : {};
+  var indOpts = CORPORATE_CLIENT_INDUSTRIES.map(function(c){return '<option value="'+c+'"'+(c===d.industry?' selected':'')+'>'+c+'</option>';}).join('');
+
+  $('modal').innerHTML =
+    '<div class="modal-hdr"><div class="modal-title">'+(id?'Edit Corporate Client':'Add Corporate Client')+'</div><button class="close-btn" id="modal-close">&#x2715;</button></div>'+
+    '<div class="fg">'+
+      fld('Company Name', inp('cc-name','text',d.name,'e.g. Acme Corporation'), true)+
+      fld('Industry', '<select id="cc-industry"><option value="">Select...</option>'+indOpts+'</select>')+
+      fld('Phone', inp('cc-phone','text',d.phone,'(xxx) xxx-xxxx'))+
+      fld('Website', inp('cc-website','text',d.website,'https://'))+
+      '<div class="field full"><label>Notes</label><textarea id="cc-notes" rows="2">'+(d.notes||'')+'</textarea></div>'+
+    '</div>'+
+    '<div style="margin-top:16px;border-top:1px solid #e5e7eb;padding-top:16px">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">'+
+        '<div style="font-size:13px;font-weight:600;color:#374151">Contacts</div>'+
+        '<button type="button" id="btn-add-corporate-contact" style="padding:3px 10px;border-radius:6px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:11px;font-family:inherit">+ Add Contact</button>'+
+      '</div>'+
+      (function(){
+        var contacts = d.contacts||[];
+        if(!contacts.length) return '<div style="color:#aaa;font-size:12px;padding:4px 0 8px">No contacts yet.</div>';
+        return contacts.map(function(c){
+          return '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:6px">'+
+            '<div class="corporate-contact-link" data-contact-id="'+c.id+'" style="cursor:pointer">'+
+              '<div style="font-size:13px;font-weight:600;color:#2563eb;text-decoration:underline">'+escHtml(c.name||'(no name)')+(c.title?' <span style="font-weight:400;color:#888">&mdash; '+escHtml(c.title)+'</span>':'')+'</div>'+
+              '<div style="font-size:11px;color:#888">'+contactEmailPhoneLine(c)+'</div>'+
+            '</div>'+
+            '<button class="del-corporate-contact-btn" data-contact-id="'+c.id+'" title="Delete contact" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:14px">&#128465;&#65039;</button>'+
+          '</div>';
+        }).join('');
+      })()+
+    '</div>'+
+    '<div class="form-actions form-actions-sticky"><button class="cancel-btn" id="modal-cancel">Cancel</button><button class="save-btn" id="modal-save-corporate" data-id="'+(id||'')+'">Save Corporate Client</button></div>';
+
+  $('overlay').classList.add('open');
+  $('modal-close').addEventListener('click', closeModal);
+  $('modal-cancel').addEventListener('click', closeModal);
+  $('modal-save-corporate').addEventListener('click', function(){saveCorporateClient(this.dataset.id);});
+  $('btn-add-corporate-contact').addEventListener('click', function(){
+    var vid = id;
+    if(!vid){
+      vid = saveCorporateClient(null);
+      if(!vid) return;
+    }
+    openCorporateClientContactForm(vid, null);
+  });
+  document.querySelectorAll('.corporate-contact-link').forEach(function(el){
+    el.addEventListener('click', function(){ openCorporateClientContactForm(id, el.dataset.contactId); });
+  });
+  document.querySelectorAll('.contact-mailto-link').forEach(function(el){
+    el.addEventListener('click', function(e){ e.stopPropagation(); });
+  });
+  document.querySelectorAll('.del-corporate-contact-btn').forEach(function(btn){
+    btn.addEventListener('click', function(e){
+      e.stopPropagation();
+      if(!confirm('Delete this contact?')) return;
+      snapshot('Delete corporate client contact');
+      db.corporateClients = db.corporateClients.map(function(v){
+        if(v.id!==id) return v;
+        return Object.assign({},v,{contacts:(v.contacts||[]).filter(function(c){return c.id!==btn.dataset.contactId;})});
+      });
+      saveDB();
+      openCorporateClientForm(id);
+    });
+  });
+}
+function saveCorporateClient(id){
+  var name = gv('cc-name');
+  if(!name){toast('Company name is required','err');return;}
+  var data = {name:name, industry:gv('cc-industry'), phone:gv('cc-phone'), website:gv('cc-website'), notes:gv('cc-notes')};
+  var resultId = id||newId('CC', db.corporateClients);
+  if(id){
+    db.corporateClients = db.corporateClients.map(function(v){return v.id===id ? Object.assign({},v,data) : v;});
+    toast('Corporate client updated');
+  } else {
+    data.id = resultId;
+    db.corporateClients.push(data);
+    toast('Corporate client added');
+  }
+  saveDB(); closeModal(); render();
+  return resultId;
+}
+function delCorporateClient(id){
+  var v = db.corporateClients.find(function(x){return x.id===id;});
+  if(!v || !confirm('Delete corporate client '+v.name+'?')) return;
+  db.corporateClients = db.corporateClients.filter(function(x){return x.id!==id;});
+  saveDB(); toast('Corporate client deleted'); render();
+}
+
+// Same pattern as openBizVendorContactForm/saveBizVendorContact — see the
+// comment there for why the note filter/delete/expand wiring is duplicated
+// rather than shared.
+function openCorporateClientContactForm(corporateId, contactId, returnToList){
+  var company = db.corporateClients.find(function(v){return v.id===corporateId;});
+  if(!company){ toast('Corporate client not found','err'); return; }
+  var d = contactId ? ((company.contacts||[]).find(function(c){return c.id===contactId;})||{}) : {};
+  var notesLogSorted = Array.isArray(d.notesLog) ? [...d.notesLog].sort(function(a,b){var ta=new Date(a.ts),tb=new Date(b.ts);return (isNaN(tb)?0:tb)-(isNaN(ta)?0:ta);}) : [];
+  var notesHTML = notesLogSorted.length ? notesLogSorted.map(function(n,i){
+    return '<div class="note-entry" id="note-entry-'+i+'">'+
+      '<div style="display:flex;align-items:center;margin-bottom:4px">'+
+        '<span class="note-ts-link" data-note-idx="'+i+'">'+n.ts+'</span>'+
+        '<select class="note-type-sel" id="note-type-'+i+'">'+
+          '<option value="">-- Type --</option>'+
+          NOTE_TYPES.map(function(t){return '<option value="'+t+'"'+(n.noteType===t?' selected':'')+'>'+t+'</option>';}).join('')+
+        '</select>'+
+        '<button class="del-note-btn" data-note-idx="'+i+'" title="Delete note" style="margin-left:auto;background:none;border:none;cursor:pointer;color:#dc2626;font-size:15px;padding:2px 6px;border-radius:4px;line-height:1">&#128465;&#65039;</button>'+
+      '</div>'+
+      '<textarea class="note-txt" id="note-txt-'+i+'" rows="2">'+n.text+'</textarea>'+
+    '</div>';
+  }).join('') : '<div id="notes-log-empty" style="color:#aaa;font-size:12px;padding:6px 0">No notes yet</div>';
+
+  var contactTasks = contactId ? db.planner.filter(function(t){return t.corporateContactId===contactId;}).sort(function(a,b){
+    if(!!a.done !== !!b.done) return a.done ? 1 : -1;
+    var ad=a.dueDate||'9999-99-99', bd=b.dueDate||'9999-99-99';
+    return ad.localeCompare(bd);
+  }) : [];
+  var taskAddBtn = '<button type="button" class="corporate-contact-add-task-btn" style="padding:3px 10px;border-radius:6px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:11px;font-family:inherit">+ Add Task</button>';
+  var tasksHtml;
+  if(!contactTasks.length){
+    tasksHtml = '<div class="field full" style="margin-bottom:12px">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center"><label>Tasks (0)</label>'+taskAddBtn+'</div>'+
+      '<div style="color:#aaa;font-size:12px;padding:8px 0">No tasks yet.</div>'+
+    '</div>';
+  } else {
+    var taskRows = contactTasks.map(function(t){
+      var overdue = t.dueDate && !t.done && t.dueDate<today();
+      return '<tr class="corporate-contact-task-row" data-task-id="'+t.id+'" style="cursor:pointer">'+
+        '<td style="font-size:12px;padding:8px 10px;color:'+(t.done?'#aaa':'#111')+';text-decoration:'+(t.done?'line-through':'none')+'">'+t.title+'</td>'+
+        '<td style="font-size:11px;padding:8px 10px;white-space:nowrap;color:'+(overdue?'#dc2626':'#555')+'">'+(t.dueDate||'—')+(overdue?' (overdue)':'')+'</td>'+
+        '<td style="padding:8px 10px">'+(t.done?'<span class="badge b-blue">Done</span>':'<span class="badge b-amber">Open</span>')+'</td>'+
+      '</tr>';
+    }).join('');
+    tasksHtml = '<div class="field full" style="margin-bottom:12px">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center"><label>Tasks ('+contactTasks.length+')</label>'+taskAddBtn+'</div>'+
+      '<div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;max-height:220px;overflow-y:auto">'+
+      '<table style="width:100%;border-collapse:collapse">'+
+      '<thead><tr style="background:#f3f4f6">'+
+        '<th style="text-align:left;padding:6px 10px;font-size:10px;font-weight:700;color:#888;text-transform:uppercase">Task</th>'+
+        '<th style="text-align:left;padding:6px 10px;font-size:10px;font-weight:700;color:#888;text-transform:uppercase">Due</th>'+
+        '<th style="text-align:left;padding:6px 10px;font-size:10px;font-weight:700;color:#888;text-transform:uppercase">Status</th>'+
+      '</tr></thead>'+
+      '<tbody>'+taskRows+'</tbody></table></div></div>';
+  }
+
+  $('modal').innerHTML=
+    '<div class="modal-hdr"><div class="modal-title">'+(contactId?'Edit Contact':'Add Contact')+' <span style="font-weight:400;color:#888;font-size:13px">&mdash; '+escHtml(company.name||'')+'</span></div><button class="close-btn" id="modal-close">&#x2715;</button></div>'+
+    '<div class="fg">'+
+      fld('Name', inp('ccc-name','text',d.name,'e.g. Jane Smith'), true)+
+      fld('Title', inp('ccc-title','text',d.title,'e.g. Travel Coordinator'))+
+      fld('Email', inp('ccc-email','email',d.email))+
+      fld('Phone', inp('ccc-phone','text',d.phone,'(xxx) xxx-xxxx'))+
+      tasksHtml+
+      '<div class="field full"><label>Notes Log</label>'+
+        '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'+
+          '<select id="note-type-filter" style="padding:5px 10px;border-radius:6px;border:1px solid #d1d5db;font-size:12px;font-family:inherit;color:#555;background:#fff">'+
+            '<option value="">All types</option>'+
+            NOTE_TYPES.map(function(t){return '<option value="'+t+'">'+t+'</option>';}).join('')+
+          '</select>'+
+          '<span id="note-filter-count" style="font-size:11px;color:#888"></span>'+
+        '</div>'+
+        '<div id="notes-log" style="border:1px solid #e5e7eb;border-radius:8px;padding:10px;background:#fafafa;max-height:220px;overflow-y:auto;margin-bottom:6px">'+notesHTML+'</div>'+
+        '<button type="button" id="btn-add-note" style="align-self:flex-start;padding:5px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit">+ Add Note</button>'+
+      '</div>'+
+    '</div>'+
+    '<div class="form-actions form-actions-sticky"><button class="cancel-btn" id="modal-cancel">Cancel</button><button class="save-btn" id="modal-save-corporate-contact" data-corporate-id="'+corporateId+'" data-contact-id="'+(contactId||'')+'">Save Contact</button></div>';
+
+  $('overlay').classList.add('open');
+  $('modal-close').addEventListener('click', function(){ if(returnToList){ closeModal(); } else { openCorporateClientForm(corporateId); } });
+  $('modal-cancel').addEventListener('click', function(){ if(returnToList){ closeModal(); } else { openCorporateClientForm(corporateId); } });
+  $('btn-add-note').addEventListener('click', addNoteEntry);
+  $('modal-save-corporate-contact').addEventListener('click', function(){
+    saveCorporateClientContact(this.dataset.corporateId, this.dataset.contactId||null, returnToList);
+  });
+  document.querySelectorAll('.corporate-contact-task-row').forEach(function(row){
+    row.addEventListener('click', function(){ openTaskForm(row.dataset.taskId); });
+  });
+  document.querySelectorAll('.corporate-contact-add-task-btn').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var savedId = saveCorporateClientContact(corporateId, contactId);
+      if(!savedId) return;
+      openTaskForm();
+      var contactSel = document.getElementById('tk-corporate-contact');
+      if(contactSel){ contactSel.value = savedId; refreshTaskEmailFromCorporateClientContact(); }
+    });
+  });
+
+  var noteFilterSel = document.getElementById('note-type-filter');
+  var noteFilterCount = document.getElementById('note-filter-count');
+  if(noteFilterSel){
+    function applyNoteFilter(){
+      var val = noteFilterSel.value;
+      var entries = document.querySelectorAll('#notes-log .note-entry');
+      var shown = 0;
+      entries.forEach(function(el){
+        if(!val){el.style.display='';shown++;}
+        else{
+          var sel = el.querySelector('.note-type-sel');
+          var type = sel ? sel.value : '';
+          if(type===val){el.style.display='';shown++;}
+          else{el.style.display='none';}
+        }
+      });
+      if(noteFilterCount) noteFilterCount.textContent = shown+' of '+entries.length+' notes';
+    }
+    noteFilterSel.addEventListener('change', applyNoteFilter);
+    applyNoteFilter();
+  }
+  var notesLogEl = $('notes-log');
+  if(notesLogEl){
+    notesLogEl.addEventListener('click', function(e){
+      var btn = e.target.closest ? e.target.closest('.del-note-btn') : null;
+      if(!btn && e.target.classList.contains('del-note-btn')) btn = e.target;
+      if(btn){
+        var entry = btn.closest('.note-entry');
+        if(entry && confirm('Delete this note?')){
+          entry.remove();
+          var entries = notesLogEl.querySelectorAll('.note-entry');
+          entries.forEach(function(el, newIdx){
+            el.id = 'note-entry-'+newIdx;
+            var tsLink = el.querySelector('.note-ts-link');
+            if(tsLink) tsLink.dataset.noteIdx = newIdx;
+            var sel = el.querySelector('.note-type-sel');
+            if(sel) sel.id = 'note-type-'+newIdx;
+            var ta = el.querySelector('.note-txt');
+            if(ta) ta.id = 'note-txt-'+newIdx;
+            var delBtn = el.querySelector('.del-note-btn');
+            if(delBtn) delBtn.dataset.noteIdx = newIdx;
+          });
+        }
+      }
+    });
+    notesLogEl.addEventListener('click', function(e){
+      var span = e.target.closest ? e.target.closest('.note-ts-link') : null;
+      if(!span && e.target.classList.contains('note-ts-link')) span = e.target;
+      if(span){
+        var idx = parseInt(span.dataset.noteIdx, 10);
+        var note = notesLogSorted[idx];
+        if(note) openNoteExpand(note.ts, note.text, note.noteType||'');
+      }
+    });
+  }
+}
+function saveCorporateClientContact(corporateId, contactId, returnToList){
+  var name = gv('ccc-name');
+  if(!name){ toast('Contact name is required','err'); return null; }
+  var noteEntryEls = Array.from(document.querySelectorAll('.note-entry'));
+  var notesLog = noteEntryEls.map(function(el){
+    var tsEl = el.querySelector('.note-ts-link') || el.querySelector('.note-ts');
+    var ts = (tsEl||{}).textContent||'';
+    var text = (el.querySelector('.note-txt')||{}).value||'';
+    var typeEl = el.querySelector('.note-type-sel');
+    var noteType = (typeEl&&typeEl.value)||'';
+    return {ts:ts.trim(),text:text.trim(),noteType:noteType};
+  }).filter(function(n){return n.text;});
+  var data = {name:name, title:gv('ccc-title'), email:gv('ccc-email'), phone:gv('ccc-phone'), notesLog:notesLog};
+  snapshot(contactId?'Edit corporate client contact':'Add corporate client contact');
+  var resultId = contactId;
+  db.corporateClients = db.corporateClients.map(function(v){
+    if(v.id!==corporateId) return v;
+    var contacts = v.contacts||[];
+    if(contactId){
+      contacts = contacts.map(function(c){return c.id===contactId?Object.assign({},c,data):c;});
+    } else {
+      resultId = newId('CCC', allCorporateClientContacts().map(function(x){return x.contact;}));
+      contacts = contacts.concat([Object.assign({},data,{id:resultId})]);
+    }
+    return Object.assign({},v,{contacts:contacts});
+  });
+  saveDB();
+  toast(contactId?'Contact updated':'Contact added');
+  if(returnToList){ closeModal(); render(); } else { openCorporateClientForm(corporateId); }
   return resultId;
 }
 
@@ -18802,6 +19199,10 @@ function taskContactInfo(t){
     var ovCmc = t.communityContactId ? findCommunityContact(t.communityContactId) : null;
     return {type:'community', badgeCls:'b-teal', badgeLabel:'Community', phone:ovCmc?ovCmc.contact.phone:'', email:ovCmc?ovCmc.contact.email:''};
   }
+  if(t.typeOverride==='corporate'){
+    var ovCcc = t.corporateContactId ? findCorporateClientContact(t.corporateContactId) : null;
+    return {type:'corporate', badgeCls:'b-indigo', badgeLabel:'Corporate', phone:ovCcc?ovCcc.contact.phone:'', email:ovCcc?ovCcc.contact.email:''};
+  }
   if(t.typeOverride==='client') return {type:'client', badgeCls:'b-blue', badgeLabel:'Client', phone:'', email:''};
   if(t.typeOverride==='admin') return {type:'admin', badgeCls:'b-gray', badgeLabel:'Admin', phone:'', email:''};
   var vc = t.vendorContactId ? findVendorContact(t.vendorContactId) : null;
@@ -18810,6 +19211,8 @@ function taskContactInfo(t){
   if(bvc) return {type:'vendor', badgeCls:'b-amber', badgeLabel:'Vendor', phone:bvc.contact.phone, email:bvc.contact.email};
   var cmc = t.communityContactId ? findCommunityContact(t.communityContactId) : null;
   if(cmc) return {type:'community', badgeCls:'b-teal', badgeLabel:'Community', phone:cmc.contact.phone, email:cmc.contact.email};
+  var ccc = t.corporateContactId ? findCorporateClientContact(t.corporateContactId) : null;
+  if(ccc) return {type:'corporate', badgeCls:'b-indigo', badgeLabel:'Corporate', phone:ccc.contact.phone, email:ccc.contact.email};
   // A Linked Supplier with no specific contact chosen still means this
   // task is about that Supplier, not (just) whatever client also happens
   // to be tagged on it — same precedence-over-client treatment a Supplier
@@ -18900,6 +19303,8 @@ function renderPlanner(){
     if(bizFound) return '<span style="color:#555">'+escHtml(bizFound.contact.name||'')+' <span style="font-size:10px;color:#888">('+escHtml(bizFound.vendor.name||'')+')</span></span>';
     var cmFound = t.communityContactId ? findCommunityContact(t.communityContactId) : null;
     if(cmFound) return '<span style="color:#555">'+escHtml(cmFound.contact.name||'')+' <span style="font-size:10px;color:#888">('+escHtml(cmFound.community.name||'')+')</span></span>';
+    var ccFound = t.corporateContactId ? findCorporateClientContact(t.corporateContactId) : null;
+    if(ccFound) return '<span style="color:#555">'+escHtml(ccFound.contact.name||'')+' <span style="font-size:10px;color:#888">('+escHtml(ccFound.company.name||'')+')</span></span>';
     return '<span style="color:#aaa">No client linked</span>';
   }
 
@@ -18949,6 +19354,7 @@ function renderPlanner(){
         '<option value="supplier"'+(typeFilter==='supplier'?' selected':'')+'>Supplier</option>'+
         '<option value="vendor"'+(typeFilter==='vendor'?' selected':'')+'>Vendor</option>'+
         '<option value="community"'+(typeFilter==='community'?' selected':'')+'>Community</option>'+
+        '<option value="corporate"'+(typeFilter==='corporate'?' selected':'')+'>Corporate</option>'+
         '<option value="marketing"'+(typeFilter==='marketing'?' selected':'')+'>Marketing Plan</option>'+
         '<option value="admin"'+(typeFilter==='admin'?' selected':'')+'>Admin</option>'+
       '</select>'+
@@ -22475,6 +22881,10 @@ function openTaskForm(id){
   var communityContactOpts = sortedCommunityContacts.map(function(x){
     return '<option value="'+x.contact.id+'"'+(x.contact.id===d.communityContactId?' selected':'')+'>'+x.contact.name+' — '+x.community.name+'</option>';
   }).join('');
+  var sortedCorporateContacts = allCorporateClientContacts().sort(function(a,b){return (a.contact.name||'').toLowerCase().localeCompare((b.contact.name||'').toLowerCase());});
+  var corporateContactOpts = sortedCorporateContacts.map(function(x){
+    return '<option value="'+x.contact.id+'"'+(x.contact.id===d.corporateContactId?' selected':'')+'>'+x.contact.name+' — '+x.company.name+'</option>';
+  }).join('');
   var tripOpts = sortedTrips.map(function(t){
     var c = db.clients.find(function(x){return x.id===t.clientId;});
     var label = (t.destination||'Trip')+(c?' — '+c.name:'')+(t.departDate?' ('+t.departDate+')':'');
@@ -22510,7 +22920,7 @@ function openTaskForm(id){
       fld('Time', inp('tk-time','time',d.dueTime))+
       fld('Status','<select id="tk-done"><option value="0"'+(!d.done?' selected':'')+'>Open</option><option value="1"'+(d.done?' selected':'')+'>Done</option></select>')+
       fld('Type','<select id="tk-type"><option value=""'+(!d.typeOverride?' selected':'')+'>Auto (based on linked records)</option>'+
-        ['client','supplier','vendor','community','marketing','admin'].map(function(v){
+        ['client','supplier','vendor','community','corporate','marketing','admin'].map(function(v){
           var label = v==='admin' ? 'Admin' : (v==='marketing' ? 'Marketing Plan' : v.charAt(0).toUpperCase()+v.slice(1));
           return '<option value="'+v+'"'+(d.typeOverride===v?' selected':'')+'>'+label+'</option>';
         }).join('')+
@@ -22541,6 +22951,10 @@ function openTaskForm(id){
       fld('Community Contact','<div style="display:flex;align-items:center;gap:10px">'+
         searchableSelectWrap('<select id="tk-community-contact"><option value="">None</option>'+communityContactOpts+'</select>','Search contacts...')+
         '<span id="tk-community-contact-link"></span>'+
+      '</div>')+
+      fld('Corporate Contact','<div style="display:flex;align-items:center;gap:10px">'+
+        searchableSelectWrap('<select id="tk-corporate-contact"><option value="">None</option>'+corporateContactOpts+'</select>','Search contacts...')+
+        '<span id="tk-corporate-contact-link"></span>'+
       '</div>')+
       fld('Linked Trip','<div style="display:flex;align-items:center;gap:10px">'+
         searchableSelectWrap('<select id="tk-trip"><option value="">None</option>'+tripOpts+'</select>','Search trips...')+
@@ -22604,6 +23018,10 @@ function openTaskForm(id){
   $('tk-community-contact').addEventListener('change', refreshTaskPhoneFromCommunityContact);
   $('tk-community-contact').addEventListener('change', refreshTaskCommunityContactLinkDisplay);
   refreshTaskCommunityContactLinkDisplay();
+  $('tk-corporate-contact').addEventListener('change', refreshTaskEmailFromCorporateClientContact);
+  $('tk-corporate-contact').addEventListener('change', refreshTaskPhoneFromCorporateClientContact);
+  $('tk-corporate-contact').addEventListener('change', refreshTaskCorporateClientContactLinkDisplay);
+  refreshTaskCorporateClientContactLinkDisplay();
   $('tk-trip').addEventListener('change', refreshTaskTripLinkDisplay);
   refreshTaskTripLinkDisplay();
 }
@@ -22685,6 +23103,19 @@ function refreshTaskEmailFromCommunityContact(){
     updateTaskEmailLinkDisplay();
   }
 }
+// Same idea as refreshTaskEmailFromCommunityContact above, for a Corporate
+// Client Contact (db.corporateClients).
+function refreshTaskEmailFromCorporateClientContact(){
+  var contactSel = document.getElementById('tk-corporate-contact');
+  if(!contactSel) return;
+  var found = findCorporateClientContact(contactSel.value);
+  if(!found || !found.contact.email) return;
+  var emailInput = document.getElementById('tk-email');
+  if(emailInput){
+    emailInput.value = found.contact.email;
+    updateTaskEmailLinkDisplay();
+  }
+}
 // Same idea as refreshTaskEmailFromLinkedClients above, for the Phone field.
 function refreshTaskPhoneFromLinkedClients(){
   var phoneInput = document.getElementById('tk-phone');
@@ -22723,6 +23154,16 @@ function refreshTaskPhoneFromCommunityContact(){
   var contactSel = document.getElementById('tk-community-contact');
   if(!contactSel) return;
   var found = findCommunityContact(contactSel.value);
+  if(!found || !found.contact.phone) return;
+  var phoneInput = document.getElementById('tk-phone');
+  if(phoneInput) phoneInput.value = found.contact.phone;
+}
+// Same idea as refreshTaskPhoneFromCommunityContact above, for a Corporate
+// Client Contact (db.corporateClients).
+function refreshTaskPhoneFromCorporateClientContact(){
+  var contactSel = document.getElementById('tk-corporate-contact');
+  if(!contactSel) return;
+  var found = findCorporateClientContact(contactSel.value);
   if(!found || !found.contact.phone) return;
   var phoneInput = document.getElementById('tk-phone');
   if(phoneInput) phoneInput.value = found.contact.phone;
@@ -22852,6 +23293,20 @@ function refreshTaskCommunityContactLinkDisplay(){
     openCommunityContactForm(found.community.id, found.contact.id);
   });
 }
+function refreshTaskCorporateClientContactLinkDisplay(){
+  var contactSelect = document.getElementById('tk-corporate-contact');
+  var linkSpan = document.getElementById('tk-corporate-contact-link');
+  if(!contactSelect || !linkSpan) return;
+  var contactId = contactSelect.value;
+  var found = contactId ? findCorporateClientContact(contactId) : null;
+  if(!found){ linkSpan.innerHTML=''; return; }
+  linkSpan.innerHTML = taskLinkedRecordSpanHtml('tk-corporate-contact-open-btn','View Contact');
+  var btn = document.getElementById('tk-corporate-contact-open-btn');
+  if(btn) btn.addEventListener('click', function(){
+    closeModal();
+    openCorporateClientContactForm(found.company.id, found.contact.id);
+  });
+}
 // Saves the current task as-is, then opens a fresh blank task form for the
 // user to schedule next — carrying forward the same client/supplier/trip
 // links and leaving a history trail (the just-saved task's title + notes)
@@ -22867,6 +23322,7 @@ function saveTaskAndNew(id){
   var vendorContactId = gv('tk-vendor-contact');
   var bizVendorContactId = gv('tk-bizvendor-contact');
   var communityContactId = gv('tk-community-contact');
+  var corporateContactId = gv('tk-corporate-contact');
   var tripId = gv('tk-trip');
   var typeOverride = gv('tk-type');
   var noteType = gv('tk-note-type');
@@ -22884,6 +23340,7 @@ function saveTaskAndNew(id){
   var vendorContactSel=document.getElementById('tk-vendor-contact'); if(vendorContactSel) vendorContactSel.value=vendorContactId;
   var bizVendorContactSel=document.getElementById('tk-bizvendor-contact'); if(bizVendorContactSel) bizVendorContactSel.value=bizVendorContactId;
   var communityContactSel=document.getElementById('tk-community-contact'); if(communityContactSel) communityContactSel.value=communityContactId;
+  var corporateContactSel=document.getElementById('tk-corporate-contact'); if(corporateContactSel) corporateContactSel.value=corporateContactId;
   var tripSel=document.getElementById('tk-trip'); if(tripSel) tripSel.value=tripId;
   var typeSel=document.getElementById('tk-type'); if(typeSel) typeSel.value=typeOverride;
   var noteTypeSel=document.getElementById('tk-note-type'); if(noteTypeSel) noteTypeSel.value=noteType;
@@ -22920,6 +23377,7 @@ function saveTask(id){
     vendorContactId: gv('tk-vendor-contact'),
     bizVendorContactId: gv('tk-bizvendor-contact'),
     communityContactId: gv('tk-community-contact'),
+    corporateContactId: gv('tk-corporate-contact'),
     tripId: gv('tk-trip'),
     desc: gv('tk-desc')
   };
@@ -23120,6 +23578,7 @@ function bindClick(id, handler){
   bindSearchableSelects();
   bindClick('nb-dashboard', function(){go('dashboard');closeMobileNav();});
   bindClick('nb-clients', function(){go('clients');closeMobileNav();});
+  bindClick('nb-corporate', function(){go('corporate');closeMobileNav();});
   bindClick('nb-trips', function(){go('trips');closeMobileNav();});
   bindClick('nb-groups', function(){go('groups');closeMobileNav();});
   bindClick('nb-reports', function(){go('reports');closeMobileNav();});
