@@ -17119,10 +17119,7 @@ function openClientForm(id){
       // fix them rather than silently losing the task-link intent.
       var savedId = saveClient(id);
       if(!savedId) return;
-      openTaskForm();
-      var sel=document.getElementById('tk-client');
-      if(sel) sel.value=savedId;
-      refreshTaskEmailFromLinkedClients();
+      openTaskForm(null, savedId);
     });
   });
 
@@ -23002,8 +22999,16 @@ function taskVendorContactOptionsHtml(vendorId, selectedId){
     return '<option value="'+x.contact.id+'"'+(x.contact.id===selectedId?' selected':'')+'>'+x.contact.name+' — '+x.vendor.name+'</option>';
   }).join('');
 }
-function openTaskForm(id){
-  var d = id ? (db.planner.find(function(t){return t.id===id;})||{}) : {dueDate:today()};
+function openTaskForm(id, prefillClientId){
+  // prefillClientId lets a caller pre-link a specific client on a brand-new
+  // task (e.g. the "+ Add Task" button on that client's own record) by
+  // setting d.clientId before sortedClients/payingClientPicklist() below
+  // ever run — without it, a client who isn't flagged isPayingClient
+  // wouldn't be in the picklist at all, so a caller that instead opened a
+  // blank form and tried to set the dropdown's value afterward would
+  // silently fail to select anything (no matching <option>), leaving the
+  // task unlinked despite being opened from that exact client's record.
+  var d = id ? (db.planner.find(function(t){return t.id===id;})||{}) : {dueDate:today(), clientId: prefillClientId||''};
   // Existing tasks linked to a client before this task ever had its own
   // Email field (or ones the client dropdown was never re-touched on)
   // otherwise show up with a blank Email despite being linked — fall back
@@ -23479,7 +23484,11 @@ function saveTaskAndNew(id){
 
   saveTask(id);
 
-  openTaskForm();
+  // Same reasoning as the prefillClientId param on openTaskForm() itself —
+  // carrying `clientId` forward here for a non-paying client used to fail
+  // silently, since a blank openTaskForm() call wouldn't have included
+  // them in the picklist for clientSel.value to actually match against.
+  openTaskForm(null, clientId);
   document.getElementById('tk-title').value = title;
   document.getElementById('tk-email').value = email;
   document.getElementById('tk-phone').value = phone;
