@@ -11161,14 +11161,114 @@ var TEMPLATES = [
     // certificate embeds the Miles Man logo, which a plain mailto: body
     // can't carry.
   },
-  // These three aren't mail-merge templates like the rest (no shared
+  // These four aren't mail-merge templates like the rest (no shared
   // Select Client/Preview & Send flow \u2014 each opens its own dedicated
   // modal with its own client/trip picker), but they render as the same
   // template-card so the Email page shows one consistent list.
   {id:'mass-email', name:'Email Clients', description:'Send a one-off email to multiple clients at once', opensModal:openMassEmailModal},
   {id:'email-quote', name:'Email Quote', description:'Build a styled cruise pricing quote for a client', opensModal:openEmailQuoteModal},
-  {id:'email-itinerary', name:'Email Itinerary', description:'Generate a full itinerary recap from a booked trip', opensModal:openEmailItineraryModal}
+  {id:'email-itinerary', name:'Email Itinerary', description:'Generate a full itinerary recap from a booked trip', opensModal:openEmailItineraryModal},
+  // Community Contacts (db.communities[].contacts) aren't db.clients records,
+  // so they can't run through the shared Select Client(s)/fillTemplate() flow
+  // above \u2014 same reason mass-email/email-quote/email-itinerary each get
+  // their own modal instead of a plain template-card entry.
+  {id:'community-cruise', name:'Community Cruise Outreach', description:'Pitch a group cruise to a 55+ community\u2019s Social/Activities Director', opensModal:openCommunityCruiseEmailModal}
 ];
+// Subject/body for the Community Cruise Outreach template above \u2014 kept as
+// its own constant (rather than a TEMPLATES entry with subject/body, like
+// the client-merge templates) since it merges {{communityName}} in addition
+// to {{firstName}}, which fillTemplate() has no concept of.
+var COMMUNITY_CRUISE_TEMPLATE = {
+  subject:'Group Cruise Opportunity for {{communityName}} Residents',
+  body:"Hi {{firstName}},\n\nMy name is [Your Name] with Miles Man Travel, a local travel agency that works with 55+ communities in the area to organize group cruises for residents.\n\nI wanted to reach out because group cruises tend to be a great fit for communities like {{communityName}} \u2014 residents get to travel together with people they already know, at group rates that are usually better than booking solo, and we handle all the logistics (cabin assignments, transportation coordination, and a single point of contact for questions) so it's no extra work for your team.\n\nWe have a few upcoming sailings that could work well for your residents, including [mention 1\u20132 options: e.g., a 7-night Caribbean cruise in [month], or a shorter 3\u20134 night getaway]. I'd be happy to:\n\n\u2022 Send over a flyer you could post in your newsletter or on your community bulletin board\n\u2022 Put together a short presentation for a resident event or info session at the clubhouse\n\u2022 Just answer any questions if a few residents want to look into it on their own\n\nNo pressure either way \u2014 if this isn't something your community typically does, even sharing this email with anyone who might be interested would be appreciated.\n\nFeel free to reply here or give me a call at [phone number]. Looking forward to hearing from you!\n\nBest,\n[Your Name]\nMiles Man Travel\n[Phone] | [Email] | [Website]"
+};
+// Community contact names are typed in as-is (e.g. "Jacqueline Rogers,
+// PCAM"), not stored "Last, First" like db.clients \u2014 so getFirstName()'s
+// comma-means-"Last, First" assumption would misread a credential suffix
+// like ", PCAM" as a last-name/first-name split and return "PCAM" as the
+// first name. This takes the first word of whatever precedes the first
+// comma instead.
+function communityContactFirstName(name){
+  if(!name) return '';
+  return (name.split(',')[0]||'').trim().split(/\s+/)[0]||'';
+}
+function fillCommunityCruiseTemplate(str, contact, community){
+  return str
+    .replace(/{{firstName}}/g, communityContactFirstName(contact.name)||'there')
+    .replace(/{{communityName}}/g, community.name||'your community');
+}
+function openCommunityCruiseEmailModal(){
+  var withEmail = allCommunityContacts().filter(function(x){return x.contact.email;})
+    .sort(function(a,b){return (a.contact.name||'').toLowerCase().localeCompare((b.contact.name||'').toLowerCase());});
+  if(!withEmail.length){ toast('No community contact emails found','err'); return; }
+  var contactOpts = withEmail.map(function(x,i){
+    return '<option value="'+i+'">'+escHtml(x.contact.name||'(no name)')+' \u2014 '+escHtml(x.community.name||'')+'</option>';
+  }).join('');
+
+  $('modal').innerHTML =
+    '<div class="modal-hdr"><div class="modal-title">Community Cruise Outreach</div><button class="close-btn" id="modal-close">&#x2715;</button></div>'+
+    '<div class="fg">'+
+      fld('Community Contact', '<select id="cce-contact">'+contactOpts+'</select>')+
+      fld('Subject', inp('cce-subject','text',''), true)+
+      '<div class="field full"><label>Body</label><textarea id="cce-body" rows="14" style="font-family:inherit"></textarea></div>'+
+    '</div>'+
+    '<div class="form-actions form-actions-sticky">'+
+      '<button class="cancel-btn" id="modal-cancel">Cancel</button>'+
+      '<button class="cancel-btn" id="cce-log" style="color:#374151">&#128221; Log as Note</button>'+
+      '<button class="save-btn" id="cce-send">&#9993;&#65039; Open in Outlook</button>'+
+    '</div>';
+
+  $('overlay').classList.add('open');
+  $('modal-close').addEventListener('click', closeModal);
+  $('modal-cancel').addEventListener('click', closeModal);
+
+  function currentSelection(){
+    var x = withEmail[parseInt(gv('cce-contact'),10)];
+    return x || null;
+  }
+  function refillFromSelection(){
+    var x = currentSelection();
+    if(!x) return;
+    document.getElementById('cce-subject').value = fillCommunityCruiseTemplate(COMMUNITY_CRUISE_TEMPLATE.subject, x.contact, x.community);
+    document.getElementById('cce-body').value = fillCommunityCruiseTemplate(COMMUNITY_CRUISE_TEMPLATE.body, x.contact, x.community);
+  }
+  document.getElementById('cce-contact').addEventListener('change', refillFromSelection);
+  refillFromSelection();
+
+  function logNoteOnSelectedContact(subject, body){
+    var x = currentSelection();
+    if(!x) return;
+    var newNote = {ts:tsNow(), text:'Email Sent: '+subject+'\n'+body, noteType:'Email Sent'};
+    db.communities = db.communities.map(function(c){
+      if(c.id!==x.community.id) return c;
+      var contacts = (c.contacts||[]).map(function(ct){
+        if(ct.id!==x.contact.id) return ct;
+        var nl = Array.isArray(ct.notesLog) ? ct.notesLog.concat([newNote]) : [newNote];
+        return Object.assign({},ct,{notesLog:nl});
+      });
+      return Object.assign({},c,{contacts:contacts});
+    });
+  }
+
+  document.getElementById('cce-send').addEventListener('click', function(){
+    var x = currentSelection();
+    if(!x){ toast('Select a community contact','err'); return; }
+    var subject = gv('cce-subject');
+    var body = gv('cce-body');
+    var mailto = 'mailto:'+mailtoAddr(x.contact.email)+'?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(body);
+    window.location.href = mailto;
+    logNoteOnSelectedContact(subject, body);
+    saveDB(); closeModal(); render();
+    toast('Opening Outlook for '+x.contact.name,'ok');
+  });
+  document.getElementById('cce-log').addEventListener('click', function(){
+    var x = currentSelection();
+    if(!x){ toast('Select a community contact','err'); return; }
+    logNoteOnSelectedContact(gv('cce-subject'), gv('cce-body'));
+    saveDB(); closeModal(); render();
+    toast('Email logged as note on '+x.contact.name,'ok');
+  });
+}
 
 // "Smith, John Michael" -> "John Smith" (drops any middle name/initial —
 // used for the referred-person mention, which reads oddly with a middle
