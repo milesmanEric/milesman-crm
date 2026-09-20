@@ -773,11 +773,12 @@ const DRIVE_CLIENT_ID  = '1055867383042-an9l58o1qg22pt7o4ak8vaneeftv54ib.apps.go
 // also returns a Google ID token — used only by the Secure Sync feature
 // below (server-verified path), completely separate from the drive.file
 // access token that the existing Backup/Restore buttons use directly.
-// analytics.readonly added for the Analytics tab's GA4 card — same Google
-// account, no separate login flow needed, but an *existing* mm_drive_token
-// obtained before this scope was added won't carry it retroactively; the
-// user needs to reconnect Drive once for a token that actually has it.
-const DRIVE_SCOPE      = 'https://www.googleapis.com/auth/drive.file openid email https://www.googleapis.com/auth/analytics.readonly';
+// analytics.readonly added for the Analytics tab's GA4 card, adwords added
+// for the Google Ads card below — same Google account, no separate login
+// flow needed, but an *existing* mm_drive_token obtained before either scope
+// was added won't carry it retroactively; the user needs to reconnect Drive
+// once for a token that actually has both.
+const DRIVE_SCOPE      = 'https://www.googleapis.com/auth/drive.file openid email https://www.googleapis.com/auth/analytics.readonly https://www.googleapis.com/auth/adwords';
 const DRIVE_REDIRECT   = 'https://milesmaneric.github.io/milesman-crm/';
 const DRIVE_AUTH_SERVER = 'https://milesman-auth.vercel.app';
 // Public, standalone page (§4.12) a client uploads their completed credit
@@ -797,6 +798,19 @@ const WP_SITE         = 'themilesman.com';
 // GA4 Data API — reuses the Drive OAuth token (see DRIVE_SCOPE above),
 // no separate login flow. https://developers.google.com/analytics/devguides/reporting/data/v1
 const GA4_PROPERTY_ID = '362931402';
+// Google Ads API — also reuses the Drive OAuth token (adwords scope above),
+// but unlike GA4 this can't just be a property ID: it needs a Developer
+// Token (issued by Google after applying at https://ads.google.com/aw/apicenter,
+// tied to the Google Ads manager/MCC account — this is a manual application +
+// approval step, not something obtainable from inside this app) and the
+// actual Google Ads Customer ID to query (digits only, no dashes, from the
+// top-right of ads.google.com). Both ship blank on purpose — filling in a
+// guessed value would silently point this at the wrong account (or none),
+// which is worse than an honest "not configured" state in the Analytics
+// card below. https://developers.google.com/google-ads/api/docs/first-call/overview
+const GOOGLE_ADS_DEVELOPER_TOKEN = '';
+const GOOGLE_ADS_CUSTOMER_ID = '';
+const GOOGLE_ADS_API_VERSION = 'v18';
 // Facebook Marketing API — same OAuth-via-Vercel-proxy shape as WordPress
 // (api/facebook.js holds the App Secret, exchanges the code for a
 // long-lived ~60-day token). ads_management (create/launch) + ads_read
@@ -20715,6 +20729,111 @@ function loadFacebookAdsDaily(token, bodyId){
     if(body) body.innerHTML = '<div class="empty">Failed to load: '+e.message+'</div>';
   });
 }
+// Google Ads API — reuses the Drive OAuth token (adwords scope, see
+// DRIVE_SCOPE above) rather than its own login flow, same as GA4. Unlike
+// GA4 though, this can't run at all until GOOGLE_ADS_DEVELOPER_TOKEN and
+// GOOGLE_ADS_CUSTOMER_ID are filled in above — renderAnalytics() checks
+// for both and shows a "not configured" message instead of ever calling
+// this with blank credentials. Uses the plain (non-streaming) `search`
+// endpoint rather than `searchStream` — a single JSON body response fits
+// this codebase's existing fetch().then(r=>r.json()) style, and a 30-day
+// account-level rollup is nowhere near the 10,000-row page size search
+// stops at. https://developers.google.com/google-ads/api/rest/overview
+function googleAdsSearch(token, gaql){
+  return fetch('https://googleads.googleapis.com/'+GOOGLE_ADS_API_VERSION+'/customers/'+GOOGLE_ADS_CUSTOMER_ID+'/googleAds:search', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: 'Bearer '+token,
+      'developer-token': GOOGLE_ADS_DEVELOPER_TOKEN,
+      'login-customer-id': GOOGLE_ADS_CUSTOMER_ID
+    },
+    body: JSON.stringify({query: gaql})
+  }).then(function(r){ return r.json(); });
+}
+// Account-level rollup for the Analytics tab's Google Ads card — same
+// "FROM customer" (account-wide) GAQL scope as the daily breakdown below,
+// just aggregated over the whole 30-day window in one row instead of one
+// row per day. cost_micros/average_cpc come back as micros of the
+// account's currency (1,000,000 micros = 1 unit) — Google Ads doesn't
+// return the account's currency code from this query, so this shows a
+// plain $ figure rather than guessing at a currency symbol.
+function loadGoogleAdsStats(token){
+  var body = $('google-ads-stats-body');
+  if(!body) return;
+  googleAdsSearch(token,
+    'SELECT metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.ctr, metrics.average_cpc '+
+    'FROM customer WHERE segments.date DURING LAST_30_DAYS'
+  ).then(function(d){
+    if(!body) return;
+    if(d.error){
+      var msg = (d.error && (d.error.message||d.error))||'Unknown error';
+      // Same reasoning as loadGA4Stats()'s identical check — a cached
+      // mm_drive_token from before the adwords scope was added is still
+      // "valid" as far as getDriveTokenSilent() can tell, and this
+      // specific API error is the only way to detect that and offer a
+      // reconnect instead of a dead-end raw error message.
+      if(/insufficient authentication scopes/i.test(String(msg))){
+        body.innerHTML = '<div style="padding:8px 0">'+
+          '<div style="font-size:12px;color:#666;margin-bottom:8px">Your Google Drive connection predates Google Ads access being added — reconnect once to grant it.</div>'+
+          '<button class="add-btn" id="google-ads-reconnect-btn">Reconnect Google Drive</button>'+
+        '</div>';
+        var reconnectBtn = $('google-ads-reconnect-btn');
+        if(reconnectBtn) reconnectBtn.addEventListener('click', function(){ localStorage.setItem('mm_drive_action','analytics'); driveLogin(); });
+        return;
+      }
+      body.innerHTML = '<div class="empty">'+escHtml(msg)+'</div>';
+      return;
+    }
+    var row = (d.results||[])[0];
+    if(!row){ body.innerHTML = '<div class="empty">No data for the last 30 days.</div>'; return; }
+    var m = row.metrics||{};
+    var cost = Number(m.costMicros||0)/1e6;
+    var avgCpc = Number(m.averageCpc||0)/1e6;
+    body.innerHTML = '<div style="font-size:11px;color:#888;margin-bottom:8px">Customer '+escHtml(GOOGLE_ADS_CUSTOMER_ID)+' &middot; last 30 days</div>'+
+      '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px">'+
+        '<div class="stat"><div class="stat-lbl">Cost</div><div class="stat-val">$'+money(cost)+'</div></div>'+
+        '<div class="stat"><div class="stat-lbl">Impressions</div><div class="stat-val">'+fmt(m.impressions||0)+'</div></div>'+
+        '<div class="stat"><div class="stat-lbl">Clicks</div><div class="stat-val">'+fmt(m.clicks||0)+'</div></div>'+
+        '<div class="stat"><div class="stat-lbl">CTR</div><div class="stat-val">'+(m.ctr!==undefined?(Number(m.ctr)*100).toFixed(2)+'%':'—')+'</div></div>'+
+        '<div class="stat"><div class="stat-lbl">Avg CPC</div><div class="stat-val">$'+money(avgCpc)+'</div></div>'+
+      '</div>';
+  }).catch(function(e){
+    debugLog('Google Ads analytics: account stats request failed before any response — '+e.message);
+    if(body) body.innerHTML = '<div class="empty">Failed to load: '+e.message+'</div>';
+  });
+}
+// Day-by-day breakdown backing the collapsible section below the summary
+// tiles — same time-segmented pattern GA4/Facebook Ads' own daily tables
+// already use, just against the Google Ads API instead.
+function loadGoogleAdsDaily(token, bodyId){
+  var body = $(bodyId);
+  if(!body) return;
+  googleAdsSearch(token,
+    'SELECT segments.date, metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.average_cpc '+
+    'FROM customer WHERE segments.date DURING LAST_30_DAYS ORDER BY segments.date DESC'
+  ).then(function(d){
+    if(!body) return;
+    if(d.error){
+      var msg = (d.error && (d.error.message||d.error))||'Unknown error';
+      body.innerHTML = '<div class="empty">'+escHtml(msg)+'</div>';
+      return;
+    }
+    var rows = d.results||[];
+    if(!rows.length){ body.innerHTML = '<div class="empty">No data for this period.</div>'; return; }
+    body.innerHTML = '<div class="tbl-wrap" style="max-height:300px;overflow-y:auto"><table><thead><tr><th>Date</th><th>Cost</th><th>Impressions</th><th>Clicks</th><th>Avg CPC</th></tr></thead><tbody>'+
+      rows.map(function(r){
+        var m = r.metrics||{}, s = r.segments||{};
+        var cost = Number(m.costMicros||0)/1e6;
+        var avgCpc = Number(m.averageCpc||0)/1e6;
+        return '<tr><td>'+fmtDate(s.date)+'</td><td>$'+money(cost)+'</td><td>'+fmt(m.impressions||0)+'</td><td>'+fmt(m.clicks||0)+'</td><td>$'+money(avgCpc)+'</td></tr>';
+      }).join('')+
+      '</tbody></table></div>';
+  }).catch(function(e){
+    debugLog('Google Ads analytics: daily stats request failed before any response — '+e.message);
+    if(body) body.innerHTML = '<div class="empty">Failed to load: '+e.message+'</div>';
+  });
+}
 // Organic (non-ads) Page performance — a separate data source from
 // everything above, which is all scoped to the ad account. Facebook Page
 // Insights only accepts a page-scoped access token (obtained per-page from
@@ -22005,6 +22124,11 @@ function renderAnalytics(){
       analyticsSectionHtml('ga4-ai-referrals','AI Assistant Referrals — GEO (30 days)')+
     '</div>'+
     '<div class="card" style="margin-bottom:16px">'+
+      '<div class="card-hdr"><span class="card-title">Google Ads</span></div>'+
+      '<div id="google-ads-stats-body"><div class="empty">Loading…</div></div>'+
+      analyticsSectionHtml('google-ads-daily','Daily Spend & Performance (30 days)')+
+    '</div>'+
+    '<div class="card" style="margin-bottom:16px">'+
       '<div class="card-hdr"><span class="card-title">SEO (Yoast)</span></div>'+
       '<div id="yoast-seo-summary"><div class="empty">Loading…</div></div>'+
       analyticsSectionHtml('yoast-posts','Posts')+
@@ -22157,19 +22281,38 @@ function renderAnalytics(){
 
   getDriveTokenSilent().then(function(token){
     var body = $('ga4-stats-body');
-    if(!body) return;
+    var gAdsBody = $('google-ads-stats-body');
+    if(!body && !gAdsBody) return;
     if(!token){
-      body.innerHTML = '<div style="padding:8px 0"><button class="add-btn" id="ga4-connect-btn">Connect Google Drive</button><div style="font-size:11px;color:#888;margin-top:6px">GA4 shares the same Google login as Drive backup — if Drive was connected before this feature existed, reconnect once to pick up Analytics access.</div></div>';
-      var ga4ConnectBtn = $('ga4-connect-btn');
-      if(ga4ConnectBtn) ga4ConnectBtn.addEventListener('click', function(){ localStorage.setItem('mm_drive_action','analytics'); driveLogin(); });
+      var connectMsg = '<div style="font-size:11px;color:#888;margin-top:6px">GA4 and Google Ads share the same Google login as Drive backup — if Drive was connected before these features existed, reconnect once to pick up access.</div>';
+      if(body){
+        body.innerHTML = '<div style="padding:8px 0"><button class="add-btn" id="ga4-connect-btn">Connect Google Drive</button>'+connectMsg+'</div>';
+        var ga4ConnectBtn = $('ga4-connect-btn');
+        if(ga4ConnectBtn) ga4ConnectBtn.addEventListener('click', function(){ localStorage.setItem('mm_drive_action','analytics'); driveLogin(); });
+      }
+      if(gAdsBody){
+        gAdsBody.innerHTML = '<div style="padding:8px 0"><button class="add-btn" id="google-ads-connect-btn">Connect Google Drive</button>'+connectMsg+'</div>';
+        var gAdsConnectBtn = $('google-ads-connect-btn');
+        if(gAdsConnectBtn) gAdsConnectBtn.addEventListener('click', function(){ localStorage.setItem('mm_drive_action','analytics'); driveLogin(); });
+      }
       return;
     }
-    loadGA4Stats(token);
-    if(!analyticsSectionCollapsed('ga4-top-pages')) loadGA4Breakdown(token, 'ga4-top-pages-body', 'pagePath', 'Page', 'screenPageViews', 'Views');
-    if(!analyticsSectionCollapsed('ga4-traffic-sources')) loadGA4Breakdown(token, 'ga4-traffic-sources-body', 'sessionDefaultChannelGroup', 'Channel', 'sessions', 'Sessions');
-    if(!analyticsSectionCollapsed('ga4-devices')) loadGA4Breakdown(token, 'ga4-devices-body', 'deviceCategory', 'Device', 'activeUsers', 'Users');
-    if(!analyticsSectionCollapsed('ga4-countries')) loadGA4Breakdown(token, 'ga4-countries-body', 'country', 'Country', 'activeUsers', 'Users');
-    if(!analyticsSectionCollapsed('ga4-ai-referrals')) loadGA4AiReferrals(token, 'ga4-ai-referrals-body');
+    if(body){
+      loadGA4Stats(token);
+      if(!analyticsSectionCollapsed('ga4-top-pages')) loadGA4Breakdown(token, 'ga4-top-pages-body', 'pagePath', 'Page', 'screenPageViews', 'Views');
+      if(!analyticsSectionCollapsed('ga4-traffic-sources')) loadGA4Breakdown(token, 'ga4-traffic-sources-body', 'sessionDefaultChannelGroup', 'Channel', 'sessions', 'Sessions');
+      if(!analyticsSectionCollapsed('ga4-devices')) loadGA4Breakdown(token, 'ga4-devices-body', 'deviceCategory', 'Device', 'activeUsers', 'Users');
+      if(!analyticsSectionCollapsed('ga4-countries')) loadGA4Breakdown(token, 'ga4-countries-body', 'country', 'Country', 'activeUsers', 'Users');
+      if(!analyticsSectionCollapsed('ga4-ai-referrals')) loadGA4AiReferrals(token, 'ga4-ai-referrals-body');
+    }
+    if(gAdsBody){
+      if(!GOOGLE_ADS_DEVELOPER_TOKEN || !GOOGLE_ADS_CUSTOMER_ID){
+        gAdsBody.innerHTML = '<div class="empty">Not configured yet — needs a Google Ads Developer Token and Customer ID (see the comment above GOOGLE_ADS_DEVELOPER_TOKEN in the source).</div>';
+      } else {
+        loadGoogleAdsStats(token);
+        if(!analyticsSectionCollapsed('google-ads-daily')) loadGoogleAdsDaily(token, 'google-ads-daily-body');
+      }
+    }
   });
 }
 // Yoast SEO attaches a `yoast_head_json` field (meta title, meta
