@@ -1221,46 +1221,61 @@ const MARKETING_TARGET_GROUP_COLORS = {
 // "+ Load 30-Day Calendar" (see seedDefaultMarketingPlan) — same pattern as
 // DEFAULT_BOOKMARKS/autoSeedDefaultBookmarksOnce. dayOffset is relative to
 // today() at seed time (not a fixed date) so it always plans forward from
-// whenever it's (re-)seeded. Deliberately weighted toward concrete,
-// revenue-driving Sales Outreach tasks for the audiences most worth selling
-// to directly (Corporate & Incentive Travel, Past Clients, New Leads) rather
-// than an even split of generic content across every channel — a handful of
-// notes reference real CRM features (the Trips page's Status filter, the
-// Groups tab, the Reports tab's Referral Certificates report, and the
-// existing 90-day-out birthday-outreach task auto-created by
-// checkForUpcomingBirthdays()) so the task is something to actually go do,
-// not just an idea.
+// whenever it's (re-)seeded.
+//
+// Written for the actual shape of this business: no office or storefront
+// (every "local presence" task below is a meeting, mixer, or partnership,
+// never "customers visit us"), and a business new enough to have only a
+// handful of past clients so far — so unlike an earlier version of this
+// plan, it deliberately does NOT lean on a large or aged past-client list
+// (a "call the 10 highest-value clients who haven't booked in a year"
+// task makes no sense before the business is even a year old). Weighted
+// instead toward growing the client base from close to zero: the owner's
+// own personal/professional network (day 0 — almost always a new agency's
+// fastest first bookings), a referral incentive to manufacture word-of-
+// mouth before there's enough of it to happen organically (day 6), local
+// discoverability with no storefront to be found another way (day 2 —
+// Google Business Profile as a service-area business), and partnership/
+// prospecting angles for Weddings and Family Reunions that don't assume
+// any past clients in those niches to reactivate. Corporate & Incentive
+// Travel prospecting and general content/ads carry over largely as-is —
+// they were already about winning new business, not leaning on an
+// existing one. A handful of notes reference real CRM features (the Trips
+// page's Status filter, the Reports tab's Referral Certificates report,
+// and the existing 90-day-out birthday-outreach task auto-created by
+// checkForUpcomingBirthdays()) so the task is something to actually go
+// do, not just an idea.
 const DEFAULT_MARKETING_PLAN = [
-  {dayOffset:0,  channel:'Email',          targetGroup:'New Leads/Prospects',          title:"Welcome Email — This Week's Cruise Deals", notes:'Send featured sailings to new subscribers and recent leads.'},
+  {dayOffset:0,  channel:'Email',          targetGroup:'New Leads/Prospects',          title:'Announce the Business to Your Personal & Professional Network', notes:'Email or message everyone you know — friends, family, former colleagues — that you\'ve started a travel agency, what you specialize in, and that you\'d love their next trip or a referral. For a brand-new agency with few clients yet, your own network is almost always the fastest path to the first bookings — don\'t skip this out of awkwardness.'},
   {dayOffset:1,  channel:'Sales Outreach', targetGroup:'New Leads/Prospects',          title:"Call Every Open Quote from the Last 7 Days That Hasn't Booked", notes:'Trips page, filter Status = Planning, sorted by most recent — call or email everyone who requested a quote in the last 7 days and hasn\'t booked. Speed-to-lead matters most in the first 48 hours.'},
-  {dayOffset:2,  channel:'Social Media',   targetGroup:'General/All Clients',          title:'Instagram Reel: Top 5 Caribbean Itineraries', notes:''},
-  {dayOffset:3,  channel:'Sales Outreach', targetGroup:'Corporate & Incentive Travel', title:'Build a Target List of 20 Local Businesses for Incentive Travel', notes:'Use LinkedIn, the local Chamber of Commerce directory, and local business listings to build a spreadsheet of 20 prospects (company, contact name, phone/email). Target the Owner/CEO at a small business (under ~50 employees) — usually the final decision-maker; at larger companies, target the VP of Sales/Sales Director (owns sales-incentive trips — often the easiest yes, since it ties directly to revenue) or HR Director/Total Rewards Manager (owns broader employee-recognition programs). An Office Manager/Executive Assistant is a good way in if the owner isn\'t reachable directly.'},
-  {dayOffset:4,  channel:'Blog Post',      targetGroup:'General/All Clients',          title:'Blog: How to Choose Your First Cruise Line', notes:''},
-  {dayOffset:5,  channel:'Social Media',   targetGroup:'Birthdays',                    title:'Instagram Post: "Birthday Club" Signup Reminder', notes:''},
-  {dayOffset:6,  channel:'Google Ad',      targetGroup:'General/All Clients',          title:'Google Ads: Refresh "Cruise Deals Near Me" Campaign', notes:''},
-  {dayOffset:7,  channel:'Sales Outreach', targetGroup:'Corporate & Incentive Travel', title:'Pitch Custom Proposals to the Top 10 Incentive Travel Prospects', notes:'Work down the target list built earlier this month — call or email the top 10, pitching a custom incentive-trip proposal and offering a free sample itinerary.'},
-  {dayOffset:8,  channel:'Facebook Ad',    targetGroup:'New Leads/Prospects',          title:'Facebook Ad: Retarget Site Visitors — Free Quote CTA', notes:''},
-  {dayOffset:9,  channel:'Sales Outreach', targetGroup:'Past Clients',                 title:"Call the 10 Highest-Value Past Clients Who Haven't Booked in a Year", notes:'Clients page, sort by lifetime revenue — call the top 10 who haven\'t booked a trip in 12+ months with a personal "we\'d love to have you back" offer.'},
-  {dayOffset:10, channel:'Referral Push',  targetGroup:'Past Clients',                 title:'Referral Push: "Refer a Friend" Reminder to Past Clients', notes:''},
-  {dayOffset:11, channel:'Sales Outreach', targetGroup:'Family Reunions',              title:'Call Past Group Trip Organizers About a Return Reunion Trip', notes:'Groups tab — find past multi-client/family group trips, then call each organizer about planning a return reunion trip. Offer a group-rate incentive for 8+ cabins/rooms booked together.'},
-  {dayOffset:12, channel:'Email',          targetGroup:'General/All Clients',          title:'Monthly Newsletter — New Vendor Offers', notes:''},
-  {dayOffset:13, channel:'Referral Push',  targetGroup:'Past Clients',                 title:'Clear the Unredeemed Referral Certificate Backlog', notes:'Reports tab → Referral Certificates report lists every unredeemed certificate — reach out to each client with an unused certificate and remind them it\'s still valid before it\'s forgotten.'},
+  {dayOffset:2,  channel:'Other',          targetGroup:'New Leads/Prospects',          title:'Claim and Optimize a Google Business Profile', notes:'Set it up as a service-area business (no physical address required/shown) so the agency actually shows up in local searches — with no storefront, this is the main way to be found locally at all. Fill in categories, service area, hours, and a few photos.'},
+  {dayOffset:3,  channel:'Social Media',   targetGroup:'General/All Clients',          title:'Instagram Reel: Top 5 Caribbean Itineraries', notes:''},
+  {dayOffset:4,  channel:'Sales Outreach', targetGroup:'Corporate & Incentive Travel', title:'Build a Target List of 20 Local Businesses for Incentive Travel', notes:'Use LinkedIn, the local Chamber of Commerce directory, and local business listings to build a spreadsheet of 20 prospects (company, contact name, phone/email). Target the Owner/CEO at a small business (under ~50 employees) — usually the final decision-maker; at larger companies, target the VP of Sales/Sales Director (owns sales-incentive trips — often the easiest yes, since it ties directly to revenue) or HR Director/Total Rewards Manager (owns broader employee-recognition programs). An Office Manager/Executive Assistant is a good way in if the owner isn\'t reachable directly.'},
+  {dayOffset:5,  channel:'Blog Post',      targetGroup:'General/All Clients',          title:'Blog: How to Choose Your First Cruise Line', notes:''},
+  {dayOffset:6,  channel:'Referral Push',  targetGroup:'New Leads/Prospects',          title:'Launch a "Founding Client" Referral Incentive', notes:'With only a small client base so far, manufacture word-of-mouth on purpose: offer a gift card or onboard credit to anyone — client, friend, or family — who refers someone who books. Announce it in the network email, on social, and to every new lead going forward.'},
+  {dayOffset:7,  channel:'Google Ad',      targetGroup:'General/All Clients',          title:'Google Ads: Refresh "Cruise Deals Near Me" Campaign', notes:''},
+  {dayOffset:8,  channel:'Sales Outreach', targetGroup:'Corporate & Incentive Travel', title:'Pitch Custom Proposals to the Top 10 Incentive Travel Prospects', notes:'Work down the target list built earlier this month — call or email the top 10, pitching a custom incentive-trip proposal and offering a free sample itinerary.'},
+  {dayOffset:9,  channel:'Facebook Ad',    targetGroup:'New Leads/Prospects',          title:'Facebook Ad: Retarget Site Visitors — Free Quote CTA', notes:''},
+  {dayOffset:10, channel:'Referral Push',  targetGroup:'Past Clients',                 title:'Personally Thank Every Client Booked So Far — Ask for a Review + Referral', notes:'Clients page — with the list still short, this can be genuinely one-to-one rather than a mass campaign: thank each client by name, ask for a Google/Facebook review, and mention the Founding Client referral incentive above.'},
+  {dayOffset:11, channel:'Event',          targetGroup:'General/All Clients',          title:'Join One Local Networking Group (Chamber, BNI, or similar)', notes:'With no storefront to generate walk-in visibility, an organized local networking group is one of the more reliable ways to build word-of-mouth and a referral network in the community.'},
+  {dayOffset:12, channel:'Email',          targetGroup:'General/All Clients',          title:'Monthly Newsletter — Introduce Yourself and Your Specialties', notes:'Most people on this list are new leads who don\'t know the business yet — lead with who you are and what you specialize in, not just a deals blast.'},
+  {dayOffset:13, channel:'Sales Outreach', targetGroup:'Weddings & Honeymoons',        title:'Propose a Referral Partnership to 3 Local Wedding Venues', notes:'Identify 3 local wedding venues/planners and pitch a referral partnership — they refer engaged couples to you for the honeymoon, you refer wedding-planning clients to them. Doesn\'t require any past honeymoon clients to reference — the partnership pitch stands on its own.'},
   {dayOffset:14, channel:'Blog Post',      targetGroup:'Weddings & Honeymoons',        title:'Blog: Planning a Destination Wedding or Honeymoon Cruise', notes:''},
   {dayOffset:15, channel:'Event',          targetGroup:'Corporate & Incentive Travel', title:'Attend Local Chamber of Commerce Mixer — Collect 10 New Contacts', notes:'Bring business cards and the corporate incentive-travel one-pager (see later this month) — set a goal of 10 new business contacts to add to the prospect list.'},
   {dayOffset:16, channel:'Blog Post',      targetGroup:'General/All Clients',          title:'Blog: Packing Tips for a 7-Night Caribbean Cruise', notes:''},
   {dayOffset:17, channel:'Sales Outreach', targetGroup:'Corporate & Incentive Travel', title:'Follow Up with Every Lead from the Chamber Mixer', notes:'Follow up with every contact collected at the mixer within 48 hours — a short "great meeting you" email with the incentive-travel one-pager attached converts far better than a cold approach.'},
-  {dayOffset:18, channel:'Social Media',   targetGroup:'Past Clients',                 title:'Instagram Story Series: Behind-the-Scenes Client Trip', notes:''},
+  {dayOffset:18, channel:'Social Media',   targetGroup:'New Leads/Prospects',          title:'Instagram Story Series: Why You Started This Agency', notes:'Personal-brand/founder-story content builds trust fast for a new, not-yet-known business — with no backlog of client trips to showcase, tell your own story instead.'},
   {dayOffset:19, channel:'Sales Outreach', targetGroup:'Birthdays',                    title:"Personalize and Send This Week's Auto-Generated Birthday Outreach", notes:'The Planner auto-creates a "Birthday trip outreach" task for each client 90 days before their birthday with a ready-to-send email draft — review this week\'s batch, personalize each one, and send.'},
   {dayOffset:20, channel:'Google Ad',      targetGroup:'New Leads/Prospects',          title:'Google Ads: Launch "All-Inclusive Resorts" Keyword Set', notes:''},
   {dayOffset:21, channel:'Email',          targetGroup:'New Leads/Prospects',          title:'Abandoned Quote Follow-Up Sequence', notes:''},
-  {dayOffset:22, channel:'Referral Push',  targetGroup:'Family Reunions',              title:'Referral Push: Family Reunion Planning Guide to Past Group Clients', notes:''},
+  {dayOffset:22, channel:'Sales Outreach', targetGroup:'Family Reunions',              title:"Ask Your Network Who's Planning a Family Reunion or Group Trip", notes:'Post in community/local Facebook groups and ask friends and family directly — with no past group clients yet to reactivate, a personal referral is the fastest way to find the first group booking.'},
   {dayOffset:23, channel:'Facebook Ad',    targetGroup:'General/All Clients',          title:'Facebook Ad: Video Ad — Fall Cruise Promo', notes:''},
   {dayOffset:24, channel:'Email',          targetGroup:'Birthdays',                    title:'Birthday-Month Discount for Clients Celebrating This Month', notes:'A broader monthly segment blast — distinct from the individual 90-day-out birthday outreach task, which stays personal and one-to-one.'},
-  {dayOffset:25, channel:'Social Media',   targetGroup:'Corporate & Incentive Travel', title:'LinkedIn Case Study Post Targeting Corporate Decision-Makers', notes:''},
+  {dayOffset:25, channel:'Social Media',   targetGroup:'Corporate & Incentive Travel', title:'LinkedIn Post Introducing Your Incentive Travel Services', notes:'An introduction/capabilities post rather than a case study — the goal right now is getting on corporate decision-makers\' radar, not proving a track record yet.'},
   {dayOffset:26, channel:'Print',          targetGroup:'Corporate & Incentive Travel', title:'Leave-Behind One-Pager for Corporate Incentive Trip Meetings', notes:''},
   {dayOffset:27, channel:'Social Media',   targetGroup:'Family Reunions',              title:'Facebook Post: "Plan Your Family Reunion Cruise" Group Rates', notes:''},
-  {dayOffset:28, channel:'Sales Outreach', targetGroup:'Weddings & Honeymoons',        title:'Propose a Referral Partnership to 3 Local Wedding Venues', notes:'Identify 3 local wedding venues/planners and pitch a referral partnership — they refer engaged couples to you for the honeymoon, you refer wedding-planning clients to them.'},
-  {dayOffset:29, channel:'Other',          targetGroup:'Other',                        title:'Review 30-Day Marketing Performance & Plan Next Month', notes:''}
+  {dayOffset:28, channel:'Sales Outreach', targetGroup:'Weddings & Honeymoons',        title:'Follow Up with the Wedding Venues/Planners Contacted Earlier This Month', notes:'Check back in with the 3 venues/planners from earlier this month — a partnership pitch often needs one or two follow-ups before it turns into an actual referral relationship.'},
+  {dayOffset:29, channel:'Other',          targetGroup:'Other',                        title:'Review 30-Day Marketing Performance & Plan Next Month', notes:'Focus the review on one question: which channels actually brought in new leads or bookings, not just impressions or likes — that\'s what decides where next month\'s effort goes while the client base is still small enough that every new lead is easy to trace back to its source.'}
 ];
 const THEME_PARKS = ['Disney World','Disneyland California','Universal Studios Hollywood','Universal Studios Orlando'];
 const TRAIN_CLASSES = ['Coach','Business Class','First Class','Sleeper Car'];
