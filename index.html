@@ -9427,9 +9427,10 @@ function groupPdfItemsIntoRows(items){
   return rows;
 }
 // Returns this page's recognized header labels in left-to-right order (not
-// just a name->center map) — classifyRowCells needs the order to walk its
-// forward-only pointer. Requires at least 2 matches to avoid a stray cell
-// that happens to equal a single column name being mistaken for a header.
+// just a name->center map) — classifyRowCells needs the order to compute
+// the midpoint boundary between each adjacent pair of columns. Requires at
+// least 2 matches to avoid a stray cell that happens to equal a single
+// column name being mistaken for a header.
 function findPageHeaderColumns(row){
   var found = [];
   row.items.slice().sort(function(a,b){return a.x-b.x;}).forEach(function(it){
@@ -9443,20 +9444,40 @@ function findOrCreateBatchRow(batchRows, y){
   if(!row){ row = {y:y, cells:{}}; batchRows.push(row); }
   return row;
 }
+// Column "territory" is the x-range from the midpoint before a column's
+// header center to the midpoint after it (open-ended at the very first/
+// last column) — computed once from the header row's own positions, pure
+// geometry with no state carried between items.
+//
+// This used to be a forward-only pointer that "consumed" a column on its
+// first match and could never revisit it. That broke whenever a column's
+// printed value was split into more space-separated PDF text fragments
+// than there were columns left in the row — e.g. a long Memo value
+// QuickBooks itself truncates with "..." can still be two fragments
+// ("Sailor" + "loot Vi..."): the pointer had already moved past Memo after
+// the first fragment, so the second one got misclassified as Name instead,
+// cascading every later column one slot to the right for the rest of the
+// row and dropping the real Amount entirely (it fell off the end once the
+// pointer ran past the last column). Confirmed against a real "Sales by
+// Customer Detail" PDF: Name/Class came out as "loot Vi..."/"Virgin Vo..."
+// instead of "Virgin Voyages"/"Eric Lipkind", and Amount as the Sales
+// Price value (0.10) instead of the real Amount (25.00). Pure geometric
+// bucketing has no such cascade failure mode — verified against that same
+// PDF's actual coordinates, every fragment (including the split Memo)
+// lands in its correct column.
 function classifyRowCells(row, pageColumns){
   var cells = {};
-  var pointer = 0;
+  var boundaries = [-Infinity];
+  for(var i=1;i<pageColumns.length;i++){ boundaries.push((pageColumns[i-1].center+pageColumns[i].center)/2); }
+  boundaries.push(Infinity);
   row.items.slice().sort(function(a,b){return a.x-b.x;}).forEach(function(it){
     var center = it.x + it.w/2;
-    var bestIdx = -1, bestDist = Infinity;
-    for(var i=pointer; i<pageColumns.length; i++){
-      var dist = Math.abs(pageColumns[i].center-center);
-      if(dist<bestDist){ bestDist=dist; bestIdx=i; }
+    var idx = 0;
+    for(var i=0;i<pageColumns.length;i++){
+      if(center>=boundaries[i] && center<boundaries[i+1]){ idx=i; break; }
     }
-    if(bestIdx===-1) return;
-    var name = pageColumns[bestIdx].name;
+    var name = pageColumns[idx].name;
     cells[name] = (cells[name]?cells[name]+' ':'') + it.str.trim();
-    pointer = bestIdx+1;
   });
   return cells;
 }
