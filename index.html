@@ -8760,7 +8760,8 @@ function processTripFormRow(getVal, counters){
     var hRoomType = getVal('Hotel '+hi+' - Room Type');
     var hPeoplePerRoom = getVal('Hotel '+hi+' - People Per Room');
     var hNumRooms = getVal('Hotel '+hi+' - Number of Rooms');
-    if(!(hLocation||hBrand||hProperty||hCheckIn||hNights||hRoomType||hPeoplePerRoom||hNumRooms)) continue;
+    var hAllInclusive = !!getVal('Hotel '+hi+' - All-Inclusive');
+    if(!(hLocation||hBrand||hProperty||hCheckIn||hNights||hRoomType||hPeoplePerRoom||hNumRooms||hAllInclusive)) continue;
     if(hBrand) hotelBrandNames.push(hBrand);
     addLine('Hotel '+hi, [
       hLocation, hBrand, hProperty,
@@ -8768,11 +8769,13 @@ function processTripFormRow(getVal, counters){
       hNights?(hNights+' night'+(hNights==1?'':'s')):'',
       hRoomType,
       hPeoplePerRoom?(hPeoplePerRoom+' per room'):'',
-      hNumRooms?(hNumRooms+' room'+(hNumRooms==1?'':'s')):''
+      hNumRooms?(hNumRooms+' room'+(hNumRooms==1?'':'s')):'',
+      hAllInclusive?'All-Inclusive':''
     ].filter(Boolean).join(' | '));
     hotelBookedEntries.push({
       hotelBrand: hBrand, property: hProperty, confirmationNumber: '', checkInDate: hCheckIn, nights: parseInt(hNights,10)||0, price: 0,
       notes: [hLocation, hRoomType?('Room type: '+hRoomType):'', hPeoplePerRoom?(hPeoplePerRoom+' per room'):'', hNumRooms?(hNumRooms+' room'+(hNumRooms==1?'':'s')):''].filter(Boolean).join(' | '),
+      allInclusive: hAllInclusive,
       pts: []
     });
   }
@@ -8803,6 +8806,8 @@ function processTripFormRow(getVal, counters){
   addLine('Number of Travelers', getVal('Number of Travelers'));
   addLine('Notes', getVal('Notes'));
   addLine('Trip Insurance', getVal('Trip Insurance'));
+  var totalBudget = getVal('Total Budget');
+  addLine('Total Budget', totalBudget);
   // Theme Park Details and Tours Details are each the same any-number-of-
   // entries pattern as Hotel above ("Theme Park N - Park/Ticket Type",
   // "Tour N - Vendor/Vendor Other/Description" — see intake-form.html's
@@ -8935,7 +8940,7 @@ function processTripFormRow(getVal, counters){
       // here are the normal, already-handled "nothing requested" shape
       // (bookedTripDetailsHtml() shows one blank entry row either way), not
       // a special case.
-      booked: {hotel: hotelBookedEntries, themePark: themeParkBookedEntries, tours: tourBookedEntries}
+      booked: {hotel: hotelBookedEntries, themePark: themeParkBookedEntries, tours: tourBookedEntries, totalBudget: parseFloat((totalBudget||'').replace(/[^0-9.]/g,''))||0}
     });
     counters.tripsCreated++;
   }
@@ -9045,7 +9050,7 @@ function buildTripFormFieldLabels(){
     'Car Rental Company','Car Rental Company Other','Car Size','Pickup Location','Dropoff Location','Pickup Date','Dropoff Date','Pickup Time','Dropoff Time',
     'Train Departure Date','Train Return Date','Train Departure City','Train Arrival City','Train Class of Service',
     'Bus Departure Date','Bus Return Date','Bus Departure City','Bus Arrival City','Bus Class of Service',
-    'Payment Preference','Notes','Trip Insurance');
+    'Payment Preference','Notes','Trip Insurance','Total Budget');
   for(var ci=1; ci<=20; ci++){ labels.push('City '+ci, 'City '+ci+' Departure Date'); }
   for(var xi=1; xi<=20; xi++){ labels.push('Transfer '+xi+' Pickup Date','Transfer '+xi+' Pickup Time','Transfer '+xi+' Origin','Transfer '+xi+' Destination','Transfer '+xi+' Car Type'); }
   // Hotel/Theme Park/Tours can each have any number of entries on the
@@ -9055,7 +9060,7 @@ function buildTripFormFieldLabels(){
   // tours for one trip request.
   for(var hi=1; hi<=10; hi++){
     labels.push('Hotel '+hi+' - Location','Hotel '+hi+' - Brand','Hotel '+hi+' - Brand Other','Hotel '+hi+' - Property',
-      'Hotel '+hi+' - Check-in Date','Hotel '+hi+' - Nights','Hotel '+hi+' - Room Type','Hotel '+hi+' - People Per Room','Hotel '+hi+' - Number of Rooms');
+      'Hotel '+hi+' - Check-in Date','Hotel '+hi+' - Nights','Hotel '+hi+' - Room Type','Hotel '+hi+' - People Per Room','Hotel '+hi+' - Number of Rooms','Hotel '+hi+' - All-Inclusive');
   }
   for(var tpi=1; tpi<=10; tpi++){ labels.push('Theme Park '+tpi+' - Park','Theme Park '+tpi+' - Ticket Type'); }
   for(var tri=1; tri<=10; tri++){ labels.push('Tour '+tri+' - Vendor','Tour '+tri+' - Vendor Other','Tour '+tri+' - Description'); }
@@ -17679,11 +17684,45 @@ function bookedTripSummaryHtml(summary, invoicedToClient, invoiceNumber){
 // Bound to every input/change event inside the modal (see
 // bindBookedTripDetailsListeners) rather than to each individual field,
 // since new Price/Points Used rows get added and removed dynamically.
+// Which Booked Trip Details categories currently have any real data
+// entered — backs the Budget section's "this covers: ..." explanation.
+// Unlike intake-form.html (which has explicit "Need - X" checkboxes to
+// read), this form has no such checkboxes — a category simply has fields
+// filled in or it doesn't — so "checked off" here means "has content",
+// checked the same way each category's own entries/fields already decide
+// whether they're worth keeping (e.g. readHotelEntries()' own filter).
+function bookedTripCategoriesWithContent(bd){
+  var out = [];
+  if((bd.airline.records||[]).length) out.push('Airline');
+  if((bd.hotel||[]).length) out.push('Hotel');
+  var cru = bd.cruise||{};
+  if(cru.cruiseLine||cru.shipName||cru.confirmationNumber||cru.sailingDate||cru.price||(cru.cabins||[]).length) out.push('Cruise');
+  var car = bd.carRental||{};
+  if(car.company||car.confirmationNumber||car.pickupLocation||car.price) out.push('Car Rental');
+  if((bd.transfers||[]).length) out.push('Transfers');
+  if((bd.tours||[]).length) out.push('Tours');
+  if((bd.themePark||[]).length) out.push('Theme Park');
+  var tra = bd.train||{};
+  if(tra.confirmationNumber||tra.departureCity||tra.departureDate||tra.price) out.push('Train');
+  var bus = bd.bus||{};
+  if(bus.confirmationNumber||bus.departureCity||bus.departureDate||bus.price) out.push('Bus');
+  return out;
+}
+function refreshBudgetIncludesText(bd){
+  var el = document.getElementById('tb-budget-includes');
+  if(!el) return;
+  var cats = bookedTripCategoriesWithContent(bd);
+  el.textContent = cats.length
+    ? 'This budget covers: '+cats.join(', ')+'.'
+    : 'This budget should cover whichever sections below currently have details entered — nothing filled in yet.';
+}
 function refreshBookedTripSummary(){
   var el = document.getElementById('tb-booked-summary');
   if(!el) return;
   var invoicedToClient = !gv('tsup'); // no supplier linked => invoiced to the client, not a supplier
-  el.innerHTML = bookedTripSummaryHtml(computeBookedTripSummary(readBookedTripDetails()), invoicedToClient, gv('tbr'));
+  var bd = readBookedTripDetails();
+  el.innerHTML = bookedTripSummaryHtml(computeBookedTripSummary(bd), invoicedToClient, gv('tbr'));
+  refreshBudgetIncludesText(bd);
 }
 function bindPointsEntriesListeners(containerId, addBtnId){
   var containerEl = document.getElementById(containerId);
@@ -17778,6 +17817,7 @@ function hotelEntryRowInnerHtml(entry){
       '<div class="field"><label>Check-in Date</label><input class="hotel-entry-checkin" type="date" value="'+(entry.checkInDate||'')+'"></div>'+
       '<div class="field"><label>Nights</label><input class="hotel-entry-nights" type="number" value="'+(entry.nights||'')+'"></div>'+
       '<div class="field"><label>Price ($)</label><input class="hotel-entry-price" type="number" value="'+(entry.price||'')+'"></div>'+
+      '<div class="field"><label style="display:flex;align-items:center;gap:6px;font-weight:500;cursor:pointer;margin-top:22px"><input type="checkbox" class="hotel-entry-all-inclusive"'+(entry.allInclusive?' checked':'')+' style="width:15px;height:15px"> All-Inclusive</label></div>'+
       '<div class="field full"><label>Notes</label><textarea class="hotel-entry-notes">'+(entry.notes||'')+'</textarea></div>'+
       '<div class="field full"><label>Points Used <span class="hint" style="text-transform:none;font-weight:400">(add one row per miles/points redemption)</span></label>'+
         '<div class="hotel-pts-entries">'+pointsEntriesListHtmlNoId(entry.pts||[])+'</div>'+
@@ -17800,11 +17840,12 @@ function readHotelEntries(){
       checkInDate: (row.querySelector('.hotel-entry-checkin')||{}).value||'',
       nights: Number((row.querySelector('.hotel-entry-nights')||{}).value)||0,
       price: Number((row.querySelector('.hotel-entry-price')||{}).value)||0,
+      allInclusive: !!(row.querySelector('.hotel-entry-all-inclusive')||{}).checked,
       pts: readPointsEntriesFrom(row.querySelector('.hotel-pts-entries')),
       notes: (row.querySelector('.hotel-entry-notes')||{}).value||''
     };
   }).filter(function(e){
-    return e.hotelBrand||e.property||e.confirmationNumber||e.checkInDate||e.nights||e.price||(e.pts&&e.pts.length)||e.notes;
+    return e.hotelBrand||e.property||e.confirmationNumber||e.checkInDate||e.nights||e.price||e.allInclusive||(e.pts&&e.pts.length)||e.notes;
   });
 }
 // Net Rate Hotel Voucher — a standalone printable/emailable PDF the client
@@ -18407,6 +18448,12 @@ function bookedTripDetailsHtml(bd){
       fld('Logo URL',inp('tb-bus-logo','text',bus.logoUrl,'optional — shown next to Bus Details in Email Itinerary'))+
       fld('Notes','<textarea id="tb-bus-notes">'+(bus.notes||'')+'</textarea>',true)+
       pointsEntriesSectionHtml(bus.pts||[], 'tb-bus-pts-entries', 'tb-bus-pts-add-btn'))+
+    '<div class="modal-section-title">Budget</div>'+
+    '<div style="display:grid;grid-column:1/-1;grid-template-columns:1fr 1fr;gap:12px">'+
+      fld('Total Budget ($)',inp('tb-budget-total','number',bd.totalBudget))+
+      '<div class="field full"><div class="hint" id="tb-budget-includes" style="text-transform:none;font-weight:400"></div></div>'+
+      '<div class="field full"><div class="hint" style="text-transform:none;font-weight:400">Any Miles Man fees will be in addition to this budgeted amount.</div></div>'+
+    '</div>'+
     '<div class="modal-section-title">Summary</div>'+
     '<div id="tb-booked-summary"></div>';
 }
@@ -18755,7 +18802,8 @@ function readBookedTripDetails(){
       confirmationNumber: gv('tb-bus-conf'), departureCity: gv('tb-bus-depcity'), arrivalCity: gv('tb-bus-arrcity'),
       departureDate: gv('tb-bus-depdate'), returnDate: gv('tb-bus-retdate'), classOfService: gv('tb-bus-class'),
       price: gn('tb-bus-price'), insurancePremium: gn('tb-bus-insurance'), insuranceCoverage: gn('tb-bus-coverage'), logoUrl: gv('tb-bus-logo'), notes: gv('tb-bus-notes'), pts: readPointsEntriesFrom(document.getElementById('tb-bus-pts-entries'))
-    }
+    },
+    totalBudget: gn('tb-budget-total')
   };
 }
 function openTripForm(id){

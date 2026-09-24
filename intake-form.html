@@ -508,6 +508,20 @@
       </div>
     </div>
 
+    <div class="section-title">Budget</div>
+    <div class="fg">
+      <div class="field full">
+        <label>Total Budget</label>
+        <input type="text" name="Total Budget" placeholder="e.g. $5,000">
+      </div>
+      <div class="field full">
+        <div class="hint" id="budget-includes-hint" style="text-transform:none;font-weight:400">This budget should cover whichever sections above you checked off under "Type of Travel Needed" — select at least one so we know what it applies to.</div>
+      </div>
+      <div class="field full">
+        <div class="hint" style="text-transform:none;font-weight:400">Any Miles Man fees will be in addition to your budgeted amount.</div>
+      </div>
+    </div>
+
     <div class="submit-row">
       <button type="submit">Send Request</button>
     </div>
@@ -881,6 +895,37 @@
     document.getElementById('bus-details-wrap').style.display = this.checked ? 'block' : 'none';
   });
 
+  // Budget section's explanatory text — updates live to name whichever
+  // "Type of Travel Needed" boxes are checked, so "what does this budget
+  // cover" always matches what's actually been requested. Delegated on the
+  // whole form (rather than added into each need-*-cb listener above)
+  // since it only needs to know a Need checkbox changed, not which one.
+  var NEED_SECTIONS = [
+    {id:'need-airline-cb', label:'Airline'},
+    {id:'need-hotel-cb', label:'Hotel'},
+    {id:'need-tours-cb', label:'Tours'},
+    {id:'need-cruise-cb', label:'Cruise'},
+    {id:'need-car-rental-cb', label:'Car Rental'},
+    {id:'need-transfers-cb', label:'Transfers / Car Service'},
+    {id:'need-theme-park-cb', label:'Theme Park Tickets'},
+    {id:'need-train-cb', label:'Train'},
+    {id:'need-bus-cb', label:'Bus'}
+  ];
+  function updateBudgetIncludesHint(){
+    var hintEl = document.getElementById('budget-includes-hint');
+    if(!hintEl) return;
+    var checked = NEED_SECTIONS.filter(function(s){
+      var el = document.getElementById(s.id);
+      return el && el.checked;
+    }).map(function(s){return s.label;});
+    hintEl.textContent = checked.length
+      ? 'This budget should cover: '+checked.join(', ')+'.'
+      : 'This budget should cover whichever sections above you checked off under "Type of Travel Needed" — select at least one so we know what it applies to.';
+  }
+  document.getElementById('intake-form').addEventListener('change', function(e){
+    if(e.target && e.target.name && e.target.name.indexOf('Need - ')===0) updateBudgetIncludesHint();
+  });
+
   document.getElementById('cd-cruise-line-select').addEventListener('change', function(){
     document.getElementById('cd-ship-select').innerHTML = shipOptionsHtml(this.value, '');
     document.getElementById('cd-cabin-type-select').innerHTML = cabinTypeOptionsHtml(this.value, '');
@@ -1053,6 +1098,7 @@
         '<div class="field"><label>Room Type</label><select name="Hotel '+n+' - Room Type"><option value="">-- Select --</option><option>Room</option><option>Suite</option></select></div>'+
         '<div class="field"><label>People per Room</label><select name="Hotel '+n+' - People Per Room"><option value="">-- Select --</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5+</option></select></div>'+
         '<div class="field"><label>Number of Rooms</label><select name="Hotel '+n+' - Number of Rooms"><option value="">-- Select --</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5+</option></select></div>'+
+        '<div class="field full"><label style="display:flex;align-items:center;gap:6px;font-weight:500;cursor:pointer"><input type="checkbox" name="Hotel '+n+' - All-Inclusive" value="Yes" style="width:15px;height:15px"> All-Inclusive</label></div>'+
       '</div>'+
     '</div>';
   }
