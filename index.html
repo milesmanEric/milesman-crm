@@ -4311,6 +4311,32 @@ function driveConflictDetected(existing){
   var known = localStorage.getItem('mm_last_known_remote_modified');
   return !!known && known !== existing.modifiedTime;
 }
+// Presents the "Drive has a newer backup" conflict as an explicit 3-way
+// choice instead of a plain confirm() — OK/Cancel only ever let the user
+// overwrite or bail, with no way to instead pull down the version Drive
+// already has, which is often exactly what they want when another device
+// backed up more recently than this one.
+function openDriveBackupConflictModal(modifiedTime, onLoadInstead, onOverwrite, onCancel){
+  var dateStr = new Date(modifiedTime).toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'});
+  $('modal').innerHTML =
+    '<div class="modal-hdr"><div class="modal-title">Newer Backup Found on Google Drive</div><button class="close-btn" id="drive-conflict-close">&#x2715;</button></div>'+
+    '<div class="fg"><div class="field full">'+
+      '<p style="margin:0 0 10px">Google Drive has a backup from <strong>'+escHtml(dateStr)+'</strong> that this device hasn\'t seen yet — likely uploaded from another device.</p>'+
+      '<p style="margin:0;color:#555;font-size:13px">Load that version now instead of overwriting it, or back up this device\'s current data over it. Drive\'s Version History can still recover whichever version gets overwritten.</p>'+
+    '</div></div>'+
+    '<div class="form-actions form-actions-sticky">'+
+      '<button class="cancel-btn" id="drive-conflict-cancel">Cancel</button>'+
+      '<button id="drive-conflict-overwrite" style="padding:9px 20px;border-radius:8px;border:none;background:#dc2626;color:#fff;cursor:pointer;font-family:inherit;font-size:13px;font-weight:600">Overwrite With This Device\'s Data</button>'+
+      '<button class="save-btn" id="drive-conflict-load">Load That Version Instead</button>'+
+    '</div>';
+  $('modal').classList.remove('modal-wide');
+  $('overlay').classList.add('open');
+  function done(fn){ closeModal(); if(fn) fn(); }
+  $('drive-conflict-close').addEventListener('click', function(){ done(onCancel); });
+  $('drive-conflict-cancel').addEventListener('click', function(){ done(onCancel); });
+  $('drive-conflict-overwrite').addEventListener('click', function(){ done(onOverwrite); });
+  $('drive-conflict-load').addEventListener('click', function(){ done(onLoadInstead); });
+}
 async function driveBackup(silent){
   // Refuses to run at all while _dbDecryptFailed is set — this device's
   // local data couldn't be decrypted, so db in memory is an empty stand-in,
@@ -4366,10 +4392,22 @@ async function driveBackup(silent){
       // UI. Google Drive's own Version History can still recover whatever
       // gets overwritten, so this isn't a point of no return either way.
       if(!silent){
-        if(!confirm('Google Drive has a newer backup ('+existing.modifiedTime+') than this device last saw — likely uploaded from another device.\n\nBack up anyway and overwrite it with this device\'s current data? (Drive\'s Version History can still recover the overwritten version if this turns out to be wrong.)')){
+        var conflictChoice = await new Promise(function(resolve){
+          openDriveBackupConflictModal(existing.modifiedTime,
+            function(){resolve('load');},
+            function(){resolve('overwrite');},
+            function(){resolve('cancel');});
+        });
+        if(conflictChoice==='cancel'){
           debugLog('Manual backup cancelled — user declined to overwrite the newer Drive backup.');
           toast('Backup cancelled','err');
           btn.textContent='Backup to Google Drive';btn.disabled=false;
+          return;
+        }
+        if(conflictChoice==='load'){
+          debugLog('Manual backup: user chose to load the newer Drive backup instead of overwriting it.');
+          btn.textContent='Backup to Google Drive';btn.disabled=false;
+          await driveRestore();
           return;
         }
         debugLog('Manual backup: user confirmed overwriting the newer Drive backup.');
