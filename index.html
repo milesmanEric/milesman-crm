@@ -19384,7 +19384,7 @@ function delPayment(id){
 
 // ── Planner ───────────────────────────────────────────────────────────────
 function plannerSortArrow(col){
-  var c = window._plannerSortCol || 'dueDate';
+  var c = window._plannerSortCol || 'type';
   var d = window._plannerSortDir || 'asc';
   if(c!==col) return '';
   return d==='asc' ? ' &#9650;' : ' &#9660;';
@@ -19462,7 +19462,7 @@ function renderPlanner(){
   var statusFilter = window._plannerStatus||'';
   var dateFilter = window._plannerDateFilter!==undefined?window._plannerDateFilter:'today-overdue';
   var typeFilter = window._plannerTypeFilter||'';
-  var plannerSortCol = window._plannerSortCol || 'dueDate';
+  var plannerSortCol = window._plannerSortCol || 'type';
   var plannerSortDir = window._plannerSortDir || 'asc';
   // Shared by both the sort comparator below and the row-rendering map()
   // further down, so a column's sort order always matches what it
