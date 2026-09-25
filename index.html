@@ -19502,6 +19502,11 @@ function renderPlanner(){
       av=supplierNameForTask(a).toLowerCase();
       bv=supplierNameForTask(b).toLowerCase();
     } else if(plannerSortCol==='type'){
+      // Client tasks always lead the Type sort, in either direction — this
+      // is a pinned grouping (agents scan for their own client work first),
+      // not just where "Client" happens to fall alphabetically.
+      var aIsClient = taskContactInfo(a).type==='client', bIsClient = taskContactInfo(b).type==='client';
+      if(aIsClient !== bIsClient) return aIsClient ? -1 : 1;
       av=taskContactInfo(a).badgeLabel.toLowerCase();
       bv=taskContactInfo(b).badgeLabel.toLowerCase();
     } else if(plannerSortCol==='phone'){
