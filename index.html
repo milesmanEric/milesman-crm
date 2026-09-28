@@ -9336,7 +9336,16 @@ async function checkForNewTripFormEmails(silent){
 // "Submitted <time> - <date>" footer. Every submission becomes a lead: a
 // client record (created or matched/enriched the same way processTripFormRow
 // does), a "Lead" note with the inquiry text, and a follow-up Planner task.
-const CONTACT_FORM_EMAIL_SUBJECT = 'New submission from Miles Man Contact Form';
+// Was a brittle exact string match against 'New submission from Miles Man
+// Contact Form' — the WordPress form's actual subject is now just "New
+// submission from Contact" (the form was apparently renamed at some point),
+// so every single contact-form submission silently missed this match
+// forever, with no log line even for a near-miss (unlike the trip form's
+// own regex-based check below). A real lead (reported by name) was lost
+// this way. Matches the trip form's own looser pattern instead — anchored
+// on "New submission", case-insensitive, tolerant of whatever sits between
+// it and "Contact" (with or without a trailing "Form").
+var CONTACT_FORM_EMAIL_SUBJECT_RE = /^New submission\b.*\bContact\b/i;
 function parseContactFormEmailText(flatText){
   var footerIdx = flatText.search(/\bSubmitted \d/i);
   if(footerIdx !== -1) flatText = flatText.slice(0, footerIdx);
@@ -9445,12 +9454,12 @@ async function checkForNewContactFormEmails(silent){
     }
     debugLog('Contact form email check: fetched '+(d.value||[]).length+' message(s) since '+lastCheck);
     (d.value||[]).forEach(function(m){
-      if((m.subject||'').trim()===CONTACT_FORM_EMAIL_SUBJECT.trim()){
-        debugLog('Contact form email check: found subject match — id='+m.id+' alreadyProcessed='+(processedIds.indexOf(m.id)!==-1)+' receivedDateTime='+m.receivedDateTime);
+      if(CONTACT_FORM_EMAIL_SUBJECT_RE.test((m.subject||'').trim())){
+        debugLog('Contact form email check: found subject match — id='+m.id+' subject="'+m.subject+'" alreadyProcessed='+(processedIds.indexOf(m.id)!==-1)+' receivedDateTime='+m.receivedDateTime);
       }
     });
     var messages = (d.value||[]).filter(function(m){
-      return (m.subject||'').trim()===CONTACT_FORM_EMAIL_SUBJECT.trim() && processedIds.indexOf(m.id)===-1;
+      return CONTACT_FORM_EMAIL_SUBJECT_RE.test((m.subject||'').trim()) && processedIds.indexOf(m.id)===-1;
     });
     debugLog('Contact form email check: '+messages.length+' new submission email(s)');
     localStorage.setItem('mm_last_contactform_check', checkedAt);
