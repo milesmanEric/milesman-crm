@@ -2940,7 +2940,21 @@ async function syncOutlook(){
     debugLog('Supplier contacts with email: '+vendorContacts.length+' ('+vendorContacts.map(x=>x.contact.email).join(', ')+')');
     const bizVendorContacts=allBizVendorContacts().filter(x=>x.contact.email&&x.contact.email.includes('@'));
     debugLog('Vendor contacts with email: '+bizVendorContacts.length+' ('+bizVendorContacts.map(x=>x.contact.email).join(', ')+')');
-    if(!clients.length && !vendorContacts.length && !bizVendorContacts.length){
+    // A Hotel supplier's individual Property email addresses (see
+    // vendorPropertiesListHtml's Property Email field) — these are NOT
+    // Vendor Contacts, so allVendorContacts() above never sees them, and an
+    // email from a property's own address (e.g. a specific hotel's
+    // reservations inbox) previously matched nothing and was never logged
+    // anywhere, with no error or indication it had been missed.
+    const hotelProperties=[];
+    db.vendors.forEach(function(v){
+      if(v.category!=='Hotel') return;
+      (v.properties||[]).forEach(function(p){
+        if(p.email && p.email.includes('@')) hotelProperties.push({property:p, vendorId:v.id, vendorName:v.name});
+      });
+    });
+    debugLog('Hotel properties with email: '+hotelProperties.length+' ('+hotelProperties.map(x=>x.property.email).join(', ')+')');
+    if(!clients.length && !vendorContacts.length && !bizVendorContacts.length && !hotelProperties.length){
       toast('Add clients, supplier contacts, or vendor contacts with email addresses first','err');
       btn.textContent=orig;btn.disabled=false;return;
     }
@@ -3028,6 +3042,46 @@ async function syncOutlook(){
         debugLog('ERROR for '+bvc.contact.email+': '+e.message);
         console.error('Email match error for '+bvc.contact.email,e);
         clientErrors.push(bvc.contact.email+' ('+e.message+')');
+      }
+    }
+    // Same match/dedup logic as the loops above, but a Property isn't its
+    // own record with a notesLog of its own — it's just an entry in its
+    // parent vendor's Properties listbox (see vendorPropertiesListHtml) —
+    // so matched emails are logged into the PARENT VENDOR's own top-level
+    // Notes instead, with the property name prefixed onto each note's text
+    // so it's clear which property an entry belongs to when a vendor has
+    // several. Looks the vendor up fresh from db.vendors on every iteration
+    // (rather than reusing a reference captured before this loop started)
+    // because db.vendors gets fully replaced below each time a match is
+    // found — a vendor with two properties that both matched would
+    // otherwise have the second write silently drop the first's notes by
+    // building off a stale pre-loop copy of vendor.notesLog.
+    for(const hp of hotelProperties){
+      try{
+        const propLower=hp.property.email.toLowerCase();
+        const emails=matchInbox(mailbox.inbox,propLower).concat(matchSent(mailbox.sent,propLower));
+        debugLog('Emails matched for '+hp.property.email+' ('+hp.property.name+'): '+emails.length);
+        if(!emails.length){continue;}
+
+        const currentVendor=db.vendors.find(v=>v.id===hp.vendorId);
+        if(!currentVendor) continue;
+        const existing=new Set((currentVendor.notesLog||[]).filter(n=>n.msgId).map(n=>n.msgId));
+        const newNotes=emails.filter(m=>!existing.has(m.id)&&!m.isDraft).map(function(m){
+          var note=emailToNote(m);
+          note.text='['+hp.property.name+'] '+note.text;
+          return note;
+        });
+        debugLog('New notes to add for '+hp.property.email+': '+newNotes.length);
+
+        if(newNotes.length){
+          const notesLog=[...(currentVendor.notesLog||[]),...newNotes].sort((a,b)=>new Date(a.ts)-new Date(b.ts));
+          db.vendors=db.vendors.map(v=>v.id===hp.vendorId?Object.assign({},v,{notesLog:notesLog}):v);
+          totalNew+=newNotes.length;
+        }
+      }catch(e){
+        debugLog('ERROR for '+hp.property.email+': '+e.message);
+        console.error('Email match error for '+hp.property.email,e);
+        clientErrors.push(hp.property.email+' ('+e.message+')');
       }
     }
     if(mailbox.errors.length){
