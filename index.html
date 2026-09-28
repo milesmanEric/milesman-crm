@@ -4352,7 +4352,33 @@ function openDriveBackupConflictModal(modifiedTime, onLoadInstead, onOverwrite, 
   $('drive-conflict-overwrite').addEventListener('click', function(){ done(onOverwrite); });
   $('drive-conflict-load').addEventListener('click', function(){ done(onLoadInstead); });
 }
+// Guards the ENTIRE function body below (manual clicks and the automatic
+// background backup alike) so only one backup can run at a time on this
+// device. Without this, a manual "Backup to Google Drive" click and the
+// auto-backup that fires when the tab loses focus (see runAutoDriveBackup)
+// could run concurrently with nothing stopping them — and if one call's
+// upload finished (updating Drive's file) before the OTHER call's own
+// bookkeeping write to mm_last_known_remote_modified had run yet, the
+// second call would see Drive as having a "newer backup than this device
+// last saw" and hard-block, even though it was this same device that just
+// wrote it a moment earlier. That race is the actual explanation behind an
+// apparent same-device "conflict from nowhere" — no other device required.
+let _driveBackupInFlight = false;
 async function driveBackup(silent){
+  if(_driveBackupInFlight){
+    var busyMsg = (silent?'Auto':'Manual')+' Drive backup skipped — another backup is already running on this device.';
+    debugLog(busyMsg);
+    if(!silent) toast('A backup is already in progress — try again in a moment','err');
+    return 'skipped — another backup already in progress';
+  }
+  _driveBackupInFlight = true;
+  try{
+    return await driveBackupInner(silent);
+  } finally {
+    _driveBackupInFlight = false;
+  }
+}
+async function driveBackupInner(silent){
   // Refuses to run at all while _dbDecryptFailed is set — this device's
   // local data couldn't be decrypted, so db in memory is an empty stand-in,
   // not real data. Uploading it would PATCH the existing Drive backup with
@@ -4364,7 +4390,7 @@ async function driveBackup(silent){
   // again.
   if(_dbDecryptFailed){
     debugLog('Drive backup skipped — this device could not decrypt its existing data; backing up now would overwrite the real backup with an empty one. Restore first.');
-    return;
+    return 'skipped — local data failed to decrypt';
   }
   // See recordGoodDbCounts()/dbAppearsWiped() above — this device previously
   // had real data, and db now shows none. An automatic/silent backup skips
@@ -4375,11 +4401,11 @@ async function driveBackup(silent){
     var wipeMsg = 'Local data shows '+dbWipedDescription()+', but this device previously had real data — this looks like the in-memory data got wiped, not a deliberate deletion.';
     if(silent){
       debugLog('Auto Drive backup BLOCKED — '+wipeMsg+' Skipping to avoid overwriting the real Drive backup with emptiness. Reload the page, or use Restore if your data appears missing.');
-      return;
+      return 'skipped — local data appears wiped';
     }
     if(!confirm(wipeMsg+'\n\nBack up anyway and overwrite the existing Google Drive backup with this state?')){
       debugLog('Manual backup cancelled — local data appears wiped ('+dbWipedDescription()+') versus a previously known-good count.');
-      return;
+      return 'cancelled — local data appears wiped';
     }
   }
   const btn=$('drive-btn');
@@ -4392,13 +4418,13 @@ async function driveBackup(silent){
     }
     if(!driveToken){
       if(!silent) debugLog('No token available — redirecting to Google login');
-      btn.textContent='Backup to Google Drive';if(!silent)btn.disabled=false;return;
+      btn.textContent='Backup to Google Drive';if(!silent)btn.disabled=false;return 'skipped — no Drive token available';
     }
     if(!silent) debugLog('Token OK, uploading backup...');
     const content=JSON.stringify(db,null,2);
     const existing=await findBackupFile(driveToken);
     if(driveConflictDetected(existing)){
-      debugLog('Backup BLOCKED — Drive has a newer backup ('+existing.modifiedTime+') than this device last saw ('+localStorage.getItem('mm_last_known_remote_modified')+'). Likely uploaded from another device. Restore first to avoid overwriting it.');
+      debugLog('Backup BLOCKED — Drive has a newer backup ('+existing.modifiedTime+') than this device last saw ('+localStorage.getItem('mm_last_known_remote_modified')+'). Likely uploaded from another device (or, on this same device, an overlapping manual + auto backup — see driveBackup()\'s lock comment). Restore first to avoid overwriting it.');
       // Silent/auto backups never get a confirm() — no human is present to
       // answer it — so they always hard-block here, same as before. A manual
       // click is a human actively choosing to back up right now, so (same
@@ -4417,18 +4443,18 @@ async function driveBackup(silent){
           debugLog('Manual backup cancelled — user declined to overwrite the newer Drive backup.');
           toast('Backup cancelled','err');
           btn.textContent='Backup to Google Drive';btn.disabled=false;
-          return;
+          return 'cancelled — user declined to overwrite newer backup';
         }
         if(conflictChoice==='load'){
           debugLog('Manual backup: user chose to load the newer Drive backup instead of overwriting it.');
           btn.textContent='Backup to Google Drive';btn.disabled=false;
           await driveRestore();
-          return;
+          return 'loaded the newer backup instead of overwriting it';
         }
         debugLog('Manual backup: user confirmed overwriting the newer Drive backup.');
       }else{
         updateSyncStatusDisplay();
-        return;
+        return 'blocked — Drive has a newer backup';
       }
     }
     if(existing){
@@ -4460,11 +4486,14 @@ async function driveBackup(silent){
     if(lbl){ lbl.innerHTML='&#9729; Drive synced '+nowStr; lbl.title=''; lbl.style.color='#1a73e8'; }
     if(!silent){ debugLog('Manual backup finished successfully at '+nowStr); toast('Drive backup saved at '+nowStr,'ok'); }
     console.log('[CRM] Drive backup complete at', nowStr);
+    return 'uploaded successfully';
   }catch(e){
     console.error(e);driveToken=null;
     if(!silent){ debugLog('Manual backup FAILED: '+e.message); toast('Drive backup failed: '+e,'err'); btn.textContent='Backup to Google Drive'; }
+    return 'failed — '+e.message;
+  } finally {
+    if(!silent) btn.disabled=false;
   }
-  if(!silent) btn.disabled=false;
 }
 // ── Nightly Permanent Backup (11pm local time, never overwritten) ──────────
 // The regular BACKUP_FILENAME above is deliberately a single always-
@@ -9339,7 +9368,15 @@ function processContactFormRow(row, counters){
   var firstName = (row.first_name||'').trim();
   var lastName = (row.last_name||'').trim();
   var name = (firstName+' '+lastName).trim();
-  if(!name){ counters.skipped++; return; }
+  // Previously silent — no debugLog, no toast — so a submission whose body
+  // didn't parse into a recognizable name just vanished with zero trace,
+  // while still being marked "processed" (see the caller's processedIds
+  // push) so it could never surface again either. Logging it at least makes
+  // the loss visible instead of looking like the email was never received.
+  if(!name){
+    debugLog('Contact form email check: skipped a submission — could not parse a name from it (email='+(row.email||'none')+', phone='+(row.phone||'none')+', message='+((row.message||'').slice(0,80)||'none')+'). Not retried automatically — check the message in Outlook and add the lead by hand if needed.');
+    counters.skipped++; return;
+  }
   var email = (row.email||'').trim();
   var phone = (row.phone||'').trim();
   var message = (row.message||'').trim();
@@ -24330,7 +24367,10 @@ async function runAutoDriveBackup(){
   }
   _autoBackupInFlight = true;
   debugLog('Running auto Drive backup...');
-  try{ driveToken = token; await driveBackup(true); debugLog('Auto Drive backup finished'); } // silent=true suppresses button text change
+  // Reports what driveBackup() actually did — it previously always logged
+  // "finished" here regardless of outcome, which read as success even when
+  // the backup was blocked/skipped and nothing was actually uploaded.
+  try{ driveToken = token; var result = await driveBackup(true); debugLog('Auto Drive backup finished: '+(result||'unknown result')); } // silent=true suppresses button text change
   finally{ _autoBackupInFlight = false; }
 }
 // Same as Lock (lockApp(), defined at the top level outside bootApp), but
