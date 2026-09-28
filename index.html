@@ -12641,6 +12641,18 @@ function propertyOptionLabelHtml(name, city, country, email){
 function rebuildPropertyOptionLabel(opt){
   opt.textContent = propertyOptionLabelText(opt.dataset.name||'', opt.dataset.city||'', opt.dataset.country||'', opt.dataset.email||'');
 }
+// Wraps vendorPropertiesListHtml() with the "Properties" heading/divider —
+// shared between openVendorForm()'s initial render (only included when the
+// record was already Hotel-category) and the #vcat change listener below,
+// which injects this same markup the moment someone picks Hotel on a new
+// or newly-reclassified supplier, instead of requiring a save+reopen round
+// trip before the Properties section becomes reachable at all.
+function vendorPropertiesSectionHtml(properties){
+  return '<div style="margin-top:16px;border-top:1px solid #e5e7eb;padding-top:16px">'+
+    '<div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:10px">Properties</div>'+
+    '<div id="vendor-properties-list">'+vendorPropertiesListHtml(properties)+'</div>'+
+  '</div>';
+}
 function vendorPropertiesListHtml(properties){
   // data-name/city/country/email ride along on each <option> (not a
   // value/attribute the <select> itself exposes to the user) purely as
@@ -13083,10 +13095,9 @@ function openVendorForm(id){
         }).join('');
       })()+
     '</div>'+
-    (d.category==='Hotel' ? '<div style="margin-top:16px;border-top:1px solid #e5e7eb;padding-top:16px">'+
-      '<div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:10px">Properties</div>'+
-      '<div id="vendor-properties-list">'+vendorPropertiesListHtml(d.properties||[])+'</div>'+
-    '</div>' : '')+
+    '<div id="vendor-properties-container">'+
+      (d.category==='Hotel' ? vendorPropertiesSectionHtml(d.properties||[]) : '')+
+    '</div>'+
     '<div style="margin-top:16px;border-top:1px solid #e5e7eb;padding-top:16px">'+
       '<div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:10px">Clients with Bookings</div>'+
       (function(){
@@ -13237,6 +13248,14 @@ function openVendorForm(id){
       openVendorForm(id);
     });
   });
+  // Wrapped in a named function (rather than run inline once) so the #vcat
+  // change listener below can re-invoke it after dynamically injecting the
+  // Properties section markup — the section (and everything wired here)
+  // previously only existed at all when the record was ALREADY Hotel-
+  // category at the moment the form opened, so picking "Hotel" on a new
+  // supplier (or reclassifying an existing one) did nothing until it was
+  // saved and reopened.
+  function wireVendorPropertiesUI(){
   var propertiesListEl = $('vendor-properties-list');
   if(propertiesListEl){
     var propFilterInput = document.getElementById('vendor-properties-filter');
@@ -13407,6 +13426,23 @@ function openVendorForm(id){
         openVendorContactForm(vid, null, false, this.dataset.propertyName);
       });
     }
+  }
+  }
+  wireVendorPropertiesUI();
+  var vcatSelect = document.getElementById('vcat');
+  var vendorPropsContainer = document.getElementById('vendor-properties-container');
+  if(vcatSelect && vendorPropsContainer){
+    vcatSelect.addEventListener('change', function(){
+      // Only injects once, the first time Hotel is picked — an existing
+      // Hotel-category record already has this rendered from initial load
+      // (and its properties, if the category is switched away and back,
+      // deliberately stay put rather than being rebuilt from d.properties
+      // and losing anything added since the form opened).
+      if(this.value==='Hotel' && !document.getElementById('vendor-properties-list')){
+        vendorPropsContainer.innerHTML = vendorPropertiesSectionHtml(d.properties||[]);
+        wireVendorPropertiesUI();
+      }
+    });
   }
 }
 
