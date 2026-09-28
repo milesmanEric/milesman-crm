@@ -1134,7 +1134,12 @@ const RITZ_CARLTON_YACHTS_CABIN_TYPES = ['Signature Suite','Signature Suite with
 const WINDSTAR_CABIN_TYPES = ['Ocean View Stateroom','Deluxe Ocean View Stateroom','Star Suite','Owner\'s Suite','Bridge Suite'];
 const QUOTE_CRUISE_CONFIG = {
   'Princess': {cabinTypes:PRINCESS_CABIN_TYPES, insuranceCols:['Cancellation Insurance','Platinum Insurance'], addonCols:['Princess Plus','Princess Premier']},
-  'Virgin Voyages': {cabinTypes:VIRGIN_VOYAGES_CABIN_TYPES, cabinGroups:VIRGIN_VOYAGES_CABIN_GROUPS, fareTiers:VIRGIN_VOYAGES_FARE_TIERS, priceCols:['Price','Lock-It-In Rate'], addonCols:['Add-ons','Gratuities']},
+  // addonCols is just ['Gratuities'] — an inherited 'Add-ons' column used to
+  // sit alongside it in the pricing grid, but nothing ever read that cell
+  // (collectQuoteData()'s Virgin Voyages branch only pulls Gratuities/
+  // Insurance/Price/Lock-It-In Rate), so it was a dead input an agent could
+  // fill in with no effect at all.
+  'Virgin Voyages': {cabinTypes:VIRGIN_VOYAGES_CABIN_TYPES, cabinGroups:VIRGIN_VOYAGES_CABIN_GROUPS, fareTiers:VIRGIN_VOYAGES_FARE_TIERS, priceCols:['Price','Lock-It-In Rate'], addonCols:['Gratuities']},
   'Explora Journeys': {cabinTypes:EXPLORA_JOURNEYS_CABIN_TYPES},
   'Seabourn': {cabinTypes:SEABOURN_CABIN_TYPES},
   'Ritz Carlton Yachts': {cabinTypes:RITZ_CARLTON_YACHTS_CABIN_TYPES},
@@ -6231,21 +6236,28 @@ function quoteEmailShellHtml(opts){
 // entries: array of {cabin, fareType, price, gratuities, protection} (fareType/gratuities/protection optional)
 function virginVoyagesQuoteOpts(entries, meta){
   var hf="font-family:'Times New Roman',Times,serif; ";
+  // Lock-It-In Rate (a real Virgin Voyages lower-deposit fare option) only
+  // gets its own column when at least one entry actually used it, so a
+  // quote that never touches it still renders the original 5-column table
+  // exactly as before instead of always showing an empty/zero column.
+  var hasLockItIn = entries.some(function(r){ return r.lockItInRate; });
   var headerHtml =
-    '<td width="160" style="'+hf+'padding:10px 14px; color:#ffffff; font-size:14px; font-weight:bold; width:160px;">Cabin Category</td>'+
-    '<td width="90" style="'+hf+'padding:10px 14px; color:#ffffff; font-size:14px; font-weight:bold; width:90px;">Fare Type</td>'+
-    '<td width="96" style="'+hf+'padding:10px 14px; color:#ffffff; font-size:14px; font-weight:bold; width:96px;" align="right">Total Price</td>'+
-    '<td width="90" style="'+hf+'padding:10px 14px; color:#ffffff; font-size:14px; font-weight:bold; width:90px;" align="right">Gratuities</td>'+
-    '<td width="100" style="'+hf+'padding:10px 14px; color:#ffffff; font-size:14px; font-weight:bold; width:100px;" align="right">Voyage Protection</td>';
+    '<td width="'+(hasLockItIn?140:160)+'" style="'+hf+'padding:10px 14px; color:#ffffff; font-size:14px; font-weight:bold; width:'+(hasLockItIn?140:160)+'px;">Cabin Category</td>'+
+    '<td width="'+(hasLockItIn?70:90)+'" style="'+hf+'padding:10px 14px; color:#ffffff; font-size:14px; font-weight:bold; width:'+(hasLockItIn?70:90)+'px;">Fare Type</td>'+
+    '<td width="86" style="'+hf+'padding:10px 14px; color:#ffffff; font-size:14px; font-weight:bold; width:86px;" align="right">Total Price</td>'+
+    (hasLockItIn?'<td width="86" style="'+hf+'padding:10px 14px; color:#ffffff; font-size:14px; font-weight:bold; width:86px;" align="right">Lock-It-In Rate</td>':'')+
+    '<td width="'+(hasLockItIn?76:90)+'" style="'+hf+'padding:10px 14px; color:#ffffff; font-size:14px; font-weight:bold; width:'+(hasLockItIn?76:90)+'px;" align="right">Gratuities</td>'+
+    '<td width="'+(hasLockItIn?78:100)+'" style="'+hf+'padding:10px 14px; color:#ffffff; font-size:14px; font-weight:bold; width:'+(hasLockItIn?78:100)+'px;" align="right">Voyage Protection</td>';
   var rowsHtml = entries.map(function(r,i){
     var bg = i%2===0?'#f8f9ff':'#ffffff';
     var bd = i===entries.length-1?'':'border-bottom:1px solid #eeeeee;';
     return '<tr style="background-color:'+bg+';">'+
-      '<td width="160" style="'+hf+'padding:10px 14px; font-size:14px; color:#333333; width:160px; '+bd+'">'+escHtml(r.cabin)+'</td>'+
-      '<td width="90" style="'+hf+'padding:10px 14px; font-size:14px; color:#333333; width:90px; '+bd+'">'+escHtml(r.fareType||'')+'</td>'+
-      '<td width="96" style="'+hf+'padding:10px 14px; font-size:14px; color:#333333; width:96px; '+bd+'" align="right">$'+escHtml(r.price)+'</td>'+
-      '<td width="90" style="'+hf+'padding:10px 14px; font-size:14px; color:#333333; width:90px; '+bd+'" align="right">$'+escHtml(r.gratuities||'0')+'</td>'+
-      '<td width="100" style="'+hf+'padding:10px 14px; font-size:14px; color:#333333; width:100px; '+bd+'" align="right">$'+escHtml(r.protection||'0')+'</td>'+
+      '<td width="'+(hasLockItIn?140:160)+'" style="'+hf+'padding:10px 14px; font-size:14px; color:#333333; width:'+(hasLockItIn?140:160)+'px; '+bd+'">'+escHtml(r.cabin)+'</td>'+
+      '<td width="'+(hasLockItIn?70:90)+'" style="'+hf+'padding:10px 14px; font-size:14px; color:#333333; width:'+(hasLockItIn?70:90)+'px; '+bd+'">'+escHtml(r.fareType||'')+'</td>'+
+      '<td width="86" style="'+hf+'padding:10px 14px; font-size:14px; color:#333333; width:86px; '+bd+'" align="right">$'+escHtml(r.price)+'</td>'+
+      (hasLockItIn?'<td width="86" style="'+hf+'padding:10px 14px; font-size:14px; color:#333333; width:86px; '+bd+'" align="right">'+(r.lockItInRate?'$'+escHtml(r.lockItInRate):'-')+'</td>':'')+
+      '<td width="'+(hasLockItIn?76:90)+'" style="'+hf+'padding:10px 14px; font-size:14px; color:#333333; width:'+(hasLockItIn?76:90)+'px; '+bd+'" align="right">$'+escHtml(r.gratuities||'0')+'</td>'+
+      '<td width="'+(hasLockItIn?78:100)+'" style="'+hf+'padding:10px 14px; font-size:14px; color:#333333; width:'+(hasLockItIn?78:100)+'px; '+bd+'" align="right">$'+escHtml(r.protection||'0')+'</td>'+
     '</tr>';
   }).join('');
   return Object.assign({
@@ -6260,7 +6272,6 @@ function virginVoyagesQuoteOpts(entries, meta){
     cruiseLogoAlt:'Virgin Voyages',
     includedItemsHtml:
       '<li>Group fitness classes &amp; entertainment</li>'+
-      '<li>Gratuities</li>'+
       '<li>WiFi</li>'+
       '<li>Basic dining across restaurants (no main dining room/buffet — all restaurant-style)</li>'+
       '<li>Soft drinks, coffee, and tea</li>'
@@ -6418,7 +6429,6 @@ function ritzCarltonYachtsQuoteOpts(entries, meta){
       '<li>All-suite accommodations</li>'+
       '<li>All dining venues, including specialty restaurants</li>'+
       '<li>Beverages, including champagne, wine &amp; spirits</li>'+
-      '<li>Gratuities</li>'+
       '<li>WiFi</li>'
   }, meta);
 }
@@ -6455,7 +6465,6 @@ function seabournQuoteOpts(entries, meta){
       '<li>All-suite accommodations</li>'+
       '<li>Open bar, including premium spirits &amp; champagne</li>'+
       '<li>Specialty dining at no extra charge</li>'+
-      '<li>Gratuities</li>'+
       '<li>WiFi</li>'
   }, meta);
 }
@@ -6492,7 +6501,6 @@ function exploraJourneysQuoteOpts(entries, meta){
       '<li>Ocean-view suite accommodations</li>'+
       '<li>All dining venues, including specialty restaurants</li>'+
       '<li>Beverages, including wine, beer &amp; spirits</li>'+
-      '<li>Gratuities</li>'+
       '<li>WiFi</li>'
   }, meta);
 }
@@ -6786,7 +6794,7 @@ function openEmailQuoteModal(){
         '<button type="button" id="eq-add-date" class="cancel-btn" style="padding:7px 14px">+ Add Another Date to This Quote</button>'+
         '<div style="color:#888;font-size:11px;margin-top:4px">Saves the Sailing/Return Date and pricing above as one option in this email, then clears just those two so you can enter another date to compare. Everything else (ship, itinerary, notes, etc.) carries over as a starting point — change anything that should differ for the next date before adding it.</div>'+
       '</div>'+
-      '<div class="field full"><label>Gratuities &amp; Voyage Protection <span class="hint" style="text-transform:none;font-weight:400">(optional — one total for the whole quote, shown as its own line rather than per cabin)</span></label>'+
+      '<div class="field full" id="eq-gratuities-wrap"><label>Gratuities &amp; Voyage Protection <span class="hint" style="text-transform:none;font-weight:400">(optional — one total for the whole quote, shown as its own line rather than per cabin)</span></label>'+
         '<div style="display:flex;gap:10px">'+
           inp('eq-gratuities','text','','Gratuities, e.g. 150')+
           inp('eq-voyage-protection','text','','Voyage Protection, e.g. 129')+
@@ -6811,6 +6819,15 @@ function openEmailQuoteModal(){
     shipSel.innerHTML = '<option value="">-- Select ship --</option>'+ships.map(function(s){return '<option value="'+s+'">'+s+'</option>';}).join('');
     document.getElementById('quote-table-wrap').innerHTML = cl ? quoteTableHtml(cl) : '<div style="color:#aaa;font-size:12px">Select a cruise line to build the pricing table</div>';
     document.getElementById('eq-template-fields').style.display = QUOTE_TEMPLATE_LINES.indexOf(cl)!==-1 ? 'block' : 'none';
+    // Virgin Voyages' own pricing grid already has per-cabin Gratuities and
+    // Voyage Protection columns (see virginVoyagesQuoteOpts) — unlike every
+    // other line, where this generic whole-quote field is the ONLY place to
+    // capture that info. Filling this field for Virgin doesn't feed the
+    // per-cabin columns at all (they're separate inputs); it only shows up
+    // as an easy-to-miss extra paragraph below "What's Included", which
+    // read as "gratuities aren't populating in the column" — hiding it for
+    // Virgin steers the agent to the per-cabin cells that actually work.
+    document.getElementById('eq-gratuities-wrap').style.display = cl==='Virgin Voyages' ? 'none' : 'block';
     document.getElementById('eq-preview-wrap').style.display = 'none';
   });
 
@@ -6853,7 +6870,11 @@ function openEmailQuoteModal(){
       if(!price) return;
       if(cruiseLine==='Virgin Voyages'){
         var parts = rowLabel.split(' — ');
-        templateEntries.push({cabin:parts[0], fareType:parts[1]||'', price:price, gratuities:cellsByKey[rowLabel+'|Gratuities'], protection:cellsByKey[rowLabel+'|Insurance']});
+        // Lock-It-In Rate was a real input in the pricing grid (see
+        // QUOTE_CRUISE_CONFIG's priceCols above) but was never actually
+        // read here or rendered anywhere in the final quote — whatever an
+        // agent typed into that column silently vanished.
+        templateEntries.push({cabin:parts[0], fareType:parts[1]||'', price:price, lockItInRate:cellsByKey[rowLabel+'|Lock-It-In Rate'], gratuities:cellsByKey[rowLabel+'|Gratuities'], protection:cellsByKey[rowLabel+'|Insurance']});
       }else if(cruiseLine==='Princess'){
         templateEntries.push({
           cabin:rowLabel,
@@ -6960,6 +6981,12 @@ function openEmailQuoteModal(){
   // needs to render as one more block alongside any styled-template ones).
   function plainQuoteBodyParts(d){
     var bodyParts = d.meta&&d.meta.optionLabel ? ['— '+d.meta.optionLabel+' —', ''] : [];
+    // Matches the styled templates' own "Hi <FirstName>," greeting (see
+    // quoteEmailBodyHtml) — the seven templated cruise lines already had
+    // this, but the plain fallback used by every other line (Carnival,
+    // Norwegian, Celebrity, Disney, Holland America, MSC, Viking) never did.
+    bodyParts.push('Hi '+(d.meta&&d.meta.clientFirstName?d.meta.clientFirstName:'there')+',');
+    bodyParts.push('');
     bodyParts.push('Cruise Line: '+d.cruiseLine);
     if(d.ship) bodyParts.push('Ship: '+d.ship);
     if(d.sailingDate) bodyParts.push('Sailing Date: '+d.sailingDate);
