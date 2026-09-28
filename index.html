@@ -2634,19 +2634,20 @@ function debugLog(msg){
     if(prev.length > 1000) prev.shift();
     localStorage.setItem('mm_debug_log', JSON.stringify(prev));
   }catch(e){}
-  // Update panel DOM, capped to prevent memory leak from unbounded node accumulation
+  // Update panel DOM, capped to prevent memory leak from unbounded node accumulation.
+  // Newest entry goes on top, so prepend rather than append — and cap by
+  // trimming the bottom (now the oldest end) instead of the top.
   const log=$('debug-log');
   if(log){
     const line=document.createElement('div');
     line.style.borderBottom='1px solid #003322';
     line.style.padding='2px 0';
     line.textContent=entry;
-    log.appendChild(line);
-    // Cap DOM nodes at 1000 to match localStorage cap — remove oldest if exceeded
+    log.insertBefore(line, log.firstChild);
     while(log.children.length > 1000){
-      log.removeChild(log.firstChild);
+      log.removeChild(log.lastChild);
     }
-    log.scrollTop=log.scrollHeight;
+    log.scrollTop=0;
   }
   console.log('[CRM]', msg);
 }
@@ -2658,14 +2659,16 @@ function loadDebugLog(){
     const log=$('debug-log');
     const panel=$('debug-panel');
     if(!log||!panel) return;
+    // Stored oldest-to-newest; prepending each one in that order (rather than
+    // appending) leaves the newest entry on top, matching debugLog() above.
     entries.forEach(function(entry){
       const line=document.createElement('div');
       line.style.borderBottom='1px solid #003322';
       line.style.padding='2px 0';
       line.textContent=entry;
-      log.appendChild(line);
+      log.insertBefore(line, log.firstChild);
     });
-    log.scrollTop=log.scrollHeight;
+    log.scrollTop=0;
     // Don't auto-open - only show if user has toggled it open
   }catch(e){}
 }
@@ -2918,6 +2921,18 @@ async function syncOutlook(){
     }
     debugLog('Got token: '+token.slice(0,20)+'...');
     toast('Connected - fetching emails...','info');
+
+    // Piggyback the same inbox-import checks the 5-minute background timer
+    // already runs (see the setInterval near checkForNewTripFormEmails
+    // below) onto a manual sync click, so clicking "Sync Outlook Emails"
+    // doesn't leave someone waiting up to 5 minutes to see a form/report
+    // email that just arrived. Fire-and-forget (not awaited) so they run
+    // alongside the client note-sync below rather than delaying it; silent
+    // mode matches the timer's own behavior — no "not connected" noise since
+    // we already know we're connected, but real results still toast.
+    checkForNewTripFormEmails(true);
+    checkForNewContactFormEmails(true);
+    checkForNewRevenueReportEmails(true);
 
     const clients=db.clients.filter(c=>c.email&&c.email.includes('@'));
     debugLog('Clients with email: '+clients.length+' ('+clients.map(c=>c.email).join(', ')+')');
