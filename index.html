@@ -2807,8 +2807,19 @@ async function fetchMailbox(token,lastSyncDate){
       const d = await r.json();
       if(!r.ok){
         const msg=d.error&&d.error.message||'status '+r.status;
-        debugLog(label+' error (page '+pages+'): '+msg);
-        throw new Error(label+': '+msg);
+        debugLog(label+' error (page '+pages+'): '+msg+' — keeping '+all.length+' message(s) already fetched instead of discarding them');
+        // Previously threw here, which discarded every message fetched so
+        // far in this call — on a large mailbox's full 5-year history pull
+        // (which can run 80 pages deep), a single network blip partway
+        // through meant losing thousands of already-fetched messages and
+        // restarting from page 1 on the next attempt, potentially forever.
+        // Returning what was actually retrieved lets the sync still match
+        // against it, and still reports the error (via the thrown marker
+        // below) so the caller knows this folder is incomplete and won't
+        // advance the last-sync watermark past it.
+        var partial = new Error(label+': '+msg);
+        partial.partialResults = all;
+        throw partial;
       }
       all.push.apply(all,(d.value||[]));
       next = d['@odata.nextLink']||null;
@@ -2835,7 +2846,11 @@ async function fetchMailbox(token,lastSyncDate){
     debugLog('Fetching inbox...');
     inbox = await fetchAllPages(u1,'Inbox');
     debugLog('Inbox: count='+inbox.length);
-  }catch(e){ debugLog('Inbox error: '+e.message); errors.push('Inbox: '+e.message); }
+  }catch(e){
+    inbox = e.partialResults||[];
+    debugLog('Inbox error: '+e.message+' — proceeding with '+inbox.length+' message(s) fetched before the error');
+    errors.push('Inbox: '+e.message);
+  }
 
   let sent=[];
   try{
@@ -2846,7 +2861,11 @@ async function fetchMailbox(token,lastSyncDate){
     debugLog('Fetching sent...');
     sent = await fetchAllPages(u2,'Sent');
     debugLog('Sent: count='+sent.length);
-  }catch(e){ debugLog('Sent error: '+e.message); errors.push('Sent: '+e.message); }
+  }catch(e){
+    sent = e.partialResults||[];
+    debugLog('Sent error: '+e.message+' — proceeding with '+sent.length+' message(s) fetched before the error');
+    errors.push('Sent: '+e.message);
+  }
 
   return {inbox:inbox,sent:sent,errors:errors,truncated:truncated};
 }
