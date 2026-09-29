@@ -6112,8 +6112,33 @@ function copyHtmlToClipboard(html){
 // the inner table markup (no doctype/html/head/body) so it's safe to drop
 // into a contenteditable node for copying; quoteEmailShellHtml() wraps this
 // in a full document for the iframe preview.
+// A quote with no cruise pricing (flights/hotels/etc. only — see
+// opts.travelItemsHtml) has no pricingHeaderHtml: its Ship row, pricing
+// table and cruise wording drop out, and empty detail rows are skipped.
 function quoteEmailBodyHtml(opts){
   var sailDatesLine = (opts.departDate?fmtDate(opts.departDate):'') + (opts.departDate&&opts.returnDate?' – ':'') + (opts.returnDate?fmtDate(opts.returnDate):'') + (opts.nights?' ('+opts.nights+' nights)':'');
+  var isCruise = !!opts.pricingHeaderHtml;
+  var detailRows = [
+    (isCruise||opts.ship) ? ['Ship', escHtml(opts.ship||'')] : null,
+    (isCruise||opts.itinerary) ? [isCruise?'Itinerary':'Destination', escHtml(opts.itinerary||'')] : null,
+    (isCruise||sailDatesLine) ? [isCruise?'Sail Dates':'Travel Dates', sailDatesLine] : null,
+    (isCruise||opts.guests) ? ['Guests', escHtml(opts.guests||'')] : null
+  ].filter(Boolean);
+  var detailBoxHtml = detailRows.length ? (
+'<tr>'+
+'<td style="padding:0 32px;">'+
+'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f0f2ff; border-left:4px solid #1a1aff; border-radius:6px;">'+
+'<tr>'+
+'<td style="padding:20px 24px;">'+
+detailRows.map(function(r,i){
+  return '<p style="font-family:\'Times New Roman\',Times,serif; margin:'+(i===detailRows.length-1?'0':'0 0 10px 0')+'; font-size:14px; color:#0d0d66;"><strong>'+r[0]+':</strong> '+r[1]+'</p>';
+}).join('')+
+'</td>'+
+'</tr>'+
+'</table>'+
+'</td>'+
+'</tr>'
+  ) : '';
   return ''+
 '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f5f7; padding:30px 0;">'+
 '<tr>'+
@@ -6142,20 +6167,8 @@ function quoteEmailBodyHtml(opts){
 '<p style="font-family:\'Times New Roman\',Times,serif; font-size:14px; color:#333333; line-height:1.5; margin:0 0 16px 0;">'+opts.introText+'</p>'+
 '</td>'+
 '</tr>'+
-'<tr>'+
-'<td style="padding:0 32px;">'+
-'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f0f2ff; border-left:4px solid #1a1aff; border-radius:6px;">'+
-'<tr>'+
-'<td style="padding:20px 24px;">'+
-'<p style="font-family:\'Times New Roman\',Times,serif; margin:0 0 10px 0; font-size:14px; color:#0d0d66;"><strong>Ship:</strong> '+escHtml(opts.ship||'')+'</p>'+
-'<p style="font-family:\'Times New Roman\',Times,serif; margin:0 0 10px 0; font-size:14px; color:#0d0d66;"><strong>Itinerary:</strong> '+escHtml(opts.itinerary||'')+'</p>'+
-'<p style="font-family:\'Times New Roman\',Times,serif; margin:0 0 10px 0; font-size:14px; color:#0d0d66;"><strong>Sail Dates:</strong> '+sailDatesLine+'</p>'+
-'<p style="font-family:\'Times New Roman\',Times,serif; margin:0; font-size:14px; color:#0d0d66;"><strong>Guests:</strong> '+escHtml(opts.guests||'')+'</p>'+
-'</td>'+
-'</tr>'+
-'</table>'+
-'</td>'+
-'</tr>'+
+detailBoxHtml+
+(isCruise?(
 '<tr>'+
 '<td style="padding:20px 32px 0 32px;">'+
 '<p style="font-family:\'Times New Roman\',Times,serif; font-size:14px; color:#333333; margin:0 0 10px 0;"><strong>Cabin Options &amp; Pricing:</strong></p>'+
@@ -6165,14 +6178,17 @@ opts.pricingRowsHtml+
 '</table>'+
 '<p style="font-family:\'Times New Roman\',Times,serif; font-size:14px; color:#777777; margin:8px 0 0 0;">'+opts.pricingCaption+'</p>'+
 '</td>'+
-'</tr>'+
+'</tr>'
+):'')+
+(opts.includedItemsHtml?(
 '<tr>'+
 '<td style="padding:24px 32px 0 32px;">'+
 '<p style="font-family:\'Times New Roman\',Times,serif; font-size:14px; color:#333333; line-height:1.5; margin:0 0 8px 0;"><strong>What\'s included:</strong></p>'+
 '<ul style="font-family:\'Times New Roman\',Times,serif; font-size:14px; color:#333333; line-height:1.6; margin:0 0 16px 0; padding-left:20px;">'+opts.includedItemsHtml+'</ul>'+
 (opts.extraIncludedHtml||'')+
 '</td>'+
-'</tr>'+
+'</tr>'
+):(isCruise?'<tr><td style="padding:0 0 16px 0;"></td></tr>':''))+
 ((opts.gratuities||opts.voyageProtection)?(
 '<tr>'+
 '<td style="padding:0 32px;">'+
@@ -6183,6 +6199,7 @@ opts.pricingRowsHtml+
 '</td>'+
 '</tr>'
 ):'')+
+(opts.travelItemsHtml||'')+
 (opts.notes?(
 '<tr>'+
 '<td style="padding:0 32px;">'+
@@ -6197,7 +6214,9 @@ opts.pricingRowsHtml+
 '<strong>Final Payment Due:</strong> '+(opts.finalPaymentDate?fmtDate(opts.finalPaymentDate):'[FINAL PAYMENT DATE]')+
 '</p>'+
 '<p style="font-family:\'Times New Roman\',Times,serif; font-size:14px; color:#333333; line-height:1.5; margin:0 0 16px 0;">'+
-'This rate is subject to availability and can change if not booked. Let me know if you\'d like to move forward or if you\'d like me to look at other cabin categories, sail dates, or ways to use points/miles toward this trip.'+
+(isCruise
+  ? 'This rate is subject to availability and can change if not booked. Let me know if you\'d like to move forward or if you\'d like me to look at other cabin categories, sail dates, or ways to use points/miles toward this trip.'
+  : 'These rates are subject to availability and can change if not booked. Let me know if you\'d like to move forward or if you\'d like me to look at other options, dates, or ways to use points/miles toward this trip.')+
 '</p>'+
 '</td>'+
 '</tr>'+
@@ -6689,7 +6708,7 @@ async function saveQuotePdfToDrive(d, bodyHtml, subject){
       return;
     }
     var folderId = await getOrCreateDriveQuotesFolder(token);
-    var filenameParts = [d.client?d.client.name:'Quote', d.cruiseLine||'Quote', d.sailingDate||today()];
+    var filenameParts = [d.client?d.client.name:'Quote', d.cruiseLine||(d.items&&d.items[0]?d.items[0].type:'')||'Quote', d.sailingDate||today()];
     var filename = (filenameParts.join('.')+'.pdf').replace(/[\\/:*?"<>|]/g,'-');
     var meta = new Blob([JSON.stringify({name:filename, mimeType:'application/pdf', parents:[folderId]})], {type:'application/json'});
     var form = new FormData(); form.append('metadata', meta); form.append('file', blob);
@@ -6764,6 +6783,273 @@ async function saveItineraryPdfToDrive(client, trip, bodyHtml, subject){
 // plus the extra trip fields those templates need. Every other line keeps the
 // simpler plain-text mailto body.
 var QUOTE_TEMPLATE_LINES = ['Virgin Voyages','Princess','Royal Caribbean','Ritz Carlton Yachts','Seabourn','Explora Journeys','Windstar'];
+// ── Travel items (Email Quote + Trip Confirmation) ──────────────────────
+// One card per piece of travel — any number of any type — built by the
+// "+ Airline"/"+ Hotel"/etc. buttons in Email Quote (alongside, or instead
+// of, the cruise pricing grid) and in Trip Confirmation. Categories and
+// picklists mirror Booked Trip Details / the Book a Trip form (same AIRLINES,
+// HOTELS, CRUISE_LINES, CAR_SIZES, TRANSFER_CAR_TYPES, TOUR_VENDORS,
+// THEME_PARKS, TRAIN_CLASSES lists). A field with `opts` is a <select>;
+// `optsFrom`/`optsFn` rebuild its options whenever the named sibling select
+// changes (Cruise's Ship and Cabin Type follow its Cruise Line). Every card
+// also gets Details and Price, plus Confirmation # in Trip Confirmation.
+// `confirmOnly` types are left out of Email Quote, which has its own
+// cruise pricing grid. `logos` looks up an itineraryDetailBox() logo by the
+// value of the `logoKey` field.
+const TRAVEL_ITEM_TYPES = {
+  'Airline': {fields:[
+    {key:'airline', label:'Airline', opts:AIRLINES},
+    {key:'flightNumber', label:'Flight Number(s)', ph:'e.g. AA 123 / AA 456'},
+    {key:'origin', label:'From', ph:'e.g. JFK'},
+    {key:'destination', label:'To', ph:'e.g. LAX'},
+    {key:'departDate', label:'Depart Date', type:'date'},
+    {key:'returnDate', label:'Return Date', type:'date'},
+    {key:'classOfService', label:'Class of Service', opts:CLASSES},
+    {key:'nonStop', label:'Nonstop', opts:['Yes','No']}
+  ], logoKey:'airline', logos:AIRLINE_LOGOS},
+  'Hotel': {fields:[
+    {key:'hotelBrand', label:'Hotel Brand', opts:HOTELS},
+    {key:'property', label:'Property', ph:'e.g. Grand Hyatt Kauai'},
+    {key:'checkIn', label:'Check-in Date', type:'date'},
+    {key:'checkOut', label:'Check-out Date', type:'date'},
+    {key:'roomType', label:'Room Type', opts:ROOM_TYPES}
+  ], logoKey:'hotelBrand', logos:HOTEL_LOGOS},
+  'Cruise': {confirmOnly:true, fields:[
+    {key:'cruiseLine', label:'Cruise Line', opts:CRUISE_LINES},
+    {key:'ship', label:'Ship', optsFrom:'cruiseLine', optsFn:function(cl){ return SHIPS_BY_CRUISE_LINE[cl]||[]; }},
+    {key:'sailingDate', label:'Sailing Date', type:'date'},
+    {key:'returnDate', label:'Return Date', type:'date'},
+    {key:'cabinType', label:'Cabin Type', optsFrom:'cruiseLine', optsFn:function(cl){ return cl ? getQuoteConfig(cl).cabinTypes : []; }},
+    {key:'departurePort', label:'Departure Port', ph:'e.g. Miami'}
+  ], logoKey:'cruiseLine', logos:CRUISE_LOGOS},
+  'Car Rental': {fields:[
+    {key:'company', label:'Rental Company', opts:CAR_RENTALS},
+    {key:'carSize', label:'Car Size', opts:CAR_SIZES},
+    {key:'pickupLocation', label:'Pick-up Location', ph:'e.g. LIH Airport'},
+    {key:'pickupDate', label:'Pick-up Date', type:'date'},
+    {key:'dropoffDate', label:'Drop-off Date', type:'date'}
+  ], logoKey:'company', logos:CAR_RENTAL_LOGOS},
+  'Transfer': {fields:[
+    {key:'origin', label:'From', ph:'e.g. Airport'},
+    {key:'destination', label:'To', ph:'e.g. Hotel'},
+    {key:'pickupDate', label:'Pick-up Date', type:'date'},
+    {key:'carType', label:'Car Type', opts:TRANSFER_CAR_TYPES},
+    {key:'provider', label:'Provider'}
+  ]},
+  'Tour': {fields:[
+    {key:'vendor', label:'Vendor', opts:TOUR_VENDORS},
+    {key:'description', label:'Tour / Activity', ph:'e.g. Na Pali Coast Snorkel'},
+    {key:'date', label:'Date', type:'date'}
+  ], logoKey:'vendor', logos:CRUISE_LOGOS},
+  'Theme Park': {fields:[
+    {key:'park', label:'Park', opts:THEME_PARKS},
+    {key:'ticketType', label:'Ticket Type', ph:'e.g. 4-Day Park Hopper'},
+    {key:'date', label:'First Day', type:'date'}
+  ]},
+  'Train': {fields:[
+    {key:'departureCity', label:'Departure City'},
+    {key:'arrivalCity', label:'Arrival City'},
+    {key:'departureDate', label:'Departure Date', type:'date'},
+    {key:'returnDate', label:'Return Date', type:'date'},
+    {key:'classOfService', label:'Class of Service', opts:TRAIN_CLASSES}
+  ]},
+  'Bus': {fields:[
+    {key:'departureCity', label:'Departure City'},
+    {key:'arrivalCity', label:'Arrival City'},
+    {key:'departureDate', label:'Departure Date', type:'date'},
+    {key:'returnDate', label:'Return Date', type:'date'},
+    {key:'classOfService', label:'Class of Service', opts:TRAIN_CLASSES}
+  ]},
+  'Travel Insurance': {fields:[
+    {key:'provider', label:'Provider', ph:'e.g. Allianz, Travel Guard'},
+    {key:'plan', label:'Plan', ph:'e.g. OneTrip Prime'}
+  ]},
+  'Other': {fields:[
+    {key:'name', label:'Item', ph:'e.g. Visa processing'},
+    {key:'date', label:'Date', type:'date'}
+  ]}
+};
+function travelItemFields(type, mode){
+  var def = TRAVEL_ITEM_TYPES[type];
+  return def.fields.concat(
+    [{key:'notes', label:'Details', ph:'Optional'}],
+    mode==='confirm' ? [{key:'confirmationNumber', label:'Confirmation #'}] : [],
+    [{key:'price', label:'Price', ph:'e.g. 850'}]
+  );
+}
+// Options for a picklist, keeping a prefilled value that isn't in the list
+// (e.g. an airline typed on an older trip) instead of silently dropping it.
+function travelItemOptionsHtml(list, val){
+  var opts = list.slice();
+  if(val && opts.indexOf(val)===-1) opts.push(val);
+  return '<option value="">Select...</option>'+opts.map(function(o){
+    return '<option value="'+escHtml(o)+'"'+(o===val?' selected':'')+'>'+escHtml(o)+'</option>';
+  }).join('');
+}
+function travelItemCardHtml(type, mode, values){
+  values = values||{};
+  var fieldsHtml = travelItemFields(type, mode).map(function(f){
+    var v = values[f.key]||'';
+    var ctl;
+    if(f.opts || f.optsFn){
+      var list = f.opts || f.optsFn(values[f.optsFrom]||'');
+      ctl = '<select class="ti-f" data-key="'+f.key+'"'+(f.optsFrom?' data-opts-from="'+f.optsFrom+'"':'')+'>'+travelItemOptionsHtml(list, v)+'</select>';
+    }else{
+      ctl = '<input type="'+(f.type||'text')+'" class="ti-f" data-key="'+f.key+'" value="'+escHtml(v)+'" placeholder="'+escHtml(f.ph||'')+'">';
+    }
+    return '<div class="field"><label>'+escHtml(f.label)+'</label>'+ctl+'</div>';
+  }).join('');
+  return '<div class="ti-card" data-type="'+escHtml(type)+'" style="border:1px solid #e5e7eb;border-radius:8px;padding:10px;margin-bottom:8px;background:#fafafa">'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'+
+      '<strong style="font-size:13px">'+escHtml(type)+'</strong>'+
+      '<button type="button" class="ti-remove cancel-btn" style="padding:2px 8px">Remove</button>'+
+    '</div>'+
+    '<div class="fg">'+fieldsHtml+'</div>'+
+  '</div>';
+}
+function travelItemAddButtonsHtml(mode){
+  return '<div style="display:flex;flex-wrap:wrap;gap:6px">'+
+    Object.keys(TRAVEL_ITEM_TYPES).filter(function(t){ return mode==='confirm' || !TRAVEL_ITEM_TYPES[t].confirmOnly; }).map(function(t){
+      return '<button type="button" class="ti-add cancel-btn" data-type="'+escHtml(t)+'" style="padding:5px 10px">+ '+escHtml(t)+'</button>';
+    }).join('')+
+  '</div>';
+}
+// Wires one builder: `addWrap` holds the "+ Type" buttons, `listEl` the
+// cards. Remove and dependent-picklist refresh are delegated on listEl so
+// cards added later need no extra binding. onChange fires after any add/
+// remove (Email Quote uses it to show/hide its trip fields).
+function bindTravelItemBuilder(addWrap, listEl, mode, onChange){
+  addWrap.addEventListener('click', function(e){
+    var btn = e.target.closest('.ti-add');
+    if(!btn) return;
+    listEl.insertAdjacentHTML('beforeend', travelItemCardHtml(btn.dataset.type, mode));
+    if(onChange) onChange();
+  });
+  listEl.addEventListener('click', function(e){
+    var btn = e.target.closest('.ti-remove');
+    if(!btn) return;
+    btn.closest('.ti-card').remove();
+    if(onChange) onChange();
+  });
+  listEl.addEventListener('change', function(e){
+    var src = e.target.closest('.ti-f');
+    if(!src) return;
+    var card = src.closest('.ti-card');
+    var def = TRAVEL_ITEM_TYPES[card.dataset.type];
+    card.querySelectorAll('select[data-opts-from="'+src.dataset.key+'"]').forEach(function(dep){
+      var f = def.fields.find(function(x){ return x.key===dep.dataset.key; });
+      dep.innerHTML = travelItemOptionsHtml(f.optsFn(src.value), '');
+    });
+  });
+}
+function readTravelItems(listEl){
+  var items = [];
+  listEl.querySelectorAll('.ti-card').forEach(function(card){
+    var values = {}, any = false;
+    card.querySelectorAll('.ti-f').forEach(function(el){
+      var v = el.value.trim();
+      values[el.dataset.key] = v;
+      if(v) any = true;
+    });
+    if(any) items.push({type:card.dataset.type, values:values});
+  });
+  return items;
+}
+// Strips a leading "$" so a price typed as "$850" doesn't render "$$850".
+function travelPriceVal(v){ return (v||'').replace(/^\s*\$\s*/,''); }
+function travelPriceNum(v){ var n = parseFloat(travelPriceVal(v).replace(/,/g,'')); return isNaN(n) ? null : n; }
+function fmtMoney(n){ return '$'+n.toLocaleString('en-US',{minimumFractionDigits:n%1?2:0, maximumFractionDigits:2}); }
+function quoteDateRange(a, b){ return (a?fmtDate(a):'') + (a&&b?' – ':'') + (b?fmtDate(b):''); }
+// [{label, value}] for one item, in field order (dates formatted), shared by
+// the styled boxes and the plain-text/note line so both show the same thing.
+// Price is left to the callers, which format and total it.
+function travelItemRows(item, mode){
+  return travelItemFields(item.type, mode).filter(function(f){ return f.key!=='price'; }).map(function(f){
+    var v = item.values[f.key]||'';
+    return {label:f.label, value:f.type==='date' && v ? fmtDate(v) : v};
+  }).filter(function(r){ return r.value; });
+}
+function travelItemTextLine(item, mode){
+  var price = travelPriceVal(item.values.price);
+  return item.type+': '+(travelItemRows(item, mode).map(function(r){ return r.label+' '+r.value; }).join(', ')||'-')+(price?' — $'+price:'');
+}
+function travelItemsTotal(items){
+  var total = 0, count = 0;
+  items.forEach(function(it){ var n = travelPriceNum(it.values.price); if(n!==null){ total += n; count++; } });
+  return {total:total, count:count};
+}
+// Same box as itineraryDetailBox(), but with the brand logo shown at a
+// readable size right-aligned on the title line — the way the cruise
+// line's logo sits in the quote header — rather than as a small icon.
+function travelItemBoxHtml(title, rowsHtml, logoSrc){
+  var ff = "font-family:'Times New Roman',Times,serif; ";
+  return ''+
+'<tr>'+
+'<td style="padding:16px 32px 0 32px;">'+
+'<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>'+
+'<td style="vertical-align:bottom;"><p style="'+ff+'font-size:15px; color:#333333; margin:0;"><strong>'+escHtml(title)+'</strong></p></td>'+
+(logoSrc?'<td align="right" style="vertical-align:bottom;"><img src="'+logoSrc+'" alt="" height="36" style="display:block; height:36px; width:auto; max-width:140px; object-fit:contain;"></td>':'')+
+'</tr></table>'+
+'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f0f2ff; border-left:4px solid #1a1aff; border-radius:6px; margin-top:8px;">'+
+'<tr><td style="padding:16px 20px;">'+rowsHtml+'</td></tr>'+
+'</table>'+
+'</td>'+
+'</tr>';
+}
+// Styled email rows (<tr>s for the quoteEmailBodyHtml/itinerary shell): one
+// itineraryDetailBox per item — same look as Email Itinerary — numbered
+// ("Hotel 1", "Hotel 2") only when a type repeats, followed by a total of
+// every item price once at least `minForTotal` items have one.
+function travelItemsHtml(items, mode, totalLabel, minForTotal){
+  if(!items || !items.length) return '';
+  var countByType = {}, seenByType = {};
+  items.forEach(function(it){ countByType[it.type] = (countByType[it.type]||0)+1; });
+  var boxes = items.map(function(it){
+    seenByType[it.type] = (seenByType[it.type]||0)+1;
+    var title = countByType[it.type]>1 ? it.type+' '+seenByType[it.type] : it.type;
+    var price = travelPriceVal(it.values.price), priceNum = travelPriceNum(price);
+    var rows = travelItemRows(it, mode).map(function(r){ return itineraryDetailRow(r.label, r.value); }).join('') +
+      itineraryDetailRow('Price', price ? (priceNum!==null && /^[\d,.]+$/.test(price) ? fmtMoney(priceNum) : '$'+price) : '');
+    var def = TRAVEL_ITEM_TYPES[it.type]||{};
+    var logo = def.logos ? def.logos[it.values[def.logoKey]] : '';
+    return travelItemBoxHtml(title, rows, logo);
+  }).join('');
+  var t = travelItemsTotal(items);
+  var totalHtml = t.count>=(minForTotal||2) ? (
+    '<tr><td style="padding:16px 32px 0 32px;">'+
+    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-top:2px solid #1a1aff;"><tr>'+
+    '<td style="font-family:\'Times New Roman\',Times,serif; font-size:15px; color:#0d0d66; padding:10px 0 0 0;"><strong>'+escHtml(totalLabel||'Total')+'</strong></td>'+
+    '<td align="right" style="font-family:\'Times New Roman\',Times,serif; font-size:15px; color:#0d0d66; padding:10px 0 0 0;"><strong>'+fmtMoney(t.total)+'</strong></td>'+
+    '</tr></table>'+
+    '</td></tr>'
+  ) : '';
+  return boxes + totalHtml + '<tr><td style="padding:0 0 16px 0;"></td></tr>';
+}
+// Pricing table for a cruise line without its own styled template (Carnival,
+// Norwegian, etc.), used only when that cruise is combined with other travel
+// items — a cruise-only quote for those lines still goes out as the plain-
+// text mailto body exactly as before. Columns are whatever getQuoteConfig()
+// gave the pricing grid.
+function genericCruiseQuoteOpts(cruiseLine, cols, entries, meta){
+  var hf="font-family:'Times New Roman',Times,serif; ";
+  var headerHtml = '<td style="'+hf+'padding:10px 14px; color:#ffffff; font-size:14px; font-weight:bold;">Cabin Category</td>'+
+    cols.map(function(c){ return '<td style="'+hf+'padding:10px 14px; color:#ffffff; font-size:14px; font-weight:bold;" align="right">'+escHtml(c==='Price'?'Total Price':c)+'</td>'; }).join('');
+  var rowsHtml = entries.map(function(r,i){
+    var bg = i%2===0?'#f8f9ff':'#ffffff';
+    var bd = i===entries.length-1?'':'border-bottom:1px solid #eeeeee;';
+    return '<tr style="background-color:'+bg+';">'+
+      '<td style="'+hf+'padding:10px 14px; font-size:14px; color:#333333; '+bd+'">'+escHtml(r.cabin)+'</td>'+
+      r.vals.map(function(v){ return '<td style="'+hf+'padding:10px 14px; font-size:14px; color:#333333; '+bd+'" align="right">'+(v?'$'+escHtml(travelPriceVal(v)):'-')+'</td>'; }).join('')+
+    '</tr>';
+  }).join('');
+  return Object.assign({
+    docTitle:cruiseLine+' Quote - Miles Man',
+    introText:'Thanks for reaching out! I\'ve put together a quote based on what you\'re looking for. Here are the details:',
+    pricingHeaderHtml:headerHtml,
+    pricingRowsHtml:rowsHtml,
+    pricingCaption:'All prices per stateroom, based on double occupancy.'
+  }, meta);
+}
 function openEmailQuoteModal(){
   var sortedClients = [...db.clients].sort(function(a,b){return (a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase());});
   var clientOpts = sortedClients.map(function(c){return '<option value="'+c.id+'">'+c.name+'</option>';}).join('');
@@ -6772,8 +7058,8 @@ function openEmailQuoteModal(){
     '<div class="modal-hdr"><div class="modal-title">Email Quote</div><button class="close-btn" id="modal-close">&#x2715;</button></div>'+
     '<div class="fg">'+
       fld('Client (optional)',searchableSelectWrap('<select id="eq-client"><option value="">-- No client selected --</option>'+clientOpts+'</select>','Search clients...'),true)+
-      fld('Cruise Line',sel('eq-cruise-line',CRUISE_LINES,''))+
-      fld('Ship','<select id="eq-ship"><option value="">-- Select cruise line first --</option></select>')+
+      fld('Cruise Line <span class="hint" style="text-transform:none;font-weight:400">(optional)</span>','<select id="eq-cruise-line"><option value="">None — no cruise in this quote</option>'+selOpts(CRUISE_LINES,'')+'</select>')+
+      '<div class="field" id="eq-ship-wrap" style="display:none"><label>Ship</label><select id="eq-ship"><option value="">-- Select cruise line first --</option></select></div>'+
       fld('Depart / Sailing Date',inp('eq-sailing-date','date',''))+
       '<div id="eq-template-fields" style="display:none">'+
         fld('Itinerary / Destinations',inp('eq-itinerary','text','','e.g. Eastern Caribbean: Miami, San Juan, St. Thomas'),true)+
@@ -6784,17 +7070,21 @@ function openEmailQuoteModal(){
         fld('Payment Deadline Date',inp('eq-payment-deadline','date',''))+
         fld('Final Payment Date',inp('eq-final-payment','date',''))+
       '</div>'+
-      '<div class="field full"><label>Pricing</label>'+
+      '<div class="field full" id="eq-pricing-wrap" style="display:none"><label>Cruise Pricing</label>'+
         '<div id="quote-table-wrap" style="border:1px solid #e5e7eb;border-radius:8px;padding:10px;overflow-x:auto;background:#fafafa">'+
           '<div style="color:#aaa;font-size:12px">Select a cruise line to build the pricing table</div>'+
         '</div>'+
       '</div>'+
+      '<div class="field full"><label>Other Travel <span class="hint" style="text-transform:none;font-weight:400">(flights, hotels, car rentals, transfers, tours, etc. — each with its own price, totaled in the email)</span></label>'+
+        '<div id="eq-items"></div>'+
+        '<div id="eq-items-add">'+travelItemAddButtonsHtml('quote')+'</div>'+
+      '</div>'+
       '<div class="field full" id="eq-saved-options" style="display:none"></div>'+
       '<div class="field full">'+
         '<button type="button" id="eq-add-date" class="cancel-btn" style="padding:7px 14px">+ Add Another Date to This Quote</button>'+
-        '<div style="color:#888;font-size:11px;margin-top:4px">Saves the Sailing/Return Date and pricing above as one option in this email, then clears just those two so you can enter another date to compare. Everything else (ship, itinerary, notes, etc.) carries over as a starting point — change anything that should differ for the next date before adding it.</div>'+
+        '<div style="color:#888;font-size:11px;margin-top:4px">Saves the dates and pricing above as one option in this email, then clears just the dates and prices (the Depart/Return Date, cruise pricing, and each travel item\'s dates and price) so you can enter another date to compare. Everything else (ship, itinerary, travel items, notes, etc.) carries over as a starting point — change anything that should differ for the next date before adding it.</div>'+
       '</div>'+
-      '<div class="field full" id="eq-gratuities-wrap"><label>Gratuities &amp; Voyage Protection <span class="hint" style="text-transform:none;font-weight:400">(optional — one total for the whole quote, shown as its own line rather than per cabin)</span></label>'+
+      '<div class="field full" id="eq-gratuities-wrap" style="display:none"><label>Gratuities &amp; Voyage Protection <span class="hint" style="text-transform:none;font-weight:400">(optional — one total for the whole quote, shown as its own line rather than per cabin)</span></label>'+
         '<div style="display:flex;gap:10px">'+
           inp('eq-gratuities','text','','Gratuities, e.g. 150')+
           inp('eq-voyage-protection','text','','Voyage Protection, e.g. 129')+
@@ -6812,13 +7102,28 @@ function openEmailQuoteModal(){
   $('modal-close').addEventListener('click', closeModal);
   $('modal-cancel').addEventListener('click', closeModal);
 
+  // The trip fields (itinerary, return date, guests, deposit/payment dates)
+  // feed the styled email — hidden only for a cruise line with no styled
+  // template and no other travel items, since that combination still goes
+  // out as the plain-text body that never used them.
+  function updateEqFieldVisibility(){
+    var cl = gv('eq-cruise-line');
+    var hasItems = !!document.querySelector('#eq-items .ti-card');
+    document.getElementById('eq-template-fields').style.display = (!cl || hasItems || QUOTE_TEMPLATE_LINES.indexOf(cl)!==-1) ? 'block' : 'none';
+    document.getElementById('eq-ship-wrap').style.display = cl ? 'block' : 'none';
+    document.getElementById('eq-pricing-wrap').style.display = cl ? 'block' : 'none';
+    document.getElementById('eq-preview-wrap').style.display = 'none';
+  }
+  bindTravelItemBuilder(document.getElementById('eq-items-add'), document.getElementById('eq-items'), 'quote', updateEqFieldVisibility);
+  updateEqFieldVisibility();
+
   document.getElementById('eq-cruise-line').addEventListener('change', function(){
     var cl = this.value;
     var shipSel = document.getElementById('eq-ship');
     var ships = SHIPS_BY_CRUISE_LINE[cl]||[];
     shipSel.innerHTML = '<option value="">-- Select ship --</option>'+ships.map(function(s){return '<option value="'+s+'">'+s+'</option>';}).join('');
     document.getElementById('quote-table-wrap').innerHTML = cl ? quoteTableHtml(cl) : '<div style="color:#aaa;font-size:12px">Select a cruise line to build the pricing table</div>';
-    document.getElementById('eq-template-fields').style.display = QUOTE_TEMPLATE_LINES.indexOf(cl)!==-1 ? 'block' : 'none';
+    updateEqFieldVisibility();
     // Virgin Voyages' own pricing grid already has per-cabin Gratuities and
     // Voyage Protection columns (see virginVoyagesQuoteOpts) — unlike every
     // other line, where this generic whole-quote field is the ONLY place to
@@ -6827,7 +7132,7 @@ function openEmailQuoteModal(){
     // as an easy-to-miss extra paragraph below "What's Included", which
     // read as "gratuities aren't populating in the column" — hiding it for
     // Virgin steers the agent to the per-cabin cells that actually work.
-    document.getElementById('eq-gratuities-wrap').style.display = cl==='Virgin Voyages' ? 'none' : 'block';
+    document.getElementById('eq-gratuities-wrap').style.display = (!cl || cl==='Virgin Voyages') ? 'none' : 'block';
     document.getElementById('eq-preview-wrap').style.display = 'none';
   });
 
@@ -6846,26 +7151,32 @@ function openEmailQuoteModal(){
   // trailing form (nothing more to add) doesn't surface a spurious error.
   function collectQuoteData(silentIfEmpty){
     var cruiseLine = gv('eq-cruise-line');
-    if(!cruiseLine){ if(!silentIfEmpty) toast('Select a cruise line','err'); return null; }
-    var ship = gv('eq-ship');
+    var items = readTravelItems(document.getElementById('eq-items'));
+    if(!cruiseLine && !items.length){ if(!silentIfEmpty) toast('Select a cruise line or add a travel item (flight, hotel, etc.)','err'); return null; }
+    var ship = cruiseLine ? gv('eq-ship') : '';
     var sailingDate = gv('eq-sailing-date');
     var clientId = gv('eq-client');
     var client = clientId ? db.clients.find(function(c){return c.id===clientId;}) : null;
     var notes = gv('eq-notes');
 
-    var cfg = getQuoteConfig(cruiseLine);
-    var cols = cfg.priceCols.concat(cfg.insuranceCols).concat(cfg.addonCols);
-    var rows = quoteRowLabels(cfg);
+    var cfg = cruiseLine ? getQuoteConfig(cruiseLine) : null;
+    var cols = cfg ? cfg.priceCols.concat(cfg.insuranceCols).concat(cfg.addonCols) : [];
+    var rows = cfg ? quoteRowLabels(cfg) : [];
     var cellsByKey = {};
     document.querySelectorAll('.quote-cell').forEach(function(el){
       cellsByKey[el.dataset.cabin+'|'+el.dataset.col] = el.value.trim();
     });
     var lines = [];
     var templateEntries = [];
+    // Every priced row in the grid's own columns — only rendered (by
+    // genericCruiseQuoteOpts) for a cruise line without a styled template
+    // that's combined with other travel items.
+    var genericEntries = [];
     rows.forEach(function(rowLabel){
       var cellVals = cols.map(function(c){return cellsByKey[rowLabel+'|'+c]||'';});
       if(!cellVals.some(function(v){return v;})) return;
       lines.push(rowLabel+': '+cols.map(function(c,i){return c+' '+(cellVals[i]||'-');}).join(', '));
+      genericEntries.push({cabin:rowLabel, vals:cellVals});
       var price = cellsByKey[rowLabel+'|Price'];
       if(!price) return;
       if(cruiseLine==='Virgin Voyages'){
@@ -6893,6 +7204,10 @@ function openEmailQuoteModal(){
         });
       }
     });
+    // Cruise selected but nothing entered in its grid (e.g. a flight + hotel
+    // quote where the cruise line was picked by mistake) → no cruise table.
+    var cruisePriced = lines.length>0;
+    lines = lines.concat(items.map(function(it){ return travelItemTextLine(it, 'quote'); }));
     if(!lines.length){toast('Enter at least one price','err');return null;}
 
     var adults = gv('eq-adults');
@@ -6901,8 +7216,8 @@ function openEmailQuoteModal(){
     if(adults) guestsParts.push(adults+' Adult'+(adults==='1'?'':'s'));
     if(children && children!=='0') guestsParts.push(children+' Child'+(children==='1'?'':'ren'));
 
-    var gratuities = gv('eq-gratuities');
-    var voyageProtection = gv('eq-voyage-protection');
+    var gratuities = cruiseLine ? gv('eq-gratuities') : '';
+    var voyageProtection = cruiseLine ? gv('eq-voyage-protection') : '';
 
     var meta = {
       clientFirstName: client?getFirstName(client.name):'',
@@ -6920,7 +7235,21 @@ function openEmailQuoteModal(){
       notes: notes
     };
 
-    return {cruiseLine:cruiseLine, ship:ship, sailingDate:sailingDate, client:client, notes:notes, lines:lines, templateEntries:templateEntries, gratuities:gratuities, voyageProtection:voyageProtection, meta:meta};
+    return {cruiseLine:cruiseLine, ship:ship, sailingDate:sailingDate, client:client, notes:notes, lines:lines, templateEntries:templateEntries, genericEntries:genericEntries, cruiseCols:cols, cruisePriced:cruisePriced, items:items, gratuities:gratuities, voyageProtection:voyageProtection, meta:meta};
+  }
+  // "Virgin Voyages Cruise Quote", "Hotel + Car Rental Quote",
+  // "Princess Cruise + Airline Quote" — used for the subject line, the
+  // saved-options list, and the plain fallback's heading.
+  function quoteTitle(d){
+    if(!d.items.length) return d.cruiseLine+' Cruise Quote';
+    var types = [];
+    d.items.forEach(function(it){ if(types.indexOf(it.type)===-1) types.push(it.type); });
+    return (d.cruiseLine?[d.cruiseLine+' Cruise']:[]).concat(types).join(' + ')+' Quote';
+  }
+  // Only a cruise line without a styled template, with no other travel
+  // items, still goes out as the plain-text mailto body.
+  function usesStyledBody(d){
+    return !d.cruiseLine || d.items.length>0 || QUOTE_TEMPLATE_LINES.indexOf(d.cruiseLine)!==-1;
   }
 
   function renderSavedOptionsList(){
@@ -6931,7 +7260,7 @@ function openEmailQuoteModal(){
     wrap.innerHTML = '<label>Dates Added to This Quote ('+savedOptions.length+')</label>'+
       savedOptions.map(function(d,i){
         return '<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;border:1px solid #e5e7eb;border-radius:6px;margin-bottom:6px;background:#fafafa;font-size:12px">'+
-          '<span>Option '+(i+1)+': '+escHtml(d.cruiseLine)+(d.ship?' — '+escHtml(d.ship):'')+(d.sailingDate?' — '+fmtDate(d.sailingDate):'')+'</span>'+
+          '<span>Option '+(i+1)+': '+escHtml(quoteTitle(d))+(d.ship?' — '+escHtml(d.ship):'')+(d.sailingDate?' — '+fmtDate(d.sailingDate):'')+'</span>'+
           '<button type="button" class="eq-remove-option cancel-btn" data-idx="'+i+'" style="padding:2px 8px">Remove</button>'+
         '</div>';
       }).join('');
@@ -6950,12 +7279,13 @@ function openEmailQuoteModal(){
     document.getElementById('eq-sailing-date').value='';
     document.getElementById('eq-return-date').value='';
     document.querySelectorAll('.quote-cell').forEach(function(el){ el.value=''; });
+    document.querySelectorAll('#eq-items .ti-f[type="date"], #eq-items .ti-f[data-key="price"]').forEach(function(el){ el.value=''; });
     document.getElementById('eq-preview-wrap').style.display='none';
     toast('Added as Option '+savedOptions.length+' — enter the next date below, or send/preview now');
   });
   function currentGridHasAnyValue(){
     var any=false;
-    document.querySelectorAll('.quote-cell').forEach(function(el){ if(el.value.trim()) any=true; });
+    document.querySelectorAll('.quote-cell, #eq-items .ti-f').forEach(function(el){ if(el.value.trim()) any=true; });
     return any;
   }
   // Combines every saved date option with whatever's currently on the form
@@ -6987,13 +7317,15 @@ function openEmailQuoteModal(){
     // Norwegian, Celebrity, Disney, Holland America, MSC, Viking) never did.
     bodyParts.push('Hi '+(d.meta&&d.meta.clientFirstName?d.meta.clientFirstName:'there')+',');
     bodyParts.push('');
-    bodyParts.push('Cruise Line: '+d.cruiseLine);
+    if(d.cruiseLine) bodyParts.push('Cruise Line: '+d.cruiseLine);
     if(d.ship) bodyParts.push('Ship: '+d.ship);
     if(d.sailingDate) bodyParts.push('Sailing Date: '+d.sailingDate);
     if(d.gratuities) bodyParts.push('Gratuities: $'+d.gratuities);
     if(d.voyageProtection) bodyParts.push('Voyage Protection: $'+d.voyageProtection);
     bodyParts.push('');
     bodyParts = bodyParts.concat(d.lines);
+    var t = travelItemsTotal(d.items);
+    if(t.count>1) bodyParts.push((d.cruisePriced?'Total (excluding cruise): ':'Total: ')+fmtMoney(t.total));
     if(d.notes){bodyParts.push('');bodyParts.push(d.notes);}
     return bodyParts;
   }
@@ -7001,19 +7333,33 @@ function openEmailQuoteModal(){
   // QUOTE_TEMPLATE_LINES, the plain fallback box for everything else — set
   // up to stack cleanly into one combined email when there's more than one.
   function quoteOptionBodyHtml(d){
-    return QUOTE_TEMPLATE_LINES.indexOf(d.cruiseLine)!==-1
+    return usesStyledBody(d)
       ? buildTemplateBodyHtml(d)
-      : plainQuoteBodyHtml(plainQuoteBodyParts(d), d.cruiseLine+' Quote');
+      : plainQuoteBodyHtml(plainQuoteBodyParts(d), quoteTitle(d));
   }
 
+  var TEMPLATE_OPTS_BY_LINE = {
+    'Virgin Voyages':virginVoyagesQuoteOpts, 'Princess':princessQuoteOpts, 'Royal Caribbean':royalCaribbeanQuoteOpts,
+    'Ritz Carlton Yachts':ritzCarltonYachtsQuoteOpts, 'Seabourn':seabournQuoteOpts, 'Explora Journeys':exploraJourneysQuoteOpts, 'Windstar':windstarQuoteOpts
+  };
+  // The cruise's own styled template (or genericCruiseQuoteOpts for a line
+  // without one) when the cruise grid has prices, then every travel item
+  // below it with their combined total. With no priced cruise it's a
+  // travel-items-only quote in the same branded shell.
   function buildTemplateBodyHtml(d){
-    if(d.cruiseLine==='Virgin Voyages') return virginVoyagesQuoteBodyHtml(d.templateEntries, d.meta);
-    if(d.cruiseLine==='Royal Caribbean') return royalCaribbeanQuoteBodyHtml(d.templateEntries, d.meta);
-    if(d.cruiseLine==='Ritz Carlton Yachts') return ritzCarltonYachtsQuoteBodyHtml(d.templateEntries, d.meta);
-    if(d.cruiseLine==='Seabourn') return seabournQuoteBodyHtml(d.templateEntries, d.meta);
-    if(d.cruiseLine==='Explora Journeys') return exploraJourneysQuoteBodyHtml(d.templateEntries, d.meta);
-    if(d.cruiseLine==='Windstar') return windstarQuoteBodyHtml(d.templateEntries, d.meta);
-    return princessQuoteBodyHtml(d.templateEntries, d.meta);
+    var opts;
+    if(d.cruiseLine && d.cruisePriced){
+      opts = TEMPLATE_OPTS_BY_LINE[d.cruiseLine]
+        ? TEMPLATE_OPTS_BY_LINE[d.cruiseLine](d.templateEntries, d.meta)
+        : genericCruiseQuoteOpts(d.cruiseLine, d.cruiseCols, d.genericEntries, d.meta);
+    }else{
+      opts = Object.assign({
+        docTitle:'Travel Quote - Miles Man',
+        introText:'Thanks for reaching out! I\'ve put together a quote based on what you\'re looking for. Here are the details:'
+      }, d.meta);
+    }
+    opts.travelItemsHtml = travelItemsHtml(d.items, 'quote', d.cruisePriced?'Total (excluding cruise)':'Total', 2);
+    return quoteEmailBodyHtml(opts);
   }
 
   // Only set (and only rendered — see quoteEmailBodyHtml's opts.optionLabel)
@@ -7048,7 +7394,7 @@ function openEmailQuoteModal(){
     var noteBody = [];
     all.forEach(function(d,i){
       if(all.length>1) noteBody.push('— Option '+(i+1)+(d.sailingDate?': '+d.sailingDate:'')+' —');
-      noteBody.push('Cruise Line: '+d.cruiseLine);
+      if(d.cruiseLine) noteBody.push('Cruise Line: '+d.cruiseLine);
       if(d.ship) noteBody.push('Ship: '+d.ship);
       if(d.sailingDate) noteBody.push('Sailing Date: '+d.sailingDate);
       if(d.gratuities) noteBody.push('Gratuities: $'+d.gratuities);
@@ -7070,11 +7416,12 @@ function openEmailQuoteModal(){
     if(!all) return;
     var multi = all.length>1;
     labelOptionsIfMultiple(all);
-    var sameCruiseLine = all.every(function(d){ return d.cruiseLine===all[0].cruiseLine; });
+    var sameTitle = all.every(function(d){ return quoteTitle(d)===quoteTitle(all[0]); });
+    var allCruise = all.every(function(d){ return d.cruiseLine && !d.items.length; });
     var subject = multi
-      ? (sameCruiseLine?all[0].cruiseLine+' Cruise Quote':'Cruise Quote')+' — '+all.length+' Date Options'
-      : all[0].cruiseLine+' Cruise Quote'+(all[0].ship?' - '+all[0].ship:'');
-    var isSingleTemplateLine = !multi && QUOTE_TEMPLATE_LINES.indexOf(all[0].cruiseLine)!==-1;
+      ? (sameTitle?quoteTitle(all[0]):(allCruise?'Cruise Quote':'Travel Quote'))+' — '+all.length+' Date Options'
+      : quoteTitle(all[0])+(all[0].ship?' - '+all[0].ship:'');
+    var isSingleTemplateLine = !multi && usesStyledBody(all[0]);
 
     if(multi || isSingleTemplateLine){
       var bodyHtml = all.map(quoteOptionBodyHtml).join('');
@@ -7709,6 +8056,229 @@ function openEmailItineraryModal(){
 
     var ts = tsNow();
     var note = {ts:ts, text:'Itinerary: '+subject, noteType:'Email Sent'};
+    db.clients = db.clients.map(function(c){
+      if(c.id!==d.client.id) return c;
+      var notesLog = Array.isArray(c.notesLog)?c.notesLog.concat([note]):[note];
+      return Object.assign({},c,{notesLog:notesLog});
+    });
+    saveDB(); render();
+  });
+}
+// ── Trip Confirmation ────────────────────────────────────────────────────
+// A styled "your trip is confirmed" email: one box per travel item (the
+// shared TRAVEL_ITEM_TYPES builder, same categories/picklists as Booked
+// Trip Details) with its confirmation number and price, then a total of
+// every item price. Picking a trip prefills the items from its Booked Trip
+// Details (tripToTravelItems) — everything stays editable before sending.
+function tripConfirmationBodyHtml(opts){
+  var ff = "font-family:'Times New Roman',Times,serif; ";
+  var datesLine = quoteDateRange(opts.departDate, opts.returnDate);
+  var overviewRows = itineraryDetailRow('Trip', opts.tripName) +
+    itineraryDetailRow('Destination', opts.destination) +
+    itineraryDetailRow('Travel Dates', datesLine) +
+    itineraryDetailRow('Travelers', opts.travelers);
+  return ''+
+'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f5f7; padding:30px 0;">'+
+'<tr><td align="center">'+
+'<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff; border-radius:8px; overflow:hidden;">'+
+'<tr><td style="background-color:#ffffff; padding:20px 32px; border-bottom:3px solid #1a1aff;">'+
+'<img src="'+MILES_MAN_LOGO_DATA_URI+'" width="117" height="72" alt="Miles Man" style="display:block; width:117px; height:72px;">'+
+'</td></tr>'+
+'<tr><td style="padding:32px 32px 8px 32px;">'+
+'<p style="'+ff+'font-size:14px; color:#111111; margin:0 0 16px 0;">Hi '+escHtml(opts.clientFirstName||'there')+',</p>'+
+'<p style="'+ff+'font-size:14px; color:#333333; line-height:1.5; margin:0 0 8px 0;">Great news — your trip is confirmed! Here\'s a summary of your booking details. Please review everything carefully and let me know if you have any questions.</p>'+
+'</td></tr>'+
+itineraryDetailBox('Trip Overview', overviewRows)+
+travelItemsHtml(opts.items, 'confirm', 'Total Trip Price', 1)+
+(opts.notes?(
+'<tr><td style="padding:0 32px;">'+
+'<p style="'+ff+'font-size:14px; color:#333333; line-height:1.5; margin:0 0 16px 0;"><strong>Additional Notes:</strong><br>'+escHtml(opts.notes).replace(/\n/g,'<br>')+'</p>'+
+'</td></tr>'
+):'')+
+'<tr><td style="padding:0 32px;">'+
+'<p style="'+ff+'font-size:14px; color:#333333; line-height:1.5; margin:0 0 16px 0;">As always, I\'m here if you need anything before, during, or after your trip.</p>'+
+'<p style="'+ff+'font-size:14px; color:#333333; line-height:1.5; margin:0 0 16px 0;">Safe travels!</p>'+
+'</td></tr>'+
+'<tr><td style="padding:0 32px 32px 32px; border-top:1px solid #eeeeee;">'+
+'<p style="'+ff+'font-size:14px; color:#333333; line-height:1.5; margin:20px 0 0 0;">Best,<br>Eric</p>'+
+'</td></tr>'+
+'</table>'+
+'</td></tr>'+
+'</table>';
+}
+// trip.booked (see saveTrip()/§2 booked) → TRAVEL_ITEM_TYPES items. Reads
+// the same old single-object shapes tripToItineraryOpts() tolerates, and
+// skips any category entry with nothing filled in.
+function tripToTravelItems(trip){
+  var b = trip.booked || {};
+  function asArr(x){ return Array.isArray(x) ? x : (x && typeof x==='object' && Object.keys(x).length ? [x] : []); }
+  function addDays(d, n){
+    if(!d || !n) return '';
+    var dt = new Date(d+'T12:00:00'); if(isNaN(dt)) return '';
+    dt.setDate(dt.getDate()+Number(n));
+    return dt.toISOString().slice(0,10);
+  }
+  var items = [];
+  function push(type, v){
+    var clean = {};
+    Object.keys(v).forEach(function(k){ if(v[k]!==undefined && v[k]!==null && String(v[k]).trim()!=='') clean[k] = String(v[k]); });
+    if(Object.keys(clean).length) items.push({type:type, values:clean});
+  }
+  var air = b.airline || {};
+  (Array.isArray(air.records) ? air.records : []).forEach(function(r){
+    var segs = Array.isArray(r.segments) ? r.segments : [];
+    var first = segs[0] || {}, last = segs[segs.length-1] || {};
+    push('Airline', {airline:first.airline, flightNumber:segs.map(function(s){return s.flightNumber;}).filter(Boolean).join(' / '),
+      origin:first.origin, destination:first.destination, departDate:first.departDate,
+      returnDate:segs.length>1 ? last.departDate : '', classOfService:first.classOfService, nonStop:r.nonStop,
+      notes:r.notes, confirmationNumber:r.recordNumber, price:r.price});
+  });
+  asArr(b.hotel).forEach(function(h){
+    push('Hotel', {hotelBrand:h.hotelBrand, checkIn:h.checkInDate, checkOut:addDays(h.checkInDate, h.nights), notes:h.notes, confirmationNumber:h.confirmationNumber, price:h.price});
+  });
+  var cru = b.cruise || {};
+  if(cru.cruiseLine || cru.confirmationNumber){
+    var cabins = Array.isArray(cru.cabins) ? cru.cabins : (cru.cabinType ? [{cabinType:cru.cabinType}] : []);
+    push('Cruise', {cruiseLine:cru.cruiseLine, ship:cru.shipName, sailingDate:cru.sailingDate, returnDate:cru.returnDate,
+      cabinType:cabins[0] && cabins[0].cabinType, departurePort:cru.departurePort,
+      notes:[cabins.length>1 ? cabins.length+' cabins: '+cabins.map(function(c){return c.cabinType;}).filter(Boolean).join(', ') : '', cru.notes].filter(Boolean).join(' — '),
+      confirmationNumber:cru.confirmationNumber, price:cru.price});
+  }
+  var car = b.carRental || {};
+  if(car.company || car.confirmationNumber){
+    push('Car Rental', {company:car.company, carSize:car.carSize, pickupLocation:car.pickupLocation, pickupDate:car.pickupDate, dropoffDate:car.dropoffDate, notes:car.notes, confirmationNumber:car.confirmationNumber, price:car.price});
+  }
+  (Array.isArray(b.transfers) ? b.transfers : []).forEach(function(t){
+    push('Transfer', {origin:t.origin, destination:t.destination, pickupDate:t.pickupDate, carType:t.carType, provider:t.provider, notes:t.notes, confirmationNumber:t.confirmationNumber, price:t.price});
+  });
+  asArr(b.tours).forEach(function(t){
+    push('Tour', {vendor:t.vendor, description:t.description, confirmationNumber:t.confirmationNumber, price:t.price});
+  });
+  asArr(b.themePark).forEach(function(p){
+    push('Theme Park', {park:p.park, ticketType:p.ticketType, notes:p.notes, confirmationNumber:p.confirmationNumber, price:p.price});
+  });
+  [['Train', b.train], ['Bus', b.bus]].forEach(function(pair){
+    var x = pair[1] || {};
+    if(x.departureCity || x.arrivalCity || x.confirmationNumber){
+      push(pair[0], {departureCity:x.departureCity, arrivalCity:x.arrivalCity, departureDate:x.departureDate, returnDate:x.returnDate, classOfService:x.classOfService, notes:x.notes, confirmationNumber:x.confirmationNumber, price:x.price});
+    }
+  });
+  return items;
+}
+function openTripConfirmationModal(){
+  var sortedClients = [...db.clients].sort(function(a,b){return (a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase());});
+  var clientOpts = sortedClients.map(function(c){return '<option value="'+c.id+'">'+c.name+'</option>';}).join('');
+
+  $('modal').innerHTML =
+    '<div class="modal-hdr"><div class="modal-title">Trip Confirmation</div><button class="close-btn" id="modal-close">&#x2715;</button></div>'+
+    '<div class="fg">'+
+      fld('Client',searchableSelectWrap('<select id="tc-client"><option value="">-- Select client --</option>'+clientOpts+'</select>','Search clients...'),true)+
+      fld('Trip <span class="hint" style="text-transform:none;font-weight:400">(optional — fills in the items below from its Booked Trip Details)</span>',searchableSelectWrap('<select id="tc-trip"><option value="">-- Select client first --</option></select>','Search trips...'),true)+
+      fld('Trip Name',inp('tc-trip-name','text','','e.g. Smith Family Alaska Cruise'))+
+      fld('Destination',inp('tc-destination','text',''))+
+      fld('Depart Date',inp('tc-depart','date',''))+
+      fld('Return Date',inp('tc-return','date',''))+
+      fld('Travelers',inp('tc-travelers','text','','e.g. John & Jane Smith'),true)+
+      '<div class="field full"><label>Travel Items <span class="hint" style="text-transform:none;font-weight:400">(each price is added into the Total Trip Price)</span></label>'+
+        '<div id="tc-items"></div>'+
+        '<div id="tc-items-add">'+travelItemAddButtonsHtml('confirm')+'</div>'+
+        '<div id="tc-total" style="margin-top:8px;font-size:13px;font-weight:600"></div>'+
+      '</div>'+
+      '<div class="field full"><label>Additional Notes</label><textarea id="tc-notes" rows="3" placeholder="Optional extra details to include in the email"></textarea></div>'+
+      '<div class="field full" id="tc-preview-wrap" style="display:none">'+
+        '<label>Preview</label>'+
+        '<iframe id="tc-preview-frame" style="width:100%;height:420px;border:1px solid #e5e7eb;border-radius:8px;background:#fff"></iframe>'+
+      '</div>'+
+    '</div>'+
+    '<div class="form-actions form-actions-sticky"><button class="cancel-btn" id="modal-cancel">Cancel</button><button class="cancel-btn" id="tc-preview">Preview</button><button class="save-btn" id="tc-send">Email Confirmation</button></div>';
+
+  $('overlay').classList.add('open');
+  $('modal-close').addEventListener('click', closeModal);
+  $('modal-cancel').addEventListener('click', closeModal);
+
+  var itemsEl = document.getElementById('tc-items');
+  function refreshTotal(){
+    var t = travelItemsTotal(readTravelItems(itemsEl));
+    document.getElementById('tc-total').textContent = t.count ? 'Total Trip Price: '+fmtMoney(t.total) : '';
+    document.getElementById('tc-preview-wrap').style.display = 'none';
+  }
+  bindTravelItemBuilder(document.getElementById('tc-items-add'), itemsEl, 'confirm', refreshTotal);
+  itemsEl.addEventListener('input', refreshTotal);
+
+  document.getElementById('tc-client').addEventListener('change', function(){
+    var clientId = this.value;
+    var tripSel = document.getElementById('tc-trip');
+    var clientTrips = clientId ? db.trips.filter(function(t){return t.clientId===clientId || (t.clientIds||[]).includes(clientId);})
+      .sort(function(a,b){return (b.departDate||'').localeCompare(a.departDate||'');}) : [];
+    tripSel.innerHTML = !clientId ? '<option value="">-- Select client first --</option>'
+      : clientTrips.length
+        ? '<option value="">-- No trip (enter items by hand) --</option>'+clientTrips.map(function(t){
+            var label = (t.destination||'Trip')+(t.departDate?' — '+fmtDate(t.departDate):'');
+            return '<option value="'+t.id+'">'+escHtml(label)+'</option>';
+          }).join('')
+        : '<option value="">-- No trips for this client --</option>';
+    resetSearchableSelectInput('tc-trip');
+  });
+  document.getElementById('tc-trip').addEventListener('change', function(){
+    var trip = db.trips.find(function(t){return t.id===this.value;}, this);
+    if(!trip) return;
+    var items = tripToTravelItems(trip);
+    if(itemsEl.querySelector('.ti-card') && !confirm('Replace the travel items below with this trip\'s Booked Trip Details?')) return;
+    itemsEl.innerHTML = items.map(function(it){ return travelItemCardHtml(it.type, 'confirm', it.values); }).join('');
+    document.getElementById('tc-trip-name').value = (trip.booked&&trip.booked.tripName)||'';
+    document.getElementById('tc-destination').value = trip.destination||'';
+    document.getElementById('tc-depart').value = trip.departDate||'';
+    document.getElementById('tc-return').value = trip.returnDate||'';
+    var names = [trip.clientId].concat(trip.clientIds||[]).filter(Boolean).map(function(cid){
+      var c = db.clients.find(function(x){return x.id===cid;});
+      return c ? (toFirstLast(c.name)||c.name||'') : '';
+    }).filter(Boolean);
+    document.getElementById('tc-travelers').value = joinNames(names);
+    refreshTotal();
+    if(!items.length) toast('This trip has no Booked Trip Details yet — add items below','info');
+  });
+
+  function collectConfirmationData(){
+    var clientId = gv('tc-client');
+    if(!clientId){toast('Select a client','err');return null;}
+    var client = db.clients.find(function(c){return c.id===clientId;});
+    var items = readTravelItems(itemsEl);
+    if(!items.length){toast('Add at least one travel item','err');return null;}
+    return {client:client, items:items, opts:{
+      clientFirstName:getFirstName(client.name),
+      tripName:gv('tc-trip-name'), destination:gv('tc-destination'),
+      departDate:gv('tc-depart'), returnDate:gv('tc-return'),
+      travelers:gv('tc-travelers'), items:items, notes:gv('tc-notes')
+    }};
+  }
+  document.getElementById('tc-preview').addEventListener('click', function(){
+    var d = collectConfirmationData();
+    if(!d) return;
+    var wrap = document.getElementById('tc-preview-wrap');
+    wrap.style.display = 'block';
+    document.getElementById('tc-preview-frame').srcdoc = wrapEmailShell(tripConfirmationBodyHtml(d.opts), 'Trip Confirmation Preview');
+    wrap.scrollIntoView({behavior:'smooth', block:'nearest'});
+  });
+  document.getElementById('tc-send').addEventListener('click', function(){
+    var d = collectConfirmationData();
+    if(!d) return;
+    var subject = 'Your Trip is Confirmed'+(d.opts.tripName||d.opts.destination?' — '+(d.opts.tripName||d.opts.destination):'')+' — Miles Man Travel';
+    var bodyHtml = tripConfirmationBodyHtml(d.opts);
+    var copied = copyHtmlToClipboard(bodyHtml);
+    window.location.href = 'mailto:'+(d.client.email?mailtoAddr(d.client.email):'')+'?subject='+encodeURIComponent(subject);
+    if(copied){
+      toast('Confirmation copied — paste into the email body in Outlook (Ctrl+V) for '+d.client.name,'ok');
+    }else{
+      toast('Could not copy the confirmation automatically — click Preview, then select all (Ctrl+A) and copy (Ctrl+C) from there to paste into Outlook','err');
+    }
+    // A booking recap like the itinerary, so its PDF goes in the same
+    // "Miles Man Itineraries" Drive folder rather than with the quotes.
+    saveItineraryPdfToDrive(d.client, {destination:d.opts.tripName||d.opts.destination||'Trip Confirmation', departDate:d.opts.departDate}, bodyHtml, subject);
+
+    var t = travelItemsTotal(d.items);
+    var noteText = 'Trip Confirmation: '+subject+'\n'+d.items.map(function(it){ return travelItemTextLine(it, 'confirm'); }).join('\n')+
+      (t.count?'\nTotal Trip Price: '+fmtMoney(t.total):'');
+    var note = {ts:tsNow(), text:noteText, noteType:'Email Sent'};
     db.clients = db.clients.map(function(c){
       if(c.id!==d.client.id) return c;
       var notesLog = Array.isArray(c.notesLog)?c.notesLog.concat([note]):[note];
@@ -11365,13 +11935,10 @@ var TEMPLATES = [
     subject:'Following Up \u2014 Miles Man Travel',
     body:"Hi {{firstName}},\n\nI wanted to follow up on our recent conversation and see if you have any questions or if there's anything I can help you with.\n\nI'm always happy to hop on a quick call to discuss your travel goals and how we can put your points to work.\n\nLooking forward to hearing from you!\n\nBest,\nEric"
   },
-  {
-    id:'tripconfirm',
-    name:'Trip Confirmation',
-    description:'Confirm booking details with client',
-    subject:'Your Trip is Confirmed \u2014 Miles Man Travel',
-    body:"Hi {{firstName}},\n\nGreat news \u2014 your trip is confirmed! Here's a summary of your booking details. Please review everything carefully and let me know if you have any questions.\n\nAs always, I'm here if you need anything before, during, or after your trip.\n\nSafe travels!\n\nBest,\nEric"
-  },
+  // Opens its own modal (openTripConfirmationModal) rather than the plain
+  // mail-merge flow: every travel item with its confirmation # and price,
+  // plus the trip total, in a styled email.
+  {id:'tripconfirm', name:'Trip Confirmation', description:'Confirm booking details with client — every travel item, its price, and the trip total', opensModal:openTripConfirmationModal},
   {
     id:'thankyou',
     name:'Thank You & Referral',
@@ -11409,7 +11976,7 @@ var TEMPLATES = [
   // modal with its own client/trip picker), but they render as the same
   // template-card so the Email page shows one consistent list.
   {id:'mass-email', name:'Email Clients', description:'Send a one-off email to multiple clients at once', opensModal:openMassEmailModal},
-  {id:'email-quote', name:'Email Quote', description:'Build a styled cruise pricing quote for a client', opensModal:openEmailQuoteModal},
+  {id:'email-quote', name:'Email Quote', description:'Build a styled travel quote for a client — cruise, air, hotel, car, tours and more', opensModal:openEmailQuoteModal},
   {id:'email-itinerary', name:'Email Itinerary', description:'Generate a full itinerary recap from a booked trip', opensModal:openEmailItineraryModal},
   // Community Contacts (db.communities[].contacts) aren't db.clients records,
   // so they can't run through the shared Select Client(s)/fillTemplate() flow
