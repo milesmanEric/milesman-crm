@@ -950,7 +950,7 @@ const CANVA_AUTH_SERVER = 'https://milesman-auth.vercel.app';
 const BACKUP_FILENAME  = 'milesman-crm-backup.json';
 
 const AIRLINES = ['American','United','Delta','Southwest','JetBlue','Qatar Airways','ANA','Emirates','Lufthansa','British Airways','Air France','Virgin Atlantic','Qantas','Etihad','JAL','Air Canada','Frontier','Alaska/Hawaiian Air'];
-const HOTELS   = ['Marriott','Disney','Hilton','Hyatt','Accor','IHG','Wyndham','Four Seasons','Ritz-Carlton','W Hotels','Kimpton','Conrad','Universal'];
+const HOTELS   = ['Marriott','Disney','Hilton','Hyatt','Accor','IHG','Wyndham','Four Seasons','Ritz-Carlton','W Hotels','Kimpton','Conrad','Universal','Riu'];
 // Curated (not exhaustive) flagship/major properties for each Hotel brand —
 // used to seed each matching Supplier record's own editable `properties`
 // list (see the one-time seed in loadDB()) and, from there, to populate the
@@ -981,7 +981,10 @@ const HOTEL_PROPERTY_SEEDS = {
   // at Universal Orlando Resort. Stella Nova/Terra Luna opened alongside
   // Epic Universe in 2025 — newer additions, not independently confirmed
   // the way the long-standing properties above them are.
-  'Universal': ["Loews Portofino Bay Hotel","Hard Rock Hotel at Universal Orlando","Loews Royal Pacific Resort","Loews Sapphire Falls Resort","Universal's Aventura Hotel","Universal's Cabana Bay Beach Resort","Universal's Endless Summer Resort – Surfside Inn and Suites","Universal's Endless Summer Resort – Dockside Inn and Suites","Universal Stella Nova Resort","Universal Terra Luna Resort"]
+  'Universal': ["Loews Portofino Bay Hotel","Hard Rock Hotel at Universal Orlando","Loews Royal Pacific Resort","Loews Sapphire Falls Resort","Universal's Aventura Hotel","Universal's Cabana Bay Beach Resort","Universal's Endless Summer Resort – Surfside Inn and Suites","Universal's Endless Summer Resort – Dockside Inn and Suites","Universal Stella Nova Resort","Universal Terra Luna Resort"],
+  // Every hotel listed on riu.com/en/hotels (Sep 2026), "Hotel " prefix
+  // dropped to match how the properties are usually referred to.
+  'Riu': ["Riu Arecas", "Riu Atoll", "Riu Bambu", "Riu Baobab", "Riu Bravo", "Riu Buenavista", "Riu Cabo Verde", "Riu Cancun", "Riu Caribe", "Riu Chiclana", "Riu Concordia", "Riu Costa del Sol", "Riu Dubai", "Riu Dunamar", "Riu Emerald Bay", "Riu Festival", "Riu Flamingos", "Riu Funana", "Riu Garoe", "Riu Gran Canaria", "Riu Guanacaste", "Riu Jambo", "Riu Karamboa", "Riu Latino", "Riu Lupita", "Riu Madeira", "Riu Monica", "Riu Montego Bay", "Riu Negril", "Riu Ocho Rios", "Riu Oliva Beach Resort", "Riu Palace Antillas", "Riu Palace Aquarelle", "Riu Palace Aruba", "Riu Palace Baja California", "Riu Palace Bavaro", "Riu Palace Boavista", "Riu Palace Cabo San Lucas", "Riu Palace Calypso", "Riu Palace Costa Mujeres", "Riu Palace Costa Rica", "Riu Palace Jamaica", "Riu Palace Jandia", "Riu Palace Kukulkan", "Riu Palace La Mola", "Riu Palace Las Americas", "Riu Palace Macao", "Riu Palace Maldivas", "Riu Palace Maspalomas", "Riu Palace Mauritius", "Riu Palace Meloneras", "Riu Palace Mexico", "Riu Palace Nautilus", "Riu Palace Oasis", "Riu Palace Pacifico", "Riu Palace Palmeras", "Riu Palace Paradise Island", "Riu Palace Peninsula", "Riu Palace Phuket", "Riu Palace Punta Cana", "Riu Palace Quintana Roo", "Riu Palace Riviera Maya", "Riu Palace Santa Maria", "Riu Palace Swahili", "Riu Palace Tenerife", "Riu Palace Tikida Agadir", "Riu Palace Tikida Taghazout", "Riu Palace Tres Islas", "Riu Palace Tropical Bay", "Riu Palace Zanzibar", "Riu Papayas", "Riu Paraiso Lanzarote", "Riu Playa Blanca", "Riu Playa Park", "Riu Playacar", "Riu Plaza Berlin", "Riu Plaza Chicago", "Riu Plaza EspaÃƒÂ±a", "Riu Plaza Fisherman's Wharf", "Riu Plaza Guadalajara", "Riu Plaza London The Westminster", "Riu Plaza London Victoria", "Riu Plaza Manhattan Times Square", "Riu Plaza Miami Beach", "Riu Plaza New York Times Square", "Riu Plaza Panama", "Riu Plaza The Gresham Dublin", "Riu Plaza Toronto", "Riu Reggae", "Riu Republica", "Riu San Francisco", "Riu Santa Fe", "Riu Sri Lanka", "Riu Tequila", "Riu Tikida Beach", "Riu Tikida Dunas", "Riu Tikida Garden", "Riu Tikida Palmeraie", "Riu Touareg", "Riu Turquoise", "Riu Vallarta", "Riu Ventura", "Riu Vistamar", "Riu Yucatan"]
 };
 const CAR_RENTALS = ['Hertz','Avis','Enterprise','National','Budget','Alamo','Sixt','Europcar','Thrifty','Dollar'];
 const CREDIT_CARDS = ['Chase Sapphire Preferred','Chase Sapphire Reserve','Chase Ink Business Preferred','Amex Platinum','Amex Gold','Amex Business Platinum','Amex Business Gold','Capital One Venture X','Citi Premier','Citi Prestige','Bilt Mastercard'];
@@ -2438,6 +2441,37 @@ async function loadDB(){
       db.vendors.push({id:newId('V',db.vendors), name:'Universal', type:'Supplier', category:'Hotel', notesLog:[], properties:universalProps});
       saveDB();
       console.log('[CRM] Added Universal as a Hotel supplier with '+universalProps.length+' properties');
+    }
+    // One-time add: Riu (RIU Hotels & Resorts) as a Hotel supplier with its
+    // properties — same pattern as Accor/Disney/Universal above (safe to
+    // run repeatedly).
+    if(!db.vendors.some(function(v){return v.name==='Riu';})){
+      var riuProps = (HOTEL_PROPERTY_SEEDS['Riu']||[]).map(function(name,i){ return {id:'HP'+(i+1), name:name}; });
+      db.vendors.push({id:newId('V',db.vendors), name:'Riu', type:'Supplier', category:'Hotel', notesLog:[], properties:riuProps});
+      saveDB();
+      console.log('[CRM] Added Riu as a Hotel supplier with '+riuProps.length+' properties');
+    }
+    // One-time add: the Riu consumer + RIU Pro (travel agent) starter
+    // bookmarks were added to DEFAULT_BOOKMARKS after most databases had
+    // already been seeded, so they'd only ever arrive via a manual "+ Load
+    // Starter Bookmarks". Adds whichever is missing (matched by name,
+    // category and audience, like seedDefaultBookmarks), once per device —
+    // the flag keeps a deliberately deleted one from coming back. Skipped
+    // for an empty bookmark list: autoSeedDefaultBookmarksOnce() only seeds
+    // an empty list, and the full starter pack it adds includes Riu anyway.
+    if(!localStorage.getItem('mm_riu_bookmarks_added') && db.bookmarks.length){
+      var riuBookmarksAdded=0;
+      DEFAULT_BOOKMARKS.filter(function(b){ return /^Riu Hotels/.test(b.name); }).forEach(function(b){
+        var exists = db.bookmarks.some(function(x){ return x.name===b.name && x.category===b.category && (x.audience||'Consumer')===(b.audience||'Consumer'); });
+        if(exists) return;
+        db.bookmarks.push(Object.assign({id:newId('BM', db.bookmarks), notes:''}, b));
+        riuBookmarksAdded++;
+      });
+      localStorage.setItem('mm_riu_bookmarks_added','1');
+      if(riuBookmarksAdded>0){
+        saveDB();
+        console.log('[CRM] Added '+riuBookmarksAdded+' Riu starter bookmark(s)');
+      }
     }
     // One-time backfill: "Fairmont Vancouver Pacific Rim" was missing from
     // the initial Accor research pass — appends it to any Accor supplier
@@ -6048,7 +6082,38 @@ function openMassEmailModal(){
     toast('Opening Outlook with '+selected.length+' client'+(selected.length!==1?'s':'')+' in BCC','ok');
   });
 }
-function quoteTableHtml(cruiseLine){
+// Guests-per-cabin a cruise quote is priced for (the "Price For"
+// checkboxes in Email Quote's Cruise card) — every cabin row is repeated
+// once per selected count. Exactly [2] (plain double occupancy, the only
+// option before this existed) leaves row labels untouched; anything else
+// suffixes the cabin with "(N guests)". The suffix goes on the cabin part,
+// before a Virgin fare tier, so "Sea Terrace (3 guests) — Basic" still
+// splits into cabin / fare type the way virginVoyagesQuoteOpts expects.
+const QUOTE_OCCUPANCIES = [1,2,3,4];
+function quoteRowWithOcc(label, occ, occs){
+  if(occs.length===1 && occs[0]===2) return label;
+  var parts = label.split(' — ');
+  parts[0] += ' ('+occ+' guest'+(occ===1?'':'s')+')';
+  return parts.join(' — ');
+}
+function quoteRowLabelsFor(cfg, occs){
+  var out = [];
+  quoteRowLabels(cfg).forEach(function(l){ occs.forEach(function(o){ out.push(quoteRowWithOcc(l, o, occs)); }); });
+  return out;
+}
+// "Explorer of the Seas · Mar 3, 2027 – Mar 10, 2027 (7 nights)" — heads
+// each sailing's pricing table (and its lines in the plain body/note).
+function quoteSailingHeading(sl){
+  var nights = computeNights(sl.sailDate, sl.returnDate);
+  var dates = quoteDateRange(sl.sailDate, sl.returnDate) + (nights?' ('+nights+' nights)':'');
+  return [sl.ship, dates].filter(Boolean).join(' · ') || 'Ship & dates TBD';
+}
+// Each cell carries its base cabin label and guest count (data-base/
+// data-occ) as well as the displayed row label (data-cabin), so ticking a
+// different set of guest counts can rebuild the grid and put already-typed
+// prices back in the right cells even though their row labels changed.
+function quoteTableHtml(cruiseLine, occs){
+  occs = occs || [2];
   var cfg = getQuoteConfig(cruiseLine);
   var cols = cfg.priceCols.concat(cfg.insuranceCols).concat(cfg.addonCols);
   var structure = quoteTableStructure(cfg);
@@ -6058,10 +6123,13 @@ function quoteTableHtml(cruiseLine){
     if(entry.kind==='group'){
       return '<tr><td colspan="'+(cols.length+1)+'" style="padding:10px 8px 4px;font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.03em;color:#7c3aed;border-top:1px solid #e5e7eb">'+entry.label+'</td></tr>';
     }
-    var cellsHtml = cols.map(function(c){
-      return '<td style="padding:4px 6px"><input type="text" class="quote-cell" data-cabin="'+entry.label+'" data-col="'+c+'" placeholder="$0" style="width:100px;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;font-family:inherit"></td>';
+    return occs.map(function(occ){
+      var rowLabel = quoteRowWithOcc(entry.label, occ, occs);
+      var cellsHtml = cols.map(function(c){
+        return '<td style="padding:4px 6px"><input type="text" class="quote-cell" data-cabin="'+escHtml(rowLabel)+'" data-base="'+escHtml(entry.label)+'" data-occ="'+occ+'" data-col="'+c+'" placeholder="$0" style="width:100px;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;font-family:inherit"></td>';
+      }).join('');
+      return '<tr><td style="padding:6px 8px;font-weight:600;font-size:13px;white-space:nowrap">'+escHtml(rowLabel)+'</td>'+cellsHtml+'</tr>';
     }).join('');
-    return '<tr><td style="padding:6px 8px;font-weight:600;font-size:13px;white-space:nowrap">'+entry.label+'</td>'+cellsHtml+'</tr>';
   }).join('');
   return '<table style="width:100%;border-collapse:collapse"><thead><tr>'+headerHtml+'</tr></thead><tbody>'+rowsHtml+'</tbody></table>';
 }
@@ -6118,10 +6186,13 @@ function copyHtmlToClipboard(html){
 function quoteEmailBodyHtml(opts){
   var sailDatesLine = (opts.departDate?fmtDate(opts.departDate):'') + (opts.departDate&&opts.returnDate?' – ':'') + (opts.returnDate?fmtDate(opts.returnDate):'') + (opts.nights?' ('+opts.nights+' nights)':'');
   var isCruise = !!opts.pricingHeaderHtml;
+  // Several sailings (opts.pricingSections): each table is headed with its
+  // own ship and dates, so the details box drops its blank Ship/Sail Dates.
+  var multiSailing = !!(opts.pricingSections && opts.pricingSections.length);
   var detailRows = [
-    (isCruise||opts.ship) ? ['Ship', escHtml(opts.ship||'')] : null,
+    ((isCruise&&!multiSailing)||opts.ship) ? ['Ship', escHtml(opts.ship||'')] : null,
     (isCruise||opts.itinerary) ? [isCruise?'Itinerary':'Destination', escHtml(opts.itinerary||'')] : null,
-    (isCruise||sailDatesLine) ? [isCruise?'Sail Dates':'Travel Dates', sailDatesLine] : null,
+    ((isCruise&&!multiSailing)||sailDatesLine) ? [isCruise?'Sail Dates':'Travel Dates', sailDatesLine] : null,
     (isCruise||opts.guests) ? ['Guests', escHtml(opts.guests||'')] : null
   ].filter(Boolean);
   var detailBoxHtml = detailRows.length ? (
@@ -6172,10 +6243,13 @@ detailBoxHtml+
 '<tr>'+
 '<td style="padding:20px 32px 0 32px;">'+
 '<p style="font-family:\'Times New Roman\',Times,serif; font-size:14px; color:#333333; margin:0 0 10px 0;"><strong>Cabin Options &amp; Pricing:</strong></p>'+
+(multiSailing ? opts.pricingSections : [{headerHtml:opts.pricingHeaderHtml, rowsHtml:opts.pricingRowsHtml}]).map(function(sec, i){
+  return (sec.title ? '<p style="font-family:\'Times New Roman\',Times,serif; font-size:14px; color:#0d0d66; margin:'+(i?'18px':'0')+' 0 6px 0;"><strong>'+escHtml(sec.title)+'</strong></p>' : '')+
 '<table role="presentation" width="536" cellpadding="0" cellspacing="0" style="border:1px solid #dcdfff; border-radius:6px; overflow:hidden; width:536px;">'+
-'<tr style="background-color:#1a1aff;">'+opts.pricingHeaderHtml+'</tr>'+
-opts.pricingRowsHtml+
-'</table>'+
+'<tr style="background-color:#1a1aff;">'+sec.headerHtml+'</tr>'+
+sec.rowsHtml+
+'</table>';
+}).join('')+
 '<p style="font-family:\'Times New Roman\',Times,serif; font-size:14px; color:#777777; margin:8px 0 0 0;">'+opts.pricingCaption+'</p>'+
 '</td>'+
 '</tr>'
@@ -7058,8 +7132,6 @@ function openEmailQuoteModal(){
     '<div class="modal-hdr"><div class="modal-title">Email Quote</div><button class="close-btn" id="modal-close">&#x2715;</button></div>'+
     '<div class="fg">'+
       fld('Client (optional)',searchableSelectWrap('<select id="eq-client"><option value="">-- No client selected --</option>'+clientOpts+'</select>','Search clients...'),true)+
-      fld('Cruise Line <span class="hint" style="text-transform:none;font-weight:400">(optional)</span>','<select id="eq-cruise-line"><option value="">None — no cruise in this quote</option>'+selOpts(CRUISE_LINES,'')+'</select>')+
-      '<div class="field" id="eq-ship-wrap" style="display:none"><label>Ship</label><select id="eq-ship"><option value="">-- Select cruise line first --</option></select></div>'+
       fld('Depart / Sailing Date',inp('eq-sailing-date','date',''))+
       '<div id="eq-template-fields" style="display:none">'+
         fld('Itinerary / Destinations',inp('eq-itinerary','text','','e.g. Eastern Caribbean: Miami, San Juan, St. Thomas'),true)+
@@ -7070,25 +7142,46 @@ function openEmailQuoteModal(){
         fld('Payment Deadline Date',inp('eq-payment-deadline','date',''))+
         fld('Final Payment Date',inp('eq-final-payment','date',''))+
       '</div>'+
-      '<div class="field full" id="eq-pricing-wrap" style="display:none"><label>Cruise Pricing</label>'+
-        '<div id="quote-table-wrap" style="border:1px solid #e5e7eb;border-radius:8px;padding:10px;overflow-x:auto;background:#fafafa">'+
-          '<div style="color:#aaa;font-size:12px">Select a cruise line to build the pricing table</div>'+
+      // Cruise is one choice among the travel items (like Trip Confirmation),
+      // not a default: "+ Cruise" reveals this card (at most one cruise per
+      // quote — its pricing grid is a single set of inputs), Remove hides it
+      // and clears the cruise line.
+      '<div class="field full"><label>Travel <span class="hint" style="text-transform:none;font-weight:400">(add a cruise, flights, hotels, car rentals, transfers, tours, etc. — each priced, totaled in the email)</span></label>'+
+        '<div id="eq-cruise-card" style="display:none;border:1px solid #e5e7eb;border-radius:8px;padding:10px;margin-bottom:8px;background:#fafafa">'+
+          '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'+
+            '<strong style="font-size:13px">Cruise</strong>'+
+            '<button type="button" id="eq-cruise-remove" class="cancel-btn" style="padding:2px 8px">Remove</button>'+
+          '</div>'+
+          '<div class="fg">'+
+            fld('Cruise Line','<select id="eq-cruise-line"><option value="">Select...</option>'+selOpts(CRUISE_LINES,'')+'</select>')+
+            '<div class="field full" id="eq-occ-wrap" style="display:none"><label>Price For <span class="hint" style="text-transform:none;font-weight:400">(guests per cabin — each cabin type gets a price row for every count ticked)</span></label>'+
+              '<div style="display:flex;gap:16px;flex-wrap:wrap">'+
+                QUOTE_OCCUPANCIES.map(function(n){
+                  return '<label style="display:flex;align-items:center;gap:5px;text-transform:none;font-weight:400;font-size:13px;cursor:pointer"><input type="checkbox" class="eq-occ" value="'+n+'"'+(n===2?' checked':'')+' style="width:auto;margin:0"> '+n+' guest'+(n===1?'':'s')+'</label>';
+                }).join('')+
+              '</div>'+
+            '</div>'+
+            // One card per sailing (ship + dates + its own pricing grid) so a
+            // single quote can compare ships and dates side by side.
+            '<div class="field full" id="eq-sailings-wrap" style="display:none"><label>Sailings <span class="hint" style="text-transform:none;font-weight:400">(add one per ship / date to compare — each gets its own pricing table)</span></label>'+
+              '<div id="eq-sailings"></div>'+
+              '<button type="button" id="eq-add-sailing" class="cancel-btn" style="padding:5px 10px">+ Add Sailing</button>'+
+            '</div>'+
+            '<div class="field full" id="eq-gratuities-wrap" style="display:none"><label>Gratuities &amp; Voyage Protection <span class="hint" style="text-transform:none;font-weight:400">(optional — one total for the whole quote, shown as its own line rather than per cabin)</span></label>'+
+              '<div style="display:flex;gap:10px">'+
+                inp('eq-gratuities','text','','Gratuities, e.g. 150')+
+                inp('eq-voyage-protection','text','','Voyage Protection, e.g. 129')+
+              '</div>'+
+            '</div>'+
+          '</div>'+
         '</div>'+
-      '</div>'+
-      '<div class="field full"><label>Other Travel <span class="hint" style="text-transform:none;font-weight:400">(flights, hotels, car rentals, transfers, tours, etc. — each with its own price, totaled in the email)</span></label>'+
         '<div id="eq-items"></div>'+
-        '<div id="eq-items-add">'+travelItemAddButtonsHtml('quote')+'</div>'+
+        '<div id="eq-items-add" style="display:flex;flex-wrap:wrap;gap:6px"><button type="button" id="eq-add-cruise" class="cancel-btn" style="padding:5px 10px">+ Cruise</button>'+travelItemAddButtonsHtml('quote')+'</div>'+
       '</div>'+
       '<div class="field full" id="eq-saved-options" style="display:none"></div>'+
       '<div class="field full">'+
-        '<button type="button" id="eq-add-date" class="cancel-btn" style="padding:7px 14px">+ Add Another Date to This Quote</button>'+
-        '<div style="color:#888;font-size:11px;margin-top:4px">Saves the dates and pricing above as one option in this email, then clears just the dates and prices (the Depart/Return Date, cruise pricing, and each travel item\'s dates and price) so you can enter another date to compare. Everything else (ship, itinerary, travel items, notes, etc.) carries over as a starting point — change anything that should differ for the next date before adding it.</div>'+
-      '</div>'+
-      '<div class="field full" id="eq-gratuities-wrap" style="display:none"><label>Gratuities &amp; Voyage Protection <span class="hint" style="text-transform:none;font-weight:400">(optional — one total for the whole quote, shown as its own line rather than per cabin)</span></label>'+
-        '<div style="display:flex;gap:10px">'+
-          inp('eq-gratuities','text','','Gratuities, e.g. 150')+
-          inp('eq-voyage-protection','text','','Voyage Protection, e.g. 129')+
-        '</div>'+
+        '<button type="button" id="eq-add-date" class="cancel-btn" style="padding:7px 14px">+ Add Another Option to This Quote</button>'+
+        '<div style="color:#888;font-size:11px;margin-top:4px">To compare ships and dates for a cruise, use + Add Sailing in the Cruise section instead. This saves everything above as one complete option in this email (e.g. a cruise package vs. a land trip), then clears just the dates and prices so you can build the next option — everything else carries over as a starting point.</div>'+
       '</div>'+
       '<div class="field full"><label>Additional Notes</label><textarea id="eq-notes" rows="3" placeholder="Optional extra details to include in the email"></textarea></div>'+
       '<div class="field full" id="eq-preview-wrap" style="display:none">'+
@@ -7110,19 +7203,93 @@ function openEmailQuoteModal(){
     var cl = gv('eq-cruise-line');
     var hasItems = !!document.querySelector('#eq-items .ti-card');
     document.getElementById('eq-template-fields').style.display = (!cl || hasItems || QUOTE_TEMPLATE_LINES.indexOf(cl)!==-1) ? 'block' : 'none';
-    document.getElementById('eq-ship-wrap').style.display = cl ? 'block' : 'none';
-    document.getElementById('eq-pricing-wrap').style.display = cl ? 'block' : 'none';
+    document.getElementById('eq-occ-wrap').style.display = cl ? 'block' : 'none';
+    document.getElementById('eq-sailings-wrap').style.display = cl ? 'block' : 'none';
     document.getElementById('eq-preview-wrap').style.display = 'none';
   }
   bindTravelItemBuilder(document.getElementById('eq-items-add'), document.getElementById('eq-items'), 'quote', updateEqFieldVisibility);
+  document.getElementById('eq-add-cruise').addEventListener('click', function(){
+    document.getElementById('eq-cruise-card').style.display = 'block';
+    this.style.display = 'none';
+  });
+  document.getElementById('eq-cruise-remove').addEventListener('click', function(){
+    var cl = document.getElementById('eq-cruise-line');
+    cl.value = '';
+    cl.dispatchEvent(new Event('change'));
+    document.getElementById('eq-cruise-card').style.display = 'none';
+    document.getElementById('eq-add-cruise').style.display = '';
+  });
   updateEqFieldVisibility();
+
+  function selectedOccs(){
+    var occs = Array.from(document.querySelectorAll('.eq-occ:checked')).map(function(el){ return parseInt(el.value,10); });
+    return occs.length ? occs : [2];
+  }
+  function sailingCardHtml(cl){
+    var ships = SHIPS_BY_CRUISE_LINE[cl]||[];
+    return '<div class="eq-sailing" style="border:1px solid #e5e7eb;border-radius:8px;padding:10px;margin-bottom:8px;background:#fff">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'+
+        '<strong class="eq-sailing-title" style="font-size:13px"></strong>'+
+        '<button type="button" class="eq-sailing-remove cancel-btn" style="padding:2px 8px">Remove</button>'+
+      '</div>'+
+      '<div class="fg">'+
+        '<div class="field"><label>Ship</label><select class="eq-sailing-f" data-key="ship"><option value="">-- Select ship --</option>'+selOpts(ships,'')+'</select></div>'+
+        '<div class="field"><label>Sail Date</label><input type="date" class="eq-sailing-f" data-key="sailDate"></div>'+
+        '<div class="field"><label>Return Date</label><input type="date" class="eq-sailing-f" data-key="returnDate"></div>'+
+      '</div>'+
+      '<div class="eq-sailing-grid" style="border:1px solid #e5e7eb;border-radius:8px;padding:10px;overflow-x:auto;background:#fafafa;margin-top:6px">'+quoteTableHtml(cl, selectedOccs())+'</div>'+
+    '</div>';
+  }
+  // "Sailing 1", "Sailing 2"… and no Remove on a lone sailing (removing the
+  // cruise itself is the card's own Remove).
+  function renumberSailings(){
+    var cards = document.querySelectorAll('#eq-sailings .eq-sailing');
+    cards.forEach(function(card, i){
+      card.querySelector('.eq-sailing-title').textContent = 'Sailing '+(i+1);
+      card.querySelector('.eq-sailing-remove').style.display = cards.length>1 ? '' : 'none';
+    });
+  }
+  document.getElementById('eq-add-sailing').addEventListener('click', function(){
+    var cl = gv('eq-cruise-line');
+    if(!cl) return;
+    document.getElementById('eq-sailings').insertAdjacentHTML('beforeend', sailingCardHtml(cl));
+    renumberSailings();
+    document.getElementById('eq-preview-wrap').style.display = 'none';
+  });
+  document.getElementById('eq-sailings').addEventListener('click', function(e){
+    var btn = e.target.closest('.eq-sailing-remove');
+    if(!btn) return;
+    btn.closest('.eq-sailing').remove();
+    renumberSailings();
+    document.getElementById('eq-preview-wrap').style.display = 'none';
+  });
+  // Rebuild every sailing's grid for the new guest counts, carrying typed
+  // prices over by base cabin + guest count (a row label changes when e.g.
+  // "Balcony" becomes "Balcony (2 guests)"). Prices for a count that was
+  // just unticked are dropped along with their rows.
+  document.getElementById('eq-occ-wrap').addEventListener('change', function(){
+    var cl = gv('eq-cruise-line');
+    if(!cl) return;
+    var occs = selectedOccs();
+    document.querySelectorAll('#eq-sailings .eq-sailing').forEach(function(card){
+      var vals = {};
+      card.querySelectorAll('.quote-cell').forEach(function(el){ if(el.value) vals[el.dataset.base+'|'+el.dataset.occ+'|'+el.dataset.col] = el.value; });
+      var grid = card.querySelector('.eq-sailing-grid');
+      grid.innerHTML = quoteTableHtml(cl, occs);
+      grid.querySelectorAll('.quote-cell').forEach(function(el){
+        var v = vals[el.dataset.base+'|'+el.dataset.occ+'|'+el.dataset.col];
+        if(v) el.value = v;
+      });
+    });
+    document.getElementById('eq-preview-wrap').style.display = 'none';
+  });
 
   document.getElementById('eq-cruise-line').addEventListener('change', function(){
     var cl = this.value;
-    var shipSel = document.getElementById('eq-ship');
-    var ships = SHIPS_BY_CRUISE_LINE[cl]||[];
-    shipSel.innerHTML = '<option value="">-- Select ship --</option>'+ships.map(function(s){return '<option value="'+s+'">'+s+'</option>';}).join('');
-    document.getElementById('quote-table-wrap').innerHTML = cl ? quoteTableHtml(cl) : '<div style="color:#aaa;font-size:12px">Select a cruise line to build the pricing table</div>';
+    // Ships and cabin categories are per cruise line, so a new line starts
+    // over with one blank sailing.
+    document.getElementById('eq-sailings').innerHTML = cl ? sailingCardHtml(cl) : '';
+    renumberSailings();
     updateEqFieldVisibility();
     // Virgin Voyages' own pricing grid already has per-cabin Gratuities and
     // Voyage Protection columns (see virginVoyagesQuoteOpts) — unlike every
@@ -7152,8 +7319,7 @@ function openEmailQuoteModal(){
   function collectQuoteData(silentIfEmpty){
     var cruiseLine = gv('eq-cruise-line');
     var items = readTravelItems(document.getElementById('eq-items'));
-    if(!cruiseLine && !items.length){ if(!silentIfEmpty) toast('Select a cruise line or add a travel item (flight, hotel, etc.)','err'); return null; }
-    var ship = cruiseLine ? gv('eq-ship') : '';
+    if(!cruiseLine && !items.length){ if(!silentIfEmpty) toast('Add a cruise or another travel item (flight, hotel, etc.)','err'); return null; }
     var sailingDate = gv('eq-sailing-date');
     var clientId = gv('eq-client');
     var client = clientId ? db.clients.find(function(c){return c.id===clientId;}) : null;
@@ -7161,49 +7327,68 @@ function openEmailQuoteModal(){
 
     var cfg = cruiseLine ? getQuoteConfig(cruiseLine) : null;
     var cols = cfg ? cfg.priceCols.concat(cfg.insuranceCols).concat(cfg.addonCols) : [];
-    var rows = cfg ? quoteRowLabels(cfg) : [];
-    var cellsByKey = {};
-    document.querySelectorAll('.quote-cell').forEach(function(el){
-      cellsByKey[el.dataset.cabin+'|'+el.dataset.col] = el.value.trim();
+    var occupancies = selectedOccs();
+    var rows = cfg ? quoteRowLabelsFor(cfg, occupancies) : [];
+    // One entry per sailing card with anything priced: its ship/dates, the
+    // plain-text lines, the {cabin,fareType/…,price,…} entries the styled
+    // templates expect, and every priced row in the grid's own columns
+    // (genericEntries — only rendered, by genericCruiseQuoteOpts, for a
+    // cruise line without a styled template combined with other items).
+    var sailings = [];
+    document.querySelectorAll('#eq-sailings .eq-sailing').forEach(function(card){
+      var sf = function(k){ return card.querySelector('.eq-sailing-f[data-key="'+k+'"]').value.trim(); };
+      var cellsByKey = {};
+      card.querySelectorAll('.quote-cell').forEach(function(el){
+        cellsByKey[el.dataset.cabin+'|'+el.dataset.col] = el.value.trim();
+      });
+      var sl = {ship:sf('ship'), sailDate:sf('sailDate'), returnDate:sf('returnDate'), lines:[], templateEntries:[], genericEntries:[]};
+      rows.forEach(function(rowLabel){
+        var cellVals = cols.map(function(c){return cellsByKey[rowLabel+'|'+c]||'';});
+        if(!cellVals.some(function(v){return v;})) return;
+        sl.lines.push(rowLabel+': '+cols.map(function(c,i){return c+' '+(cellVals[i]||'-');}).join(', '));
+        sl.genericEntries.push({cabin:rowLabel, vals:cellVals});
+        var price = cellsByKey[rowLabel+'|Price'];
+        if(!price) return;
+        if(cruiseLine==='Virgin Voyages'){
+          var parts = rowLabel.split(' — ');
+          // Lock-It-In Rate was a real input in the pricing grid (see
+          // QUOTE_CRUISE_CONFIG's priceCols above) but was never actually
+          // read here or rendered anywhere in the final quote — whatever an
+          // agent typed into that column silently vanished.
+          sl.templateEntries.push({cabin:parts[0], fareType:parts[1]||'', price:price, lockItInRate:cellsByKey[rowLabel+'|Lock-It-In Rate'], gratuities:cellsByKey[rowLabel+'|Gratuities'], protection:cellsByKey[rowLabel+'|Insurance']});
+        }else if(cruiseLine==='Princess'){
+          sl.templateEntries.push({
+            cabin:rowLabel,
+            price:price,
+            fareWithCancellation: cellsByKey[rowLabel+'|Cancellation Insurance'],
+            fareWithPlatinum: cellsByKey[rowLabel+'|Platinum Insurance'],
+            princessPlus:cellsByKey[rowLabel+'|Princess Plus'],
+            princessPremier:cellsByKey[rowLabel+'|Princess Premier']
+          });
+        }else if(['Royal Caribbean','Ritz Carlton Yachts','Seabourn','Explora Journeys','Windstar'].indexOf(cruiseLine)!==-1){
+          sl.templateEntries.push({
+            cabin:rowLabel,
+            price:price,
+            insurance: cellsByKey[rowLabel+'|Insurance'],
+            addons: cellsByKey[rowLabel+'|Add-ons']
+          });
+        }
+      });
+      if(sl.lines.length) sailings.push(sl);
     });
+    var multiSailing = sailings.length>1;
     var lines = [];
-    var templateEntries = [];
-    // Every priced row in the grid's own columns — only rendered (by
-    // genericCruiseQuoteOpts) for a cruise line without a styled template
-    // that's combined with other travel items.
-    var genericEntries = [];
-    rows.forEach(function(rowLabel){
-      var cellVals = cols.map(function(c){return cellsByKey[rowLabel+'|'+c]||'';});
-      if(!cellVals.some(function(v){return v;})) return;
-      lines.push(rowLabel+': '+cols.map(function(c,i){return c+' '+(cellVals[i]||'-');}).join(', '));
-      genericEntries.push({cabin:rowLabel, vals:cellVals});
-      var price = cellsByKey[rowLabel+'|Price'];
-      if(!price) return;
-      if(cruiseLine==='Virgin Voyages'){
-        var parts = rowLabel.split(' — ');
-        // Lock-It-In Rate was a real input in the pricing grid (see
-        // QUOTE_CRUISE_CONFIG's priceCols above) but was never actually
-        // read here or rendered anywhere in the final quote — whatever an
-        // agent typed into that column silently vanished.
-        templateEntries.push({cabin:parts[0], fareType:parts[1]||'', price:price, lockItInRate:cellsByKey[rowLabel+'|Lock-It-In Rate'], gratuities:cellsByKey[rowLabel+'|Gratuities'], protection:cellsByKey[rowLabel+'|Insurance']});
-      }else if(cruiseLine==='Princess'){
-        templateEntries.push({
-          cabin:rowLabel,
-          price:price,
-          fareWithCancellation: cellsByKey[rowLabel+'|Cancellation Insurance'],
-          fareWithPlatinum: cellsByKey[rowLabel+'|Platinum Insurance'],
-          princessPlus:cellsByKey[rowLabel+'|Princess Plus'],
-          princessPremier:cellsByKey[rowLabel+'|Princess Premier']
-        });
-      }else if(['Royal Caribbean','Ritz Carlton Yachts','Seabourn','Explora Journeys','Windstar'].indexOf(cruiseLine)!==-1){
-        templateEntries.push({
-          cabin:rowLabel,
-          price:price,
-          insurance: cellsByKey[rowLabel+'|Insurance'],
-          addons: cellsByKey[rowLabel+'|Add-ons']
-        });
-      }
+    sailings.forEach(function(sl, i){
+      if(multiSailing) lines.push('— Sailing '+(i+1)+': '+quoteSailingHeading(sl)+' —');
+      lines = lines.concat(sl.lines);
     });
+    // A single sailing's own ship/dates fill the details box (falling back
+    // to the trip-level dates); with several, each table has its own.
+    var firstSailing = sailings[0] || {};
+    var ship = multiSailing ? '' : (firstSailing.ship||'');
+    var departDate = multiSailing ? sailingDate : (firstSailing.sailDate||sailingDate);
+    var returnDate = multiSailing ? gv('eq-return-date') : (firstSailing.returnDate||gv('eq-return-date'));
+    sailingDate = departDate;
     // Cruise selected but nothing entered in its grid (e.g. a flight + hotel
     // quote where the cruise line was picked by mistake) → no cruise table.
     var cruisePriced = lines.length>0;
@@ -7223,9 +7408,9 @@ function openEmailQuoteModal(){
       clientFirstName: client?getFirstName(client.name):'',
       ship: ship,
       itinerary: gv('eq-itinerary'),
-      departDate: sailingDate,
-      returnDate: gv('eq-return-date'),
-      nights: computeNights(sailingDate, gv('eq-return-date')),
+      departDate: departDate,
+      returnDate: returnDate,
+      nights: computeNights(departDate, returnDate),
       guests: guestsParts.join(', '),
       gratuities: gratuities,
       voyageProtection: voyageProtection,
@@ -7235,7 +7420,7 @@ function openEmailQuoteModal(){
       notes: notes
     };
 
-    return {cruiseLine:cruiseLine, ship:ship, sailingDate:sailingDate, client:client, notes:notes, lines:lines, templateEntries:templateEntries, genericEntries:genericEntries, cruiseCols:cols, cruisePriced:cruisePriced, items:items, gratuities:gratuities, voyageProtection:voyageProtection, meta:meta};
+    return {cruiseLine:cruiseLine, ship:ship, sailingDate:sailingDate, client:client, notes:notes, lines:lines, sailings:sailings, occupancies:occupancies, cruiseCols:cols, cruisePriced:cruisePriced, items:items, gratuities:gratuities, voyageProtection:voyageProtection, meta:meta};
   }
   // "Virgin Voyages Cruise Quote", "Hotel + Car Rental Quote",
   // "Princess Cruise + Airline Quote" — used for the subject line, the
@@ -7257,7 +7442,7 @@ function openEmailQuoteModal(){
     if(!wrap) return;
     if(!savedOptions.length){ wrap.innerHTML=''; wrap.style.display='none'; return; }
     wrap.style.display='block';
-    wrap.innerHTML = '<label>Dates Added to This Quote ('+savedOptions.length+')</label>'+
+    wrap.innerHTML = '<label>Options Added to This Quote ('+savedOptions.length+')</label>'+
       savedOptions.map(function(d,i){
         return '<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;border:1px solid #e5e7eb;border-radius:6px;margin-bottom:6px;background:#fafafa;font-size:12px">'+
           '<span>Option '+(i+1)+': '+escHtml(quoteTitle(d))+(d.ship?' — '+escHtml(d.ship):'')+(d.sailingDate?' — '+fmtDate(d.sailingDate):'')+'</span>'+
@@ -7279,7 +7464,7 @@ function openEmailQuoteModal(){
     document.getElementById('eq-sailing-date').value='';
     document.getElementById('eq-return-date').value='';
     document.querySelectorAll('.quote-cell').forEach(function(el){ el.value=''; });
-    document.querySelectorAll('#eq-items .ti-f[type="date"], #eq-items .ti-f[data-key="price"]').forEach(function(el){ el.value=''; });
+    document.querySelectorAll('#eq-sailings .eq-sailing-f[type="date"], #eq-items .ti-f[type="date"], #eq-items .ti-f[data-key="price"]').forEach(function(el){ el.value=''; });
     document.getElementById('eq-preview-wrap').style.display='none';
     toast('Added as Option '+savedOptions.length+' — enter the next date below, or send/preview now');
   });
@@ -7349,9 +7534,23 @@ function openEmailQuoteModal(){
   function buildTemplateBodyHtml(d){
     var opts;
     if(d.cruiseLine && d.cruisePriced){
-      opts = TEMPLATE_OPTS_BY_LINE[d.cruiseLine]
-        ? TEMPLATE_OPTS_BY_LINE[d.cruiseLine](d.templateEntries, d.meta)
-        : genericCruiseQuoteOpts(d.cruiseLine, d.cruiseCols, d.genericEntries, d.meta);
+      var optsFor = function(sl){
+        return TEMPLATE_OPTS_BY_LINE[d.cruiseLine]
+          ? TEMPLATE_OPTS_BY_LINE[d.cruiseLine](sl.templateEntries, d.meta)
+          : genericCruiseQuoteOpts(d.cruiseLine, d.cruiseCols, sl.genericEntries, d.meta);
+      };
+      opts = optsFor(d.sailings[0]);
+      if(d.sailings.length>1){
+        opts.pricingSections = d.sailings.map(function(sl, i){
+          var o = optsFor(sl);
+          return {title:'Sailing '+(i+1)+': '+quoteSailingHeading(sl), headerHtml:o.pricingHeaderHtml, rowsHtml:o.pricingRowsHtml};
+        });
+      }
+      // Rows now name their own guest count unless it's plain double
+      // occupancy, so the captions' "based on double occupancy" would be wrong.
+      if(!(d.occupancies.length===1 && d.occupancies[0]===2)){
+        opts.pricingCaption = (opts.pricingCaption||'').replace('based on double occupancy', 'for the number of guests shown');
+      }
     }else{
       opts = Object.assign({
         docTitle:'Travel Quote - Miles Man',
