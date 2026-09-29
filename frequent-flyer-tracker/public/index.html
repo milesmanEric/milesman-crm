@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Frequent Flyer Tracker</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<header class="topbar">
+  <h1>Frequent Flyer Tracker</h1>
+  <div class="topbar-actions">
+    <span id="vaultBadge" class="badge">checking…</span>
+    <button id="refreshAllBtn" class="btn">Refresh All</button>
+    <button id="addAccountBtn" class="btn btn-primary">+ Add Account</button>
+  </div>
+</header>
+
+<main id="summary" class="summary"></main>
+
+<main id="accountGroups" class="groups"></main>
+
+<template id="groupTemplate">
+  <section class="group">
+    <h2 class="group-title"></h2>
+    <div class="cards"></div>
+  </section>
+</template>
+
+<template id="cardTemplate">
+  <article class="card">
+    <div class="card-head">
+      <div>
+        <div class="card-name"></div>
+        <div class="card-label"></div>
+      </div>
+      <span class="status-dot"></span>
+    </div>
+    <div class="card-balance"></div>
+    <div class="card-tier"></div>
+    <div class="card-meta"></div>
+    <div class="card-msg"></div>
+    <div class="card-actions"></div>
+  </article>
+</template>
+
+<!-- Vault unlock / setup modal -->
+<div id="vaultModal" class="modal-backdrop hidden">
+  <div class="modal">
+    <h2 id="vaultModalTitle">Unlock Vault</h2>
+    <p id="vaultModalHint" class="hint"></p>
+    <form id="vaultForm">
+      <label>Master password
+        <input type="password" id="masterPassword" autocomplete="current-password" required />
+      </label>
+      <label id="confirmRow" class="hidden">Confirm master password
+        <input type="password" id="masterPasswordConfirm" autocomplete="new-password" />
+      </label>
+      <p id="vaultError" class="error hidden"></p>
+      <div class="modal-actions">
+        <button type="button" class="btn" data-close="vaultModal">Cancel</button>
+        <button type="submit" class="btn btn-primary">Continue</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Add account modal -->
+<div id="addModal" class="modal-backdrop hidden">
+  <div class="modal">
+    <h2>Add Account</h2>
+    <form id="addForm">
+      <label>Program
+        <select id="providerId" required></select>
+      </label>
+      <label>Label <span class="hint-inline">(optional, e.g. "personal" vs "business")</span>
+        <input type="text" id="accountLabel" placeholder="e.g. Personal" />
+      </label>
+      <div id="credsFields">
+        <label>Username / login email
+          <input type="text" id="accountUsername" autocomplete="off" />
+        </label>
+        <label>Password
+          <input type="password" id="accountPassword" autocomplete="new-password" />
+        </label>
+        <p class="hint">Leave blank to add the program now and connect it later. Credentials are encrypted at rest and only ever used to open a real login page on this machine.</p>
+      </div>
+      <p id="addError" class="error hidden"></p>
+      <div class="modal-actions">
+        <button type="button" class="btn" data-close="addModal">Cancel</button>
+        <button type="submit" class="btn btn-primary">Add</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Connect / re-login modal -->
+<div id="connectModal" class="modal-backdrop hidden">
+  <div class="modal">
+    <h2 id="connectTitle">Connect Account</h2>
+    <p class="hint">A real browser window will open on this machine. If asked, log in and clear any verification/2FA step yourself — this only has to happen once (or again if the saved session later expires).</p>
+    <form id="connectForm">
+      <label>Username / login email
+        <input type="text" id="connectUsername" autocomplete="off" />
+      </label>
+      <label>Password
+        <input type="password" id="connectPassword" autocomplete="new-password" />
+      </label>
+      <p class="hint">Leave both blank to reuse the credentials already saved for this account.</p>
+      <p id="connectStatus" class="hint"></p>
+      <p id="connectError" class="error hidden"></p>
+      <div class="modal-actions">
+        <button type="button" class="btn" data-close="connectModal">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="connectSubmitBtn">Open Browser & Connect</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
