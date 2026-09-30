@@ -1316,7 +1316,7 @@ const CAR_SIZES = ['Economy','Compact','Midsize','Full-size','SUV','Minivan','Lu
 // Mirrored on intake-form.html's "Transfer N Car Type" select.
 const TRANSFER_CAR_TYPES = ['Car','SUV','Van','Any'];
 const ROOM_TYPES = ['Room','Suite'];
-const BOOKMARK_CATEGORIES = ['Airline','Hotel','Cruise Line','Car Rental','Car Service','Tour/Activity','Theme Park','Visa/Documentation','Currency/Weather','Award Tools','Payments','Other'];
+const BOOKMARK_CATEGORIES = ['Airline','Hotel','Cruise Line','Car Rental','Car Service','Tour/Activity','Theme Park','Travel Insurance','Visa/Documentation','Currency/Weather','Award Tools','Payments','Other'];
 // Separate from category (the business type — Airline/Hotel/etc.): which
 // audience the link is for. A bookmark missing this field is treated as
 // Consumer (see renderBookmarks) so older saved bookmarks default sensibly.
@@ -1458,6 +1458,10 @@ const DEFAULT_BOOKMARKS = [
   {name:'Disneyland — Agent Login', url:'https://www.disneytravelagents.com', category:'Theme Park', audience:'Travel Agent', notes:'shared Disney portal'},
   {name:'Universal Studios Hollywood — Agent Login', url:'https://www.vaxvacationaccess.com', category:'Theme Park', audience:'Travel Agent', notes:'shared VAX-powered portal w/ Universal Orlando'},
   {name:'Universal Orlando — Agent Login', url:'https://www.vaxvacationaccess.com', category:'Theme Park', audience:'Travel Agent', notes:'shared VAX-powered portal w/ Universal Studios Hollywood'},
+  // Travel Insurance — consumer
+  {name:'Berkshire Hathaway Travel Protection', url:'https://www.bhtp.com', category:'Travel Insurance'},
+  // Travel Insurance — travel advisor login
+  {name:'Berkshire Hathaway Travel Protection — Agent Login (Partner Portal)', url:'https://partner.bhtp.com', category:'Travel Insurance', audience:'Travel Agent'},
   // Award booking tools — travel advisor only, no consumer equivalent
   {name:'Seats.aero', url:'https://seats.aero', category:'Award Tools', audience:'Travel Agent', notes:'award flight availability search across multiple loyalty programs'},
   {name:'ExpertFlyer', url:'https://www.expertflyer.com', category:'Award Tools', audience:'Travel Agent', notes:'award/fare availability lookup + seat alerts'},
@@ -2538,6 +2542,25 @@ async function loadDB(){
       if(minorHotelsBookmarksAdded>0){
         saveDB();
         console.log('[CRM] Added '+minorHotelsBookmarksAdded+' Minor Hotels starter bookmark(s)');
+      }
+    }
+    // One-time add: the new "Travel Insurance" bookmark category (Berkshire
+    // Hathaway Travel Protection, consumer + Partner Portal agent login) was
+    // added to BOOKMARK_CATEGORIES/DEFAULT_BOOKMARKS after most databases had
+    // already been seeded — same backfill pattern as Riu/Minor Hotels above,
+    // matched by category rather than name since this is a brand-new category.
+    if(!localStorage.getItem('mm_travel_insurance_bookmarks_added') && db.bookmarks.length){
+      var travelInsuranceBookmarksAdded=0;
+      DEFAULT_BOOKMARKS.filter(function(b){ return b.category==='Travel Insurance'; }).forEach(function(b){
+        var exists = db.bookmarks.some(function(x){ return x.name===b.name && x.category===b.category && (x.audience||'Consumer')===(b.audience||'Consumer'); });
+        if(exists) return;
+        db.bookmarks.push(Object.assign({id:newId('BM', db.bookmarks), notes:''}, b));
+        travelInsuranceBookmarksAdded++;
+      });
+      localStorage.setItem('mm_travel_insurance_bookmarks_added','1');
+      if(travelInsuranceBookmarksAdded>0){
+        saveDB();
+        console.log('[CRM] Added '+travelInsuranceBookmarksAdded+' Travel Insurance starter bookmark(s)');
       }
     }
     // One-time backfill: "Fairmont Vancouver Pacific Rim" was missing from
