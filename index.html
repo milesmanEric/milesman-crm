@@ -951,6 +951,22 @@ const BACKUP_FILENAME  = 'milesman-crm-backup.json';
 
 const AIRLINES = ['American','United','Delta','Southwest','JetBlue','Qatar Airways','ANA','Emirates','Lufthansa','British Airways','Air France','Virgin Atlantic','Qantas','Etihad','JAL','Air Canada','Frontier','Alaska/Hawaiian Air'];
 const HOTELS   = ['Marriott','Disney','Hilton','Hyatt','Accor','IHG','Wyndham','Four Seasons','Ritz-Carlton','W Hotels','Kimpton','Conrad','Universal','Riu'];
+// Trip-booking Hotel Brand picklists (Booked Trip Details' hotel entries,
+// the trip's own Hotel Brand field, and the Points Used program picker)
+// use this instead of the static HOTELS list directly — the union of
+// HOTELS with every Hotel-category Supplier's own name — so a newly added
+// Hotel supplier (e.g. one created from the Suppliers tab, with no code
+// change) is immediately selectable everywhere a trip records a hotel
+// booking, not just wherever it happens to already appear in HOTELS.
+// Client.preferredHotel intentionally still reads the static HOTELS list —
+// that's a preference field on the client record, not a trip booking.
+function hotelBrandList(){
+  var names = HOTELS.slice();
+  db.vendors.forEach(function(v){
+    if(v.category==='Hotel' && v.name && names.indexOf(v.name)===-1) names.push(v.name);
+  });
+  return names.sort(function(a,b){ return a.localeCompare(b); });
+}
 // Curated (not exhaustive) flagship/major properties for each Hotel brand —
 // used to seed each matching Supplier record's own editable `properties`
 // list (see the one-time seed in loadDB()) and, from there, to populate the
@@ -984,7 +1000,14 @@ const HOTEL_PROPERTY_SEEDS = {
   'Universal': ["Loews Portofino Bay Hotel","Hard Rock Hotel at Universal Orlando","Loews Royal Pacific Resort","Loews Sapphire Falls Resort","Universal's Aventura Hotel","Universal's Cabana Bay Beach Resort","Universal's Endless Summer Resort – Surfside Inn and Suites","Universal's Endless Summer Resort – Dockside Inn and Suites","Universal Stella Nova Resort","Universal Terra Luna Resort"],
   // Every hotel listed on riu.com/en/hotels (Sep 2026), "Hotel " prefix
   // dropped to match how the properties are usually referred to.
-  'Riu': ["Riu Arecas", "Riu Atoll", "Riu Bambu", "Riu Baobab", "Riu Bravo", "Riu Buenavista", "Riu Cabo Verde", "Riu Cancun", "Riu Caribe", "Riu Chiclana", "Riu Concordia", "Riu Costa del Sol", "Riu Dubai", "Riu Dunamar", "Riu Emerald Bay", "Riu Festival", "Riu Flamingos", "Riu Funana", "Riu Garoe", "Riu Gran Canaria", "Riu Guanacaste", "Riu Jambo", "Riu Karamboa", "Riu Latino", "Riu Lupita", "Riu Madeira", "Riu Monica", "Riu Montego Bay", "Riu Negril", "Riu Ocho Rios", "Riu Oliva Beach Resort", "Riu Palace Antillas", "Riu Palace Aquarelle", "Riu Palace Aruba", "Riu Palace Baja California", "Riu Palace Bavaro", "Riu Palace Boavista", "Riu Palace Cabo San Lucas", "Riu Palace Calypso", "Riu Palace Costa Mujeres", "Riu Palace Costa Rica", "Riu Palace Jamaica", "Riu Palace Jandia", "Riu Palace Kukulkan", "Riu Palace La Mola", "Riu Palace Las Americas", "Riu Palace Macao", "Riu Palace Maldivas", "Riu Palace Maspalomas", "Riu Palace Mauritius", "Riu Palace Meloneras", "Riu Palace Mexico", "Riu Palace Nautilus", "Riu Palace Oasis", "Riu Palace Pacifico", "Riu Palace Palmeras", "Riu Palace Paradise Island", "Riu Palace Peninsula", "Riu Palace Phuket", "Riu Palace Punta Cana", "Riu Palace Quintana Roo", "Riu Palace Riviera Maya", "Riu Palace Santa Maria", "Riu Palace Swahili", "Riu Palace Tenerife", "Riu Palace Tikida Agadir", "Riu Palace Tikida Taghazout", "Riu Palace Tres Islas", "Riu Palace Tropical Bay", "Riu Palace Zanzibar", "Riu Papayas", "Riu Paraiso Lanzarote", "Riu Playa Blanca", "Riu Playa Park", "Riu Playacar", "Riu Plaza Berlin", "Riu Plaza Chicago", "Riu Plaza EspaÃƒÂ±a", "Riu Plaza Fisherman's Wharf", "Riu Plaza Guadalajara", "Riu Plaza London The Westminster", "Riu Plaza London Victoria", "Riu Plaza Manhattan Times Square", "Riu Plaza Miami Beach", "Riu Plaza New York Times Square", "Riu Plaza Panama", "Riu Plaza The Gresham Dublin", "Riu Plaza Toronto", "Riu Reggae", "Riu Republica", "Riu San Francisco", "Riu Santa Fe", "Riu Sri Lanka", "Riu Tequila", "Riu Tikida Beach", "Riu Tikida Dunas", "Riu Tikida Garden", "Riu Tikida Palmeraie", "Riu Touareg", "Riu Turquoise", "Riu Vallarta", "Riu Ventura", "Riu Vistamar", "Riu Yucatan"]
+  'Riu': ["Riu Arecas", "Riu Atoll", "Riu Bambu", "Riu Baobab", "Riu Bravo", "Riu Buenavista", "Riu Cabo Verde", "Riu Cancun", "Riu Caribe", "Riu Chiclana", "Riu Concordia", "Riu Costa del Sol", "Riu Dubai", "Riu Dunamar", "Riu Emerald Bay", "Riu Festival", "Riu Flamingos", "Riu Funana", "Riu Garoe", "Riu Gran Canaria", "Riu Guanacaste", "Riu Jambo", "Riu Karamboa", "Riu Latino", "Riu Lupita", "Riu Madeira", "Riu Monica", "Riu Montego Bay", "Riu Negril", "Riu Ocho Rios", "Riu Oliva Beach Resort", "Riu Palace Antillas", "Riu Palace Aquarelle", "Riu Palace Aruba", "Riu Palace Baja California", "Riu Palace Bavaro", "Riu Palace Boavista", "Riu Palace Cabo San Lucas", "Riu Palace Calypso", "Riu Palace Costa Mujeres", "Riu Palace Costa Rica", "Riu Palace Jamaica", "Riu Palace Jandia", "Riu Palace Kukulkan", "Riu Palace La Mola", "Riu Palace Las Americas", "Riu Palace Macao", "Riu Palace Maldivas", "Riu Palace Maspalomas", "Riu Palace Mauritius", "Riu Palace Meloneras", "Riu Palace Mexico", "Riu Palace Nautilus", "Riu Palace Oasis", "Riu Palace Pacifico", "Riu Palace Palmeras", "Riu Palace Paradise Island", "Riu Palace Peninsula", "Riu Palace Phuket", "Riu Palace Punta Cana", "Riu Palace Quintana Roo", "Riu Palace Riviera Maya", "Riu Palace Santa Maria", "Riu Palace Swahili", "Riu Palace Tenerife", "Riu Palace Tikida Agadir", "Riu Palace Tikida Taghazout", "Riu Palace Tres Islas", "Riu Palace Tropical Bay", "Riu Palace Zanzibar", "Riu Papayas", "Riu Paraiso Lanzarote", "Riu Playa Blanca", "Riu Playa Park", "Riu Playacar", "Riu Plaza Berlin", "Riu Plaza Chicago", "Riu Plaza EspaÃƒÂ±a", "Riu Plaza Fisherman's Wharf", "Riu Plaza Guadalajara", "Riu Plaza London The Westminster", "Riu Plaza London Victoria", "Riu Plaza Manhattan Times Square", "Riu Plaza Miami Beach", "Riu Plaza New York Times Square", "Riu Plaza Panama", "Riu Plaza The Gresham Dublin", "Riu Plaza Toronto", "Riu Reggae", "Riu Republica", "Riu San Francisco", "Riu Santa Fe", "Riu Sri Lanka", "Riu Tequila", "Riu Tikida Beach", "Riu Tikida Dunas", "Riu Tikida Garden", "Riu Tikida Palmeraie", "Riu Touareg", "Riu Turquoise", "Riu Vallarta", "Riu Ventura", "Riu Vistamar", "Riu Yucatan"],
+  // Starter list only, unlike the exhaustive brands above — Minor Hotels'
+  // portfolio also spans Elewana, NH Hotels/Collection, nhow, Oaks and
+  // Tivoli, none of which are represented here yet. Just the confirmed
+  // flagship Anantara/Avani properties (its most prominent leisure brands)
+  // to start; add more per-property via the Supplier's own Properties
+  // section as needed.
+  'Minor Hotels': ["Anantara The Palm Dubai Resort","Anantara Riverside Bangkok Resort","Anantara Siam Bangkok Hotel","Anantara Veli Maldives Resort","Anantara Kihavah Maldives Villas","Avani+ Riverside Bangkok Hotel"]
 };
 const CAR_RENTALS = ['Hertz','Avis','Enterprise','National','Budget','Alamo','Sixt','Europcar','Thrifty','Dollar'];
 const CREDIT_CARDS = ['Chase Sapphire Preferred','Chase Sapphire Reserve','Chase Ink Business Preferred','Amex Platinum','Amex Gold','Amex Business Platinum','Amex Business Gold','Capital One Venture X','Citi Premier','Citi Prestige','Bilt Mastercard'];
@@ -1354,6 +1377,7 @@ const DEFAULT_BOOKMARKS = [
   {name:'Conrad Hotels', url:'https://conradhotels3.hilton.com', category:'Hotel'},
   {name:'Riu Hotels & Resorts', url:'https://www.riu.com', category:'Hotel'},
   {name:'Meliá Hotels International', url:'https://www.melia.com', category:'Hotel'},
+  {name:'Minor Hotels', url:'https://www.minorhotels.com/en', category:'Hotel'},
   // Hotels — travel advisor login (Hyatt/Wyndham book direct via GDS chain code / IATA number, no distinct portal found)
   {name:'Marriott — Agent Login', url:'https://travelagents.marriott.com', category:'Hotel', audience:'Travel Agent'},
   {name:'Hilton — Agent Login', url:'https://travelagents.hilton.com', category:'Hotel', audience:'Travel Agent'},
@@ -1365,6 +1389,7 @@ const DEFAULT_BOOKMARKS = [
   {name:'Conrad — Agent Login', url:'https://travelagents.hilton.com', category:'Hotel', audience:'Travel Agent', notes:'shared Hilton portal'},
   {name:'Meliá Hotels International — Agent Login', url:'https://meliapro.melia.com/en', category:'Hotel', audience:'Travel Agent'},
   {name:'Riu Hotels & Resorts — Agent Login (RIU Pro)', url:'https://www.riupro.com', category:'Hotel', audience:'Travel Agent'},
+  {name:'Minor Hotels — Agent Login (Minor PRO)', url:'https://www.minorhotels.com/en/minor-pro/login', category:'Hotel', audience:'Travel Agent'},
   // Car Rentals — consumer (Avis and Budget have no distinct agent portal found — IATA/GDS only)
   {name:'Hertz', url:'https://www.hertz.com', category:'Car Rental'},
   {name:'Avis', url:'https://www.avis.com', category:'Car Rental'},
@@ -2486,6 +2511,33 @@ async function loadDB(){
       if(riuBookmarksAdded>0){
         saveDB();
         console.log('[CRM] Added '+riuBookmarksAdded+' Riu starter bookmark(s)');
+      }
+    }
+    // One-time add: Minor Hotels (Anantara/Avani/Elewana/NH/Oaks/Tivoli
+    // parent group) — same never-recreate-if-deleted pattern as Accor/
+    // Disney/Universal above (safe to run repeatedly).
+    if(!db.vendors.some(function(v){return v.name==='Minor Hotels';})){
+      var minorHotelsProps = (HOTEL_PROPERTY_SEEDS['Minor Hotels']||[]).map(function(name,i){ return {id:'HP'+(i+1), name:name}; });
+      db.vendors.push({id:newId('V',db.vendors), name:'Minor Hotels', type:'Supplier', category:'Hotel', notesLog:[], properties:minorHotelsProps});
+      saveDB();
+      console.log('[CRM] Added Minor Hotels as a Hotel supplier with '+minorHotelsProps.length+' properties');
+    }
+    // One-time add: the Minor Hotels consumer + Minor PRO (travel agent)
+    // starter bookmarks were added to DEFAULT_BOOKMARKS after most databases
+    // had already been seeded, so they'd only ever arrive via a manual "+
+    // Load Starter Bookmarks" — same pattern as the Riu backfill above.
+    if(!localStorage.getItem('mm_minor_hotels_bookmarks_added') && db.bookmarks.length){
+      var minorHotelsBookmarksAdded=0;
+      DEFAULT_BOOKMARKS.filter(function(b){ return /^Minor Hotels/.test(b.name); }).forEach(function(b){
+        var exists = db.bookmarks.some(function(x){ return x.name===b.name && x.category===b.category && (x.audience||'Consumer')===(b.audience||'Consumer'); });
+        if(exists) return;
+        db.bookmarks.push(Object.assign({id:newId('BM', db.bookmarks), notes:''}, b));
+        minorHotelsBookmarksAdded++;
+      });
+      localStorage.setItem('mm_minor_hotels_bookmarks_added','1');
+      if(minorHotelsBookmarksAdded>0){
+        saveDB();
+        console.log('[CRM] Added '+minorHotelsBookmarksAdded+' Minor Hotels starter bookmark(s)');
       }
     }
     // One-time backfill: "Fairmont Vancouver Pacific Rim" was missing from
@@ -18582,7 +18634,7 @@ function pointsProgramOptionsHtml(selected){
   function opts(list){ return list.map(function(o){return '<option value="'+o+'"'+(o===selected?' selected':'')+'>'+o+'</option>';}).join(''); }
   return '<option value="">Select...</option>'+
     '<optgroup label="Airlines">'+opts(AIRLINES)+'</optgroup>'+
-    '<optgroup label="Hotels">'+opts(HOTELS)+'</optgroup>'+
+    '<optgroup label="Hotels">'+opts(hotelBrandList())+'</optgroup>'+
     '<optgroup label="Credit Cards">'+opts(CREDIT_CARDS)+'</optgroup>';
 }
 // Points Used entries are a dynamic add/remove list (same pattern as hotel/
@@ -18831,7 +18883,7 @@ function hotelEntryRowInnerHtml(entry){
       '<button type="button" class="del-hotel-entry-btn" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:12px">&#128465;&#65039; Remove</button>'+
     '</div>'+
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
-      '<div class="field"><label>Hotel</label><select class="hotel-entry-brand"><option value="">-- Select --</option>'+selOpts(HOTELS,entry.hotelBrand)+'</select></div>'+
+      '<div class="field"><label>Hotel</label><select class="hotel-entry-brand"><option value="">-- Select --</option>'+selOpts(hotelBrandList(),entry.hotelBrand)+'</select></div>'+
       '<div class="field"><label>Property</label>'+hotelPropertyFieldWithAddBtnHtml('<select class="hotel-entry-property">'+hotelPropertyOptionsHtml(entry.hotelBrand,entry.property)+'</select>','hotel-entry-add-property-btn')+'</div>'+
       '<div class="field"><label>Confirmation Number</label><input class="hotel-entry-conf" type="text" value="'+(entry.confirmationNumber||'').toString().replace(/"/g,'&quot;')+'"></div>'+
       '<div class="field"><label>Check-in Date</label><input class="hotel-entry-checkin" type="date" value="'+(entry.checkInDate||'')+'"></div>'+
@@ -19892,7 +19944,7 @@ function openTripForm(id){
       fld('Depart Date',inp('tdd','date',d.departDate))+fld('Return Date',inp('trd','date',d.returnDate))+
       fld('Status',sel('tst',STATUSES,d.status||'Planning'))+fld('Trip Type',sel('tty',TYPES,d.type||'Leisure'))+
       fld('Airline',sel('tai',AIRLINES,d.airline))+fld('Class of Service',sel('tcl',CLASSES,d.flightClass||'Economy'))+
-      fld('Hotel Brand',sel('tho',HOTELS,d.hotel))+fld('Hotel Property',hotelPropertyFieldWithAddBtnHtml('<select id="thp">'+hotelPropertyOptionsHtml(d.hotel,d.hotelProperty)+'</select>',null,'btn-add-hotel-property'))+fld('Hotel Nights',inp('thn','number',d.hotelNights||0))+
+      fld('Hotel Brand',sel('tho',hotelBrandList(),d.hotel))+fld('Hotel Property',hotelPropertyFieldWithAddBtnHtml('<select id="thp">'+hotelPropertyOptionsHtml(d.hotel,d.hotelProperty)+'</select>',null,'btn-add-hotel-property'))+fld('Hotel Nights',inp('thn','number',d.hotelNights||0))+
       fld('Cruise Line',sel('tcr',CRUISE_LINES,d.cruiseLine))+fld('Ship Name','<select id="tship">'+shipOptionsHtml(d.cruiseLine,d.shipName)+'</select>')+
       '<div id="tvv-wrap" style="display:'+(d.cruiseLine==='Virgin Voyages'?'contents':'none')+'">'+fld('Virgin Voyages Voucher Expiry (MNVV)',inp('tvv-exp','date',d.vvVoucherExpiry))+'</div>'+
       fld('Points Used',inp('tpu','number',d.pointsUsed||0))+fld('Cash Paid ($)',inp('tcp','number',d.cashPaid||0))+
