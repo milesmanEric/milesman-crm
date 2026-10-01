@@ -11786,6 +11786,33 @@ function getInvoiceClientTotals(groups){
   rows.sort(function(a,b){ return b.totalValue - a.totalValue; });
   return rows;
 }
+// Walks the (already-sorted) invoice groups and inserts a "client total"
+// marker after the last of any run of consecutive groups belonging to the
+// same client. Only meaningful when sorted by the Client column — that's
+// the one order where same-client groups actually end up adjacent, so a
+// run's total equals that client's full total rather than a fragment of
+// it. Shared by the on-screen table, CSV export and PDF export so a
+// "Client" sort groups and subtotals identically in all three.
+function buildInvoiceReportRowPlan(groups){
+  var groupByClient = (window._invSortCol === 'clientName');
+  var plan = [], runKey = null, runLabel = '', runTotal = 0;
+  function flush(){
+    if(groupByClient && runKey!==null) plan.push({type:'clientTotal', clientName:runLabel, totalValue:runTotal});
+  }
+  groups.forEach(function(g){
+    var first = g.trips[0]||{};
+    var clientName = first.clientName || '(no client)';
+    var clientKey = first.clientId || clientName;
+    if(groupByClient){
+      if(runKey===null){ runKey=clientKey; runLabel=clientName; runTotal=0; }
+      else if(clientKey!==runKey){ flush(); runKey=clientKey; runLabel=clientName; runTotal=0; }
+      runTotal += g.totalValue;
+    }
+    plan.push({type:'group', group:g});
+  });
+  flush();
+  return plan;
+}
 
 function runInvoiceReport(){
   var groups = getInvoiceReportData();
@@ -11801,7 +11828,12 @@ function runInvoiceReport(){
 
   window._invoiceReportRows = groups;
   var rowsHtml = '';
-  groups.forEach(function(g, gi){
+  buildInvoiceReportRowPlan(groups).forEach(function(item){
+    if(item.type==='clientTotal'){
+      rowsHtml += '<tr style="background:#eef2ff"><td colspan="6" style="text-align:right;font-weight:700;color:#1e3a8a;padding:6px 12px">'+escHtml(item.clientName)+' — Client Total:</td><td style="text-align:right;font-weight:700;color:#1e3a8a">$'+money(item.totalValue)+'</td></tr>';
+      return;
+    }
+    var g = item.group;
     g.trips.forEach(function(t, ti){
       rowsHtml += '<tr class="rpt-inv-row" style="cursor:pointer" data-trip-id="'+t.id+'">'+
         (ti===0 ? '<td rowspan="'+g.trips.length+'" style="font-weight:700;color:#111;vertical-align:top;border-right:1px solid #f0f0f0">'+g.invoiceNum+'</td>' : '')+
@@ -11826,7 +11858,7 @@ function runInvoiceReport(){
   }).join('');
 
   container.innerHTML =
-    '<div style="font-size:13px;color:#888;margin-bottom:10px">'+groups.length+' invoice'+(groups.length!==1?'s':'')+' · '+db.trips.length+' trip rows · Grand Total: <strong style="color:#111">$'+money(grandTotal)+'</strong></div>'+
+    '<div style="font-size:13px;color:#888;margin-bottom:10px">'+groups.length+' invoice'+(groups.length!==1?'s':'')+' · '+db.trips.length+' trip rows · Grand Total: <strong style="color:#111">$'+money(grandTotal)+'</strong>'+(window._invSortCol==='clientName'?' · grouped by client':'')+'</div>'+
     '<div class="tbl-wrap"><table class="report-table"><thead><tr>'+
       '<th class="sort-th-inv" data-sort="invoiceNum" style="cursor:pointer">Invoice #'+invSortArrow('invoiceNum')+'</th>'+
       '<th class="sort-th-inv" data-sort="clientName" style="cursor:pointer">Client'+invSortArrow('clientName')+'</th>'+
@@ -11872,7 +11904,12 @@ function exportInvoiceReport(){
   var headers = ['Invoice #','Client','Destination','Travel Date','Invoice Date','Supplier','Value'];
   var rows = [];
   var grandTotal = 0;
-  groups.forEach(function(g){
+  buildInvoiceReportRowPlan(groups).forEach(function(item){
+    if(item.type==='clientTotal'){
+      rows.push(['', '', '', '', '', item.clientName+' — Client Total', item.totalValue]);
+      return;
+    }
+    var g = item.group;
     g.trips.forEach(function(t){
       rows.push([g.invoiceNum, t.clientName, t.destination, t.departDate, t.invoiceDate||'', t.supplierName||'', t.totalValue||0]);
     });
@@ -11893,7 +11930,12 @@ function exportInvoiceReport(){
 }
 function invoiceReportPdfTable(groups){
   var rowsHtml = '', grandTotal = 0;
-  groups.forEach(function(g){
+  buildInvoiceReportRowPlan(groups).forEach(function(item){
+    if(item.type==='clientTotal'){
+      rowsHtml += '<tr style="background:#eef2ff"><td colspan="6" style="text-align:right;font-weight:700">'+escHtml(item.clientName)+' — Client Total:</td><td style="text-align:right;font-weight:700">$'+money(item.totalValue)+'</td></tr>';
+      return;
+    }
+    var g = item.group;
     g.trips.forEach(function(t, ti){
       rowsHtml += '<tr>'+
         (ti===0 ? '<td rowspan="'+g.trips.length+'" style="font-weight:700">'+escHtml(String(g.invoiceNum))+'</td>' : '')+
