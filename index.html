@@ -11440,16 +11440,7 @@ function renderReports(){
     document.getElementById('rpt-export').addEventListener('click', exportReport);
     document.getElementById('rpt-export-pdf').addEventListener('click', exportReportPdf);
   } else if(activeTab==='invoice'){
-    document.getElementById('rpt-inv-run').addEventListener('click', function(){
-      runInvoiceReport();
-      setTimeout(function(){
-        document.querySelectorAll('.rpt-inv-row').forEach(function(row){
-          row.addEventListener('click', function(){
-            openTripForm(row.dataset.tripId);
-          });
-        });
-      }, 50);
-    });
+    document.getElementById('rpt-inv-run').addEventListener('click', runInvoiceReport);
     document.getElementById('rpt-inv-export').addEventListener('click', exportInvoiceReport);
     document.getElementById('rpt-inv-export-pdf').addEventListener('click', exportInvoiceReportPdf);
   } else if(activeTab==='certs'){
@@ -11742,12 +11733,36 @@ function getInvoiceReportData(){
   });
 
   var rows = Object.keys(groups).map(function(k){ return groups[k]; });
-  rows.sort(function(a,b){
-    var ad = (a.trips[0]&&a.trips[0][dateField])||'';
-    var bd = (b.trips[0]&&b.trips[0][dateField])||'';
-    return bd.localeCompare(ad);
-  });
+  // Default order (no column header clicked yet) is newest-first by the
+  // active date filter type. Clicking a column header (see invSortArrow/
+  // the .sort-th-inv binding in runInvoiceReport) overrides this — each
+  // invoice group sorts as one unit, keyed off its first trip's value for
+  // that column (or the invoice's own invoiceNum/totalValue), since the
+  // table itself rowspans one invoice across multiple trip lines.
+  if(window._invSortCol){
+    var sortCol = window._invSortCol, sortDir = window._invSortDir||'asc';
+    rows.sort(function(a,b){
+      var first = function(g){ return g.trips[0]||{}; };
+      var av, bv;
+      if(sortCol==='invoiceNum'){ av=a.invoiceNum||''; bv=b.invoiceNum||''; }
+      else if(sortCol==='totalValue'){ av=a.totalValue||0; bv=b.totalValue||0; }
+      else { av=first(a)[sortCol]||''; bv=first(b)[sortCol]||''; }
+      var cmp = (typeof av==='number' && typeof bv==='number') ? (av-bv) : String(av).localeCompare(String(bv));
+      return sortDir==='asc' ? cmp : -cmp;
+    });
+  } else {
+    rows.sort(function(a,b){
+      var ad = (a.trips[0]&&a.trips[0][dateField])||'';
+      var bd = (b.trips[0]&&b.trips[0][dateField])||'';
+      return bd.localeCompare(ad);
+    });
+  }
   return rows;
+}
+function invSortArrow(col){
+  var c = window._invSortCol, d = window._invSortDir||'asc';
+  if(c!==col) return '';
+  return d==='asc' ? ' &#9650;' : ' &#9660;';
 }
 
 function runInvoiceReport(){
@@ -11782,8 +11797,32 @@ function runInvoiceReport(){
   container.innerHTML =
     '<div style="font-size:13px;color:#888;margin-bottom:10px">'+groups.length+' invoice'+(groups.length!==1?'s':'')+' · '+db.trips.length+' trip rows · Grand Total: <strong style="color:#111">$'+money(grandTotal)+'</strong></div>'+
     '<div class="tbl-wrap"><table class="report-table"><thead><tr>'+
-      '<th>Invoice #</th><th>Client</th><th>Destination</th><th>Travel Date</th><th>Invoice Date</th><th>Supplier</th><th style="text-align:right">Value</th>'+
+      '<th class="sort-th-inv" data-sort="invoiceNum" style="cursor:pointer">Invoice #'+invSortArrow('invoiceNum')+'</th>'+
+      '<th class="sort-th-inv" data-sort="clientName" style="cursor:pointer">Client'+invSortArrow('clientName')+'</th>'+
+      '<th class="sort-th-inv" data-sort="destination" style="cursor:pointer">Destination'+invSortArrow('destination')+'</th>'+
+      '<th class="sort-th-inv" data-sort="departDate" style="cursor:pointer">Travel Date'+invSortArrow('departDate')+'</th>'+
+      '<th class="sort-th-inv" data-sort="invoiceDate" style="cursor:pointer">Invoice Date'+invSortArrow('invoiceDate')+'</th>'+
+      '<th class="sort-th-inv" data-sort="supplierName" style="cursor:pointer">Supplier'+invSortArrow('supplierName')+'</th>'+
+      '<th class="sort-th-inv" data-sort="totalValue" style="cursor:pointer;text-align:right">Value'+invSortArrow('totalValue')+'</th>'+
     '</tr></thead><tbody>'+rowsHtml+'</tbody></table></div>';
+
+  document.querySelectorAll('.rpt-inv-row').forEach(function(row){
+    row.addEventListener('click', function(){
+      openTripForm(row.dataset.tripId);
+    });
+  });
+  document.querySelectorAll('.sort-th-inv').forEach(function(th){
+    th.addEventListener('click', function(){
+      var col = th.dataset.sort;
+      if(window._invSortCol === col){
+        window._invSortDir = (window._invSortDir==='asc') ? 'desc' : 'asc';
+      } else {
+        window._invSortCol = col;
+        window._invSortDir = 'asc';
+      }
+      runInvoiceReport();
+    });
+  });
 }
 
 function exportInvoiceReport(){
@@ -11792,12 +11831,15 @@ function exportInvoiceReport(){
   var esc = function(v){ var s=String(v==null?'':v); return s.includes(',')||s.includes('"')||s.includes('\n')?'"'+s.replace(/"/g,'""')+'"':s; };
   var headers = ['Invoice #','Client','Destination','Travel Date','Invoice Date','Supplier','Value'];
   var rows = [];
+  var grandTotal = 0;
   groups.forEach(function(g){
     g.trips.forEach(function(t){
       rows.push([g.invoiceNum, t.clientName, t.destination, t.departDate, t.invoiceDate||'', t.supplierName||'', t.totalValue||0]);
     });
     rows.push(['', '', '', '', '', 'Invoice Total', g.totalValue]);
+    grandTotal += g.totalValue;
   });
+  rows.push(['', '', '', '', '', 'Grand Total', grandTotal]);
   var csv = [headers].concat(rows).map(function(r){return r.map(esc).join(',');}).join('\n');
   var b = new Blob([csv],{type:'text/csv'});
   var a = document.createElement('a'); a.href=URL.createObjectURL(b); a.download='milesman-invoice-report.csv'; a.click();
