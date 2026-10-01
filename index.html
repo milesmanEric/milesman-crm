@@ -11343,7 +11343,7 @@ function renderReports(){
       ('<div class="report-filter">'+
         '<div><label>Filter By</label><select id="rpt-inv-datetype">'+
           '<option value="departDate">Travel Date</option>'+
-          '<option value="invoiceDate">Invoice Date</option>'+
+          '<option value="invoiceDate" selected>Invoice Date</option>'+
         '</select></div>'+
         '<div><label>From Date</label><input type="date" id="rpt-inv-from"/></div>'+
         '<div><label>To Date</label><input type="date" id="rpt-inv-to"/></div>'+
@@ -11715,7 +11715,7 @@ function getInvoiceReportData(){
   // don't have one, so an empty invoiceDate sorts before any real fromDate
   // and those trips are excluded when filtering by Invoice Date with a From
   // Date set — not a bug, there's genuinely no invoice date recorded for them.
-  var dateField = (document.getElementById('rpt-inv-datetype')||{}).value||'departDate';
+  var dateField = (document.getElementById('rpt-inv-datetype')||{}).value||'invoiceDate';
 
   // Group trips by invoice number
   var groups = {};
@@ -11733,30 +11733,33 @@ function getInvoiceReportData(){
   });
 
   var rows = Object.keys(groups).map(function(k){ return groups[k]; });
-  // Default order (no column header clicked yet) is newest-first by the
-  // active date filter type. Clicking a column header (see invSortArrow/
-  // the .sort-th-inv binding in runInvoiceReport) overrides this — each
-  // invoice group sorts as one unit, keyed off its first trip's value for
-  // that column (or the invoice's own invoiceNum/totalValue), since the
-  // table itself rowspans one invoice across multiple trip lines.
-  if(window._invSortCol){
-    var sortCol = window._invSortCol, sortDir = window._invSortDir||'asc';
-    rows.sort(function(a,b){
-      var first = function(g){ return g.trips[0]||{}; };
-      var av, bv;
-      if(sortCol==='invoiceNum'){ av=a.invoiceNum||''; bv=b.invoiceNum||''; }
-      else if(sortCol==='totalValue'){ av=a.totalValue||0; bv=b.totalValue||0; }
-      else { av=first(a)[sortCol]||''; bv=first(b)[sortCol]||''; }
-      var cmp = (typeof av==='number' && typeof bv==='number') ? (av-bv) : String(av).localeCompare(String(bv));
-      return sortDir==='asc' ? cmp : -cmp;
-    });
-  } else {
-    rows.sort(function(a,b){
-      var ad = (a.trips[0]&&a.trips[0][dateField])||'';
-      var bd = (b.trips[0]&&b.trips[0][dateField])||'';
-      return bd.localeCompare(ad);
-    });
-  }
+  // Default view (before any column header is ever clicked) groups by
+  // client — same as explicitly clicking the "Client" header — so each
+  // client's invoices are clustered together with a subtotal after each
+  // one, without that click being required. Clicking a different column
+  // header (see invSortArrow/the .sort-th-inv binding in runInvoiceReport)
+  // switches to a flat sort by that column instead; each invoice group
+  // sorts as one unit, keyed off its first trip's value for that column
+  // (or the invoice's own invoiceNum/totalValue), since the table itself
+  // rowspans one invoice across multiple trip lines.
+  if(window._invSortCol===undefined){ window._invSortCol='clientName'; window._invSortDir='asc'; }
+  var sortCol = window._invSortCol, sortDir = window._invSortDir||'asc';
+  rows.sort(function(a,b){
+    var first = function(g){ return g.trips[0]||{}; };
+    var av, bv;
+    if(sortCol==='invoiceNum'){ av=a.invoiceNum||''; bv=b.invoiceNum||''; }
+    else if(sortCol==='totalValue'){ av=a.totalValue||0; bv=b.totalValue||0; }
+    else { av=first(a)[sortCol]||''; bv=first(b)[sortCol]||''; }
+    var cmp = (typeof av==='number' && typeof bv==='number') ? (av-bv) : String(av).localeCompare(String(bv));
+    // Within the same client, order that client's own invoices newest-first
+    // (same as the old plain default) rather than leaving ties in whatever
+    // order they happened to be inserted.
+    if(cmp===0 && sortCol==='clientName'){
+      var ad = first(a)[dateField]||'', bd = first(b)[dateField]||'';
+      cmp = bd.localeCompare(ad);
+    }
+    return sortDir==='asc' ? cmp : -cmp;
+  });
   return rows;
 }
 function invSortArrow(col){
