@@ -11764,6 +11764,28 @@ function invSortArrow(col){
   if(c!==col) return '';
   return d==='asc' ? ' &#9650;' : ' &#9660;';
 }
+// Rolls the already-filtered invoice groups up by client (one row per
+// client regardless of how many invoices/trips they appear across),
+// sorted by value descending so the biggest clients surface first —
+// shared by the on-screen report, CSV export and PDF export so all three
+// stay in sync with whatever filters are currently applied.
+function getInvoiceClientTotals(groups){
+  var byClient = {};
+  groups.forEach(function(g){
+    g.trips.forEach(function(t){
+      var key = t.clientId || ('(no client) '+(t.clientName||t.id));
+      if(!byClient[key]) byClient[key] = {clientId:t.clientId||'', clientName:t.clientName||'(no client)', totalValue:0, invoiceNums:{}};
+      byClient[key].totalValue += (t.totalValue||0);
+      byClient[key].invoiceNums[g.invoiceNum] = true;
+    });
+  });
+  var rows = Object.keys(byClient).map(function(k){
+    var c = byClient[k];
+    return {clientId:c.clientId, clientName:c.clientName, totalValue:c.totalValue, invoiceCount:Object.keys(c.invoiceNums).length};
+  });
+  rows.sort(function(a,b){ return b.totalValue - a.totalValue; });
+  return rows;
+}
 
 function runInvoiceReport(){
   var groups = getInvoiceReportData();
@@ -11794,6 +11816,15 @@ function runInvoiceReport(){
     rowsHtml += '<tr style="background:#f9fafb"><td colspan="6" style="text-align:right;font-weight:700;color:#374151;padding:6px 12px">Invoice '+g.invoiceNum+' Total:</td><td style="text-align:right;font-weight:700;color:#111">$'+money(g.totalValue)+'</td></tr>';
   });
 
+  var clientTotals = getInvoiceClientTotals(groups);
+  var clientRowsHtml = clientTotals.map(function(c){
+    return '<tr class="rpt-inv-client-row"'+(c.clientId?' style="cursor:pointer" data-client-id="'+c.clientId+'"':'')+'>'+
+      '<td>'+(c.clientName||'')+'</td>'+
+      '<td style="text-align:center">'+c.invoiceCount+'</td>'+
+      '<td style="text-align:right">$'+money(c.totalValue)+'</td>'+
+    '</tr>';
+  }).join('');
+
   container.innerHTML =
     '<div style="font-size:13px;color:#888;margin-bottom:10px">'+groups.length+' invoice'+(groups.length!==1?'s':'')+' · '+db.trips.length+' trip rows · Grand Total: <strong style="color:#111">$'+money(grandTotal)+'</strong></div>'+
     '<div class="tbl-wrap"><table class="report-table"><thead><tr>'+
@@ -11804,11 +11835,20 @@ function runInvoiceReport(){
       '<th class="sort-th-inv" data-sort="invoiceDate" style="cursor:pointer">Invoice Date'+invSortArrow('invoiceDate')+'</th>'+
       '<th class="sort-th-inv" data-sort="supplierName" style="cursor:pointer">Supplier'+invSortArrow('supplierName')+'</th>'+
       '<th class="sort-th-inv" data-sort="totalValue" style="cursor:pointer;text-align:right">Value'+invSortArrow('totalValue')+'</th>'+
-    '</tr></thead><tbody>'+rowsHtml+'</tbody></table></div>';
+    '</tr></thead><tbody>'+rowsHtml+'</tbody></table></div>'+
+    '<div style="font-size:13px;font-weight:700;color:#111;margin:24px 0 10px">Totals by Client</div>'+
+    '<div class="tbl-wrap"><table class="report-table"><thead><tr>'+
+      '<th>Client</th><th style="text-align:center">Invoices</th><th style="text-align:right">Value</th>'+
+    '</tr></thead><tbody>'+clientRowsHtml+'</tbody></table></div>';
 
   document.querySelectorAll('.rpt-inv-row').forEach(function(row){
     row.addEventListener('click', function(){
       openTripForm(row.dataset.tripId);
+    });
+  });
+  document.querySelectorAll('.rpt-inv-client-row[data-client-id]').forEach(function(row){
+    row.addEventListener('click', function(){
+      openClientForm(row.dataset.clientId);
     });
   });
   document.querySelectorAll('.sort-th-inv').forEach(function(th){
@@ -11840,6 +11880,12 @@ function exportInvoiceReport(){
     grandTotal += g.totalValue;
   });
   rows.push(['', '', '', '', '', 'Grand Total', grandTotal]);
+  rows.push([]);
+  rows.push(['Totals by Client']);
+  rows.push(['Client', 'Invoices', 'Value']);
+  getInvoiceClientTotals(groups).forEach(function(c){
+    rows.push([c.clientName, c.invoiceCount, c.totalValue]);
+  });
   var csv = [headers].concat(rows).map(function(r){return r.map(esc).join(',');}).join('\n');
   var b = new Blob([csv],{type:'text/csv'});
   var a = document.createElement('a'); a.href=URL.createObjectURL(b); a.download='milesman-invoice-report.csv'; a.click();
@@ -11862,8 +11908,13 @@ function invoiceReportPdfTable(groups){
     rowsHtml += '<tr style="background:#f9fafb"><td colspan="6" style="text-align:right;font-weight:700">Invoice '+escHtml(String(g.invoiceNum))+' Total:</td><td style="text-align:right;font-weight:700">$'+money(g.totalValue)+'</td></tr>';
     grandTotal += g.totalValue;
   });
+  var clientRowsHtml = getInvoiceClientTotals(groups).map(function(c){
+    return '<tr><td>'+escHtml(c.clientName||'')+'</td><td style="text-align:center">'+c.invoiceCount+'</td><td style="text-align:right">$'+money(c.totalValue)+'</td></tr>';
+  }).join('');
   return '<table><thead><tr><th>Invoice #</th><th>Client</th><th>Destination</th><th>Travel Date</th><th>Invoice Date</th><th>Supplier</th><th style="text-align:right">Value</th></tr></thead><tbody>'+rowsHtml+'</tbody></table>'+
-    '<div style="text-align:right;margin-top:10px;font-weight:700;font-size:13px">Grand Total: $'+money(grandTotal)+'</div>';
+    '<div style="text-align:right;margin-top:10px;font-weight:700;font-size:13px">Grand Total: $'+money(grandTotal)+'</div>'+
+    '<div style="font-weight:700;font-size:13px;margin-top:20px">Totals by Client</div>'+
+    '<table style="margin-top:8px"><thead><tr><th>Client</th><th style="text-align:center">Invoices</th><th style="text-align:right">Value</th></tr></thead><tbody>'+clientRowsHtml+'</tbody></table>';
 }
 async function exportInvoiceReportPdf(){
   var groups = getInvoiceReportData();
