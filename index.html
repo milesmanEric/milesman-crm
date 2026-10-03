@@ -2563,6 +2563,17 @@ async function loadDB(){
         console.log('[CRM] Added '+travelInsuranceBookmarksAdded+' Travel Insurance starter bookmark(s)');
       }
     }
+    // One-time rename: the "Ad" Referred By option was renamed to
+    // "Advertisement" for clarity — updates any client still storing the
+    // old value so their record continues to show correctly in the
+    // dropdown (safe to run repeatedly; a no-op once no client has "Ad").
+    db.clients.forEach(function(c){
+      if(c.referredBy==='Ad'){
+        c.referredBy='Advertisement';
+        saveDB();
+        console.log('[CRM] Renamed client '+c.id+'\'s Referred By from "Ad" to "Advertisement"');
+      }
+    });
     // One-time backfill: "Fairmont Vancouver Pacific Rim" was missing from
     // the initial Accor research pass — appends it to any Accor supplier
     // that doesn't already have it, without touching the rest of the list
@@ -18308,7 +18319,7 @@ function openClientForm(id){
       fld('Country of Citizenship',inp('fcoc','text',d.countryOfCitizenship))+fld('Country of Birth',inp('fcob','text',d.countryOfBirth))+
       fld('Referred By','<select id="fref"><option value="">-- Select --</option>'+
         '<option value="Subscriber"'+(d.referredBy==='Subscriber'?' selected':'')+'>Subscriber</option>'+
-        '<option value="Ad"'+(d.referredBy==='Ad'?' selected':'')+'>Ad</option>'+
+        '<option value="Advertisement"'+(d.referredBy==='Advertisement'?' selected':'')+'>Advertisement</option>'+
         '<option value="Event"'+(d.referredBy==='Event'?' selected':'')+'>Event</option>'+
         '<option value="Person"'+(d.referredBy==='Person'?' selected':'')+'>Person</option>'+
         '<option value="Outbound Solicit"'+(d.referredBy==='Outbound Solicit'?' selected':'')+'>Outbound Solicit</option>'+
