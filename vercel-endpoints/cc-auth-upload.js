@@ -27,6 +27,33 @@
 //                               same value Secure Sync setup already used)
 // No new env vars needed if Secure Sync (§4.1a) is already configured.
 //
+// ALSO SENDS AN EMAIL NOTIFICATION to eric@themilesman.com on every
+// successful upload, via Microsoft Graph's /me/sendMail — same Outlook
+// connection (MS_CLIENT_ID/MS_TENANT_ID, Mail.Send scope) the CRM's own
+// "Connect Outlook" flow already consents to, but using a stored SERVER
+// refresh token so this unattended endpoint can send without a live browser
+// session open. Requires one more env var:
+//   MS_SERVER_REFRESH_TOKEN — a refresh token for the Outlook account that
+//                               should send/receive these notifications.
+//                               Same value api/daily-analytics-email.js
+//                               already uses if that's set up (copy
+//                               localStorage's mm_ms_refresh from the CRM
+//                               after connecting Outlook there — Debug
+//                               Panel has no copy button for this one yet,
+//                               so pull it from devtools: localStorage
+//                               .getItem('mm_ms_refresh')). The CRM's
+//                               MS_SCOPE must include Mail.Send (it does as
+//                               of the comment at its definition) — an
+//                               existing mm_ms_refresh captured before that
+//                               scope was added won't carry it retroactively,
+//                               so reconnect Outlook once in the CRM first if
+//                               this 403s with an insufficient-scope error.
+// If MS_SERVER_REFRESH_TOKEN isn't set, or the send otherwise fails, the
+// upload itself still succeeds — the file reaching Drive is the actual
+// deliverable here, so an email outage is logged (visible in Vercel's
+// function logs) and surfaced back in the response as emailSent:false,
+// rather than failing the client's upload over a notification side-effect.
+//
 // WHETHER UPLOADS SHOW UP IN THE CRM'S OWN "Browse Google Drive" PICKER IS
 // GENUINELY UNCERTAIN — treat this with real caution, not optimism. A live
 // test against a real account already confirmed drive.file scope is
@@ -71,6 +98,23 @@ const FOLDER_NAME = 'Credit Card Authorization Forms';
 const MAX_BYTES = 8 * 1024 * 1024;
 const PDF_MAGIC = Buffer.from('%PDF');
 
+// Same values the CRM's own browser-side Outlook connection (index.html)
+// uses — a public (no client secret) Azure AD app registration, so the
+// server-side refresh below needs nothing beyond MS_SERVER_REFRESH_TOKEN.
+const MS_CLIENT_ID = 'f59cebe9-632b-4361-bdab-71dda33c174c';
+const MS_TENANT_ID = 'a9346e69-975d-4abb-861a-dea6e2464642';
+const MS_TOKEN_URL = 'https://login.microsoftonline.com/' + MS_TENANT_ID + '/oauth2/v2.0/token';
+const MS_SEND_MAIL_URL = 'https://graph.microsoft.com/v1.0/me/sendMail';
+const NOTIFY_EMAIL = 'eric@themilesman.com';
+// Graph's /sendMail is a single-request endpoint with no chunked/resumable
+// upload support (unlike drafting a message and attaching via a separate
+// large-file session) — keep the inline attachment well under Graph's
+// practical request-size ceiling for that endpoint. Anything larger still
+// gets emailed, just as a Drive link instead of an attachment, since the
+// file itself is never at risk either way (Drive upload above already
+// succeeded by the time this runs).
+const MAX_INLINE_ATTACHMENT_BYTES = 3 * 1024 * 1024;
+
 async function getServerDriveAccessToken() {
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
   const refreshToken = process.env.DRIVE_SERVER_REFRESH_TOKEN;
@@ -92,6 +136,73 @@ async function getServerDriveAccessToken() {
     throw new Error('drive_auth_failed: ' + (data.error_description || data.error || 'could not refresh the server Drive credential'));
   }
   return data.access_token;
+}
+
+// Public client (PKCE) app registration — refresh needs no client secret,
+// same as the CRM's own browser-side refreshMsToken(). Requests only
+// Mail.Send (least privilege for what this endpoint actually does), which
+// is a strict subset of the full MS_SCOPE the stored refresh token was
+// originally issued with — Microsoft allows narrowing the requested scope
+// on a refresh like this without needing a fresh consent.
+async function getServerMsAccessToken() {
+  const refreshToken = process.env.MS_SERVER_REFRESH_TOKEN;
+  if (!refreshToken) {
+    throw new Error('server_not_configured: MS_SERVER_REFRESH_TOKEN is not set on this Vercel project.');
+  }
+  const r = await fetch(MS_TOKEN_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: MS_CLIENT_ID,
+      grant_type: 'refresh_token',
+      refresh_token: refreshToken,
+      scope: 'https://graph.microsoft.com/Mail.Send offline_access'
+    }).toString()
+  });
+  const data = await r.json();
+  if (!r.ok || !data.access_token) {
+    throw new Error('ms_auth_failed: ' + (data.error_description || data.error || 'could not refresh the server Outlook credential'));
+  }
+  return data.access_token;
+}
+
+// Best-effort — a failure here never fails the upload itself (see the
+// header comment). Attaches the PDF inline when it's small enough to do so
+// safely over Graph's single-request /sendMail endpoint; either way the
+// email includes the Drive link so the file is always reachable from it.
+async function sendUploadNotificationEmail(accessToken, info) {
+  const bodyLines = [
+    'A credit card authorization form was just uploaded.',
+    '',
+    'Client: ' + (info.clientName || '(not given)'),
+    'Client ID: ' + (info.clientId || '(none — uploaded via a non-personalized link)'),
+    'Email: ' + (info.clientEmail || '(none)'),
+    'Uploaded file: ' + info.driveFilename,
+    'Drive link: ' + (info.webViewLink || '(unavailable)')
+  ];
+  const message = {
+    subject: 'Credit Card Authorization Form uploaded — ' + (info.clientName || 'Unknown Client'),
+    body: { contentType: 'Text', content: bodyLines.join('\n') },
+    toRecipients: [{ emailAddress: { address: NOTIFY_EMAIL } }]
+  };
+  if (info.buffer.length <= MAX_INLINE_ATTACHMENT_BYTES) {
+    message.attachments = [{
+      '@odata.type': '#microsoft.graph.fileAttachment',
+      name: info.driveFilename,
+      contentType: 'application/pdf',
+      contentBytes: info.buffer.toString('base64')
+    }];
+  }
+  const r = await fetch(MS_SEND_MAIL_URL, {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + accessToken, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message: message, saveToSentItems: true })
+  });
+  if (!r.ok) {
+    let detail = '';
+    try { detail = JSON.stringify(await r.json()); } catch (e) {}
+    throw new Error('graph_sendmail_failed: HTTP ' + r.status + ' ' + detail);
+  }
 }
 
 // Finds a folder by name under a given parent, creating it the first time
@@ -258,7 +369,29 @@ module.exports = async (req, res) => {
       throw new Error('drive_upload_failed: ' + (uploadData.error && uploadData.error.message || 'Drive rejected the upload'));
     }
 
-    res.status(200).json({ ok: true, fileId: uploadData.id, fileName: uploadData.name, webViewLink: uploadData.webViewLink });
+    // Best-effort from here on — the upload above already succeeded and is
+    // the actual deliverable, so a notification failure is logged (visible
+    // in Vercel's function logs) and reported back as emailSent:false
+    // rather than turning a successful upload into a 500 for the client.
+    let emailSent = false;
+    let emailError = null;
+    try {
+      const msAccessToken = await getServerMsAccessToken();
+      await sendUploadNotificationEmail(msAccessToken, {
+        clientName: clientName,
+        clientId: clientId,
+        clientEmail: clientEmail,
+        driveFilename: driveFilename,
+        webViewLink: uploadData.webViewLink,
+        buffer: buffer
+      });
+      emailSent = true;
+    } catch (emailErr) {
+      console.error('cc-auth-upload: notification email failed:', emailErr.message);
+      emailError = emailErr.message;
+    }
+
+    res.status(200).json({ ok: true, fileId: uploadData.id, fileName: uploadData.name, webViewLink: uploadData.webViewLink, emailSent: emailSent, emailError: emailError });
   } catch (e) {
     res.status(500).json({ error: 'upload_error', error_description: e.message });
   }
