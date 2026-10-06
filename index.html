@@ -9643,6 +9643,7 @@ function processTripFormRow(getVal, counters){
   var countryOfBirth = getVal('Country of Birth');
   var referredBy = getVal('Referred By');
   var referredByDetail = getVal('Referred By Detail');
+  var okToText = !!getVal('OK to Text');
   var discounts = extractChecklistWithOther(DISCOUNT_TYPES, 'Discount');
   var discountOther = getVal('Discount - Other Detail');
   var interests = extractChecklistWithOther(INTEREST_TYPES, 'Interest');
@@ -9683,6 +9684,7 @@ function processTripFormRow(getVal, counters){
     if(countryOfCitizenship && countryOfCitizenship!==client.countryOfCitizenship){client.countryOfCitizenship=countryOfCitizenship;filled.push('countryOfCitizenship');}
     if(countryOfBirth && countryOfBirth!==client.countryOfBirth){client.countryOfBirth=countryOfBirth;filled.push('countryOfBirth');}
     if(referredBy && referredBy!==client.referredBy){client.referredBy=referredBy;filled.push('referredBy');}
+    if(okToText && !client.okToText){client.okToText=true;filled.push('okToText');}
     if(referredByDetail && referredByDetail!==client.referredByDetail){client.referredByDetail=referredByDetail;filled.push('referredByDetail');}
     if(preferredAirline && preferredAirline!==client.preferredAirline){client.preferredAirline=preferredAirline;filled.push('preferredAirline');}
     if(preferredHotel && preferredHotel!==client.preferredHotel){client.preferredHotel=preferredHotel;filled.push('preferredHotel');}
@@ -9729,7 +9731,7 @@ function processTripFormRow(getVal, counters){
   } else {
     client = {id:newId('C',db.clients), name:toLastFirst(name), email:email, phone:phone,
       streetAddress:streetAddress, city:city, state:state, zip:zip,
-      birthdate:birthdate, countryOfCitizenship:countryOfCitizenship, countryOfBirth:countryOfBirth, referredBy:referredBy, referredByDetail:referredByDetail,
+      birthdate:birthdate, countryOfCitizenship:countryOfCitizenship, countryOfBirth:countryOfBirth, referredBy:referredBy, referredByDetail:referredByDetail, okToText:okToText,
       discounts:discounts, discountOther:discountOther, interests:interests, interestOther:interestOther,
       preferredAirline:preferredAirline, preferredHotel:preferredHotel, preferredCruiseLine:preferredCruiseLine,
       mileageBalances:mileageBalances||{}, hotelBalances:hotelBalances||{}, cruiseBalances:cruiseBalances||{}, carRentalBalances:carRentalBalances||{}, creditCardBalances:creditCardBalances||{}, airlineCreditCards:airlineCreditCards||[], hotelCreditCards:hotelCreditCards||[],
@@ -18313,6 +18315,7 @@ function openClientForm(id){
         (d.email?('<a href="mailto:'+mailtoAddr(d.email)+'" title="Email in Outlook" style="color:#2563eb;text-decoration:none;font-size:16px;flex-shrink:0">&#9993;&#65039;</a>'):'')+
       '</div>')+
       fld('Phone',inp('fp','text',d.phone,'(xxx) xxx-xxxx'))+
+      '<div class="field full"><label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#374151;text-transform:none;font-weight:500;cursor:pointer"><input type="checkbox" id="f-oktotext" '+(d.okToText?'checked':'')+' style="width:15px;height:15px"> Is it alright to text to communicate?</label></div>'+
       fld('Street Address',inp('fst','text',d.streetAddress))+fld('City',inp('fcty','text',d.city))+
       fld('State',inp('fstate','text',d.state))+fld('Zip Code',inp('fzip','text',d.zip))+
       fld('Birthdate',inp('fbd','date',d.birthdate))+
@@ -20257,7 +20260,7 @@ function saveClient(id){
       certNumber:certRaw?Number(certRaw):undefined
     };
   }).filter(function(rc){return rc.referredName;});
-  const data={name:name,email:email,phone:gv('fp'),streetAddress:gv('fst'),city:gv('fcty'),state:gv('fstate'),zip:gv('fzip'),birthdate:gv('fbd'),countryOfCitizenship:gv('fcoc'),countryOfBirth:gv('fcob'),referredBy:referredBy,referredByDetail:referredByDetail,discounts:discountData.discounts,discountOther:discountData.discountOther,interests:interestData.interests,interestOther:interestData.interestOther,preferredAirline:gv('fpa'),preferredHotel:gv('fph'),preferredCruiseLine:gv('fpc'),mileageBalances:mileageBalances,hotelBalances:hotelBalances,cruiseBalances:cruiseBalances,carRentalBalances:carRentalBalances,creditCardBalances:creditCardBalances,airlineCreditCards:airlineCreditCards,hotelCreditCards:hotelCreditCards,notesLog:notesLog,isPayingClient:document.getElementById('f-paying')?document.getElementById('f-paying').checked:false,isSubscriber:document.getElementById('f-subscriber')?document.getElementById('f-subscriber').checked:false,attachments:window._currentClientAttachments||[],referralCredits:referralCredits};
+  const data={name:name,email:email,phone:gv('fp'),streetAddress:gv('fst'),city:gv('fcty'),state:gv('fstate'),zip:gv('fzip'),birthdate:gv('fbd'),countryOfCitizenship:gv('fcoc'),countryOfBirth:gv('fcob'),referredBy:referredBy,referredByDetail:referredByDetail,discounts:discountData.discounts,discountOther:discountData.discountOther,interests:interestData.interests,interestOther:interestData.interestOther,preferredAirline:gv('fpa'),preferredHotel:gv('fph'),preferredCruiseLine:gv('fpc'),mileageBalances:mileageBalances,hotelBalances:hotelBalances,cruiseBalances:cruiseBalances,carRentalBalances:carRentalBalances,creditCardBalances:creditCardBalances,airlineCreditCards:airlineCreditCards,hotelCreditCards:hotelCreditCards,notesLog:notesLog,isPayingClient:document.getElementById('f-paying')?document.getElementById('f-paying').checked:false,isSubscriber:document.getElementById('f-subscriber')?document.getElementById('f-subscriber').checked:false,okToText:document.getElementById('f-oktotext')?document.getElementById('f-oktotext').checked:false,attachments:window._currentClientAttachments||[],referralCredits:referralCredits};
   var resultId = id;
   if(id){
     db.clients=db.clients.map(function(c){return c.id===id?Object.assign({},c,data):c;});
