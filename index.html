@@ -324,6 +324,7 @@ tr:last-child td{border-bottom:none}
         <button class="sync-btn" id="btn-import-revenue" style="color:#059669;border-color:#6ee7b7">&#128178; Import Revenue CSV</button>
         <button class="sync-btn" id="btn-clean-import-revenue" style="color:#7c3aed;border-color:#c4b5fd">&#129529; Clean &amp; Import Revenue File</button>
         <button class="sync-btn" id="btn-reset-revenue-import-history" style="color:#888;border-color:#ddd;font-size:11px" title="Lets the automatic Revenue Report email check re-fetch and re-attempt every report email again, instead of skipping ones it already saw">&#128260; Re-check All Revenue Report Emails</button>
+        <button class="sync-btn" id="btn-reset-tripform-contactform-history" style="color:#888;border-color:#ddd;font-size:11px" title="Widens the Book a Trip / Contact Form email checks to look back 14 days for anything missed (e.g. after an Outlook outage) — already-imported submissions are left alone, only genuinely unseen ones get processed">&#128260; Re-check Book a Trip / Contact Form Emails (14 days)</button>
         <button class="sync-btn" id="btn-pending-import-matches" style="color:#d97706;border-color:#fde68a" title="Revenue import rows that had no client match — Skip this row now saves them here instead of discarding them">&#9203; Pending Import Matches (<span id="nc-pending-import-matches">0</span>)</button>
         <button class="sync-btn" id="btn-pending-traveler-matches" style="color:#d97706;border-color:#fde68a" title="Book a Trip form companion travelers (Traveler 2+) whose name didn't exactly match an existing client, but who share a last name with one — pick the right client instead of risking a silent duplicate">&#9203; Pending Traveler Matches (<span id="nc-pending-traveler-matches">0</span>)</button>
         <button class="sync-btn" id="btn-import-csv" style="color:#059669;border-color:#6ee7b7">&#128203; Import Clients CSV</button>
@@ -10224,6 +10225,57 @@ function pollCheckpointNow(){
   d.setMinutes(d.getMinutes()-10);
   return d.toISOString();
 }
+// Shared by the three periodic form-submission checks below (trip form,
+// contact form, revenue report) — pages through @odata.nextLink instead of
+// trusting a single $top-capped page, the same safeguard fetchMailbox's own
+// fetchAllPages already applies to the full Outlook Sync. Without this, a
+// long gap since the last check (Outlook disconnected for days, the
+// computer off, etc.) combined with ordinary mailbox traffic landing on top
+// of the real matches can silently push a submission email past the first
+// page — the watermark then advances beyond it and it's never looked at
+// again. A real incident: a week-long Outlook disconnect meant every one of
+// these checks logged "skipped — Outlook not connected" on the 5-minute
+// timer the whole time; by the time it reconnected, a single $top=50 page
+// covering that whole week was never guaranteed to still contain every
+// matching submission, since ordinary non-matching mail easily added up to
+// more than 50 messages across 7 days. Paging removes that cap entirely
+// (short of MAX_PAGES, a safety net against ever running forever).
+async function fetchAllGraphMessagePages(token, url, label){
+  var all = [];
+  var next = url;
+  var pages = 0;
+  var MAX_PAGES = 20; // 20 x 50 = up to 1000 messages — generous for a periodic check, even after a week-long gap
+  var headers = {Authorization:'Bearer '+token};
+  while(next && pages < MAX_PAGES){
+    pages++;
+    var r = await fetch(next, {headers:headers});
+    if(r.status===429){
+      var retryAfter = parseInt(r.headers.get('Retry-After')||'2',10);
+      debugLog(label+': throttled (429), retrying after '+retryAfter+'s...');
+      await new Promise(function(res){ setTimeout(res, retryAfter*1000); });
+      r = await fetch(next, {headers:headers});
+    }
+    var d = await r.json();
+    if(!r.ok){
+      var msg = d.error && d.error.message || 'status '+r.status;
+      var partial = new Error(label+' error: '+msg);
+      partial.partialResults = all;
+      throw partial;
+    }
+    all.push.apply(all, (d.value||[]));
+    next = d['@odata.nextLink']||null;
+    // Only worth logging once genuine paging is happening — the common
+    // case (one page, nothing more to fetch) is already summarized by the
+    // caller's own "fetched N message(s)" line right after this returns.
+    if(pages>1 || next){
+      debugLog(label+': fetched page '+pages+' ('+all.length+' message'+(all.length!==1?'s':'')+' so far)'+(next?'...':' — done'));
+    }
+  }
+  if(next){
+    debugLog(label+': stopped after '+MAX_PAGES+' pages ('+all.length+' messages) — there may be more');
+  }
+  return all;
+}
 // Polls the connected Outlook inbox for new "Book a trip" submission
 // emails and imports each one through the same logic as the manual CSV
 // import. silent=true (used by the timer and the on-load check) never
@@ -10247,19 +10299,20 @@ async function checkForNewTripFormEmails(silent){
       '?$select=id,subject,receivedDateTime,body'+
       '&$orderby=receivedDateTime desc&$top=50'+
       '&$filter=receivedDateTime+ge+'+encodeURIComponent(lastCheck);
-    var r = await fetch(url, {headers:{Authorization:'Bearer '+token}});
-    var d = await r.json();
-    if(!r.ok){
-      debugLog('Trip form email check error: '+(d.error&&d.error.message||r.status));
+    var fetched;
+    try{
+      fetched = await fetchAllGraphMessagePages(token, url, 'Trip form email check');
+    }catch(e){
+      debugLog(e.message);
       return;
     }
-    debugLog('Trip form email check: fetched '+(d.value||[]).length+' message(s) since '+lastCheck);
-    (d.value||[]).forEach(function(m){
+    debugLog('Trip form email check: fetched '+fetched.length+' message(s) since '+lastCheck);
+    fetched.forEach(function(m){
       if(TRIPFORM_EMAIL_SUBJECT_RE.test((m.subject||'').trim())){
         debugLog('Trip form email check: found subject match — id='+m.id+' subject="'+m.subject+'" alreadyProcessed='+(processedIds.indexOf(m.id)!==-1)+' receivedDateTime='+m.receivedDateTime);
       }
     });
-    var messages = (d.value||[]).filter(function(m){
+    var messages = fetched.filter(function(m){
       return TRIPFORM_EMAIL_SUBJECT_RE.test((m.subject||'').trim()) && processedIds.indexOf(m.id)===-1;
     });
     // The Graph query above fetches newest-first (best for the near-miss
@@ -10418,19 +10471,20 @@ async function checkForNewContactFormEmails(silent){
       '?$select=id,subject,receivedDateTime,body'+
       '&$orderby=receivedDateTime desc&$top=50'+
       '&$filter=receivedDateTime+ge+'+encodeURIComponent(lastCheck);
-    var r = await fetch(url, {headers:{Authorization:'Bearer '+token}});
-    var d = await r.json();
-    if(!r.ok){
-      debugLog('Contact form email check error: '+(d.error&&d.error.message||r.status));
+    var fetched;
+    try{
+      fetched = await fetchAllGraphMessagePages(token, url, 'Contact form email check');
+    }catch(e){
+      debugLog(e.message);
       return;
     }
-    debugLog('Contact form email check: fetched '+(d.value||[]).length+' message(s) since '+lastCheck);
-    (d.value||[]).forEach(function(m){
+    debugLog('Contact form email check: fetched '+fetched.length+' message(s) since '+lastCheck);
+    fetched.forEach(function(m){
       if(CONTACT_FORM_EMAIL_SUBJECT_RE.test((m.subject||'').trim())){
         debugLog('Contact form email check: found subject match — id='+m.id+' subject="'+m.subject+'" alreadyProcessed='+(processedIds.indexOf(m.id)!==-1)+' receivedDateTime='+m.receivedDateTime);
       }
     });
-    var messages = (d.value||[]).filter(function(m){
+    var messages = fetched.filter(function(m){
       return CONTACT_FORM_EMAIL_SUBJECT_RE.test((m.subject||'').trim()) && processedIds.indexOf(m.id)===-1;
     });
     debugLog('Contact form email check: '+messages.length+' new submission email(s)');
@@ -10781,19 +10835,20 @@ async function checkForNewRevenueReportEmails(silent){
       '?$select=id,subject,receivedDateTime,hasAttachments'+
       '&$orderby=receivedDateTime desc&$top=50'+
       '&$filter=receivedDateTime+ge+'+encodeURIComponent(lastCheck);
-    var r = await fetch(url, {headers:{Authorization:'Bearer '+token}});
-    var d = await r.json();
-    if(!r.ok){
-      debugLog('Revenue report email check error: '+(d.error&&d.error.message||r.status));
+    var fetched;
+    try{
+      fetched = await fetchAllGraphMessagePages(token, url, 'Revenue report email check');
+    }catch(e){
+      debugLog(e.message);
       return;
     }
-    debugLog('Revenue report email check: fetched '+(d.value||[]).length+' message(s) since '+lastCheck);
-    (d.value||[]).forEach(function(m){
+    debugLog('Revenue report email check: fetched '+fetched.length+' message(s) since '+lastCheck);
+    fetched.forEach(function(m){
       if(REVENUE_REPORT_EMAIL_SUBJECTS.indexOf((m.subject||'').trim())!==-1){
         debugLog('Revenue report email check: found subject match — id='+m.id+' hasAttachments='+m.hasAttachments+' alreadyProcessed='+(processedIds.indexOf(m.id)!==-1)+' receivedDateTime='+m.receivedDateTime);
       }
     });
-    var messages = (d.value||[]).filter(function(m){
+    var messages = fetched.filter(function(m){
       return REVENUE_REPORT_EMAIL_SUBJECTS.indexOf((m.subject||'').trim())!==-1 && m.hasAttachments && processedIds.indexOf(m.id)===-1;
     });
     debugLog('Revenue report email check: '+messages.length+' new report email(s)');
@@ -25379,13 +25434,43 @@ function bindClick(id, handler){
   // succeeded just gets its trips backfilled/deduped again, not doubled.
   // This only clears which emails the check has SEEN, so one that was
   // skipped, partially imported, or missed due to the watermark bug gets
-  // a genuine second attempt.
+  // a genuine second attempt. Rewinds the watermark 14 days back rather
+  // than just deleting it — deleting falls back to each check's own
+  // "no stored value" default of just the last 24h (see
+  // checkForNewRevenueReportEmails's own lastCheck fallback), nowhere near
+  // enough to recover from a real outage like the week-long Outlook
+  // disconnect that first surfaced this gap.
   bindClick('btn-reset-revenue-import-history', function(){
-    if(!confirm('Let the automatic Revenue Report email check re-fetch and re-attempt every report email again? Already-imported trips will not be duplicated (matched by client/invoice/supplier/amount/date), so this is safe to use whenever a report seems to have been missed or only partially imported.')) return;
+    if(!confirm('Let the automatic Revenue Report email check re-fetch and re-attempt every report email again, covering the last 14 days? Already-imported trips will not be duplicated (matched by client/invoice/supplier/amount/date), so this is safe to use whenever a report seems to have been missed or only partially imported.')) return;
     localStorage.removeItem('mm_revenuereport_processed_ids');
-    localStorage.removeItem('mm_last_revenuereport_check');
-    toast('Revenue report import history cleared — next check re-scans the last 24h','ok');
-    debugLog('Revenue report import history cleared (manual reset)');
+    var revD = new Date(); revD.setDate(revD.getDate()-14);
+    localStorage.setItem('mm_last_revenuereport_check', revD.toISOString());
+    toast('Revenue report import history cleared — next check re-scans the last 14 days','ok');
+    debugLog('Revenue report import history cleared (manual reset) — next check re-scans the last 14 days');
+  });
+  // UNLIKE the revenue-report reset above, this deliberately leaves
+  // mm_tripform_processed_ids / mm_contactform_processed_ids untouched —
+  // processTripFormRow()/processContactFormRow() have no content-based
+  // dedup the way finalizeImport() does for revenue, so clearing the
+  // processed-id list here would re-run every submission from the last 14
+  // days through from scratch and create duplicate clients/trips/leads for
+  // every one that already imported fine. The processed-id list is the
+  // ONLY record of "already handled" these two checks have, so it has to
+  // stay. Just rewinding the watermark is still enough to recover a
+  // genuinely missed submission: anything silently skipped by the old
+  // single-page $top=50 cap (fixed by fetchAllGraphMessagePages, but a
+  // submission from BEFORE that fix could still be sitting unprocessed)
+  // was never fetched at all, so its id was never added to the processed
+  // list either — the next check correctly reprocesses exactly that one,
+  // and correctly skips every id it already has on file.
+  bindClick('btn-reset-tripform-contactform-history', function(){
+    if(!confirm('Let the automatic Book a Trip / Contact Form email checks look back further for anything they may have missed, covering the last 14 days? Submissions already successfully imported are left alone — this only catches ones that were never actually seen at all, e.g. after an Outlook outage like the one that first surfaced this gap.')) return;
+    var tfD = new Date(); tfD.setDate(tfD.getDate()-14);
+    localStorage.setItem('mm_last_tripform_check', tfD.toISOString());
+    var cfD = new Date(); cfD.setDate(cfD.getDate()-14);
+    localStorage.setItem('mm_last_contactform_check', cfD.toISOString());
+    toast('Book a Trip / Contact Form checkpoints rewound — next check re-scans the last 14 days','ok');
+    debugLog('Trip form / Contact form checkpoints rewound to 14 days back (manual reset)');
   });
   bindClick('btn-pending-import-matches', openPendingImportMatchesModal);
   bindClick('btn-pending-traveler-matches', openPendingTravelerMatchesModal);
