@@ -491,7 +491,7 @@
         <label for="payment-pref-select">Would you like to use</label>
         <select id="payment-pref-select" name="Payment Preference">
           <option value="">-- Select --</option>
-          <option>Miles/Points</option>
+          <option>Miles/Points/Certificates</option>
           <option>Payment</option>
           <option>Combination Miles/Points and Payment</option>
         </select>
@@ -788,6 +788,17 @@
           '<select name="Hotel Certificate - '+brand+' '+tier+'"><option value="">Qty</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5+</option></select></div>';
       });
     });
+    // "Other" — a brand outside the fixed Marriott/Hyatt list above, so it
+    // needs its own free-text brand field alongside the same quantity
+    // select, rather than a fixed "<Brand> <Tier>" pairing like every other
+    // row. The CRM side (index.html) stores these as hotelCertificates.
+    // otherBrand/otherQty on the trip — see buildTripFormFieldLabels()/
+    // processTripFormRow() there. span gets flex:none here (overriding
+    // .balance-row span's default flex:1) so the brand input, not the
+    // "Other" label, gets the row's spare width.
+    rows += '<div class="balance-row"><span style="flex:none;white-space:nowrap">Other</span>'+
+      '<input type="text" name="Hotel Certificate - Other Brand" placeholder="Brand" style="flex:1;min-width:0;padding:6px 8px;font-size:12px;border:1px solid #d1d5db;border-radius:6px;font-family:inherit">'+
+      '<select name="Hotel Certificate - Other Qty"><option value="">Qty</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5+</option></select></div>';
     return rows;
   }
   // Plain has/doesn't-have checkboxes, grouped by brand — no number/status
