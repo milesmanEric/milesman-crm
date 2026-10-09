@@ -9530,6 +9530,7 @@ function processTripFormRow(getVal, counters){
     var tBirthdate=getVal(tp+' - Birthdate');
     var tCountryOfCitizenship=getVal(tp+' - Country of Citizenship');
     var tCountryOfBirth=getVal(tp+' - Country of Birth');
+    var tPassportExpiration=getVal(tp+' - Passport Expiration Date');
     var tReferredBy=getVal(tp+' - Referred By');
     var tReferredByDetail=getVal(tp+' - Referred By Detail');
     var tDiscounts=extractChecklistWithOther(DISCOUNT_TYPES, tp+' - Discount');
@@ -9547,7 +9548,7 @@ function processTripFormRow(getVal, counters){
     var tAirlineCc=extractCardChecklist(AIRLINE_CREDIT_CARDS, tp+' Airline Credit Card');
     var tHotelCc=extractCardChecklist(HOTEL_CREDIT_CARDS, tp+' Hotel Credit Card');
     var tFields={email:tEmail, phone:tPhone, streetAddress:tStreetAddress, city:tCity, state:tState, zip:tZip,
-      birthdate:tBirthdate, countryOfCitizenship:tCountryOfCitizenship, countryOfBirth:tCountryOfBirth,
+      birthdate:tBirthdate, countryOfCitizenship:tCountryOfCitizenship, countryOfBirth:tCountryOfBirth, passportExpiration:tPassportExpiration,
       referredBy:tReferredBy, referredByDetail:tReferredByDetail, discountOther:tDiscountOther, interestOther:tInterestOther,
       preferredAirline:tAirline, preferredHotel:tHotel, preferredCruiseLine:tCruise};
 
@@ -9712,6 +9713,7 @@ function processTripFormRow(getVal, counters){
   var birthdate = getVal('Birthdate');
   var countryOfCitizenship = getVal('Country of Citizenship');
   var countryOfBirth = getVal('Country of Birth');
+  var passportExpiration = getVal('Passport Expiration Date');
   var referredBy = getVal('Referred By');
   var referredByDetail = getVal('Referred By Detail');
   var okToText = !!getVal('OK to Text');
@@ -9754,6 +9756,7 @@ function processTripFormRow(getVal, counters){
     if(birthdate && birthdate!==client.birthdate){client.birthdate=birthdate;filled.push('birthdate');}
     if(countryOfCitizenship && countryOfCitizenship!==client.countryOfCitizenship){client.countryOfCitizenship=countryOfCitizenship;filled.push('countryOfCitizenship');}
     if(countryOfBirth && countryOfBirth!==client.countryOfBirth){client.countryOfBirth=countryOfBirth;filled.push('countryOfBirth');}
+    if(passportExpiration && passportExpiration!==client.passportExpiration){client.passportExpiration=passportExpiration;filled.push('passportExpiration');}
     if(referredBy && referredBy!==client.referredBy){client.referredBy=referredBy;filled.push('referredBy');}
     if(okToText && !client.okToText){client.okToText=true;filled.push('okToText');}
     if(referredByDetail && referredByDetail!==client.referredByDetail){client.referredByDetail=referredByDetail;filled.push('referredByDetail');}
@@ -9802,7 +9805,7 @@ function processTripFormRow(getVal, counters){
   } else {
     client = {id:newId('C',db.clients), name:toLastFirst(name), email:email, phone:phone,
       streetAddress:streetAddress, city:city, state:state, zip:zip,
-      birthdate:birthdate, countryOfCitizenship:countryOfCitizenship, countryOfBirth:countryOfBirth, referredBy:referredBy, referredByDetail:referredByDetail, okToText:okToText,
+      birthdate:birthdate, countryOfCitizenship:countryOfCitizenship, countryOfBirth:countryOfBirth, passportExpiration:passportExpiration, referredBy:referredBy, referredByDetail:referredByDetail, okToText:okToText,
       discounts:discounts, discountOther:discountOther, interests:interests, interestOther:interestOther,
       preferredAirline:preferredAirline, preferredHotel:preferredHotel, preferredCruiseLine:preferredCruiseLine,
       mileageBalances:mileageBalances||{}, hotelBalances:hotelBalances||{}, cruiseBalances:cruiseBalances||{}, carRentalBalances:carRentalBalances||{}, creditCardBalances:creditCardBalances||{}, airlineCreditCards:airlineCreditCards||[], hotelCreditCards:hotelCreditCards||[],
@@ -10162,7 +10165,7 @@ function importFormspreeSubmissions(){
 var TRIPFORM_EMAIL_SUBJECT_RE = /^New submission\b.*\bBook a trip$/i;
 function buildTripFormFieldLabels(){
   var labels = ['Full Name','Email','Phone','Street Address','City','State','Zip Code','Number of Travelers',
-    'Birthdate','Country of Citizenship','Country of Birth','Referred By','Referred By Detail',
+    'Birthdate','Country of Citizenship','Country of Birth','Passport Expiration Date','Referred By','Referred By Detail',
     'Discount - Military','Discount - AAA','Discount - First Responder','Discount - Educator','Discount - USAA','Discount - Other','Discount - Other Detail',
     'Interest - Beach','Interest - Skiing','Interest - Boating','Interest - Fishing','Interest - Snorkeling','Interest - Horseback Riding','Interest - Adventure','Interest - Other','Interest - Other Detail',
     'Preferred Airline','Preferred Airline Other','Preferred Hotel','Preferred Hotel Other',
@@ -10225,7 +10228,7 @@ function buildTripFormFieldLabels(){
     // enrichment path the primary gets, not a reduced one, and they aren't
     // always reachable through the primary's own contact info.
     labels.push(p+' - Full Name', p+' - Email', p+' - Phone', p+' - Street Address', p+' - City', p+' - State', p+' - Zip Code',
-      p+' - Birthdate', p+' - Country of Citizenship', p+' - Country of Birth', p+' - Referred By', p+' - Referred By Detail',
+      p+' - Birthdate', p+' - Country of Citizenship', p+' - Country of Birth', p+' - Passport Expiration Date', p+' - Referred By', p+' - Referred By Detail',
       p+' - Preferred Airline', p+' - Preferred Airline Other', p+' - Preferred Hotel', p+' - Preferred Hotel Other',
       p+' - Preferred Cruise Line', p+' - Preferred Cruise Line Other');
     DISCOUNT_TYPES.forEach(function(d){ labels.push(p+' - Discount - '+d); });
@@ -10524,7 +10527,7 @@ function processContactFormRow(row, counters){
     counters.enriched++;
   } else {
     client = {id:newId('C',db.clients), name:toLastFirst(name), email:email, phone:phone,
-      streetAddress:'', city:'', state:'', zip:'', birthdate:'', countryOfCitizenship:'', countryOfBirth:'',
+      streetAddress:'', city:'', state:'', zip:'', birthdate:'', countryOfCitizenship:'', countryOfBirth:'', passportExpiration:'',
       referredBy:'', referredByDetail:'', preferredAirline:'', preferredHotel:'', preferredCruiseLine:'',
       mileageBalances:{}, hotelBalances:{}, cruiseBalances:{}, carRentalBalances:{}, creditCardBalances:{}, airlineCreditCards:[], hotelCreditCards:[],
       notes:'', joined:today(), totalTrips:0,
@@ -18465,6 +18468,7 @@ function openClientForm(id){
       fld('State',inp('fstate','text',d.state))+fld('Zip Code',inp('fzip','text',d.zip))+
       fld('Birthdate',inp('fbd','date',d.birthdate))+
       fld('Country of Citizenship',inp('fcoc','text',d.countryOfCitizenship))+fld('Country of Birth',inp('fcob','text',d.countryOfBirth))+
+      fld('Passport Expiration Date',inp('fped','date',d.passportExpiration))+
       fld('Referred By','<select id="fref"><option value="">-- Select --</option>'+
         '<option value="Subscriber"'+(d.referredBy==='Subscriber'?' selected':'')+'>Subscriber</option>'+
         '<option value="Advertisement"'+(d.referredBy==='Advertisement'?' selected':'')+'>Advertisement</option>'+
@@ -20406,7 +20410,7 @@ function saveClient(id){
       certNumber:certRaw?Number(certRaw):undefined
     };
   }).filter(function(rc){return rc.referredName;});
-  const data={name:name,email:email,phone:gv('fp'),streetAddress:gv('fst'),city:gv('fcty'),state:gv('fstate'),zip:gv('fzip'),birthdate:gv('fbd'),countryOfCitizenship:gv('fcoc'),countryOfBirth:gv('fcob'),referredBy:referredBy,referredByDetail:referredByDetail,discounts:discountData.discounts,discountOther:discountData.discountOther,interests:interestData.interests,interestOther:interestData.interestOther,preferredAirline:gv('fpa'),preferredHotel:gv('fph'),preferredCruiseLine:gv('fpc'),mileageBalances:mileageBalances,hotelBalances:hotelBalances,cruiseBalances:cruiseBalances,carRentalBalances:carRentalBalances,creditCardBalances:creditCardBalances,airlineCreditCards:airlineCreditCards,hotelCreditCards:hotelCreditCards,notesLog:notesLog,isPayingClient:document.getElementById('f-paying')?document.getElementById('f-paying').checked:false,isSubscriber:document.getElementById('f-subscriber')?document.getElementById('f-subscriber').checked:false,okToText:document.getElementById('f-oktotext')?document.getElementById('f-oktotext').checked:false,attachments:window._currentClientAttachments||[],referralCredits:referralCredits};
+  const data={name:name,email:email,phone:gv('fp'),streetAddress:gv('fst'),city:gv('fcty'),state:gv('fstate'),zip:gv('fzip'),birthdate:gv('fbd'),countryOfCitizenship:gv('fcoc'),countryOfBirth:gv('fcob'),passportExpiration:gv('fped'),referredBy:referredBy,referredByDetail:referredByDetail,discounts:discountData.discounts,discountOther:discountData.discountOther,interests:interestData.interests,interestOther:interestData.interestOther,preferredAirline:gv('fpa'),preferredHotel:gv('fph'),preferredCruiseLine:gv('fpc'),mileageBalances:mileageBalances,hotelBalances:hotelBalances,cruiseBalances:cruiseBalances,carRentalBalances:carRentalBalances,creditCardBalances:creditCardBalances,airlineCreditCards:airlineCreditCards,hotelCreditCards:hotelCreditCards,notesLog:notesLog,isPayingClient:document.getElementById('f-paying')?document.getElementById('f-paying').checked:false,isSubscriber:document.getElementById('f-subscriber')?document.getElementById('f-subscriber').checked:false,okToText:document.getElementById('f-oktotext')?document.getElementById('f-oktotext').checked:false,attachments:window._currentClientAttachments||[],referralCredits:referralCredits};
   var resultId = id;
   if(id){
     db.clients=db.clients.map(function(c){return c.id===id?Object.assign({},c,data):c;});
