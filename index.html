@@ -968,6 +968,54 @@ function hotelBrandList(){
   });
   return names.sort(function(a,b){ return a.localeCompare(b); });
 }
+// Redeemable free-night award certificates — not ordinary loyalty points
+// (those are mileageBalances/hotelBalances on the client record), these are
+// the fixed-category certificates Marriott (issued in flat point-value
+// tiers) and Hyatt (issued in category tiers, not point amounts) actually
+// hand out. Each key is "<Brand> <Tier>", shared verbatim with
+// intake-form.html's matching "Hotel Certificate - <Brand> <Tier>" field
+// names (see buildTripFormFieldLabels()/processTripFormRow() below) so a
+// Book a Trip form submission's quantities parse straight into this same
+// shape on the trip record (trip.hotelCertificates) — not the client
+// record, since which certificates someone wants to use is specific to
+// this particular stay, not a standing client preference.
+var HOTEL_CERTIFICATE_TYPES = {
+  'Marriott': ['35000','50000','85000'],
+  'Hyatt': ['Category 1-4']
+};
+var HOTEL_CERTIFICATE_QTY_OPTIONS = ['1','2','3','4','5+'];
+function hotelCertificateLabel(brand, tier){
+  if(brand==='Marriott') return 'Marriott — '+Number(tier).toLocaleString()+' Point Certificate';
+  return brand+' — '+tier+' Certificate';
+}
+function hotelCertificatesFieldHtml(data){
+  var rows = '';
+  Object.keys(HOTEL_CERTIFICATE_TYPES).forEach(function(brand){
+    HOTEL_CERTIFICATE_TYPES[brand].forEach(function(tier){
+      var key = brand+' '+tier;
+      var val = (data && data[key]) || '';
+      rows += '<div style="display:flex;align-items:center;gap:8px">'+
+        '<span style="flex:1;font-size:12px;color:#374151">'+hotelCertificateLabel(brand,tier)+'</span>'+
+        '<select class="hotel-cert-qty-sel" data-key="'+key+'" style="width:90px;padding:5px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12px;font-family:inherit">'+
+          '<option value="">Qty</option>'+
+          HOTEL_CERTIFICATE_QTY_OPTIONS.map(function(q){return '<option value="'+q+'"'+(val===q?' selected':'')+'>'+q+'</option>';}).join('')+
+        '</select>'+
+      '</div>';
+    });
+  });
+  return '<div class="field full"><label>Hotel Certificates for Free Nights <span class="hint" style="text-transform:none;font-weight:400">(optional — do they have any certificates they\'d like to use on this trip?)</span></label>'+
+    '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:8px;border:1px solid #e5e7eb;border-radius:8px;padding:10px;background:#fafafa">'+
+      rows+
+    '</div>'+
+  '</div>';
+}
+function readHotelCertificates(){
+  var out = {};
+  document.querySelectorAll('.hotel-cert-qty-sel').forEach(function(sel){
+    if(sel.value) out[sel.dataset.key] = sel.value;
+  });
+  return out;
+}
 // Curated (not exhaustive) flagship/major properties for each Hotel brand —
 // used to seed each matching Supplier record's own editable `properties`
 // list (see the one-time seed in loadDB()) and, from there, to populate the
@@ -9752,6 +9800,17 @@ function processTripFormRow(getVal, counters){
   // trip only has one such slot regardless of how many hotels were
   // requested.
   var hotelBrand = resolveOther(getVal('Hotel 1 - Brand'), getVal('Hotel 1 - Brand Other'));
+  // Shares HOTEL_CERTIFICATE_TYPES/its "Hotel Certificate - <Brand> <Tier>"
+  // field names with hotelCertificatesFieldHtml()/buildTripFormFieldLabels()
+  // above, so a submission's quantities land on the new trip the same shape
+  // as the CRM's own trip form reads/writes them.
+  var hotelCertificates = {};
+  Object.keys(HOTEL_CERTIFICATE_TYPES).forEach(function(brand){
+    HOTEL_CERTIFICATE_TYPES[brand].forEach(function(tier){
+      var certQty = getVal('Hotel Certificate - '+brand+' '+tier);
+      if(certQty) hotelCertificates[brand+' '+tier] = certQty;
+    });
+  });
   var carRentalCompany = resolveOther(getVal('Car Rental Company'), getVal('Car Rental Company Other'));
   // Depart/Return Date only exist in the Airline Details section, which is
   // hidden unless "Airline" is checked — a cruise-only or car-rental-only
@@ -9988,6 +10047,7 @@ function processTripFormRow(getVal, counters){
       status:'Planning', type:getVal('Trip Type')||'Leisure',
       airline:airline, flightClass:getVal('Class of Service'), hotel:hotelBrand,
       hotelNights:parseInt(getVal('Hotel 1 - Nights'),10)||0,
+      hotelCertificates:hotelCertificates,
       cruiseLine:cruiseLine, shipName:getVal('Ship Name'),
       pointsUsed:0, cashPaid:0, totalValue:0, bookingRef:'', product:'',
       supplierId:primarySupplier?primarySupplier.id:'', supplierName:primarySupplier?primarySupplier.name:'',
@@ -10103,6 +10163,9 @@ function buildTripFormFieldLabels(){
   addBalanceLabels('Credit Card', CREDIT_CARDS, false);
   addCardChecklistLabels(AIRLINE_CREDIT_CARDS, 'Airline Credit Card');
   addCardChecklistLabels(HOTEL_CREDIT_CARDS, 'Hotel Credit Card');
+  Object.keys(HOTEL_CERTIFICATE_TYPES).forEach(function(brand){
+    HOTEL_CERTIFICATE_TYPES[brand].forEach(function(tier){ labels.push('Hotel Certificate - '+brand+' '+tier); });
+  });
   labels.push('Need - Airline','Need - Hotel','Need - Tours','Need - Cruise','Need - Car Rental','Need - Transfers','Need - Theme Park Tickets','Need - Train','Need - Bus',
     'Airline','Airline Other','Origin','Destination','Trip Direction','Depart Date','Return Date','Class of Service','Non-Stop Flights Only','Trip Type',
     'Cruise Line','Cruise Line Other','Ship Name','Cruise Nights','Sailing Date','Departure Port','Cabin Type','People In Cabin','Cruise Loyalty Number','Cruisetour',
@@ -20175,6 +20238,7 @@ function openTripForm(id){
       fld('Status',sel('tst',STATUSES,d.status||'Planning'))+fld('Trip Type',sel('tty',TYPES,d.type||'Leisure'))+
       fld('Airline',sel('tai',AIRLINES,d.airline))+fld('Class of Service',sel('tcl',CLASSES,d.flightClass||'Economy'))+
       fld('Hotel Brand',sel('tho',hotelBrandList(),d.hotel))+fld('Hotel Property',hotelPropertyFieldWithAddBtnHtml('<select id="thp">'+hotelPropertyOptionsHtml(d.hotel,d.hotelProperty)+'</select>',null,'btn-add-hotel-property'))+fld('Hotel Nights',inp('thn','number',d.hotelNights||0))+
+      hotelCertificatesFieldHtml(d.hotelCertificates)+
       fld('Cruise Line',sel('tcr',CRUISE_LINES,d.cruiseLine))+fld('Ship Name','<select id="tship">'+shipOptionsHtml(d.cruiseLine,d.shipName)+'</select>')+
       '<div id="tvv-wrap" style="display:'+(d.cruiseLine==='Virgin Voyages'?'contents':'none')+'">'+fld('Virgin Voyages Voucher Expiry (MNVV)',inp('tvv-exp','date',d.vvVoucherExpiry))+'</div>'+
       fld('Points Used',inp('tpu','number',d.pointsUsed||0))+fld('Cash Paid ($)',inp('tcp','number',d.cashPaid||0))+
@@ -20373,7 +20437,7 @@ function saveTrip(id){
   const oldLinkedTripIds=id?((db.trips.find(function(t){return t.id===id;})||{}).linkedTripIds||[]):[];
   const tripDiscountData=readDiscounts('tdis');
   const tripInterestData=readInterests('tint');
-  const data={clientId:clientId,clientName:client?client.name:'',clientIds:additionalClientIds,linkedTripIds:linkedTripIds,supplierId:supplierId,supplierName:supplier?supplier.name:'',origin:gv('tor'),destination:dest,departDate:gv('tdd'),returnDate:gv('trd'),status:gv('tst')||'Planning',type:gv('tty')||'Leisure',airline:gv('tai'),flightClass:gv('tcl')||'Economy',hotel:gv('tho'),hotelProperty:gv('thp'),hotelNights:gn('thn'),cruiseLine:gv('tcr'),shipName:gv('tship'),vvVoucherExpiry:gv('tvv-exp'),pointsUsed:gn('tpu'),cashPaid:gn('tcp'),totalValue:gn('tva'),bookingRef:gv('tbr'),invoiceDate:gv('tinv'),discounts:tripDiscountData.discounts,discountOther:tripDiscountData.discountOther,interests:tripInterestData.interests,interestOther:tripInterestData.interestOther,product:gv('tpr'),notes:gv('tno'),booked:readBookedTripDetails()};
+  const data={clientId:clientId,clientName:client?client.name:'',clientIds:additionalClientIds,linkedTripIds:linkedTripIds,supplierId:supplierId,supplierName:supplier?supplier.name:'',origin:gv('tor'),destination:dest,departDate:gv('tdd'),returnDate:gv('trd'),status:gv('tst')||'Planning',type:gv('tty')||'Leisure',airline:gv('tai'),flightClass:gv('tcl')||'Economy',hotel:gv('tho'),hotelProperty:gv('thp'),hotelNights:gn('thn'),hotelCertificates:readHotelCertificates(),cruiseLine:gv('tcr'),shipName:gv('tship'),vvVoucherExpiry:gv('tvv-exp'),pointsUsed:gn('tpu'),cashPaid:gn('tcp'),totalValue:gn('tva'),bookingRef:gv('tbr'),invoiceDate:gv('tinv'),discounts:tripDiscountData.discounts,discountOther:tripDiscountData.discountOther,interests:tripInterestData.interests,interestOther:tripInterestData.interestOther,product:gv('tpr'),notes:gv('tno'),booked:readBookedTripDetails()};
   if(client){
     client.mileageBalances=readBalanceGrid('mb',AIRLINES,AIRLINE_STATUS);
     client.hotelBalances=readBalanceGrid('hb',HOTELS,HOTEL_STATUS);

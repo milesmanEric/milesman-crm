@@ -176,6 +176,10 @@
         <div class="balance-grid" id="hotel-balances-grid"></div>
       </div>
       <div class="field full">
+        <label>Hotel Certificates for Free Nights <span class="hint">(optional — do you have any certificates you'd like to use on this trip?)</span></label>
+        <div class="balance-grid" id="hotel-certificates-grid"></div>
+      </div>
+      <div class="field full">
         <label>Cruise Line Loyalty <span class="hint">(optional)</span></label>
         <div class="balance-grid" id="cruise-balances-grid"></div>
       </div>
@@ -761,6 +765,31 @@
   function buildBalanceGrid(containerId, list, prefix, statusMap){
     document.getElementById(containerId).innerHTML = balanceGridHtml(list, prefix, statusMap);
   }
+  // Redeemable free-night award certificates — not ordinary loyalty points
+  // (those are the Hotel Points Balances grid above), these are the fixed-
+  // category certificates Marriott (flat point-value tiers) and Hyatt
+  // (category tiers, not point amounts) actually hand out. Field names here
+  // ("Hotel Certificate - <Brand> <Tier>") are shared verbatim with the
+  // CRM's own HOTEL_CERTIFICATE_TYPES/buildTripFormFieldLabels() (index.html)
+  // so a submission's quantities parse straight onto the new trip record.
+  var HOTEL_CERTIFICATE_TYPES = {
+    'Marriott': ['35000','50000','85000'],
+    'Hyatt': ['Category 1-4']
+  };
+  function hotelCertificateLabel(brand, tier){
+    if(brand==='Marriott') return 'Marriott — '+Number(tier).toLocaleString()+' Point Certificate';
+    return brand+' — '+tier+' Certificate';
+  }
+  function hotelCertificatesGridHtml(){
+    var rows = '';
+    Object.keys(HOTEL_CERTIFICATE_TYPES).forEach(function(brand){
+      HOTEL_CERTIFICATE_TYPES[brand].forEach(function(tier){
+        rows += '<div class="balance-row"><span>'+hotelCertificateLabel(brand,tier)+'</span>'+
+          '<select name="Hotel Certificate - '+brand+' '+tier+'"><option value="">Qty</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5+</option></select></div>';
+      });
+    });
+    return rows;
+  }
   // Plain has/doesn't-have checkboxes, grouped by brand — no number/status
   // per card, so this is its own small builder rather than balanceGridHtml.
   // Shared by both the airline- and hotel-branded card checklists.
@@ -780,6 +809,7 @@
   buildBalanceGrid('cruise-balances-grid', CRUISE_LINES, 'Cruise', CRUISE_STATUS);
   buildBalanceGrid('car-rental-balances-grid', CAR_RENTALS, 'Car Rental', CAR_RENTAL_STATUS);
   buildBalanceGrid('cc-balances-grid', CREDIT_CARDS, 'Credit Card', null);
+  document.getElementById('hotel-certificates-grid').innerHTML = hotelCertificatesGridHtml();
   buildBrandedCcChecklist('airline-cc-checklist', AIRLINE_CREDIT_CARDS, 'Airline Credit Card');
   buildBrandedCcChecklist('hotel-cc-checklist', HOTEL_CREDIT_CARDS, 'Hotel Credit Card');
   document.getElementById('referred-by-slot').innerHTML = referredByFieldGroupHtml('Referred By', 'ref-select');
