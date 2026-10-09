@@ -9531,8 +9531,6 @@ function processTripFormRow(getVal, counters){
     var tCountryOfCitizenship=getVal(tp+' - Country of Citizenship');
     var tCountryOfBirth=getVal(tp+' - Country of Birth');
     var tPassportExpiration=getVal(tp+' - Passport Expiration Date');
-    var tReferredBy=getVal(tp+' - Referred By');
-    var tReferredByDetail=getVal(tp+' - Referred By Detail');
     var tDiscounts=extractChecklistWithOther(DISCOUNT_TYPES, tp+' - Discount');
     var tDiscountOther=getVal(tp+' - Discount - Other Detail');
     var tInterests=extractChecklistWithOther(INTEREST_TYPES, tp+' - Interest');
@@ -9549,7 +9547,7 @@ function processTripFormRow(getVal, counters){
     var tHotelCc=extractCardChecklist(HOTEL_CREDIT_CARDS, tp+' Hotel Credit Card');
     var tFields={email:tEmail, phone:tPhone, streetAddress:tStreetAddress, city:tCity, state:tState, zip:tZip,
       birthdate:tBirthdate, countryOfCitizenship:tCountryOfCitizenship, countryOfBirth:tCountryOfBirth, passportExpiration:tPassportExpiration,
-      referredBy:tReferredBy, referredByDetail:tReferredByDetail, discountOther:tDiscountOther, interestOther:tInterestOther,
+      discountOther:tDiscountOther, interestOther:tInterestOther,
       preferredAirline:tAirline, preferredHotel:tHotel, preferredCruiseLine:tCruise};
 
     // Match a companion traveler to an existing client the same priority
@@ -9999,10 +9997,11 @@ function processTripFormRow(getVal, counters){
   addLine('Bus Class of Service', getVal('Bus Class of Service'));
 
   // Companion travelers (Traveler 2+) get their own client record too —
-  // matched/enriched by name the same way the primary contact is, and now
-  // with the exact same field set as the primary contact (Email/Phone/
-  // Address/Referred By/Discounts/Interests included — see the matching
-  // comment in intake-form.html's travelerBlockHtml()). Every companion's
+  // matched/enriched by name the same way the primary contact is, with
+  // almost the same field set as the primary contact (Email/Phone/Address/
+  // Discounts/Interests included — see the matching comment in
+  // intake-form.html's travelerBlockHtml()) except Referred By, which is a
+  // one-time, trip-level question only the primary contact answers. Every companion's
   // client id also gets linked onto the trip record created below
   // (clientId stays the primary/billing contact).
   //
@@ -10221,14 +10220,17 @@ function buildTripFormFieldLabels(){
   // of an automatically-polled email, not just a manual CSV import.
   for(var tn=2; tn<=20; tn++){
     var p = 'Traveler '+tn;
-    // A companion traveler gets the exact same field set as the primary
-    // contact (Email/Phone/Address/Referred By/Discounts/Interests
-    // included) — see the matching comment in intake-form.html's
-    // travelerBlockHtml() for why: their own client record needs the same
-    // enrichment path the primary gets, not a reduced one, and they aren't
-    // always reachable through the primary's own contact info.
+    // A companion traveler gets almost the exact same field set as the
+    // primary contact (Email/Phone/Address/Discounts/Interests included)
+    // — see the matching comment in intake-form.html's travelerBlockHtml()
+    // for why: their own client record needs the same enrichment path the
+    // primary gets, not a reduced one, and they aren't always reachable
+    // through the primary's own contact info. Referred By is the one
+    // exception — it's a one-time, trip-level question, not something each
+    // additional traveler answers separately — so no "Traveler N - Referred
+    // By" field exists for the form to submit.
     labels.push(p+' - Full Name', p+' - Email', p+' - Phone', p+' - Street Address', p+' - City', p+' - State', p+' - Zip Code',
-      p+' - Birthdate', p+' - Country of Citizenship', p+' - Country of Birth', p+' - Passport Expiration Date', p+' - Referred By', p+' - Referred By Detail',
+      p+' - Birthdate', p+' - Country of Citizenship', p+' - Country of Birth', p+' - Passport Expiration Date',
       p+' - Preferred Airline', p+' - Preferred Airline Other', p+' - Preferred Hotel', p+' - Preferred Hotel Other',
       p+' - Preferred Cruise Line', p+' - Preferred Cruise Line Other');
     DISCOUNT_TYPES.forEach(function(d){ labels.push(p+' - Discount - '+d); });

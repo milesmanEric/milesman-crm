@@ -163,18 +163,6 @@
     'Dollar': ['Express Rewards']
   };
 
-  function referredByFieldGroupHtml(namePrefix, selectId){
-    return '<div class="field"><label'+(selectId?' for="'+selectId+'"':'')+'>How did you hear about us?</label>'+
-      '<select class="ref-select"'+(selectId?' id="'+selectId+'"':'')+' name="'+namePrefix+'">'+
-        '<option value="">-- Select --</option>'+
-        '<option value="Subscriber">Newsletter Subscriber</option><option value="Ad">Ad</option><option value="Event">Event</option>'+
-        '<option value="Person">Referred by a Person</option><option value="Outbound Solicit">Outbound Solicit</option>'+
-        '<option value="ChatGPT">ChatGPT</option><option value="Claude">Claude</option><option value="CoPilot">CoPilot</option>'+
-        '<option value="Gemini">Gemini</option><option value="Other">Other</option>'+
-      '</select></div>'+
-      '<div class="field full ref-detail-wrap" style="display:none"><label class="ref-detail-label">Details</label>'+
-      '<input type="text" class="ref-detail-input" name="'+namePrefix+' Detail" placeholder="Event or person\'s name"></div>';
-  }
   function discountsFieldGroupHtml(namePrefix){
     return '<div class="field full"><label>Discounts <span class="hint">(check any that apply)</span></label><div class="radio-row">'+
       DISCOUNT_TYPES.map(function(d){return '<label><input type="checkbox" name="'+namePrefix+' - '+d+'" value="Yes"> '+d+'</label>';}).join('')+
@@ -231,7 +219,6 @@
         '<div class="field"><label>Birthdate</label><input type="date" name="'+p+' - Birthdate"></div>'+
         '<div class="field"><label>Country of Citizenship</label><input type="text" name="'+p+' - Country of Citizenship"></div>'+
         '<div class="field"><label>Country of Birth</label><input type="text" name="'+p+' - Country of Birth"></div>'+
-        referredByFieldGroupHtml(p+' - Referred By', 't'+n+'-ref-select')+
         discountsFieldGroupHtml(p+' - Discount')+
         interestsFieldGroupHtml(p+' - Interest')+
         '<div class="field"><label for="t'+n+'-pref-airline">Preferred Airline</label><select class="pref-other-sel" id="t'+n+'-pref-airline" name="'+p+' - Preferred Airline">'+selectOptionsHtml(AIRLINES)+'</select></div>'+
@@ -300,20 +287,6 @@
         if(e.target.value!=='Other'){
           var input = wrap.querySelector('.pref-other-input');
           if(input) input.value='';
-        }
-      }
-    }
-    if(e.target.classList.contains('ref-select')){
-      var refFieldDiv = e.target.closest('.field');
-      var refWrap = refFieldDiv ? refFieldDiv.nextElementSibling : null;
-      if(refWrap && refWrap.classList.contains('ref-detail-wrap')){
-        var show = (e.target.value==='Event' || e.target.value==='Person' || e.target.value==='Other');
-        refWrap.style.display = show ? 'flex' : 'none';
-        var refLabelEl = refWrap.querySelector('.ref-detail-label');
-        if(refLabelEl) refLabelEl.textContent = e.target.value==='Person' ? 'Person\'s Name' : (e.target.value==='Event' ? 'Event Name' : 'Please specify');
-        if(!show){
-          var refInput = refWrap.querySelector('.ref-detail-input');
-          if(refInput) refInput.value='';
         }
       }
     }
