@@ -1003,6 +1003,24 @@ function hotelCertificatesFieldHtml(data){
       '</div>';
     });
   });
+  // "Other" — a brand outside the fixed Marriott/Hyatt list above, so it
+  // needs its own free-text brand field alongside the same quantity select,
+  // rather than fitting the "<Brand> <Tier>" keyed shape every other row
+  // uses. Stored as two separate trip fields (hotelCertOtherBrand/
+  // hotelCertOtherQty, same "X"/"X Other" pairing convention as
+  // discounts/interests/referredBy elsewhere) instead of inside the
+  // hotelCertificates map, since that map's keys are meant to be the fixed,
+  // known brand/tier combinations.
+  var otherBrandVal = (data && data.otherBrand) || '';
+  var otherQtyVal = (data && data.otherQty) || '';
+  rows += '<div style="display:flex;align-items:center;gap:8px">'+
+    '<span style="font-size:12px;color:#374151">Other</span>'+
+    '<input id="hotel-cert-other-brand" type="text" value="'+otherBrandVal.toString().replace(/"/g,'&quot;')+'" placeholder="Brand" style="flex:1;min-width:0;padding:5px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12px;font-family:inherit">'+
+    '<select id="hotel-cert-other-qty" style="width:90px;padding:5px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12px;font-family:inherit">'+
+      '<option value="">Qty</option>'+
+      HOTEL_CERTIFICATE_QTY_OPTIONS.map(function(q){return '<option value="'+q+'"'+(otherQtyVal===q?' selected':'')+'>'+q+'</option>';}).join('')+
+    '</select>'+
+  '</div>';
   return '<div class="field full"><label>Hotel Certificates for Free Nights <span class="hint" style="text-transform:none;font-weight:400">(optional — do they have any certificates they\'d like to use on this trip?)</span></label>'+
     '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:8px;border:1px solid #e5e7eb;border-radius:8px;padding:10px;background:#fafafa">'+
       rows+
@@ -1014,6 +1032,10 @@ function readHotelCertificates(){
   document.querySelectorAll('.hotel-cert-qty-sel').forEach(function(sel){
     if(sel.value) out[sel.dataset.key] = sel.value;
   });
+  var otherBrandEl = document.getElementById('hotel-cert-other-brand');
+  var otherQtyEl = document.getElementById('hotel-cert-other-qty');
+  if(otherBrandEl && otherBrandEl.value) out.otherBrand = otherBrandEl.value;
+  if(otherQtyEl && otherQtyEl.value) out.otherQty = otherQtyEl.value;
   return out;
 }
 // Curated (not exhaustive) flagship/major properties for each Hotel brand —
@@ -9811,6 +9833,10 @@ function processTripFormRow(getVal, counters){
       if(certQty) hotelCertificates[brand+' '+tier] = certQty;
     });
   });
+  var otherCertBrand = getVal('Hotel Certificate - Other Brand');
+  var otherCertQty = getVal('Hotel Certificate - Other Qty');
+  if(otherCertBrand) hotelCertificates.otherBrand = otherCertBrand;
+  if(otherCertQty) hotelCertificates.otherQty = otherCertQty;
   var carRentalCompany = resolveOther(getVal('Car Rental Company'), getVal('Car Rental Company Other'));
   // Depart/Return Date only exist in the Airline Details section, which is
   // hidden unless "Airline" is checked — a cruise-only or car-rental-only
@@ -10166,6 +10192,7 @@ function buildTripFormFieldLabels(){
   Object.keys(HOTEL_CERTIFICATE_TYPES).forEach(function(brand){
     HOTEL_CERTIFICATE_TYPES[brand].forEach(function(tier){ labels.push('Hotel Certificate - '+brand+' '+tier); });
   });
+  labels.push('Hotel Certificate - Other Brand','Hotel Certificate - Other Qty');
   labels.push('Need - Airline','Need - Hotel','Need - Tours','Need - Cruise','Need - Car Rental','Need - Transfers','Need - Theme Park Tickets','Need - Train','Need - Bus',
     'Airline','Airline Other','Origin','Destination','Trip Direction','Depart Date','Return Date','Class of Service','Non-Stop Flights Only','Trip Type',
     'Cruise Line','Cruise Line Other','Ship Name','Cruise Nights','Sailing Date','Departure Port','Cabin Type','People In Cabin','Cruise Loyalty Number','Cruisetour',
