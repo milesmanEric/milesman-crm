@@ -553,8 +553,8 @@
   // contact, "Traveler 2 - Referred By" for a companion traveler) — the CRM's
   // buildTripFormFieldLabels() must mirror whatever these emit.
   function referredByFieldGroupHtml(namePrefix, selectId){
-    return '<div class="field"><label'+(selectId?' for="'+selectId+'"':'')+'>How did you hear about us?</label>'+
-      '<select class="ref-select"'+(selectId?' id="'+selectId+'"':'')+' name="'+namePrefix+'">'+
+    return '<div class="field"><label'+(selectId?' for="'+selectId+'"':'')+'>How did you hear about us? *</label>'+
+      '<select class="ref-select" required'+(selectId?' id="'+selectId+'"':'')+' name="'+namePrefix+'">'+
         '<option value="">-- Select --</option>'+
         '<option value="Subscriber">Newsletter Subscriber</option><option value="Advertisement">Advertisement</option><option value="Event">Event</option>'+
         '<option value="Person">Referred by a Person</option><option value="Outbound Solicit">Outbound Solicit</option>'+
