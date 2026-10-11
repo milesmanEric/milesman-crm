@@ -18230,20 +18230,22 @@ function balanceGrid(label,idPrefix,list,data,statusList){
 }
 // Delegated on the modal (rather than bound per-toggle) since balanceGrid()
 // output gets replaced wholesale when the trip form's Client dropdown
-// changes — a delegated listener on the stable modal container keeps
-// working across that re-render without needing to be re-bound. Called
-// once per form open (openClientForm/openTripForm); harmless if it stacks
-// across repeated opens in the same session, same as the other delegated
-// modal-level listeners in this file (e.g. refreshBookedTripSummary).
-// Guarded so it only ever attaches once per modal session — the trip
-// form calls this again every time its Client dropdown changes (via
-// bindTripBalanceListeners()), and without the guard each call stacked one
-// more listener on the same persistent $('modal') element. With N stacked
-// listeners a single click toggled the display N times, so an even N (the
-// common case after just one Client change) silently canceled itself out —
-// this is exactly the "doesn't collapse" bug reported for trip records.
-// openTripForm()/openClientForm() clear the flag at the start of each real
-// modal open, so a fresh form still gets exactly one listener.
+// changes, or when a different form (Client/Trip/Task) is opened next —
+// a delegated listener on the stable, never-recreated $('modal') container
+// keeps working across any of that re-rendering without ever needing to be
+// re-bound; it looks up its target fresh via getElementById() at click
+// time, so it never goes stale. Guarded so it attaches exactly ONCE per
+// page load, for the lifetime of the session, and the flag must never be
+// cleared to force a "fresh" rebind — nothing ever removes a listener once
+// added to $('modal'), so clearing the flag just stacks a second permanent
+// listener on top of the first. With N stacked listeners a single click
+// toggles the display N times, so an even N (the common case: exactly one
+// extra bind) silently cancels itself out — every balance-grid toggle in
+// the app looks permanently broken for the rest of that session. This bit
+// both openTripForm() (used to delete the flag at the start of every open,
+// now fixed to leave it alone) and, per the matching comment on
+// openTaskForm(), would bite any form that cleared it without ever
+// rebinding at all.
 function bindBalanceGridToggles(){
   var modal = $('modal');
   if(modal.dataset.balanceTogglesBound) return;
@@ -20286,7 +20288,6 @@ function openTripForm(id){
     '</div>'+
     '<div class="form-actions form-actions-sticky"><button class="cancel-btn" id="modal-cancel">Cancel</button><button class="save-btn" id="modal-save-trip" data-id="'+(id||'')+'">Save Trip</button></div>';
   $('modal').classList.add('modal-wide');
-  delete $('modal').dataset.balanceTogglesBound;
   $('overlay').classList.add('open');
   $('modal-close').addEventListener('click',closeModal);
   $('modal-cancel').addEventListener('click',closeModal);
@@ -24839,17 +24840,18 @@ function openTaskForm(id, prefillClientId){
     '</div>';
 
   $('modal').classList.add('modal-wide');
-  // Deliberately does NOT clear dataset.balanceTogglesBound here, unlike
-  // openTripForm() — the Task form has no balance-grid sections at all, so
-  // there's nothing to rebind. Clearing it anyway used to leave the flag
-  // falsely unset (this form never turns it back on, since it never calls
-  // bindBalanceGridToggles()), so the next Client form opened after any
-  // Task form would bind a SECOND click listener on top of the one still
-  // attached from earlier — two listeners firing per click toggled a
-  // balance section open then immediately shut again, which looked like
-  // "expanding doesn't work," and only after a Task form had been opened
-  // at some point first, which is why it was intermittent rather than
-  // reliably broken.
+  // Deliberately does NOT clear dataset.balanceTogglesBound here — the Task
+  // form has no balance-grid sections at all, so there's nothing to rebind,
+  // and clearing it anyway used to leave the flag falsely unset (this form
+  // never turns it back on, since it never calls bindBalanceGridToggles()),
+  // so the next Client form opened after any Task form would bind a SECOND
+  // click listener on top of the one still attached from earlier — two
+  // listeners firing per click toggled a balance section open then
+  // immediately shut again, which looked like "expanding doesn't work," and
+  // only after a Task form had been opened at some point first, which is
+  // why it was intermittent rather than reliably broken. See
+  // bindBalanceGridToggles()'s own comment — openTripForm() used to have
+  // this same flaw.
   $('overlay').classList.add('open');
   $('modal-close').addEventListener('click', closeModal);
   $('modal-cancel').addEventListener('click', closeModal);
