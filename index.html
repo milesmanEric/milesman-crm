@@ -10163,7 +10163,7 @@ function importFormspreeSubmissions(){
 // string.
 var TRIPFORM_EMAIL_SUBJECT_RE = /^New submission\b.*\bBook a trip$/i;
 function buildTripFormFieldLabels(){
-  var labels = ['Full Name','Email','Phone','Street Address','City','State','Zip Code','Number of Travelers',
+  var labels = ['Full Name','Email','Phone','OK to Text','Street Address','City','State','Zip Code','Number of Travelers',
     'Birthdate','Country of Citizenship','Country of Birth','Passport Expiration Date','Referred By','Referred By Detail',
     'Discount - Military','Discount - AAA','Discount - First Responder','Discount - Educator','Discount - USAA','Discount - Other','Discount - Other Detail',
     'Interest - Beach','Interest - Skiing','Interest - Boating','Interest - Fishing','Interest - Snorkeling','Interest - Horseback Riding','Interest - Adventure','Interest - Other','Interest - Other Detail',
@@ -10231,6 +10231,10 @@ function buildTripFormFieldLabels(){
     // By" field exists for the form to submit.
     labels.push(p+' - Full Name', p+' - Email', p+' - Phone', p+' - Street Address', p+' - City', p+' - State', p+' - Zip Code',
       p+' - Birthdate', p+' - Country of Citizenship', p+' - Country of Birth', p+' - Passport Expiration Date',
+      // Older cached copies of the intake form still submit this even though
+      // only the primary traveler is asked now — registered (and ignored) so
+      // its text can't bleed onto the previous field's value.
+      p+' - Referred By', p+' - Referred By Detail',
       p+' - Preferred Airline', p+' - Preferred Airline Other', p+' - Preferred Hotel', p+' - Preferred Hotel Other',
       p+' - Preferred Cruise Line', p+' - Preferred Cruise Line Other');
     DISCOUNT_TYPES.forEach(function(d){ labels.push(p+' - Discount - '+d); });
@@ -10299,7 +10303,12 @@ function parseTripFormEmailText(flatText){
     var start = matches[i].end;
     var end = (i+1<matches.length) ? matches[i+1].start : flatText.length;
     if(!(matches[i].label in row)){
-      var val = flatText.slice(start, end).trim();
+      // Formspark's current notification layout renders each field as
+      // "Label : Value" (older ones were just "Label Value"), so every
+      // value arrives with a leading colon — which silently turned
+      // "Number of Travelers" into NaN (no companion travelers ever
+      // imported) and prefixed every name/email/date with ": ". Strip it.
+      var val = flatText.slice(start, end).replace(/^\s*:\s*/, '').trim();
       row[matches[i].label] = val===TRIPFORM_OTHER_SENTINEL ? 'Other' : val;
     }
   }
