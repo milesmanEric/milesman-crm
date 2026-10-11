@@ -326,6 +326,7 @@ tr:last-child td{border-bottom:none}
         <button class="sync-btn" id="btn-reset-revenue-import-history" style="color:#888;border-color:#ddd;font-size:11px" title="Lets the automatic Revenue Report email check re-fetch and re-attempt every report email again, instead of skipping ones it already saw">&#128260; Re-check All Revenue Report Emails</button>
         <button class="sync-btn" id="btn-reset-tripform-contactform-history" style="color:#888;border-color:#ddd;font-size:11px" title="Widens the Book a Trip / Contact Form email checks to look back 14 days for anything missed (e.g. after an Outlook outage) — already-imported submissions are left alone, only genuinely unseen ones get processed">&#128260; Re-check Book a Trip / Contact Form Emails (14 days)</button>
         <button class="sync-btn" id="btn-pending-import-matches" style="color:#d97706;border-color:#fde68a" title="Revenue import rows that had no client match — Skip this row now saves them here instead of discarding them">&#9203; Pending Import Matches (<span id="nc-pending-import-matches">0</span>)</button>
+        <button class="sync-btn" id="btn-reimport-tripform-emails" style="color:#888;border-color:#ddd;font-size:11px" title="Pick specific Book a Trip emails from the last 30 days and re-run them through the importer — for submissions that imported wrongly and can't be retried by the automatic check">&#128257; Re-import Book a Trip Emails...</button>
         <button class="sync-btn" id="btn-pending-traveler-matches" style="color:#d97706;border-color:#fde68a" title="Book a Trip form companion travelers (Traveler 2+) whose name didn't exactly match an existing client, but who share a last name with one — pick the right client instead of risking a silent duplicate">&#9203; Pending Traveler Matches (<span id="nc-pending-traveler-matches">0</span>)</button>
         <button class="sync-btn" id="btn-import-csv" style="color:#059669;border-color:#6ee7b7">&#128203; Import Clients CSV</button>
         <button class="sync-btn" id="btn-import-tripform" style="color:#059669;border-color:#6ee7b7">&#9992;&#65039; Import Book a Trip Form PDF(s)</button>
@@ -10455,6 +10456,90 @@ async function checkForNewTripFormEmails(silent){
   }catch(e){
     debugLog('Trip form email check failed: '+e.message);
   }
+}
+
+// Manual "re-run this one email" tool for Book a Trip submissions. The
+// automatic check dedupes by message id (mm_tripform_processed_ids) with no
+// content-based fallback, so an email that imported wrongly — e.g. the
+// Formspark "Label : Value" layout that left a ": " on every value and
+// dropped companion travelers — can never be retried by the automatic check
+// or its 14-day rewind button. This lists recent submission emails, flags
+// the ones that carry the colon layout (imported before that parser fix),
+// and re-runs only the ones picked, through the exact same
+// parseTripFormEmailText/processTripFormRow path the automatic check uses.
+// It doesn't delete anything: a garbled client/trip left over from the first
+// attempt has to be deleted by hand first, or this will add a second copy.
+async function openReimportTripFormEmailsModal(){
+  var token = await getValidMsToken(false);
+  if(!token){ toast('Connect Outlook first (Debug Panel > Sync Outlook Emails)','err'); return; }
+  toast('Fetching recent Book a Trip emails...','ok');
+  var since = new Date(); since.setDate(since.getDate()-30);
+  var url = 'https://graph.microsoft.com/v1.0/me/messages'+
+    '?$select=id,subject,receivedDateTime,body'+
+    '&$orderby=receivedDateTime desc&$top=50'+
+    '&$filter=receivedDateTime+ge+'+encodeURIComponent(since.toISOString());
+  var fetched;
+  try{ fetched = await fetchAllGraphMessagePages(token, url, 'Re-import trip form emails'); }
+  catch(e){ toast('Could not fetch emails: '+e.message,'err'); return; }
+  var processedIds = JSON.parse(localStorage.getItem('mm_tripform_processed_ids')||'[]');
+  var items = fetched.filter(function(m){ return TRIPFORM_EMAIL_SUBJECT_RE.test((m.subject||'').trim()); }).map(function(m){
+    var flat = stripHtml(m.body && m.body.content || '');
+    var row = parseTripFormEmailText(flat);
+    return {
+      msg: m,
+      name: row['Full Name'] || row['Primary Contact Name'] || '(no name)',
+      travelers: row['Number of Travelers'] || '',
+      colon: /Full Name\s*:/.test(flat),
+      done: processedIds.indexOf(m.id)!==-1
+    };
+  });
+
+  $('modal').innerHTML =
+    '<div class="modal-hdr"><div class="modal-title">Re-import Book a Trip Emails</div><button class="close-btn" id="modal-close">&#x2715;</button></div>'+
+    '<div class="fg">'+
+      '<div class="field full" style="font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px;margin-bottom:10px">'+
+        'Re-running an email adds its client/trip again. <b>Delete the garbled client and trip from the first attempt first</b> (the ones with a stray ": " in the name, email or dates), '+
+        'otherwise you\'ll end up with a duplicate. The re-run matches an existing contact-form lead by email and attaches the trip and any Traveler 2+ to it.</div>'+
+      (items.length ? items.map(function(it, i){
+        return '<label class="field full" style="display:flex;gap:10px;align-items:flex-start;border:1px solid #e5e7eb;border-radius:8px;padding:10px;margin-bottom:8px;background:#fafafa;cursor:pointer">'+
+          '<input type="checkbox" class="rti-cb" data-i="'+i+'"'+(it.colon?' checked':'')+' style="margin-top:3px">'+
+          '<span style="flex:1"><span style="font-weight:600;color:#111">'+escHtml(it.name)+'</span>'+
+          (it.travelers?' <span style="font-size:12px;color:#666">('+escHtml(it.travelers)+' traveler'+(it.travelers==='1'?'':'s')+')</span>':'')+
+          '<br><span style="font-size:12px;color:#666">'+escHtml(new Date(it.msg.receivedDateTime).toLocaleString())+'</span> '+
+          (it.colon?'<span style="font-size:11px;color:#dc2626;font-weight:600">imported with the ": " bug</span> ':'')+
+          (it.done?'<span style="font-size:11px;color:#059669">already imported</span>':'<span style="font-size:11px;color:#d97706">not yet imported</span>')+
+          '</span></label>';
+      }).join('') : '<div class="empty">No Book a Trip emails in the last 30 days</div>')+
+    '</div>'+
+    '<div class="form-actions form-actions-sticky"><button class="cancel-btn" id="modal-cancel">Close</button>'+
+    (items.length?'<button class="save-btn" id="rti-run">Re-import selected</button>':'')+'</div>';
+  $('overlay').classList.add('open');
+  $('modal-close').addEventListener('click', closeModal);
+  $('modal-cancel').addEventListener('click', closeModal);
+  var runBtn = $('rti-run');
+  if(!runBtn) return;
+  runBtn.addEventListener('click', function(){
+    var picked = [];
+    document.querySelectorAll('.rti-cb').forEach(function(cb){ if(cb.checked) picked.push(items[parseInt(cb.dataset.i,10)]); });
+    if(!picked.length){ toast('Select at least one email','err'); return; }
+    if(!confirm('Re-import '+picked.length+' email'+(picked.length!==1?'s':'')+'? Have you already deleted the garbled client/trip records from their first import?')) return;
+    // Oldest first, same reason as checkForNewTripFormEmails(): an
+    // additional-travelers follow-up needs its original submission's trip.
+    picked.sort(function(a,b){ return new Date(a.msg.receivedDateTime) - new Date(b.msg.receivedDateTime); });
+    snapshot('Re-import trip form emails');
+    var counters = {added:0, enriched:0, tasksCreated:0, tripsCreated:0, skipped:0};
+    var ids = JSON.parse(localStorage.getItem('mm_tripform_processed_ids')||'[]');
+    picked.forEach(function(it){
+      var row = parseTripFormEmailText(stripHtml(it.msg.body && it.msg.body.content || ''));
+      try{ processTripFormRow(function(name){ return row[name]||''; }, counters); }
+      catch(e){ debugLog('Re-import trip form email failed for "'+it.name+'": '+e.message); counters.skipped++; return; }
+      if(ids.indexOf(it.msg.id)===-1) ids.push(it.msg.id);
+    });
+    if(ids.length > 500) ids = ids.slice(ids.length-500);
+    localStorage.setItem('mm_tripform_processed_ids', JSON.stringify(ids));
+    saveDB(); render(); closeModal();
+    toast('Re-imported '+picked.length+' email'+(picked.length!==1?'s':'')+': '+counters.tripsCreated+' trip'+(counters.tripsCreated!==1?'s':'')+', '+counters.added+' new client'+(counters.added!==1?'s':'')+', '+counters.enriched+' updated'+(counters.skipped?', '+counters.skipped+' skipped':'')+(counters.pendingReview?' — '+counters.pendingReview+' need review, see Pending Traveler Matches':''),'ok');
+  });
 }
 
 // ── Auto-import contact form emails ─────────────────────────────────────
@@ -25580,6 +25665,7 @@ function bindClick(id, handler){
     toast('Book a Trip / Contact Form checkpoints rewound — next check re-scans the last 14 days','ok');
     debugLog('Trip form / Contact form checkpoints rewound to 14 days back (manual reset)');
   });
+  bindClick('btn-reimport-tripform-emails', openReimportTripFormEmailsModal);
   bindClick('btn-pending-import-matches', openPendingImportMatchesModal);
   bindClick('btn-pending-traveler-matches', openPendingTravelerMatchesModal);
   bindClick('btn-user-guide', function(){ window.open('user-guide.html', '_blank', 'noopener,noreferrer'); });
