@@ -13706,6 +13706,77 @@ function openSupplierBalanceEmailModal(vendorId){
   });
 }
 
+// Collects the blanks for a hotel rate-quote request (party size, beds,
+// stay dates) before opening the mailto — same "fill in a small form, then
+// hand off to the mail client" shape as openSupplierBalanceEmailModal
+// above, so a hotel's quote request always comes out complete instead of
+// needing the agent to type dates/headcount into the email by hand each
+// time. The body textarea keeps {{people}}/{{beds}}/{{from}}/{{to}}
+// placeholders, swapped for the real field values only at send time —
+// same convention openSupplierBalanceEmailModal uses for {{bookings}}/
+// {{amount}}, so edits to the number/date fields after typing still show
+// up correctly in the final email.
+function openHotelQuoteEmailModal(vendorId){
+  var v = db.vendors.find(function(x){return x.id===vendorId;});
+  if(!v) return;
+
+  var recipients = [];
+  if(v.email) recipients.push({label:(v.contactName?v.contactName+' — ':'')+v.email, email:v.email});
+  (v.contacts||[]).forEach(function(c){
+    if(c.email) recipients.push({label:c.name+(c.title?' ('+c.title+')':'')+' — '+c.email, email:c.email});
+  });
+
+  var defaultBody = "Hello,\n\nI am Eric Lipkind, owner of Miles Man, a Travel Agency in the United States (IATA 31700944). My clients are interested in your property.\n\nCould you please provide me a quote for your lowest price on a commissionable rate on a stay for {{people}} people, {{beds}} beds from {{from}} to {{to}}? Additionally, what is your commission payout percentage?\n\nThank you very much,\nEric Lipkind\nMiles Man Travel\nIATA 31700944";
+
+  $('modal').innerHTML =
+    '<div class="modal-hdr"><div class="modal-title">Rate Quote Request — '+escHtml(v.name)+'</div><button class="close-btn" id="modal-close">&#x2715;</button></div>'+
+    '<div class="fg">'+
+      fld('Send To', recipients.length ? ('<select id="hqe-recipient">'+recipients.map(function(r){return '<option value="'+escHtml(r.email)+'">'+escHtml(r.label)+'</option>';}).join('')+'</select>') : '<div style="color:#dc2626;font-size:12px;padding:8px 0">No email on file — add one on the Edit Supplier form or a Contact first.</div>', true)+
+      fld('Number of People', inp('hqe-people','number',''))+
+      fld('Number of Beds', inp('hqe-beds','number',''))+
+      fld('Stay From', inp('hqe-from','date',''))+
+      fld('Stay To', inp('hqe-to','date',''))+
+      fld('Subject', inp('hqe-subject','text','Rate Quote Request — '+v.name), true)+
+      '<div class="field full"><label>Message</label><textarea id="hqe-body" rows="10">'+defaultBody+'</textarea></div>'+
+    '</div>'+
+    '<div class="form-actions form-actions-sticky">'+
+      '<button class="cancel-btn" id="modal-cancel">Cancel</button>'+
+      '<button class="save-btn" id="hqe-send"'+(recipients.length?'':' disabled')+'>Open in Outlook</button>'+
+    '</div>';
+
+  $('overlay').classList.add('open');
+  $('modal-close').addEventListener('click', closeModal);
+  $('modal-cancel').addEventListener('click', closeModal);
+  var sendBtn = $('hqe-send');
+  if(sendBtn) sendBtn.addEventListener('click', function(){
+    var recipientSel = $('hqe-recipient');
+    var recipientEmail = recipientSel ? recipientSel.value : '';
+    if(!recipientEmail) return;
+    var people = gv('hqe-people') || '__';
+    var beds = gv('hqe-beds') || '__';
+    var from = gv('hqe-from') ? fmtDate(gv('hqe-from')) : '__';
+    var to = gv('hqe-to') ? fmtDate(gv('hqe-to')) : '__';
+    var subject = gv('hqe-subject');
+    var body = gv('hqe-body')
+      .replace(/{{people}}/g, people)
+      .replace(/{{beds}}/g, beds)
+      .replace(/{{from}}/g, from)
+      .replace(/{{to}}/g, to);
+    snapshot('Hotel rate quote email');
+    var noteText = 'Sent rate quote request — '+people+' people, '+beds+' beds, '+from+' to '+to;
+    db.vendors = db.vendors.map(function(x){
+      if(x.id!==vendorId) return x;
+      var notesLog = (x.notesLog||[]).concat([{ts:new Date().toLocaleString(), text:noteText, noteType:'General'}]);
+      return Object.assign({},x,{notesLog:notesLog});
+    });
+    saveDB();
+    window.location.href = 'mailto:'+mailtoAddr(recipientEmail)+'?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(body);
+    toast('Email opened in Outlook');
+    closeModal();
+    render();
+  });
+}
+
 function renderVendors(){
   var sorted = [...db.vendors].sort(function(a,b){return (a.name||'').localeCompare(b.name||'');});
 
@@ -13740,6 +13811,16 @@ function renderVendors(){
       var stats = getVendorStats(v);
       var typeCls = v.type==='Referral Partner' ? 'vendor-type-referral' : 'vendor-type-supplier';
       var clientList = stats.clients.slice(0,3).join(', ')+(stats.clients.length>3?' +' +(stats.clients.length-3)+' more':'');
+      // Hotel suppliers' general contact email opens a small "fill in the
+      // blanks" quote-request form (openHotelQuoteEmailModal) instead of a
+      // plain mailto — every other category's mailto stays a plain
+      // address-only link, since the rate-quote pitch only makes sense for
+      // a hotel.
+      var vendorEmailLinkHtml = v.email ?
+        (v.category==='Hotel' ?
+          '<a href="#" class="hotel-quote-email-link" data-id="'+v.id+'" style="color:#2563eb;text-decoration:none;margin-right:12px">&#9993; '+v.email+'</a>' :
+          '<a href="mailto:'+mailtoAddr(v.email)+'" style="color:#2563eb;text-decoration:none;margin-right:12px">&#9993; '+v.email+'</a>')
+        : '';
       return '<div class="vendor-card" id="vc-'+v.id+'" data-category="'+escHtml(v.category||'')+'">'+
         '<div style="display:flex;justify-content:space-between;align-items:flex-start">'+
           '<div style="display:flex;align-items:flex-start;gap:10px">'+
@@ -13759,7 +13840,7 @@ function renderVendors(){
         '</div>'+
         (v.contactName||v.email||v.phone ? '<div style="font-size:12px;color:#666;margin-top:8px">'+
           (v.contactName?'<span style="margin-right:12px">&#128100; '+v.contactName+'</span>':'')+
-          (v.email?'<a href="mailto:'+mailtoAddr(v.email)+'" style="color:#2563eb;text-decoration:none;margin-right:12px">&#9993; '+v.email+'</a>':'')+
+          vendorEmailLinkHtml+
           (v.phone?'<span>&#128222; '+v.phone+'</span>':'')+
         '</div>':'')+
         (v.website?'<div style="font-size:12px;margin-top:8px"><a href="'+(v.website.indexOf('http')===0?v.website:'https://'+v.website)+'" target="_blank" style="color:#2563eb;text-decoration:none">&#127760; '+escHtml(v.website)+'</a></div>':'')+
@@ -13884,6 +13965,13 @@ function renderVendors(){
     btn.addEventListener('click', function(e){
       e.stopPropagation();
       openSupplierBalanceEmailModal(btn.dataset.id);
+    });
+  });
+  document.querySelectorAll('.hotel-quote-email-link').forEach(function(el){
+    el.addEventListener('click', function(e){
+      e.preventDefault();
+      e.stopPropagation();
+      openHotelQuoteEmailModal(el.dataset.id);
     });
   });
   document.querySelectorAll('.vendor-trip-row').forEach(function(row){
