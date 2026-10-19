@@ -28,31 +28,24 @@
 // No new env vars needed if Secure Sync (§4.1a) is already configured.
 //
 // ALSO SENDS AN EMAIL NOTIFICATION to eric@themilesman.com on every
-// successful upload, via Microsoft Graph's /me/sendMail — same Outlook
-// connection (MS_CLIENT_ID/MS_TENANT_ID, Mail.Send scope) the CRM's own
-// "Connect Outlook" flow already consents to, but using a stored SERVER
-// refresh token so this unattended endpoint can send without a live browser
-// session open. Requires one more env var:
-//   MS_SERVER_REFRESH_TOKEN — a refresh token for the Outlook account that
-//                               should send/receive these notifications.
-//                               Same value api/daily-analytics-email.js
-//                               already uses if that's set up (copy
-//                               localStorage's mm_ms_refresh from the CRM
-//                               after connecting Outlook there — Debug
-//                               Panel has no copy button for this one yet,
-//                               so pull it from devtools: localStorage
-//                               .getItem('mm_ms_refresh')). The CRM's
-//                               MS_SCOPE must include Mail.Send (it does as
-//                               of the comment at its definition) — an
-//                               existing mm_ms_refresh captured before that
-//                               scope was added won't carry it retroactively,
-//                               so reconnect Outlook once in the CRM first if
-//                               this 403s with an insufficient-scope error.
-// If MS_SERVER_REFRESH_TOKEN isn't set, or the send otherwise fails, the
-// upload itself still succeeds — the file reaching Drive is the actual
-// deliverable here, so an email outage is logged (visible in Vercel's
-// function logs) and surfaced back in the response as emailSent:false,
-// rather than failing the client's upload over a notification side-effect.
+// successful upload, via Microsoft Graph's sendMail, using an APP-ONLY
+// (client-credentials) sign-in from a small dedicated Entra app registration
+// ("Miles Man Upload Notifier", Mail.Send APPLICATION permission, admin-
+// consented). Env vars on the milesman-auth Vercel project:
+//   MS_NOTIFY_CLIENT_ID     - Application (client) ID of that app registration
+//   MS_NOTIFY_CLIENT_SECRET - a client secret created on that app (expires -
+//                             Microsoft caps secrets at 24 months, so put the
+//                             expiry date in a calendar and rotate it)
+// WHY NOT A STORED REFRESH TOKEN (the earlier design): the CRM's own Outlook
+// connection is a single-page-app registration, and Microsoft gives those
+// refresh tokens a FIXED 24-hour life that can't be extended (AADSTS700084),
+// so an unattended server can never hold one. Client credentials have no
+// user session to expire.
+// If those env vars aren't set, or the send otherwise fails, the upload
+// itself still succeeds - the file reaching Drive is the actual deliverable,
+// so an email outage is logged (Vercel function logs) and surfaced back in
+// the response as emailSent:false + emailError, rather than failing the
+// client's upload over a notification side-effect.
 //
 // WHETHER UPLOADS SHOW UP IN THE CRM'S OWN "Browse Google Drive" PICKER IS
 // GENUINELY UNCERTAIN — treat this with real caution, not optimism. A live
@@ -98,14 +91,14 @@ const FOLDER_NAME = 'Credit Card Authorization Forms';
 const MAX_BYTES = 8 * 1024 * 1024;
 const PDF_MAGIC = Buffer.from('%PDF');
 
-// Same values the CRM's own browser-side Outlook connection (index.html)
-// uses — a public (no client secret) Azure AD app registration, so the
-// server-side refresh below needs nothing beyond MS_SERVER_REFRESH_TOKEN.
-const MS_CLIENT_ID = 'f59cebe9-632b-4361-bdab-71dda33c174c';
+// Tenant of the Miles Man Microsoft 365 account. The app registration that
+// signs in is the dedicated notifier app (MS_NOTIFY_CLIENT_ID env var), NOT
+// the CRM's browser-side SPA registration.
 const MS_TENANT_ID = 'a9346e69-975d-4abb-861a-dea6e2464642';
 const MS_TOKEN_URL = 'https://login.microsoftonline.com/' + MS_TENANT_ID + '/oauth2/v2.0/token';
-const MS_SEND_MAIL_URL = 'https://graph.microsoft.com/v1.0/me/sendMail';
 const NOTIFY_EMAIL = 'eric@themilesman.com';
+// App-only calls have no "me", so the mailbox to send from is named explicitly.
+const MS_SEND_MAIL_URL = 'https://graph.microsoft.com/v1.0/users/' + encodeURIComponent(NOTIFY_EMAIL) + '/sendMail';
 // Graph's /sendMail is a single-request endpoint with no chunked/resumable
 // upload support (unlike drafting a message and attaching via a separate
 // large-file session) — keep the inline attachment well under Graph's
@@ -138,30 +131,27 @@ async function getServerDriveAccessToken() {
   return data.access_token;
 }
 
-// Public client (PKCE) app registration — refresh needs no client secret,
-// same as the CRM's own browser-side refreshMsToken(). Requests only
-// Mail.Send (least privilege for what this endpoint actually does), which
-// is a strict subset of the full MS_SCOPE the stored refresh token was
-// originally issued with — Microsoft allows narrowing the requested scope
-// on a refresh like this without needing a fresh consent.
+// App-only (client credentials) token for the dedicated notifier app. No
+// user session is involved, so there is no refresh token to expire.
 async function getServerMsAccessToken() {
-  const refreshToken = process.env.MS_SERVER_REFRESH_TOKEN;
-  if (!refreshToken) {
-    throw new Error('server_not_configured: MS_SERVER_REFRESH_TOKEN is not set on this Vercel project.');
+  const clientId = process.env.MS_NOTIFY_CLIENT_ID;
+  const clientSecret = process.env.MS_NOTIFY_CLIENT_SECRET;
+  if (!clientId || !clientSecret) {
+    throw new Error('server_not_configured: MS_NOTIFY_CLIENT_ID / MS_NOTIFY_CLIENT_SECRET are not set on this Vercel project.');
   }
   const r = await fetch(MS_TOKEN_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
-      client_id: MS_CLIENT_ID,
-      grant_type: 'refresh_token',
-      refresh_token: refreshToken,
-      scope: 'https://graph.microsoft.com/Mail.Send offline_access'
+      client_id: clientId,
+      client_secret: clientSecret,
+      grant_type: 'client_credentials',
+      scope: 'https://graph.microsoft.com/.default'
     }).toString()
   });
   const data = await r.json();
   if (!r.ok || !data.access_token) {
-    throw new Error('ms_auth_failed: ' + (data.error_description || data.error || 'could not refresh the server Outlook credential'));
+    throw new Error('ms_auth_failed: ' + (data.error_description || data.error || 'could not get a Microsoft Graph token for the notifier app'));
   }
   return data.access_token;
 }
