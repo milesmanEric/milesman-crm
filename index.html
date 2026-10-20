@@ -5947,8 +5947,21 @@ function cleanImportTable(rows){
     return keep;
   });
 
+  // Class/Name are exempt from this prune even when every row's value for
+  // them is blank — a report period where literally no transaction got a
+  // Class tag is normal (not every QuickBooks line item carries one), and
+  // the required-column check just below, plus extractRevenueRow's own
+  // per-row Name fallback, already handle "blank Class" correctly. Without
+  // this exemption, an all-blank Class column got silently dropped here
+  // before that check ever ran, surfacing as a hard "Required \"class\"
+  // column not found" failure on a file whose Class column was genuinely
+  // present — just empty every row that time.
   var numCols = header.length;
   var colHasValue = new Array(numCols).fill(false);
+  header.forEach(function(h,i){
+    var hLower=(h||'').toString().trim().toLowerCase();
+    if(hLower==='class' || hLower==='name') colHasValue[i]=true;
+  });
   body.forEach(function(row){
     for(var i=0;i<numCols;i++){ if(!isEmptyCell(row[i])) colHasValue[i]=true; }
   });
