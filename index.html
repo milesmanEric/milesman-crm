@@ -7925,6 +7925,7 @@ function itineraryEmailBodyHtml(opts){
   if(hotelEntries.length){
     hotelBoxesHtml = hotelEntries.map(function(h, i){
       var rows = itineraryDetailRow('Hotel', h.hotelBrand) +
+        itineraryDetailRow('Location', [h.city, h.country].filter(Boolean).join(', ')) +
         itineraryDetailRow('Check-in Date', h.checkInDate?fmtDate(h.checkInDate):'') +
         itineraryDetailRow('Nights', h.nights?(h.nights+(h.nights===1?' night':' nights')):'') +
         itineraryDetailRow('Confirmation Number', h.confirmationNumber);
@@ -8152,6 +8153,7 @@ function tripItineraryPlainText(opts){
   if(hotelEntries.length){
     hotelEntries.forEach(function(h,i){
       var rows = itineraryDetailRowText('Hotel', h.hotelBrand) +
+        itineraryDetailRowText('Location', [h.city, h.country].filter(Boolean).join(', ')) +
         itineraryDetailRowText('Check-in Date', h.checkInDate?fmtDate(h.checkInDate):'') +
         itineraryDetailRowText('Nights', h.nights?(h.nights+(h.nights===1?' night':' nights')):'') +
         itineraryDetailRowText('Confirmation Number', h.confirmationNumber);
@@ -19430,8 +19432,13 @@ function bindPointsEntriesListeners(containerId, addBtnId){
 function hotelPropertyOptionsHtml(hotelBrand, selected){
   var vendor = hotelBrand ? db.vendors.find(function(v){ return v.name===hotelBrand; }) : null;
   var props = (vendor && vendor.properties) || [];
+  // data-city/data-country ride along so selecting a property can auto-fill
+  // a Booked Trip Details hotel entry's own City/Country fields (see the
+  // 'hotel-entry-property' change listener in bindBookedTripDetailsListeners)
+  // from whatever's already on file for that property — same scratch-data-
+  // on-the-option convention vendorPropertiesListHtml uses.
   return '<option value="">-- Select --</option>'+props.map(function(p){
-    return '<option value="'+escHtml(p.name)+'"'+(p.name===selected?' selected':'')+'>'+escHtml(p.name)+'</option>';
+    return '<option value="'+escHtml(p.name)+'"'+(p.name===selected?' selected':'')+' data-city="'+escHtml(p.city||'')+'" data-country="'+escHtml(p.country||'')+'">'+escHtml(p.name)+'</option>';
   }).join('');
 }
 // Lets a trip's Hotel Property picklist grow the matching Supplier's own
@@ -19478,6 +19485,8 @@ function hotelEntryRowInnerHtml(entry){
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
       '<div class="field"><label>Hotel</label><select class="hotel-entry-brand"><option value="">-- Select --</option>'+selOpts(hotelBrandList(),entry.hotelBrand)+'</select></div>'+
       '<div class="field"><label>Property</label>'+hotelPropertyFieldWithAddBtnHtml('<select class="hotel-entry-property">'+hotelPropertyOptionsHtml(entry.hotelBrand,entry.property)+'</select>','hotel-entry-add-property-btn')+'</div>'+
+      '<div class="field"><label>City</label><input class="hotel-entry-city" type="text" value="'+(entry.city||'').toString().replace(/"/g,'&quot;')+'" placeholder="e.g. Orlando"></div>'+
+      '<div class="field"><label>Country</label><input class="hotel-entry-country" type="text" value="'+(entry.country||'').toString().replace(/"/g,'&quot;')+'" placeholder="e.g. United States"></div>'+
       '<div class="field"><label>Confirmation Number</label><input class="hotel-entry-conf" type="text" value="'+(entry.confirmationNumber||'').toString().replace(/"/g,'&quot;')+'"></div>'+
       '<div class="field"><label>Check-in Date</label><input class="hotel-entry-checkin" type="date" value="'+(entry.checkInDate||'')+'"></div>'+
       '<div class="field"><label>Nights</label><input class="hotel-entry-nights" type="number" value="'+(entry.nights||'')+'"></div>'+
@@ -19501,6 +19510,8 @@ function readHotelEntries(){
     return {
       hotelBrand: (row.querySelector('.hotel-entry-brand')||{}).value||'',
       property: (row.querySelector('.hotel-entry-property')||{}).value||'',
+      city: (row.querySelector('.hotel-entry-city')||{}).value||'',
+      country: (row.querySelector('.hotel-entry-country')||{}).value||'',
       confirmationNumber: (row.querySelector('.hotel-entry-conf')||{}).value||'',
       checkInDate: (row.querySelector('.hotel-entry-checkin')||{}).value||'',
       nights: Number((row.querySelector('.hotel-entry-nights')||{}).value)||0,
@@ -19510,7 +19521,7 @@ function readHotelEntries(){
       notes: (row.querySelector('.hotel-entry-notes')||{}).value||''
     };
   }).filter(function(e){
-    return e.hotelBrand||e.property||e.confirmationNumber||e.checkInDate||e.nights||e.price||e.allInclusive||(e.pts&&e.pts.length)||e.notes;
+    return e.hotelBrand||e.property||e.city||e.country||e.confirmationNumber||e.checkInDate||e.nights||e.price||e.allInclusive||(e.pts&&e.pts.length)||e.notes;
   });
 }
 // Net Rate Hotel Voucher — a standalone printable/emailable PDF the client
@@ -20429,6 +20440,22 @@ function bindBookedTripDetailsListeners(){
         var propWrap = propSel.closest('.searchable-select');
         if(propWrap) ssSyncInputToSelect(propWrap);
       }
+    });
+    // Selecting a Property auto-fills City/Country from whatever's on file
+    // for that property (see data-city/data-country on the options in
+    // hotelPropertyOptionsHtml) — only when the fields are still blank, so
+    // it never clobbers a value the user already typed/edited.
+    hotelEntriesEl.addEventListener('change', function(e){
+      var propSel = e.target.closest ? e.target.closest('.hotel-entry-property') : null;
+      if(!propSel) return;
+      var row = propSel.closest('.hotel-entry-row');
+      if(!row) return;
+      var opt = propSel.options[propSel.selectedIndex];
+      if(!opt) return;
+      var cityInput = row.querySelector('.hotel-entry-city');
+      var countryInput = row.querySelector('.hotel-entry-country');
+      if(cityInput && !cityInput.value) cityInput.value = opt.getAttribute('data-city')||'';
+      if(countryInput && !countryInput.value) countryInput.value = opt.getAttribute('data-country')||'';
     });
     hotelEntriesEl.addEventListener('click', function(e){
       var addBtn = e.target.closest ? e.target.closest('.hotel-entry-add-property-btn') : null;
