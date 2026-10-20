@@ -99,14 +99,6 @@ const MS_TOKEN_URL = 'https://login.microsoftonline.com/' + MS_TENANT_ID + '/oau
 const NOTIFY_EMAIL = 'eric@themilesman.com';
 // App-only calls have no "me", so the mailbox to send from is named explicitly.
 const MS_SEND_MAIL_URL = 'https://graph.microsoft.com/v1.0/users/' + encodeURIComponent(NOTIFY_EMAIL) + '/sendMail';
-// Graph's /sendMail is a single-request endpoint with no chunked/resumable
-// upload support (unlike drafting a message and attaching via a separate
-// large-file session) — keep the inline attachment well under Graph's
-// practical request-size ceiling for that endpoint. Anything larger still
-// gets emailed, just as a Drive link instead of an attachment, since the
-// file itself is never at risk either way (Drive upload above already
-// succeeded by the time this runs).
-const MAX_INLINE_ATTACHMENT_BYTES = 3 * 1024 * 1024;
 
 async function getServerDriveAccessToken() {
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
@@ -157,9 +149,9 @@ async function getServerMsAccessToken() {
 }
 
 // Best-effort — a failure here never fails the upload itself (see the
-// header comment). Attaches the PDF inline when it's small enough to do so
-// safely over Graph's single-request /sendMail endpoint; either way the
-// email includes the Drive link so the file is always reachable from it.
+// header comment). The email carries the client's details and the Drive link
+// only - the signed form (card details) is deliberately NOT attached, so it
+// never sits in an inbox; it stays in the private Drive folder.
 async function sendUploadNotificationEmail(accessToken, info) {
   const bodyLines = [
     'A credit card authorization form was just uploaded.',
@@ -175,14 +167,6 @@ async function sendUploadNotificationEmail(accessToken, info) {
     body: { contentType: 'Text', content: bodyLines.join('\n') },
     toRecipients: [{ emailAddress: { address: NOTIFY_EMAIL } }]
   };
-  if (info.buffer.length <= MAX_INLINE_ATTACHMENT_BYTES) {
-    message.attachments = [{
-      '@odata.type': '#microsoft.graph.fileAttachment',
-      name: info.driveFilename,
-      contentType: 'application/pdf',
-      contentBytes: info.buffer.toString('base64')
-    }];
-  }
   const r = await fetch(MS_SEND_MAIL_URL, {
     method: 'POST',
     headers: { Authorization: 'Bearer ' + accessToken, 'Content-Type': 'application/json' },
@@ -372,8 +356,7 @@ module.exports = async (req, res) => {
         clientId: clientId,
         clientEmail: clientEmail,
         driveFilename: driveFilename,
-        webViewLink: uploadData.webViewLink,
-        buffer: buffer
+        webViewLink: uploadData.webViewLink
       });
       emailSent = true;
     } catch (emailErr) {
