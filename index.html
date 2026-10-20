@@ -7951,11 +7951,15 @@ function itineraryEmailBodyHtml(opts){
     cruiseCabinRows +
     itineraryDetailRow('Confirmation Number', opts.cruiseConfirmationNumber) +
     itineraryDetailRow('Loyalty Number', opts.cruiseLoyaltyNumber);
-  var carRentalRows = itineraryDetailRow('Company', opts.carRentalCompany) +
-    itineraryDetailRow('Car Size', opts.carSize) +
-    itineraryDetailRow('Pickup', [opts.carPickupLocation,opts.carPickupDate].filter(Boolean).join(' — ')) +
-    itineraryDetailRow('Dropoff', [opts.carDropoffLocation,opts.carDropoffDate].filter(Boolean).join(' — ')) +
-    itineraryDetailRow('Confirmation Number', opts.carConfirmationNumber);
+  var carEntries = opts.carEntries || [];
+  var carRentalBoxesHtml = carEntries.map(function(c, i){
+    var rows = itineraryDetailRow('Company', c.company) +
+      itineraryDetailRow('Car Size', c.carSize) +
+      itineraryDetailRow('Pickup', [c.pickupLocation,c.pickupDate].filter(Boolean).join(' — ')) +
+      itineraryDetailRow('Dropoff', [c.dropoffLocation,c.dropoffDate].filter(Boolean).join(' — ')) +
+      itineraryDetailRow('Confirmation Number', c.confirmationNumber);
+    return itineraryDetailBox(carEntries.length>1 ? 'Car Rental '+(i+1)+' Details' : 'Car Rental Details', rows, CAR_RENTAL_LOGOS[c.company]);
+  }).join('');
   var transferEntries = opts.transferEntries || [];
   var transfersBoxesHtml = transferEntries.map(function(x, i){
     var rows = itineraryDetailRow('Pickup', [x.pickupDate, x.pickupTime].filter(Boolean).join(' at ')) +
@@ -7980,16 +7984,24 @@ function itineraryEmailBodyHtml(opts){
       itineraryDetailRow('Confirmation Number', p.confirmationNumber);
     return itineraryDetailBox(themeParkEntries.length>1 ? 'Theme Park '+(i+1)+' Details' : 'Theme Park Details', rows);
   }).join('');
-  var trainRows = itineraryDetailRow('Route', opts.trainDepartureCity&&opts.trainArrivalCity ? (opts.trainDepartureCity+' → '+opts.trainArrivalCity) : '') +
-    itineraryDetailRow('Departure Date', opts.trainDepartureDate) +
-    itineraryDetailRow('Return Date', opts.trainReturnDate) +
-    itineraryDetailRow('Class of Service', opts.trainClassOfService) +
-    itineraryDetailRow('Confirmation Number', opts.trainConfirmationNumber);
-  var busRows = itineraryDetailRow('Route', opts.busDepartureCity&&opts.busArrivalCity ? (opts.busDepartureCity+' → '+opts.busArrivalCity) : '') +
-    itineraryDetailRow('Departure Date', opts.busDepartureDate) +
-    itineraryDetailRow('Return Date', opts.busReturnDate) +
-    itineraryDetailRow('Class of Service', opts.busClassOfService) +
-    itineraryDetailRow('Confirmation Number', opts.busConfirmationNumber);
+  var trainEntries = opts.trainEntries || [];
+  var trainBoxesHtml = trainEntries.map(function(t, i){
+    var rows = itineraryDetailRow('Route', t.departureCity&&t.arrivalCity ? (t.departureCity+' → '+t.arrivalCity) : '') +
+      itineraryDetailRow('Departure Date', t.departureDate) +
+      itineraryDetailRow('Return Date', t.returnDate) +
+      itineraryDetailRow('Class of Service', t.classOfService) +
+      itineraryDetailRow('Confirmation Number', t.confirmationNumber);
+    return itineraryDetailBox(trainEntries.length>1 ? 'Train '+(i+1)+' Details' : 'Train Details', rows, t.logoUrl);
+  }).join('');
+  var busEntries = opts.busEntries || [];
+  var busBoxesHtml = busEntries.map(function(x, i){
+    var rows = itineraryDetailRow('Route', x.departureCity&&x.arrivalCity ? (x.departureCity+' → '+x.arrivalCity) : '') +
+      itineraryDetailRow('Departure Date', x.departureDate) +
+      itineraryDetailRow('Return Date', x.returnDate) +
+      itineraryDetailRow('Class of Service', x.classOfService) +
+      itineraryDetailRow('Confirmation Number', x.confirmationNumber);
+    return itineraryDetailBox(busEntries.length>1 ? 'Bus '+(i+1)+' Details' : 'Bus Details', rows, x.logoUrl);
+  }).join('');
   // Booking Ref (the trip's Invoice Number) only shows when there's no
   // Supplier linked — a linked Supplier means the invoice went to that
   // supplier, not the client, so surfacing "the" invoice number on this
@@ -8045,12 +8057,12 @@ itineraryDetailBox('Also Part of This Vacation', linkedTripsRows)+
 flightBoxesHtml+
 hotelBoxesHtml+
 itineraryDetailBox('Cruise Details', cruiseRows, CRUISE_LOGOS[opts.cruiseLine])+
-itineraryDetailBox('Car Rental Details', carRentalRows, CAR_RENTAL_LOGOS[opts.carRentalCompany])+
+carRentalBoxesHtml+
 transfersBoxesHtml+
 toursBoxesHtml+
 themeParkBoxesHtml+
-itineraryDetailBox('Train Details', trainRows, opts.trainLogoUrl)+
-itineraryDetailBox('Bus Details', busRows, opts.busLogoUrl)+
+trainBoxesHtml+
+busBoxesHtml+
 itineraryDetailBox('Insurance', insuranceRows)+
 itineraryDetailBox('Booking Details', bookingRows)+
 (opts.notes?(
@@ -8167,12 +8179,15 @@ function tripItineraryPlainText(opts){
     itineraryDetailRowText('Loyalty Number', opts.cruiseLoyaltyNumber);
   out += itineraryPlainTextSection('Cruise Details', cruiseRows);
 
-  var carRows = itineraryDetailRowText('Company', opts.carRentalCompany) +
-    itineraryDetailRowText('Car Size', opts.carSize) +
-    itineraryDetailRowText('Pickup', [opts.carPickupLocation,opts.carPickupDate].filter(Boolean).join(' — ')) +
-    itineraryDetailRowText('Dropoff', [opts.carDropoffLocation,opts.carDropoffDate].filter(Boolean).join(' — ')) +
-    itineraryDetailRowText('Confirmation Number', opts.carConfirmationNumber);
-  out += itineraryPlainTextSection('Car Rental Details', carRows);
+  var carEntries = opts.carEntries || [];
+  carEntries.forEach(function(c,i){
+    var rows = itineraryDetailRowText('Company', c.company) +
+      itineraryDetailRowText('Car Size', c.carSize) +
+      itineraryDetailRowText('Pickup', [c.pickupLocation,c.pickupDate].filter(Boolean).join(' — ')) +
+      itineraryDetailRowText('Dropoff', [c.dropoffLocation,c.dropoffDate].filter(Boolean).join(' — ')) +
+      itineraryDetailRowText('Confirmation Number', c.confirmationNumber);
+    out += itineraryPlainTextSection(carEntries.length>1?'Car Rental '+(i+1)+' Details':'Car Rental Details', rows);
+  });
 
   var transferEntries = opts.transferEntries || [];
   transferEntries.forEach(function(x,i){
@@ -8201,19 +8216,25 @@ function tripItineraryPlainText(opts){
     out += itineraryPlainTextSection(themeParkEntriesText.length>1?'Theme Park '+(i+1)+' Details':'Theme Park Details', rows);
   });
 
-  var trainRows = itineraryDetailRowText('Route', opts.trainDepartureCity&&opts.trainArrivalCity?(opts.trainDepartureCity+' → '+opts.trainArrivalCity):'') +
-    itineraryDetailRowText('Departure Date', opts.trainDepartureDate) +
-    itineraryDetailRowText('Return Date', opts.trainReturnDate) +
-    itineraryDetailRowText('Class of Service', opts.trainClassOfService) +
-    itineraryDetailRowText('Confirmation Number', opts.trainConfirmationNumber);
-  out += itineraryPlainTextSection('Train Details', trainRows);
+  var trainEntries = opts.trainEntries || [];
+  trainEntries.forEach(function(t,i){
+    var rows = itineraryDetailRowText('Route', t.departureCity&&t.arrivalCity?(t.departureCity+' → '+t.arrivalCity):'') +
+      itineraryDetailRowText('Departure Date', t.departureDate) +
+      itineraryDetailRowText('Return Date', t.returnDate) +
+      itineraryDetailRowText('Class of Service', t.classOfService) +
+      itineraryDetailRowText('Confirmation Number', t.confirmationNumber);
+    out += itineraryPlainTextSection(trainEntries.length>1?'Train '+(i+1)+' Details':'Train Details', rows);
+  });
 
-  var busRows = itineraryDetailRowText('Route', opts.busDepartureCity&&opts.busArrivalCity?(opts.busDepartureCity+' → '+opts.busArrivalCity):'') +
-    itineraryDetailRowText('Departure Date', opts.busDepartureDate) +
-    itineraryDetailRowText('Return Date', opts.busReturnDate) +
-    itineraryDetailRowText('Class of Service', opts.busClassOfService) +
-    itineraryDetailRowText('Confirmation Number', opts.busConfirmationNumber);
-  out += itineraryPlainTextSection('Bus Details', busRows);
+  var busEntries = opts.busEntries || [];
+  busEntries.forEach(function(x,i){
+    var rows = itineraryDetailRowText('Route', x.departureCity&&x.arrivalCity?(x.departureCity+' → '+x.arrivalCity):'') +
+      itineraryDetailRowText('Departure Date', x.departureDate) +
+      itineraryDetailRowText('Return Date', x.returnDate) +
+      itineraryDetailRowText('Class of Service', x.classOfService) +
+      itineraryDetailRowText('Confirmation Number', x.confirmationNumber);
+    out += itineraryPlainTextSection(busEntries.length>1?'Bus '+(i+1)+' Details':'Bus Details', rows);
+  });
 
   var insuranceLineItems = [
     ['Airline', opts.airlineInsurance], ['Hotel', opts.hotelInsurance], ['Cruise', opts.cruiseInsurance],
@@ -8240,10 +8261,13 @@ function tripItineraryPlainText(opts){
 function tripToItineraryOpts(trip, client, extraNotes){
   var sup = trip.supplierId ? db.vendors.find(function(v){return v.id===trip.supplierId;}) : null;
   var b = trip.booked || {};
-  var air = b.airline||{}, cru = b.cruise||{}, car = b.carRental||{}, tra = b.train||{}, bus = b.bus||{};
+  var air = b.airline||{}, cru = b.cruise||{};
   var tourEntries = Array.isArray(b.tours) ? b.tours : (b.tours && Object.keys(b.tours).length ? [b.tours] : []);
   var themeParkEntries = Array.isArray(b.themePark) ? b.themePark : (b.themePark && Object.keys(b.themePark).length ? [b.themePark] : []);
   var transferEntries = Array.isArray(b.transfers) ? b.transfers : [];
+  var carEntries = Array.isArray(b.carRental) ? b.carRental : (b.carRental && Object.keys(b.carRental).length ? [b.carRental] : []);
+  var trainEntries = Array.isArray(b.train) ? b.train : (b.train && Object.keys(b.train).length ? [b.train] : []);
+  var busEntries = Array.isArray(b.bus) ? b.bus : (b.bus && Object.keys(b.bus).length ? [b.bus] : []);
   // Booked Trip Details is the source of truth whenever it actually has
   // something recorded for a category — a trip can have real flight
   // segments/hotel stays/cabins there that the top-level basic fields
@@ -8300,13 +8324,14 @@ function tripToItineraryOpts(trip, client, extraNotes){
     cruiseReturnPort: cru.returnPort||'',
     cruiseLoyaltyNumber: cru.loyaltyNumber||'',
     cruiseCabins: cruiseCabins,
-    carRentalCompany: car.company||'',
-    carSize: car.carSize||'',
-    carPickupLocation: car.pickupLocation||'',
-    carDropoffLocation: car.dropoffLocation||'',
-    carPickupDate: car.pickupDate?fmtDate(car.pickupDate):'',
-    carDropoffDate: car.dropoffDate?fmtDate(car.dropoffDate):'',
-    carConfirmationNumber: car.confirmationNumber||'',
+    carEntries: carEntries.map(function(c){
+      return {
+        company: c.company||'', carSize: c.carSize||'',
+        pickupLocation: c.pickupLocation||'', dropoffLocation: c.dropoffLocation||'',
+        pickupDate: c.pickupDate?fmtDate(c.pickupDate):'', dropoffDate: c.dropoffDate?fmtDate(c.dropoffDate):'',
+        confirmationNumber: c.confirmationNumber||''
+      };
+    }),
     transferEntries: transferEntries.map(function(x){
       return {
         pickupDate: x.pickupDate?fmtDate(x.pickupDate):'',
@@ -8320,19 +8345,20 @@ function tripToItineraryOpts(trip, client, extraNotes){
     }),
     tourEntries: tourEntries,
     themeParkEntries: themeParkEntries,
-    trainDepartureCity: tra.departureCity||'',
-    trainArrivalCity: tra.arrivalCity||'',
-    trainDepartureDate: tra.departureDate?fmtDate(tra.departureDate):'',
-    trainReturnDate: tra.returnDate?fmtDate(tra.returnDate):'',
-    trainClassOfService: tra.classOfService||'',
-    trainConfirmationNumber: tra.confirmationNumber||'',
-    trainLogoUrl: tra.logoUrl||'',
-    busDepartureCity: bus.departureCity||'',
-    busArrivalCity: bus.arrivalCity||'',
-    busDepartureDate: bus.departureDate?fmtDate(bus.departureDate):'',
-    busReturnDate: bus.returnDate?fmtDate(bus.returnDate):'',
-    busClassOfService: bus.classOfService||'',
-    busConfirmationNumber: bus.confirmationNumber||'',
+    trainEntries: trainEntries.map(function(t){
+      return {
+        departureCity: t.departureCity||'', arrivalCity: t.arrivalCity||'',
+        departureDate: t.departureDate?fmtDate(t.departureDate):'', returnDate: t.returnDate?fmtDate(t.returnDate):'',
+        classOfService: t.classOfService||'', confirmationNumber: t.confirmationNumber||'', logoUrl: t.logoUrl||''
+      };
+    }),
+    busEntries: busEntries.map(function(x){
+      return {
+        departureCity: x.departureCity||'', arrivalCity: x.arrivalCity||'',
+        departureDate: x.departureDate?fmtDate(x.departureDate):'', returnDate: x.returnDate?fmtDate(x.returnDate):'',
+        classOfService: x.classOfService||'', confirmationNumber: x.confirmationNumber||'', logoUrl: x.logoUrl||''
+      };
+    }),
     // Each category's own Insurance Premium field from Booked Trip Details
     // (whether purchased through that segment's own supplier, e.g. a cruise
     // line's trip protection add-on, or a separate dedicated travel insurer)
@@ -8341,14 +8367,14 @@ function tripToItineraryOpts(trip, client, extraNotes){
     airlineInsurance: air.insurancePremium||0,
     hotelInsurance: b.hotelInsurancePremium||0,
     cruiseInsurance: cru.insurancePremium||0,
-    carInsurance: car.insurancePremium||0,
     transfersInsurance: b.transfersInsurancePremium||0,
     toursInsurance: b.toursInsurancePremium||0,
     // Same fallback shape as themeParkEntries above — an old, not-yet-
     // resaved trip only has insurancePremium on the single legacy object.
     themeParkInsurance: b.themeParkInsurancePremium || (!Array.isArray(b.themePark) && b.themePark ? (b.themePark.insurancePremium||0) : 0),
-    trainInsurance: tra.insurancePremium||0,
-    busInsurance: bus.insurancePremium||0,
+    carInsurance: b.carRentalInsurancePremium || (!Array.isArray(b.carRental) && b.carRental ? (b.carRental.insurancePremium||0) : 0),
+    trainInsurance: b.trainInsurancePremium || (!Array.isArray(b.train) && b.train ? (b.train.insurancePremium||0) : 0),
+    busInsurance: b.busInsurancePremium || (!Array.isArray(b.bus) && b.bus ? (b.bus.insurancePremium||0) : 0),
     bookingRef: trip.bookingRef||'',
     supplierName: (sup?sup.name:trip.supplierName)||'',
     // Points Used and Total Trip Value are sourced from Booked Trip Details
@@ -8529,10 +8555,9 @@ function tripToTravelItems(trip){
       notes:[cabins.length>1 ? cabins.length+' cabins: '+cabins.map(function(c){return c.cabinType;}).filter(Boolean).join(', ') : '', cru.notes].filter(Boolean).join(' — '),
       confirmationNumber:cru.confirmationNumber, price:cru.price});
   }
-  var car = b.carRental || {};
-  if(car.company || car.confirmationNumber){
+  asArr(b.carRental).forEach(function(car){
     push('Car Rental', {company:car.company, carSize:car.carSize, pickupLocation:car.pickupLocation, pickupDate:car.pickupDate, dropoffDate:car.dropoffDate, notes:car.notes, confirmationNumber:car.confirmationNumber, price:car.price});
-  }
+  });
   (Array.isArray(b.transfers) ? b.transfers : []).forEach(function(t){
     push('Transfer', {origin:t.origin, destination:t.destination, pickupDate:t.pickupDate, carType:t.carType, provider:t.provider, notes:t.notes, confirmationNumber:t.confirmationNumber, price:t.price});
   });
@@ -8543,10 +8568,9 @@ function tripToTravelItems(trip){
     push('Theme Park', {park:p.park, ticketType:p.ticketType, notes:p.notes, confirmationNumber:p.confirmationNumber, price:p.price});
   });
   [['Train', b.train], ['Bus', b.bus]].forEach(function(pair){
-    var x = pair[1] || {};
-    if(x.departureCity || x.arrivalCity || x.confirmationNumber){
+    asArr(pair[1]).forEach(function(x){
       push(pair[0], {departureCity:x.departureCity, arrivalCity:x.arrivalCity, departureDate:x.departureDate, returnDate:x.returnDate, classOfService:x.classOfService, notes:x.notes, confirmationNumber:x.confirmationNumber, price:x.price});
-    }
+    });
   });
   return items;
 }
@@ -16590,16 +16614,16 @@ function tripBookedPoints(t){
   }
   total += sumPts(b.airline && b.airline.pts);
   total += sumPts(b.cruise && b.cruise.pts);
-  total += sumPts(b.carRental && b.carRental.pts);
   total += sumPts(b.transfersPts);
   total += sumPts(b.toursPts);
-  // booked.themePark moved from a single object (with its own pts) to a
-  // list, with points promoted up to the section-level themeParkPts field
-  // like Tours' toursPts — an old, not-yet-resaved trip only has pts on
-  // that one object.
+  // booked.themePark/carRental/train/bus each moved from a single object
+  // (with its own pts) to a list, with points promoted up to a section-
+  // level field like Tours' toursPts — an old, not-yet-resaved trip only
+  // has pts on that one legacy object.
   total += sumPts(Array.isArray(b.themeParkPts) ? b.themeParkPts : (b.themePark && !Array.isArray(b.themePark) ? b.themePark.pts : null));
-  total += sumPts(b.train && b.train.pts);
-  total += sumPts(b.bus && b.bus.pts);
+  total += sumPts(Array.isArray(b.carRentalPts) ? b.carRentalPts : (b.carRental && !Array.isArray(b.carRental) ? b.carRental.pts : null));
+  total += sumPts(Array.isArray(b.trainPts) ? b.trainPts : (b.train && !Array.isArray(b.train) ? b.train.pts : null));
+  total += sumPts(Array.isArray(b.busPts) ? b.busPts : (b.bus && !Array.isArray(b.bus) ? b.bus.pts : null));
   // A hotel entry's points moved from a single program/amount pair to a
   // pts list (like every other section); an old, not-yet-resaved entry
   // only has the amount field, so fall back to that when pts is absent.
@@ -16631,9 +16655,22 @@ function tripBookedPriceTotal(t){
     airlineRecords.reduce(function(a,r){return a+num(r&&r.price);},0) :
     num(b.airline && b.airline.price);
   total += num(b.cruise && b.cruise.price);
-  total += num(b.carRental && b.carRental.price);
-  total += num(b.train && b.train.price);
-  total += num(b.bus && b.bus.price);
+  // booked.carRental/train/bus each moved from one flat price field to a
+  // list, same shape change as booked.themePark above — sum the list for
+  // current trips, only falling back to the old flat field for a legacy
+  // trip that never got resaved into the new shape.
+  var carRentals = Array.isArray(b.carRental) ? b.carRental : [];
+  total += carRentals.length ?
+    carRentals.reduce(function(a,x){return a+num(x&&x.price);},0) :
+    num(b.carRental && b.carRental.price);
+  var trains = Array.isArray(b.train) ? b.train : [];
+  total += trains.length ?
+    trains.reduce(function(a,x){return a+num(x&&x.price);},0) :
+    num(b.train && b.train.price);
+  var buses = Array.isArray(b.bus) ? b.bus : [];
+  total += buses.length ?
+    buses.reduce(function(a,x){return a+num(x&&x.price);},0) :
+    num(b.bus && b.bus.price);
   var hotels = Array.isArray(b.hotel) ? b.hotel : [];
   total += hotels.reduce(function(a,h){return a+num(h&&h.price);},0);
   var tours = Array.isArray(b.tours) ? b.tours : [];
@@ -16654,12 +16691,12 @@ function tripBookedPriceTotal(t){
   total += num(b.airline && b.airline.insurancePremium);
   total += num(b.hotelInsurancePremium);
   total += num(b.cruise && b.cruise.insurancePremium);
-  total += num(b.carRental && b.carRental.insurancePremium);
+  total += num(b.carRentalInsurancePremium) + (Array.isArray(b.carRental) ? 0 : num(b.carRental && b.carRental.insurancePremium));
   total += num(b.transfersInsurancePremium);
   total += num(b.toursInsurancePremium);
   total += num(b.themeParkInsurancePremium) + (Array.isArray(b.themePark) ? 0 : num(b.themePark && b.themePark.insurancePremium));
-  total += num(b.train && b.train.insurancePremium);
-  total += num(b.bus && b.bus.insurancePremium);
+  total += num(b.trainInsurancePremium) + (Array.isArray(b.train) ? 0 : num(b.train && b.train.insurancePremium));
+  total += num(b.busInsurancePremium) + (Array.isArray(b.bus) ? 0 : num(b.bus && b.bus.insurancePremium));
   return total;
 }
 // Same type/color convention the Planner's Type column uses (b-blue
@@ -19259,12 +19296,12 @@ function computeBookedTripSummary(bd){
     .concat([].concat.apply([], airlineRecords.map(function(r){return r.pts||[];})))
     .concat([].concat.apply([], (bd.hotel||[]).map(function(h){return h.pts||[];})))
     .concat(bd.cruise.pts||[])
-    .concat(bd.carRental.pts||[])
+    .concat(bd.carRentalPts||[])
     .concat(bd.transfersPts||[])
     .concat(bd.toursPts||[])
     .concat(bd.themeParkPts||[])
-    .concat(bd.train.pts||[])
-    .concat(bd.bus.pts||[]);
+    .concat(bd.trainPts||[])
+    .concat(bd.busPts||[]);
   var byProgram = {};
   allPts.forEach(function(p){
     if(!p.program && !p.amount && !p.cost) return;
@@ -19277,23 +19314,23 @@ function computeBookedTripSummary(bd){
   var totalPrice = airlineRecords.reduce(function(a,r){return a+(r.price||0);},0)
     + (bd.hotel||[]).reduce(function(a,h){return a+(h.price||0);},0)
     + (bd.cruise.price||0)
-    + (bd.carRental.price||0)
+    + (bd.carRental||[]).reduce(function(a,c){return a+(c.price||0);},0)
     + (bd.transfers||[]).reduce(function(a,t){return a+(t.price||0);},0)
     + (bd.tours||[]).reduce(function(a,t){return a+(t.price||0);},0)
     + (bd.themePark||[]).reduce(function(a,t){return a+(t.price||0);},0)
-    + (bd.train.price||0)
-    + (bd.bus.price||0);
+    + (bd.train||[]).reduce(function(a,t){return a+(t.price||0);},0)
+    + (bd.bus||[]).reduce(function(a,t){return a+(t.price||0);},0);
   // Insurance premiums are real cash cost too — same reasoning as
   // tripBookedPriceTotal(), kept in sync with it.
   var totalInsurance = (bd.airline.insurancePremium||0)
     + (bd.hotelInsurancePremium||0)
     + (bd.cruise.insurancePremium||0)
-    + (bd.carRental.insurancePremium||0)
+    + (bd.carRentalInsurancePremium||0)
     + (bd.transfersInsurancePremium||0)
     + (bd.toursInsurancePremium||0)
     + (bd.themeParkInsurancePremium||0)
-    + (bd.train.insurancePremium||0)
-    + (bd.bus.insurancePremium||0);
+    + (bd.trainInsurancePremium||0)
+    + (bd.busInsurancePremium||0);
   return {rows:rows, totalCash: totalPrice + totalPtsCost + totalInsurance};
 }
 // Invoice Number only shows here when the trip has no Supplier linked — a
@@ -19328,15 +19365,12 @@ function bookedTripCategoriesWithContent(bd){
   if((bd.hotel||[]).length) out.push('Hotel');
   var cru = bd.cruise||{};
   if(cru.cruiseLine||cru.shipName||cru.confirmationNumber||cru.sailingDate||cru.price||(cru.cabins||[]).length) out.push('Cruise');
-  var car = bd.carRental||{};
-  if(car.company||car.confirmationNumber||car.pickupLocation||car.price) out.push('Car Rental');
+  if((bd.carRental||[]).length) out.push('Car Rental');
   if((bd.transfers||[]).length) out.push('Transfers');
   if((bd.tours||[]).length) out.push('Tours');
   if((bd.themePark||[]).length) out.push('Theme Park');
-  var tra = bd.train||{};
-  if(tra.confirmationNumber||tra.departureCity||tra.departureDate||tra.price) out.push('Train');
-  var bus = bd.bus||{};
-  if(bus.confirmationNumber||bus.departureCity||bus.departureDate||bus.price) out.push('Bus');
+  if((bd.train||[]).length) out.push('Train');
+  if((bd.bus||[]).length) out.push('Bus');
   return out;
 }
 function refreshBudgetIncludesText(bd){
@@ -19721,6 +19755,139 @@ function readTransferEntries(){
     return e.pickupDate||e.pickupTime||e.origin||e.destination||e.carType||e.provider||e.confirmationNumber||e.price||e.notes;
   });
 }
+// Car Rental / Train / Bus entries are the same dynamic add/remove pattern
+// as Tours/Theme Park/Transfers above — a trip can need more than one car
+// rental (different cities/legs of the same trip) or more than one train/
+// bus segment (a multi-city rail or bus itinerary), the same way it can
+// need more than one flight record. Insurance Premium/Coverage and Points
+// Used stay section-level shared fields, same reasoning as Tours/Theme
+// Park/Transfers: a single policy or points redemption covering the whole
+// category is the common case, not one per entry. Read back by class
+// selector in DOM order.
+function carEntryRowInnerHtml(entry){
+  entry = entry || {};
+  return '<div style="display:flex;justify-content:flex-end;margin-bottom:4px">'+
+      '<button type="button" class="del-car-entry-btn" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:12px">&#128465;&#65039; Remove</button>'+
+    '</div>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
+      '<div class="field"><label>Confirmation Number</label><input class="car-entry-conf" type="text" value="'+(entry.confirmationNumber||'').toString().replace(/"/g,'&quot;')+'" placeholder="e.g. CR-778899"></div>'+
+      '<div class="field"><label>Company</label><select class="car-entry-company"><option value="">-- Select --</option>'+selOpts(CAR_RENTALS,entry.company)+'</select></div>'+
+      '<div class="field"><label>Car Size</label><select class="car-entry-size"><option value="">-- Select --</option>'+selOpts(CAR_SIZES,entry.carSize)+'</select></div>'+
+      '<div class="field"><label>Price ($)</label><input class="car-entry-price" type="number" value="'+(entry.price||'')+'"></div>'+
+      '<div class="field"><label>Pickup Location</label><input class="car-entry-pickuploc" type="text" value="'+(entry.pickupLocation||'').toString().replace(/"/g,'&quot;')+'" placeholder="e.g. Miami Airport (MIA)"></div>'+
+      '<div class="field"><label>Dropoff Location</label><input class="car-entry-dropoffloc" type="text" value="'+(entry.dropoffLocation||'').toString().replace(/"/g,'&quot;')+'" placeholder="e.g. Miami Airport (MIA)"></div>'+
+      '<div class="field"><label>Pickup Date</label><input class="car-entry-pickupdate" type="date" value="'+(entry.pickupDate||'')+'"></div>'+
+      '<div class="field"><label>Dropoff Date</label><input class="car-entry-dropoffdate" type="date" value="'+(entry.dropoffDate||'')+'"></div>'+
+      '<div class="field"><label>Pickup Time</label><input class="car-entry-pickuptime" type="time" value="'+(entry.pickupTime||'')+'"></div>'+
+      '<div class="field"><label>Dropoff Time</label><input class="car-entry-dropofftime" type="time" value="'+(entry.dropoffTime||'')+'"></div>'+
+      '<div class="field full"><label>Notes</label><textarea class="car-entry-notes">'+(entry.notes||'')+'</textarea></div>'+
+    '</div>';
+}
+function carEntryRowHtml(entry){
+  return '<div class="car-entry-row" style="border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin-bottom:10px;background:#fafafa">'+carEntryRowInnerHtml(entry)+'</div>';
+}
+function carEntriesListHtml(entries){
+  return entries.length ? entries.map(carEntryRowHtml).join('') : '<div id="tb-car-entries-empty" style="color:#aaa;font-size:12px;padding:6px 0">No car rentals added yet</div>';
+}
+function readCarEntries(){
+  return Array.from(document.querySelectorAll('#tb-car-entries .car-entry-row')).map(function(row){
+    return {
+      confirmationNumber: (row.querySelector('.car-entry-conf')||{}).value||'',
+      company: (row.querySelector('.car-entry-company')||{}).value||'',
+      carSize: (row.querySelector('.car-entry-size')||{}).value||'',
+      price: Number((row.querySelector('.car-entry-price')||{}).value)||0,
+      pickupLocation: (row.querySelector('.car-entry-pickuploc')||{}).value||'',
+      dropoffLocation: (row.querySelector('.car-entry-dropoffloc')||{}).value||'',
+      pickupDate: (row.querySelector('.car-entry-pickupdate')||{}).value||'',
+      dropoffDate: (row.querySelector('.car-entry-dropoffdate')||{}).value||'',
+      pickupTime: (row.querySelector('.car-entry-pickuptime')||{}).value||'',
+      dropoffTime: (row.querySelector('.car-entry-dropofftime')||{}).value||'',
+      notes: (row.querySelector('.car-entry-notes')||{}).value||''
+    };
+  }).filter(function(e){
+    return e.confirmationNumber||e.company||e.carSize||e.price||e.pickupLocation||e.dropoffLocation||e.pickupDate||e.dropoffDate||e.notes;
+  });
+}
+function trainEntryRowInnerHtml(entry){
+  entry = entry || {};
+  return '<div style="display:flex;justify-content:flex-end;margin-bottom:4px">'+
+      '<button type="button" class="del-train-entry-btn" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:12px">&#128465;&#65039; Remove</button>'+
+    '</div>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
+      '<div class="field"><label>Confirmation Number</label><input class="train-entry-conf" type="text" value="'+(entry.confirmationNumber||'').toString().replace(/"/g,'&quot;')+'" placeholder="e.g. AMTK-556677"></div>'+
+      '<div class="field"><label>Departure City</label><input class="train-entry-depcity" type="text" value="'+(entry.departureCity||'').toString().replace(/"/g,'&quot;')+'" placeholder="e.g. New York, NY"></div>'+
+      '<div class="field"><label>Arrival City</label><input class="train-entry-arrcity" type="text" value="'+(entry.arrivalCity||'').toString().replace(/"/g,'&quot;')+'" placeholder="e.g. Washington, DC"></div>'+
+      '<div class="field"><label>Departure Date</label><input class="train-entry-depdate" type="date" value="'+(entry.departureDate||'')+'"></div>'+
+      '<div class="field"><label>Return Date</label><input class="train-entry-retdate" type="date" value="'+(entry.returnDate||'')+'"></div>'+
+      '<div class="field"><label>Class of Service</label><select class="train-entry-class"><option value="">-- Select --</option>'+selOpts(TRAIN_CLASSES,entry.classOfService)+'</select></div>'+
+      '<div class="field"><label>Price ($)</label><input class="train-entry-price" type="number" value="'+(entry.price||'')+'"></div>'+
+      '<div class="field"><label>Logo URL</label><input class="train-entry-logo" type="text" value="'+(entry.logoUrl||'').toString().replace(/"/g,'&quot;')+'" placeholder="optional — shown next to Train Details in Email Itinerary"></div>'+
+      '<div class="field full"><label>Notes</label><textarea class="train-entry-notes">'+(entry.notes||'')+'</textarea></div>'+
+    '</div>';
+}
+function trainEntryRowHtml(entry){
+  return '<div class="train-entry-row" style="border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin-bottom:10px;background:#fafafa">'+trainEntryRowInnerHtml(entry)+'</div>';
+}
+function trainEntriesListHtml(entries){
+  return entries.length ? entries.map(trainEntryRowHtml).join('') : '<div id="tb-train-entries-empty" style="color:#aaa;font-size:12px;padding:6px 0">No trains added yet</div>';
+}
+function readTrainEntries(){
+  return Array.from(document.querySelectorAll('#tb-train-entries .train-entry-row')).map(function(row){
+    return {
+      confirmationNumber: (row.querySelector('.train-entry-conf')||{}).value||'',
+      departureCity: (row.querySelector('.train-entry-depcity')||{}).value||'',
+      arrivalCity: (row.querySelector('.train-entry-arrcity')||{}).value||'',
+      departureDate: (row.querySelector('.train-entry-depdate')||{}).value||'',
+      returnDate: (row.querySelector('.train-entry-retdate')||{}).value||'',
+      classOfService: (row.querySelector('.train-entry-class')||{}).value||'',
+      price: Number((row.querySelector('.train-entry-price')||{}).value)||0,
+      logoUrl: (row.querySelector('.train-entry-logo')||{}).value||'',
+      notes: (row.querySelector('.train-entry-notes')||{}).value||''
+    };
+  }).filter(function(e){
+    return e.confirmationNumber||e.departureCity||e.arrivalCity||e.departureDate||e.returnDate||e.classOfService||e.price||e.logoUrl||e.notes;
+  });
+}
+function busEntryRowInnerHtml(entry){
+  entry = entry || {};
+  return '<div style="display:flex;justify-content:flex-end;margin-bottom:4px">'+
+      '<button type="button" class="del-bus-entry-btn" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:12px">&#128465;&#65039; Remove</button>'+
+    '</div>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
+      '<div class="field"><label>Confirmation Number</label><input class="bus-entry-conf" type="text" value="'+(entry.confirmationNumber||'').toString().replace(/"/g,'&quot;')+'" placeholder="e.g. GRY-556677"></div>'+
+      '<div class="field"><label>Departure City</label><input class="bus-entry-depcity" type="text" value="'+(entry.departureCity||'').toString().replace(/"/g,'&quot;')+'" placeholder="e.g. New York, NY"></div>'+
+      '<div class="field"><label>Arrival City</label><input class="bus-entry-arrcity" type="text" value="'+(entry.arrivalCity||'').toString().replace(/"/g,'&quot;')+'" placeholder="e.g. Washington, DC"></div>'+
+      '<div class="field"><label>Departure Date</label><input class="bus-entry-depdate" type="date" value="'+(entry.departureDate||'')+'"></div>'+
+      '<div class="field"><label>Return Date</label><input class="bus-entry-retdate" type="date" value="'+(entry.returnDate||'')+'"></div>'+
+      '<div class="field"><label>Class of Service</label><select class="bus-entry-class"><option value="">-- Select --</option>'+selOpts(TRAIN_CLASSES,entry.classOfService)+'</select></div>'+
+      '<div class="field"><label>Price ($)</label><input class="bus-entry-price" type="number" value="'+(entry.price||'')+'"></div>'+
+      '<div class="field"><label>Logo URL</label><input class="bus-entry-logo" type="text" value="'+(entry.logoUrl||'').toString().replace(/"/g,'&quot;')+'" placeholder="optional — shown next to Bus Details in Email Itinerary"></div>'+
+      '<div class="field full"><label>Notes</label><textarea class="bus-entry-notes">'+(entry.notes||'')+'</textarea></div>'+
+    '</div>';
+}
+function busEntryRowHtml(entry){
+  return '<div class="bus-entry-row" style="border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin-bottom:10px;background:#fafafa">'+busEntryRowInnerHtml(entry)+'</div>';
+}
+function busEntriesListHtml(entries){
+  return entries.length ? entries.map(busEntryRowHtml).join('') : '<div id="tb-bus-entries-empty" style="color:#aaa;font-size:12px;padding:6px 0">No buses added yet</div>';
+}
+function readBusEntries(){
+  return Array.from(document.querySelectorAll('#tb-bus-entries .bus-entry-row')).map(function(row){
+    return {
+      confirmationNumber: (row.querySelector('.bus-entry-conf')||{}).value||'',
+      departureCity: (row.querySelector('.bus-entry-depcity')||{}).value||'',
+      arrivalCity: (row.querySelector('.bus-entry-arrcity')||{}).value||'',
+      departureDate: (row.querySelector('.bus-entry-depdate')||{}).value||'',
+      returnDate: (row.querySelector('.bus-entry-retdate')||{}).value||'',
+      classOfService: (row.querySelector('.bus-entry-class')||{}).value||'',
+      price: Number((row.querySelector('.bus-entry-price')||{}).value)||0,
+      logoUrl: (row.querySelector('.bus-entry-logo')||{}).value||'',
+      notes: (row.querySelector('.bus-entry-notes')||{}).value||''
+    };
+  }).filter(function(e){
+    return e.confirmationNumber||e.departureCity||e.arrivalCity||e.departureDate||e.returnDate||e.classOfService||e.price||e.logoUrl||e.notes;
+  });
+}
 // Cabin entries are the same dynamic add/remove pattern as hotel/tour
 // entries above (a booking can cover more than one cabin on the same
 // sailing) — Confirmation Number, Cruise Line, Ship Name, Sailing Date,
@@ -19916,8 +20083,7 @@ function bookedCatSectionHtml(key, title, innerHtml){
 }
 function bookedTripDetailsHtml(bd){
   bd = bd || {};
-  var air = bd.airline||{}, cru = bd.cruise||{}, car = bd.carRental||{},
-      tra = bd.train||{}, bus = bd.bus||{};
+  var air = bd.airline||{}, cru = bd.cruise||{};
   // bd.hotel/bd.tours/bd.themePark used to each be a single object (one
   // hotel, one tour, one park per trip); now they're lists, so an old
   // single-object shape gets wrapped into a one-entry list rather than
@@ -19946,6 +20112,26 @@ function bookedTripDetailsHtml(bd){
   var themeParkInsurancePremium = bd.themeParkInsurancePremium || (!Array.isArray(bd.themePark) && bd.themePark ? bd.themePark.insurancePremium : 0) || 0;
   var themeParkInsuranceCoverage = bd.themeParkInsuranceCoverage || (!Array.isArray(bd.themePark) && bd.themePark ? bd.themePark.insuranceCoverage : 0) || 0;
   var themeParkPts = bd.themeParkPts || (!Array.isArray(bd.themePark) && bd.themePark ? bd.themePark.pts : null) || [];
+  // Car Rental/Train/Bus moved from one flat record each to an entries
+  // list, same shape change as Tours/Theme Park above — an old, not-yet-
+  // resaved trip's single object still loads fine wrapped into a one-entry
+  // list, with its insurance/pts promoted up to the section-level fields
+  // the first time this trip is saved through readBookedTripDetails().
+  var carEntries = Array.isArray(bd.carRental) ? bd.carRental : (bd.carRental && Object.keys(bd.carRental).length ? [bd.carRental] : []);
+  if(!carEntries.length) carEntries = [{}];
+  var carInsurancePremium = bd.carRentalInsurancePremium || (!Array.isArray(bd.carRental) && bd.carRental ? bd.carRental.insurancePremium : 0) || 0;
+  var carInsuranceCoverage = bd.carRentalInsuranceCoverage || (!Array.isArray(bd.carRental) && bd.carRental ? bd.carRental.insuranceCoverage : 0) || 0;
+  var carPts = bd.carRentalPts || (!Array.isArray(bd.carRental) && bd.carRental ? bd.carRental.pts : null) || [];
+  var trainEntries = Array.isArray(bd.train) ? bd.train : (bd.train && Object.keys(bd.train).length ? [bd.train] : []);
+  if(!trainEntries.length) trainEntries = [{}];
+  var trainInsurancePremium = bd.trainInsurancePremium || (!Array.isArray(bd.train) && bd.train ? bd.train.insurancePremium : 0) || 0;
+  var trainInsuranceCoverage = bd.trainInsuranceCoverage || (!Array.isArray(bd.train) && bd.train ? bd.train.insuranceCoverage : 0) || 0;
+  var trainPts = bd.trainPts || (!Array.isArray(bd.train) && bd.train ? bd.train.pts : null) || [];
+  var busEntries = Array.isArray(bd.bus) ? bd.bus : (bd.bus && Object.keys(bd.bus).length ? [bd.bus] : []);
+  if(!busEntries.length) busEntries = [{}];
+  var busInsurancePremium = bd.busInsurancePremium || (!Array.isArray(bd.bus) && bd.bus ? bd.bus.insurancePremium : 0) || 0;
+  var busInsuranceCoverage = bd.busInsuranceCoverage || (!Array.isArray(bd.bus) && bd.bus ? bd.bus.insuranceCoverage : 0) || 0;
+  var busPts = bd.busPts || (!Array.isArray(bd.bus) && bd.bus ? bd.bus.pts : null) || [];
   var transferEntries = Array.isArray(bd.transfers) ? bd.transfers : [];
   if(!transferEntries.length) transferEntries = [{}];
   // booked.cruise used to hold one cabinType/peopleInCabin pair directly —
@@ -20015,20 +20201,13 @@ function bookedTripDetailsHtml(bd){
       '</div>'+
       pointsEntriesSectionHtml(cru.pts||[], 'tb-cruise-pts-entries', 'tb-cruise-pts-add-btn'))+
     bookedCatSectionHtml('car','Car Rental',
-      fld('Confirmation Number',inp('tb-car-conf','text',car.confirmationNumber,'e.g. CR-778899'))+
-      fld('Company',sel('tb-car-company',CAR_RENTALS,car.company))+
-      fld('Car Size',sel('tb-car-size',CAR_SIZES,car.carSize))+
-      fld('Pickup Location',inp('tb-car-pickuploc','text',car.pickupLocation,'e.g. Miami Airport (MIA)'))+
-      fld('Dropoff Location',inp('tb-car-dropoffloc','text',car.dropoffLocation,'e.g. Miami Airport (MIA)'))+
-      fld('Pickup Date',inp('tb-car-pickupdate','date',car.pickupDate))+
-      fld('Dropoff Date',inp('tb-car-dropoffdate','date',car.dropoffDate))+
-      fld('Pickup Time',inp('tb-car-pickuptime','time',car.pickupTime))+
-      fld('Dropoff Time',inp('tb-car-dropofftime','time',car.dropoffTime))+
-      fld('Price ($)',inp('tb-car-price','number',car.price))+
-      fld('Insurance Premium ($)',inp('tb-car-insurance','number',car.insurancePremium,'If purchased for this rental, through the rental company or a separate insurer'))+
-      fld('Coverage Amount ($)',inp('tb-car-coverage','number',car.insuranceCoverage,'Total coverage provided by the policy above'))+
-      fld('Notes','<textarea id="tb-car-notes">'+(car.notes||'')+'</textarea>',true)+
-      pointsEntriesSectionHtml(car.pts||[], 'tb-car-pts-entries', 'tb-car-pts-add-btn'))+
+      '<div class="field full"><label>Car Rentals <span class="hint" style="text-transform:none;font-weight:400">(add one entry per car rental on this trip)</span></label>'+
+        '<div id="tb-car-entries">'+carEntriesListHtml(carEntries)+'</div>'+
+        '<button type="button" id="tb-car-add-btn" style="padding:5px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit">+ Add Car Rental</button>'+
+      '</div>'+
+      fld('Insurance Premium ($)',inp('tb-car-insurance','number',carInsurancePremium,'If purchased for these rentals, through the rental company or a separate insurer'))+
+      fld('Coverage Amount ($)',inp('tb-car-coverage','number',carInsuranceCoverage,'Total coverage provided by the policy above'))+
+      pointsEntriesSectionHtml(carPts, 'tb-car-pts-entries', 'tb-car-pts-add-btn'))+
     bookedCatSectionHtml('transfers','Transfers / Car Service',
       '<div class="field full"><label>Rides <span class="hint" style="text-transform:none;font-weight:400">(add one entry per individual pickup)</span></label>'+
         '<div id="tb-transfer-entries">'+transferEntriesListHtml(transferEntries)+'</div>'+
@@ -20054,31 +20233,21 @@ function bookedTripDetailsHtml(bd){
       fld('Coverage Amount ($)',inp('tb-tp-coverage','number',themeParkInsuranceCoverage,'Total coverage provided by the policy above'))+
       pointsEntriesSectionHtml(themeParkPts, 'tb-tp-pts-entries', 'tb-tp-pts-add-btn'))+
     bookedCatSectionHtml('train','Train',
-      fld('Confirmation Number',inp('tb-train-conf','text',tra.confirmationNumber,'e.g. AMTK-556677'))+
-      fld('Departure City',inp('tb-train-depcity','text',tra.departureCity,'e.g. New York, NY'))+
-      fld('Arrival City',inp('tb-train-arrcity','text',tra.arrivalCity,'e.g. Washington, DC'))+
-      fld('Departure Date',inp('tb-train-depdate','date',tra.departureDate))+
-      fld('Return Date',inp('tb-train-retdate','date',tra.returnDate))+
-      fld('Class of Service',sel('tb-train-class',TRAIN_CLASSES,tra.classOfService))+
-      fld('Price ($)',inp('tb-train-price','number',tra.price))+
-      fld('Insurance Premium ($)',inp('tb-train-insurance','number',tra.insurancePremium,'If purchased for this trip, through the rail line or a separate insurer'))+
-      fld('Coverage Amount ($)',inp('tb-train-coverage','number',tra.insuranceCoverage,'Total coverage provided by the policy above'))+
-      fld('Logo URL',inp('tb-train-logo','text',tra.logoUrl,'optional — shown next to Train Details in Email Itinerary'))+
-      fld('Notes','<textarea id="tb-train-notes">'+(tra.notes||'')+'</textarea>',true)+
-      pointsEntriesSectionHtml(tra.pts||[], 'tb-train-pts-entries', 'tb-train-pts-add-btn'))+
+      '<div class="field full"><label>Trains <span class="hint" style="text-transform:none;font-weight:400">(add one entry per train segment on this trip)</span></label>'+
+        '<div id="tb-train-entries">'+trainEntriesListHtml(trainEntries)+'</div>'+
+        '<button type="button" id="tb-train-add-btn" style="padding:5px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit">+ Add Train</button>'+
+      '</div>'+
+      fld('Insurance Premium ($)',inp('tb-train-insurance','number',trainInsurancePremium,'If purchased for this trip, through the rail line or a separate insurer'))+
+      fld('Coverage Amount ($)',inp('tb-train-coverage','number',trainInsuranceCoverage,'Total coverage provided by the policy above'))+
+      pointsEntriesSectionHtml(trainPts, 'tb-train-pts-entries', 'tb-train-pts-add-btn'))+
     bookedCatSectionHtml('bus','Bus',
-      fld('Confirmation Number',inp('tb-bus-conf','text',bus.confirmationNumber,'e.g. GRY-556677'))+
-      fld('Departure City',inp('tb-bus-depcity','text',bus.departureCity,'e.g. New York, NY'))+
-      fld('Arrival City',inp('tb-bus-arrcity','text',bus.arrivalCity,'e.g. Washington, DC'))+
-      fld('Departure Date',inp('tb-bus-depdate','date',bus.departureDate))+
-      fld('Return Date',inp('tb-bus-retdate','date',bus.returnDate))+
-      fld('Class of Service',sel('tb-bus-class',TRAIN_CLASSES,bus.classOfService))+
-      fld('Price ($)',inp('tb-bus-price','number',bus.price))+
-      fld('Insurance Premium ($)',inp('tb-bus-insurance','number',bus.insurancePremium,'If purchased for this trip, through the bus line or a separate insurer'))+
-      fld('Coverage Amount ($)',inp('tb-bus-coverage','number',bus.insuranceCoverage,'Total coverage provided by the policy above'))+
-      fld('Logo URL',inp('tb-bus-logo','text',bus.logoUrl,'optional — shown next to Bus Details in Email Itinerary'))+
-      fld('Notes','<textarea id="tb-bus-notes">'+(bus.notes||'')+'</textarea>',true)+
-      pointsEntriesSectionHtml(bus.pts||[], 'tb-bus-pts-entries', 'tb-bus-pts-add-btn'))+
+      '<div class="field full"><label>Buses <span class="hint" style="text-transform:none;font-weight:400">(add one entry per bus segment on this trip)</span></label>'+
+        '<div id="tb-bus-entries">'+busEntriesListHtml(busEntries)+'</div>'+
+        '<button type="button" id="tb-bus-add-btn" style="padding:5px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit">+ Add Bus</button>'+
+      '</div>'+
+      fld('Insurance Premium ($)',inp('tb-bus-insurance','number',busInsurancePremium,'If purchased for this trip, through the bus line or a separate insurer'))+
+      fld('Coverage Amount ($)',inp('tb-bus-coverage','number',busInsuranceCoverage,'Total coverage provided by the policy above'))+
+      pointsEntriesSectionHtml(busPts, 'tb-bus-pts-entries', 'tb-bus-pts-add-btn'))+
     '<div class="modal-section-title">Budget</div>'+
     '<div style="display:grid;grid-column:1/-1;grid-template-columns:1fr 1fr;gap:12px">'+
       fld('Total Budget ($)',inp('tb-budget-total','number',bd.totalBudget))+
@@ -20376,6 +20545,78 @@ function bindBookedTripDetailsListeners(){
       }
     });
   }
+  var carEntriesEl = document.getElementById('tb-car-entries');
+  var carAddBtn = document.getElementById('tb-car-add-btn');
+  if(carAddBtn && carEntriesEl){
+    carAddBtn.addEventListener('click', function(){
+      var empty = document.getElementById('tb-car-entries-empty');
+      if(empty) empty.remove();
+      var div = document.createElement('div');
+      div.className = 'car-entry-row';
+      div.style.cssText = 'border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin-bottom:10px;background:#fafafa';
+      div.innerHTML = carEntryRowInnerHtml({});
+      carEntriesEl.appendChild(div);
+    });
+  }
+  if(carEntriesEl){
+    carEntriesEl.addEventListener('click', function(e){
+      var btn = e.target.closest ? e.target.closest('.del-car-entry-btn') : null;
+      if(!btn) return;
+      var row = btn.closest('.car-entry-row');
+      if(row) row.remove();
+      if(!carEntriesEl.querySelector('.car-entry-row')){
+        carEntriesEl.innerHTML = '<div id="tb-car-entries-empty" style="color:#aaa;font-size:12px;padding:6px 0">No car rentals added yet</div>';
+      }
+    });
+  }
+  var trainEntriesEl = document.getElementById('tb-train-entries');
+  var trainAddBtn = document.getElementById('tb-train-add-btn');
+  if(trainAddBtn && trainEntriesEl){
+    trainAddBtn.addEventListener('click', function(){
+      var empty = document.getElementById('tb-train-entries-empty');
+      if(empty) empty.remove();
+      var div = document.createElement('div');
+      div.className = 'train-entry-row';
+      div.style.cssText = 'border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin-bottom:10px;background:#fafafa';
+      div.innerHTML = trainEntryRowInnerHtml({});
+      trainEntriesEl.appendChild(div);
+    });
+  }
+  if(trainEntriesEl){
+    trainEntriesEl.addEventListener('click', function(e){
+      var btn = e.target.closest ? e.target.closest('.del-train-entry-btn') : null;
+      if(!btn) return;
+      var row = btn.closest('.train-entry-row');
+      if(row) row.remove();
+      if(!trainEntriesEl.querySelector('.train-entry-row')){
+        trainEntriesEl.innerHTML = '<div id="tb-train-entries-empty" style="color:#aaa;font-size:12px;padding:6px 0">No trains added yet</div>';
+      }
+    });
+  }
+  var busEntriesEl = document.getElementById('tb-bus-entries');
+  var busAddBtn = document.getElementById('tb-bus-add-btn');
+  if(busAddBtn && busEntriesEl){
+    busAddBtn.addEventListener('click', function(){
+      var empty = document.getElementById('tb-bus-entries-empty');
+      if(empty) empty.remove();
+      var div = document.createElement('div');
+      div.className = 'bus-entry-row';
+      div.style.cssText = 'border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin-bottom:10px;background:#fafafa';
+      div.innerHTML = busEntryRowInnerHtml({});
+      busEntriesEl.appendChild(div);
+    });
+  }
+  if(busEntriesEl){
+    busEntriesEl.addEventListener('click', function(e){
+      var btn = e.target.closest ? e.target.closest('.del-bus-entry-btn') : null;
+      if(!btn) return;
+      var row = btn.closest('.bus-entry-row');
+      if(row) row.remove();
+      if(!busEntriesEl.querySelector('.bus-entry-row')){
+        busEntriesEl.innerHTML = '<div id="tb-bus-entries-empty" style="color:#aaa;font-size:12px;padding:6px 0">No buses added yet</div>';
+      }
+    });
+  }
   bindPointsEntriesListeners('tb-cruise-pts-entries', 'tb-cruise-pts-add-btn');
   bindPointsEntriesListeners('tb-car-pts-entries', 'tb-car-pts-add-btn');
   bindPointsEntriesListeners('tb-transfers-pts-entries', 'tb-transfers-pts-add-btn');
@@ -20405,13 +20646,10 @@ function readBookedTripDetails(){
       loyaltyNumber: gv('tb-cruise-loyalty'), price: gn('tb-cruise-price'), insurancePremium: gn('tb-cruise-insurance'), insuranceCoverage: gn('tb-cruise-coverage'), notes: gv('tb-cruise-notes'), cabins: readCabinEntries(),
       pts: readPointsEntriesFrom(document.getElementById('tb-cruise-pts-entries'))
     },
-    carRental: {
-      confirmationNumber: gv('tb-car-conf'), company: gv('tb-car-company'), carSize: gv('tb-car-size'),
-      pickupLocation: gv('tb-car-pickuploc'), dropoffLocation: gv('tb-car-dropoffloc'),
-      pickupDate: gv('tb-car-pickupdate'), dropoffDate: gv('tb-car-dropoffdate'),
-      pickupTime: gv('tb-car-pickuptime'), dropoffTime: gv('tb-car-dropofftime'), price: gn('tb-car-price'), insurancePremium: gn('tb-car-insurance'), insuranceCoverage: gn('tb-car-coverage'),
-      notes: gv('tb-car-notes'), pts: readPointsEntriesFrom(document.getElementById('tb-car-pts-entries'))
-    },
+    carRental: readCarEntries(),
+    carRentalPts: readPointsEntriesFrom(document.getElementById('tb-car-pts-entries')),
+    carRentalInsurancePremium: gn('tb-car-insurance'),
+    carRentalInsuranceCoverage: gn('tb-car-coverage'),
     transfers: readTransferEntries(),
     transfersPts: readPointsEntriesFrom(document.getElementById('tb-transfers-pts-entries')),
     transfersInsurancePremium: gn('tb-transfers-insurance'),
@@ -20424,16 +20662,14 @@ function readBookedTripDetails(){
     themeParkPts: readPointsEntriesFrom(document.getElementById('tb-tp-pts-entries')),
     themeParkInsurancePremium: gn('tb-tp-insurance'),
     themeParkInsuranceCoverage: gn('tb-tp-coverage'),
-    train: {
-      confirmationNumber: gv('tb-train-conf'), departureCity: gv('tb-train-depcity'), arrivalCity: gv('tb-train-arrcity'),
-      departureDate: gv('tb-train-depdate'), returnDate: gv('tb-train-retdate'), classOfService: gv('tb-train-class'),
-      price: gn('tb-train-price'), insurancePremium: gn('tb-train-insurance'), insuranceCoverage: gn('tb-train-coverage'), logoUrl: gv('tb-train-logo'), notes: gv('tb-train-notes'), pts: readPointsEntriesFrom(document.getElementById('tb-train-pts-entries'))
-    },
-    bus: {
-      confirmationNumber: gv('tb-bus-conf'), departureCity: gv('tb-bus-depcity'), arrivalCity: gv('tb-bus-arrcity'),
-      departureDate: gv('tb-bus-depdate'), returnDate: gv('tb-bus-retdate'), classOfService: gv('tb-bus-class'),
-      price: gn('tb-bus-price'), insurancePremium: gn('tb-bus-insurance'), insuranceCoverage: gn('tb-bus-coverage'), logoUrl: gv('tb-bus-logo'), notes: gv('tb-bus-notes'), pts: readPointsEntriesFrom(document.getElementById('tb-bus-pts-entries'))
-    },
+    train: readTrainEntries(),
+    trainPts: readPointsEntriesFrom(document.getElementById('tb-train-pts-entries')),
+    trainInsurancePremium: gn('tb-train-insurance'),
+    trainInsuranceCoverage: gn('tb-train-coverage'),
+    bus: readBusEntries(),
+    busPts: readPointsEntriesFrom(document.getElementById('tb-bus-pts-entries')),
+    busInsurancePremium: gn('tb-bus-insurance'),
+    busInsuranceCoverage: gn('tb-bus-coverage'),
     totalBudget: gn('tb-budget-total')
   };
 }
