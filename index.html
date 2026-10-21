@@ -19662,8 +19662,9 @@ function hotelEntryRowInnerHtml(entry){
       '<div class="field"><label style="display:flex;align-items:center;gap:6px;font-weight:500;cursor:pointer;margin-top:22px"><input type="checkbox" class="hotel-entry-all-inclusive"'+(entry.allInclusive?' checked':'')+' style="width:15px;height:15px"> All-Inclusive</label></div>'+
       '<div class="field"><label>Third Party Agency</label><select class="hotel-entry-agency"><option value="">-- Select --</option>'+selOpts(THIRD_PARTY_AGENCIES,entry.thirdPartyAgency)+'</select></div>'+
       '<div class="field"><label>Third Party Agency Booking Number</label><input class="hotel-entry-agency-booknum" type="text" value="'+(entry.thirdPartyAgencyBookingNumber||'').toString().replace(/"/g,'&quot;')+'"></div>'+
+      '<div class="field"><label>Points Transferred From <span class="hint" style="text-transform:none;font-weight:400">(if the points redeemed below were transferred in from another program first)</span></label><select class="hotel-entry-transferred-from">'+transferredFromOptionsHtml(entry.transferredFrom)+'</select></div>'+
+      '<div class="field"><label>Points/Miles Transferred</label><input class="hotel-entry-transferred-amount" type="number" value="'+(entry.transferredAmount||'')+'"></div>'+
       '<div class="field full"><label>Notes</label><textarea class="hotel-entry-notes">'+(entry.notes||'')+'</textarea></div>'+
-      '<div class="field full"><label>Points Transferred From <span class="hint" style="text-transform:none;font-weight:400">(if the points redeemed below were transferred in from another program first)</span></label><select class="hotel-entry-transferred-from">'+transferredFromOptionsHtml(entry.transferredFrom)+'</select></div>'+
       '<div class="field full"><label>Points Used <span class="hint" style="text-transform:none;font-weight:400">(add one row per miles/points redemption)</span></label>'+
         '<div class="hotel-pts-entries">'+pointsEntriesListHtmlNoId(entry.pts||[])+'</div>'+
         '<button type="button" class="hotel-pts-add-btn" style="padding:5px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit">+ Add Points Used</button>'+
@@ -19691,11 +19692,12 @@ function readHotelEntries(){
       thirdPartyAgency: (row.querySelector('.hotel-entry-agency')||{}).value||'',
       thirdPartyAgencyBookingNumber: (row.querySelector('.hotel-entry-agency-booknum')||{}).value||'',
       transferredFrom: (row.querySelector('.hotel-entry-transferred-from')||{}).value||'',
+      transferredAmount: Number((row.querySelector('.hotel-entry-transferred-amount')||{}).value)||0,
       pts: readPointsEntriesFrom(row.querySelector('.hotel-pts-entries')),
       notes: (row.querySelector('.hotel-entry-notes')||{}).value||''
     };
   }).filter(function(e){
-    return e.hotelBrand||e.property||e.city||e.country||e.confirmationNumber||e.checkInDate||e.nights||e.price||e.allInclusive||e.thirdPartyAgency||e.thirdPartyAgencyBookingNumber||e.transferredFrom||(e.pts&&e.pts.length)||e.notes;
+    return e.hotelBrand||e.property||e.city||e.country||e.confirmationNumber||e.checkInDate||e.nights||e.price||e.allInclusive||e.thirdPartyAgency||e.thirdPartyAgencyBookingNumber||e.transferredFrom||e.transferredAmount||(e.pts&&e.pts.length)||e.notes;
   });
 }
 // Net Rate Hotel Voucher — a standalone printable/emailable PDF the client
@@ -20137,8 +20139,9 @@ function flightEntryRowInnerHtml(entry){
       '<div class="field"><label>Arrival Time</label><input class="flight-entry-arrivaltime" type="time" value="'+(entry.arrivalTime||'')+'"></div>'+
       '<div class="field"><label>Third Party Agency</label><select class="flight-entry-agency"><option value="">-- Select --</option>'+selOpts(THIRD_PARTY_AGENCIES,entry.thirdPartyAgency)+'</select></div>'+
       '<div class="field"><label>Third Party Agency Booking Number</label><input class="flight-entry-agency-booknum" type="text" value="'+(entry.thirdPartyAgencyBookingNumber||'').toString().replace(/"/g,'&quot;')+'"></div>'+
-    '</div>'+
-    '<div class="field full"><label>Points Transferred From <span class="hint" style="text-transform:none;font-weight:400">(if this segment was booked with points transferred in from another program first)</span></label><select class="flight-entry-transferred-from">'+transferredFromOptionsHtml(entry.transferredFrom)+'</select></div>';
+      '<div class="field"><label>Points Transferred From <span class="hint" style="text-transform:none;font-weight:400">(if this segment was booked with points transferred in from another program first)</span></label><select class="flight-entry-transferred-from">'+transferredFromOptionsHtml(entry.transferredFrom)+'</select></div>'+
+      '<div class="field"><label>Points/Miles Transferred</label><input class="flight-entry-transferred-amount" type="number" value="'+(entry.transferredAmount||'')+'"></div>'+
+    '</div>';
 }
 function flightEntryRowHtml(entry){
   return '<div class="flight-entry-row" style="border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin-bottom:10px;background:#fafafa">'+flightEntryRowInnerHtml(entry)+'</div>';
@@ -20185,10 +20188,11 @@ function readFlightEntriesFrom(containerEl){
       classOfService: (row.querySelector('.flight-entry-class')||{}).value||'',
       thirdPartyAgency: (row.querySelector('.flight-entry-agency')||{}).value||'',
       thirdPartyAgencyBookingNumber: (row.querySelector('.flight-entry-agency-booknum')||{}).value||'',
-      transferredFrom: (row.querySelector('.flight-entry-transferred-from')||{}).value||''
+      transferredFrom: (row.querySelector('.flight-entry-transferred-from')||{}).value||'',
+      transferredAmount: Number((row.querySelector('.flight-entry-transferred-amount')||{}).value)||0
     };
   }).filter(function(e){
-    return e.recordNumber||e.airline||e.flightNumber||e.origin||e.destination||e.departDate||e.departTime||e.arrivalTime||e.classOfService||e.thirdPartyAgency||e.thirdPartyAgencyBookingNumber||e.transferredFrom;
+    return e.recordNumber||e.airline||e.flightNumber||e.origin||e.destination||e.departDate||e.departTime||e.arrivalTime||e.classOfService||e.thirdPartyAgency||e.thirdPartyAgencyBookingNumber||e.transferredFrom||e.transferredAmount;
   });
 }
 // An Airline Record is one booking covering a group of passengers/flight
