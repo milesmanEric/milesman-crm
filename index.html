@@ -19972,10 +19972,11 @@ function readCabinEntries(){
 // entries above (a connecting or round-trip itinerary is more than one
 // segment) — the points redemption blocks and Price stay at the
 // Airline-section level (one price covers the whole booking), while
-// Record Number, Airline, Flight Number, Origin, Destination, Depart
-// Date, Depart Time, Arrival Time, and Class of Service vary per segment
-// (a connecting or round-trip record can carry a different record
-// locator per leg).
+// Record Number, Third Party Agency, Third Party Agency Booking Number,
+// Airline, Flight Number, Origin, Destination, Depart Date, Depart Time,
+// Arrival Time, and Class of Service vary per segment (a connecting or
+// round-trip record can carry a different record locator/agency booking
+// per leg).
 function flightEntryRowInnerHtml(entry){
   entry = entry || {};
   return '<div style="display:flex;justify-content:flex-end;margin-bottom:4px">'+
@@ -19991,6 +19992,8 @@ function flightEntryRowInnerHtml(entry){
       '<div class="field"><label>Class of Service</label><select class="flight-entry-class"><option value="">-- Select --</option>'+selOpts(CLASSES,entry.classOfService)+'</select></div>'+
       '<div class="field"><label>Depart Time</label><input class="flight-entry-departtime" type="time" value="'+(entry.departTime||'')+'"></div>'+
       '<div class="field"><label>Arrival Time</label><input class="flight-entry-arrivaltime" type="time" value="'+(entry.arrivalTime||'')+'"></div>'+
+      '<div class="field"><label>Third Party Agency</label><select class="flight-entry-agency"><option value="">-- Select --</option>'+selOpts(THIRD_PARTY_AGENCIES,entry.thirdPartyAgency)+'</select></div>'+
+      '<div class="field"><label>Third Party Agency Booking Number</label><input class="flight-entry-agency-booknum" type="text" value="'+(entry.thirdPartyAgencyBookingNumber||'').toString().replace(/"/g,'&quot;')+'"></div>'+
     '</div>';
 }
 function flightEntryRowHtml(entry){
@@ -20035,32 +20038,40 @@ function readFlightEntriesFrom(containerEl){
       departDate: (row.querySelector('.flight-entry-departdate')||{}).value||'',
       departTime: (row.querySelector('.flight-entry-departtime')||{}).value||'',
       arrivalTime: (row.querySelector('.flight-entry-arrivaltime')||{}).value||'',
-      classOfService: (row.querySelector('.flight-entry-class')||{}).value||''
+      classOfService: (row.querySelector('.flight-entry-class')||{}).value||'',
+      thirdPartyAgency: (row.querySelector('.flight-entry-agency')||{}).value||'',
+      thirdPartyAgencyBookingNumber: (row.querySelector('.flight-entry-agency-booknum')||{}).value||''
     };
   }).filter(function(e){
-    return e.recordNumber||e.airline||e.flightNumber||e.origin||e.destination||e.departDate||e.departTime||e.arrivalTime||e.classOfService;
+    return e.recordNumber||e.airline||e.flightNumber||e.origin||e.destination||e.departDate||e.departTime||e.arrivalTime||e.classOfService||e.thirdPartyAgency||e.thirdPartyAgencyBookingNumber;
   });
 }
 // An Airline Record is one booking covering a group of passengers/flight
 // segments together (e.g. two passengers on an award-ticket record, two
 // more on a separate revenue-fare record for the same trip), each with
 // its own subset of passengers and its own flight segments and points
-// redemptions. Record Number lives on each flight segment rather than the
-// record as a whole, since a connecting or round-trip record can carry a
-// different record locator per leg. This replaces the old single-record-
-// per-trip Airline shape; see the migration in bookedTripDetailsHtml() for
-// how an old trip's flat confirmationNumber/segments/pts/etc. become a
+// redemptions. Record Number and Third Party Agency/Booking Number live
+// on each flight segment rather than the record as a whole, since a
+// connecting or round-trip record can carry a different record locator/
+// agency booking per leg. This replaces the old single-record-per-trip
+// Airline shape; see the migration in bookedTripDetailsHtml() for how an
+// old trip's flat confirmationNumber/segments/pts/etc. become a
 // one-record, one-record-locator-per-segment list.
 function airlineRecordRowInnerHtml(record){
   record = record || {};
   var flightEntries = Array.isArray(record.segments) && record.segments.length ? record.segments : [{}];
-  // An old record's Record Number used to live here, at the record level —
-  // backfill it onto any segment that doesn't already have its own, purely
-  // for display (the next save finishes the migration for good, since
-  // readFlightEntriesFrom now captures it per segment).
-  if(record.recordNumber){
+  // Record Number and Third Party Agency/Booking Number used to live here,
+  // at the record level — backfill them onto any segment that doesn't
+  // already have its own, purely for display (the next save finishes the
+  // migration for good, since readFlightEntriesFrom now captures all of
+  // these per segment).
+  if(record.recordNumber || record.thirdPartyAgency || record.thirdPartyAgencyBookingNumber){
     flightEntries = flightEntries.map(function(seg){
-      return seg.recordNumber ? seg : Object.assign({}, seg, {recordNumber: record.recordNumber});
+      var fill = {};
+      if(record.recordNumber && !seg.recordNumber) fill.recordNumber = record.recordNumber;
+      if(record.thirdPartyAgency && !seg.thirdPartyAgency) fill.thirdPartyAgency = record.thirdPartyAgency;
+      if(record.thirdPartyAgencyBookingNumber && !seg.thirdPartyAgencyBookingNumber) fill.thirdPartyAgencyBookingNumber = record.thirdPartyAgencyBookingNumber;
+      return Object.keys(fill).length ? Object.assign({}, seg, fill) : seg;
     });
   }
   return '<div style="display:flex;justify-content:flex-end;margin-bottom:4px">'+
@@ -20070,8 +20081,6 @@ function airlineRecordRowInnerHtml(record){
       '<div class="field"><label>Number of Passengers</label><select class="airline-record-numpax">'+airPaxNumOptionsHtml(record.numPassengers)+'</select></div>'+
       '<div class="field"><label>Non-Stop Flights Only</label><select class="airline-record-nonstop"><option value="">-- Select --</option>'+selOpts(['Yes','No'],record.nonStop)+'</select></div>'+
       '<div class="field"><label>Price ($)</label><input class="airline-record-price" type="number" value="'+(record.price||'')+'"></div>'+
-      '<div class="field"><label>Third Party Agency</label><select class="airline-record-agency"><option value="">-- Select --</option>'+selOpts(THIRD_PARTY_AGENCIES,record.thirdPartyAgency)+'</select></div>'+
-      '<div class="field"><label>Third Party Agency Booking Number</label><input class="airline-record-agency-booknum" type="text" value="'+(record.thirdPartyAgencyBookingNumber||'').toString().replace(/"/g,'&quot;')+'"></div>'+
     '</div>'+
     '<div class="field full"><label>Passengers <span class="hint" style="text-transform:none;font-weight:400">(select every client on this record — hold Ctrl/Cmd to select more than one, must match Number of Passengers)</span></label>'+
       '<select class="airline-record-passengers" multiple size="4" style="width:100%">'+airPaxClientOptionsHtml(record.passengerClientIds)+'</select>'+
@@ -20100,15 +20109,13 @@ function readAirlineRecords(){
       numPassengers: Number((row.querySelector('.airline-record-numpax')||{}).value)||0,
       nonStop: (row.querySelector('.airline-record-nonstop')||{}).value||'',
       price: Number((row.querySelector('.airline-record-price')||{}).value)||0,
-      thirdPartyAgency: (row.querySelector('.airline-record-agency')||{}).value||'',
-      thirdPartyAgencyBookingNumber: (row.querySelector('.airline-record-agency-booknum')||{}).value||'',
       passengerClientIds: paxSel ? Array.from(paxSel.selectedOptions).map(function(o){return o.value;}) : [],
       notes: (row.querySelector('.airline-record-notes')||{}).value||'',
       segments: readFlightEntriesFrom(row.querySelector('.record-flight-entries')),
       pts: readPointsEntriesFrom(row.querySelector('.record-pts-entries'))
     };
   }).filter(function(r){
-    return r.numPassengers||r.nonStop||r.price||r.thirdPartyAgency||r.thirdPartyAgencyBookingNumber||r.passengerClientIds.length||r.notes||r.segments.length||r.pts.length;
+    return r.numPassengers||r.nonStop||r.price||r.passengerClientIds.length||r.notes||r.segments.length||r.pts.length;
   });
 }
 // Live feedback only — the actual save-blocking check lives in saveTrip(),
