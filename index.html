@@ -1276,6 +1276,7 @@ function quoteTableStructure(cfg){
 const STATUSES = ['Planning','Confirmed','Upcoming','In Progress','Completed','Cancelled'];
 const TYPES    = ['Leisure','Business','Honeymoon','Family','Adventure','Cruise'];
 const CLASSES  = ['Basic Economy','Economy','Premium Economy','Business','First'];
+const THIRD_PARTY_AGENCIES = ['American Express Travel','Chase Travel'];
 const NOTE_TYPES = ['Email Sent','Email Received','Initial Call','Follow-up','Post-Trip Follow-up','General','Trip Import','Text Message Sent','Text Message Received','Lead','Mailchimp Email Sent','Facebook Message','Marketing Plan'];
 // 'Sales Outreach' is direct 1:1 selling (a call, a personal email, a
 // proposal) rather than content published to an audience — kept distinct
@@ -19518,6 +19519,8 @@ function hotelEntryRowInnerHtml(entry){
       '<div class="field"><label>Nights</label><input class="hotel-entry-nights" type="number" value="'+(entry.nights||'')+'"></div>'+
       '<div class="field"><label>Price ($)</label><input class="hotel-entry-price" type="number" value="'+(entry.price||'')+'"></div>'+
       '<div class="field"><label style="display:flex;align-items:center;gap:6px;font-weight:500;cursor:pointer;margin-top:22px"><input type="checkbox" class="hotel-entry-all-inclusive"'+(entry.allInclusive?' checked':'')+' style="width:15px;height:15px"> All-Inclusive</label></div>'+
+      '<div class="field"><label>Third Party Agency</label><select class="hotel-entry-agency"><option value="">-- Select --</option>'+selOpts(THIRD_PARTY_AGENCIES,entry.thirdPartyAgency)+'</select></div>'+
+      '<div class="field"><label>Third Party Agency Booking Number</label><input class="hotel-entry-agency-booknum" type="text" value="'+(entry.thirdPartyAgencyBookingNumber||'').toString().replace(/"/g,'&quot;')+'"></div>'+
       '<div class="field full"><label>Notes</label><textarea class="hotel-entry-notes">'+(entry.notes||'')+'</textarea></div>'+
       '<div class="field full"><label>Points Used <span class="hint" style="text-transform:none;font-weight:400">(add one row per miles/points redemption)</span></label>'+
         '<div class="hotel-pts-entries">'+pointsEntriesListHtmlNoId(entry.pts||[])+'</div>'+
@@ -19543,11 +19546,13 @@ function readHotelEntries(){
       nights: Number((row.querySelector('.hotel-entry-nights')||{}).value)||0,
       price: Number((row.querySelector('.hotel-entry-price')||{}).value)||0,
       allInclusive: !!(row.querySelector('.hotel-entry-all-inclusive')||{}).checked,
+      thirdPartyAgency: (row.querySelector('.hotel-entry-agency')||{}).value||'',
+      thirdPartyAgencyBookingNumber: (row.querySelector('.hotel-entry-agency-booknum')||{}).value||'',
       pts: readPointsEntriesFrom(row.querySelector('.hotel-pts-entries')),
       notes: (row.querySelector('.hotel-entry-notes')||{}).value||''
     };
   }).filter(function(e){
-    return e.hotelBrand||e.property||e.city||e.country||e.confirmationNumber||e.checkInDate||e.nights||e.price||e.allInclusive||(e.pts&&e.pts.length)||e.notes;
+    return e.hotelBrand||e.property||e.city||e.country||e.confirmationNumber||e.checkInDate||e.nights||e.price||e.allInclusive||e.thirdPartyAgency||e.thirdPartyAgencyBookingNumber||(e.pts&&e.pts.length)||e.notes;
   });
 }
 // Net Rate Hotel Voucher — a standalone printable/emailable PDF the client
@@ -20065,6 +20070,8 @@ function airlineRecordRowInnerHtml(record){
       '<div class="field"><label>Number of Passengers</label><select class="airline-record-numpax">'+airPaxNumOptionsHtml(record.numPassengers)+'</select></div>'+
       '<div class="field"><label>Non-Stop Flights Only</label><select class="airline-record-nonstop"><option value="">-- Select --</option>'+selOpts(['Yes','No'],record.nonStop)+'</select></div>'+
       '<div class="field"><label>Price ($)</label><input class="airline-record-price" type="number" value="'+(record.price||'')+'"></div>'+
+      '<div class="field"><label>Third Party Agency</label><select class="airline-record-agency"><option value="">-- Select --</option>'+selOpts(THIRD_PARTY_AGENCIES,record.thirdPartyAgency)+'</select></div>'+
+      '<div class="field"><label>Third Party Agency Booking Number</label><input class="airline-record-agency-booknum" type="text" value="'+(record.thirdPartyAgencyBookingNumber||'').toString().replace(/"/g,'&quot;')+'"></div>'+
     '</div>'+
     '<div class="field full"><label>Passengers <span class="hint" style="text-transform:none;font-weight:400">(select every client on this record — hold Ctrl/Cmd to select more than one, must match Number of Passengers)</span></label>'+
       '<select class="airline-record-passengers" multiple size="4" style="width:100%">'+airPaxClientOptionsHtml(record.passengerClientIds)+'</select>'+
@@ -20093,13 +20100,15 @@ function readAirlineRecords(){
       numPassengers: Number((row.querySelector('.airline-record-numpax')||{}).value)||0,
       nonStop: (row.querySelector('.airline-record-nonstop')||{}).value||'',
       price: Number((row.querySelector('.airline-record-price')||{}).value)||0,
+      thirdPartyAgency: (row.querySelector('.airline-record-agency')||{}).value||'',
+      thirdPartyAgencyBookingNumber: (row.querySelector('.airline-record-agency-booknum')||{}).value||'',
       passengerClientIds: paxSel ? Array.from(paxSel.selectedOptions).map(function(o){return o.value;}) : [],
       notes: (row.querySelector('.airline-record-notes')||{}).value||'',
       segments: readFlightEntriesFrom(row.querySelector('.record-flight-entries')),
       pts: readPointsEntriesFrom(row.querySelector('.record-pts-entries'))
     };
   }).filter(function(r){
-    return r.numPassengers||r.nonStop||r.price||r.passengerClientIds.length||r.notes||r.segments.length||r.pts.length;
+    return r.numPassengers||r.nonStop||r.price||r.thirdPartyAgency||r.thirdPartyAgencyBookingNumber||r.passengerClientIds.length||r.notes||r.segments.length||r.pts.length;
   });
 }
 // Live feedback only — the actual save-blocking check lives in saveTrip(),
