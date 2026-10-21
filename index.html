@@ -1282,6 +1282,7 @@ const STATUSES = ['Planning','Confirmed','Upcoming','In Progress','Completed','C
 const TYPES    = ['Leisure','Business','Honeymoon','Family','Adventure','Cruise'];
 const CLASSES  = ['Basic Economy','Economy','Premium Economy','Business','First'];
 const THIRD_PARTY_AGENCIES = ['American Express Travel','Chase Travel'];
+const FOREIGN_CURRENCIES = ['EUR - Euro','GBP - British Pound','CAD - Canadian Dollar','AUD - Australian Dollar','MXN - Mexican Peso','JPY - Japanese Yen','CHF - Swiss Franc','NZD - New Zealand Dollar','Other'];
 const NOTE_TYPES = ['Email Sent','Email Received','Initial Call','Follow-up','Post-Trip Follow-up','General','Trip Import','Text Message Sent','Text Message Received','Lead','Mailchimp Email Sent','Facebook Message','Marketing Plan'];
 // 'Sales Outreach' is direct 1:1 selling (a call, a personal email, a
 // proposal) rather than content published to an audience — kept distinct
@@ -18422,6 +18423,18 @@ function selOpts(opts,val){return opts.map(function(o){return '<option value="'+
 function fld(label,html,full){return '<div class="field'+(full?' full':'')+'"><label>'+label+'</label>'+html+'</div>';}
 function inp(id,type,val,ph){return '<input id="'+id+'" type="'+(type||'text')+'" value="'+(val||'').toString().replace(/"/g,'&quot;')+'" placeholder="'+(ph||'')+'">';}
 function sel(id,opts,val){return '<select id="'+id+'"><option value="">Select...</option>'+selOpts(opts,val)+'</select>';}
+// Shared "Currency"/"Price (Other Currency)" pair dropped right before a
+// category's own Price ($) field (Airline, Hotel, Cruise, Car Rental,
+// Transfers, Tours, Theme Park, Train, Bus all have one) — for a price that
+// was actually quoted/paid in a foreign currency rather than USD.
+// currencyClass/priceClass are the two classes to read back (one per
+// category, see each read<Category>Entries() function), not ids, since
+// most of these live on a dynamic multi-entry row rather than a single
+// fixed field.
+function foreignPriceFieldsHtml(currencyClass,priceClass,currency,priceForeign){
+  return '<div class="field"><label>Currency</label><select class="'+currencyClass+'"><option value="">-- Select --</option>'+selOpts(FOREIGN_CURRENCIES,currency)+'</select></div>'+
+    '<div class="field"><label>Price (Other Currency)</label><input class="'+priceClass+'" type="number" value="'+(priceForeign||'')+'"></div>';
+}
 // Wraps an already-built `<select id="...">...</select>` string (any of
 // this file's many client/trip pickers — each builds its own option labels,
 // e.g. "Smith, Jane <jane@x.com>" or a trip's destination + date) with a
@@ -19649,6 +19662,19 @@ function hotelPropertyFieldWithAddBtnHtml(selectHtml, addBtnClass, addBtnId){
     '<button type="button" '+(addBtnId?'id="'+addBtnId+'" ':'')+(addBtnClass?'class="'+addBtnClass+'" ':'')+'title="Add a new property to this hotel supplier" style="padding:5px 10px;border-radius:6px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:11px;font-family:inherit;white-space:nowrap;height:34px">+ Add</button>'+
   '</div>';
 }
+// Same "+ Add" idea as hotelPropertyFieldWithAddBtnHtml above, but for the
+// Hotel Brand field itself — lets typing a brand that isn't on file yet
+// (no Hotel-category Supplier record for it) get added straight from here.
+// Deliberately does NOT use a second prompt() box to ask for the name again
+// — the click handler (see bindBookedTripDetailsListeners) reads whatever's
+// already typed into this field's own search input, so there's only ever
+// one place to type the name.
+function hotelBrandFieldWithAddBtnHtml(selectHtml, addBtnClass){
+  return '<div style="display:flex;gap:6px;align-items:flex-start">'+
+    '<div style="flex:1">'+searchableSelectWrap(selectHtml,'Search hotels...')+'</div>'+
+    '<button type="button" class="'+addBtnClass+'" title="Add the hotel typed above as a new Hotel supplier" style="padding:5px 10px;border-radius:6px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:11px;font-family:inherit;white-space:nowrap;height:34px">+ Add</button>'+
+  '</div>';
+}
 function hotelEntryRowInnerHtml(entry){
   entry = entry || {};
   return '<div style="display:flex;justify-content:flex-end;gap:14px;margin-bottom:4px">'+
@@ -19656,13 +19682,14 @@ function hotelEntryRowInnerHtml(entry){
       '<button type="button" class="del-hotel-entry-btn" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:12px">&#128465;&#65039; Remove</button>'+
     '</div>'+
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
-      '<div class="field"><label>Hotel</label><select class="hotel-entry-brand"><option value="">-- Select --</option>'+selOpts(hotelBrandList(),entry.hotelBrand)+'</select></div>'+
+      '<div class="field"><label>Hotel</label>'+hotelBrandFieldWithAddBtnHtml('<select class="hotel-entry-brand"><option value="">-- Select --</option>'+selOpts(hotelBrandList(),entry.hotelBrand)+'</select>','hotel-entry-add-brand-btn')+'</div>'+
       '<div class="field"><label>Property</label>'+hotelPropertyFieldWithAddBtnHtml('<select class="hotel-entry-property">'+hotelPropertyOptionsHtml(entry.hotelBrand,entry.property)+'</select>','hotel-entry-add-property-btn')+'</div>'+
       '<div class="field"><label>City</label><input class="hotel-entry-city" type="text" value="'+(entry.city||'').toString().replace(/"/g,'&quot;')+'" placeholder="e.g. Orlando"></div>'+
       '<div class="field"><label>Country</label><input class="hotel-entry-country" type="text" value="'+(entry.country||'').toString().replace(/"/g,'&quot;')+'" placeholder="e.g. United States"></div>'+
       '<div class="field"><label>Confirmation Number</label><input class="hotel-entry-conf" type="text" value="'+(entry.confirmationNumber||'').toString().replace(/"/g,'&quot;')+'"></div>'+
       '<div class="field"><label>Check-in Date</label><input class="hotel-entry-checkin" type="date" value="'+(entry.checkInDate||'')+'"></div>'+
       '<div class="field"><label>Nights</label><input class="hotel-entry-nights" type="number" value="'+(entry.nights||'')+'"></div>'+
+      foreignPriceFieldsHtml('hotel-entry-currency','hotel-entry-price-foreign',entry.currency,entry.priceForeign)+
       '<div class="field"><label>Price ($)</label><input class="hotel-entry-price" type="number" value="'+(entry.price||'')+'"></div>'+
       '<div class="field"><label style="display:flex;align-items:center;gap:6px;font-weight:500;cursor:pointer;margin-top:22px"><input type="checkbox" class="hotel-entry-all-inclusive"'+(entry.allInclusive?' checked':'')+' style="width:15px;height:15px"> All-Inclusive</label></div>'+
       '<div class="field"><label>Third Party Agency</label><select class="hotel-entry-agency"><option value="">-- Select --</option>'+selOpts(THIRD_PARTY_AGENCIES,entry.thirdPartyAgency)+'</select></div>'+
@@ -19692,6 +19719,8 @@ function readHotelEntries(){
       confirmationNumber: (row.querySelector('.hotel-entry-conf')||{}).value||'',
       checkInDate: (row.querySelector('.hotel-entry-checkin')||{}).value||'',
       nights: Number((row.querySelector('.hotel-entry-nights')||{}).value)||0,
+      currency: (row.querySelector('.hotel-entry-currency')||{}).value||'',
+      priceForeign: Number((row.querySelector('.hotel-entry-price-foreign')||{}).value)||0,
       price: Number((row.querySelector('.hotel-entry-price')||{}).value)||0,
       allInclusive: !!(row.querySelector('.hotel-entry-all-inclusive')||{}).checked,
       thirdPartyAgency: (row.querySelector('.hotel-entry-agency')||{}).value||'',
@@ -19702,7 +19731,7 @@ function readHotelEntries(){
       notes: (row.querySelector('.hotel-entry-notes')||{}).value||''
     };
   }).filter(function(e){
-    return e.hotelBrand||e.property||e.city||e.country||e.confirmationNumber||e.checkInDate||e.nights||e.price||e.allInclusive||e.thirdPartyAgency||e.thirdPartyAgencyBookingNumber||e.transferredFrom||e.transferredAmount||(e.pts&&e.pts.length)||e.notes;
+    return e.hotelBrand||e.property||e.city||e.country||e.confirmationNumber||e.checkInDate||e.nights||e.currency||e.priceForeign||e.price||e.allInclusive||e.thirdPartyAgency||e.thirdPartyAgencyBookingNumber||e.transferredFrom||e.transferredAmount||(e.pts&&e.pts.length)||e.notes;
   });
 }
 // Net Rate Hotel Voucher — a standalone printable/emailable PDF the client
@@ -19837,6 +19866,7 @@ function tourEntryRowInnerHtml(entry){
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
       '<div class="field"><label>Confirmation Number</label><input class="tour-entry-conf" type="text" value="'+(entry.confirmationNumber||'').toString().replace(/"/g,'&quot;')+'" placeholder="e.g. T-112233"></div>'+
       '<div class="field"><label>Tour Vendor</label><select class="tour-entry-vendor"><option value="">-- Select --</option>'+selOpts(TOUR_VENDORS,entry.vendor)+'</select></div>'+
+      foreignPriceFieldsHtml('tour-entry-currency','tour-entry-price-foreign',entry.currency,entry.priceForeign)+
       '<div class="field"><label>Price ($)</label><input class="tour-entry-price" type="number" value="'+(entry.price||'')+'"></div>'+
       '<div class="field full"><label>Description</label><textarea class="tour-entry-desc">'+(entry.description||'')+'</textarea></div>'+
     '</div>';
@@ -19852,11 +19882,13 @@ function readTourEntries(){
     return {
       confirmationNumber: (row.querySelector('.tour-entry-conf')||{}).value||'',
       vendor: (row.querySelector('.tour-entry-vendor')||{}).value||'',
+      currency: (row.querySelector('.tour-entry-currency')||{}).value||'',
+      priceForeign: Number((row.querySelector('.tour-entry-price-foreign')||{}).value)||0,
       price: Number((row.querySelector('.tour-entry-price')||{}).value)||0,
       description: (row.querySelector('.tour-entry-desc')||{}).value||''
     };
   }).filter(function(e){
-    return e.confirmationNumber||e.vendor||e.price||e.description;
+    return e.confirmationNumber||e.vendor||e.currency||e.priceForeign||e.price||e.description;
   });
 }
 // Theme Park entries are the same dynamic add/remove pattern as Tours
@@ -19878,6 +19910,7 @@ function themeParkEntryRowInnerHtml(entry){
       '<div class="field"><label>Park</label><select class="themepark-entry-park"><option value="">-- Select --</option>'+selOpts(THEME_PARKS,entry.park)+'</select></div>'+
       '<div class="field"><label>Confirmation Number</label><input class="themepark-entry-conf" type="text" value="'+(entry.confirmationNumber||'').toString().replace(/"/g,'&quot;')+'" placeholder="e.g. TP-334455"></div>'+
       '<div class="field"><label>Ticket Type</label><input class="themepark-entry-ticket" type="text" value="'+(entry.ticketType||'').toString().replace(/"/g,'&quot;')+'" placeholder="e.g. Park Hopper"></div>'+
+      foreignPriceFieldsHtml('themepark-entry-currency','themepark-entry-price-foreign',entry.currency,entry.priceForeign)+
       '<div class="field"><label>Price ($)</label><input class="themepark-entry-price" type="number" value="'+(entry.price||'')+'"></div>'+
       '<div class="field full"><label>Notes</label><textarea class="themepark-entry-notes">'+(entry.notes||'')+'</textarea></div>'+
     '</div>';
@@ -19894,11 +19927,13 @@ function readThemeParkEntries(){
       park: (row.querySelector('.themepark-entry-park')||{}).value||'',
       confirmationNumber: (row.querySelector('.themepark-entry-conf')||{}).value||'',
       ticketType: (row.querySelector('.themepark-entry-ticket')||{}).value||'',
+      currency: (row.querySelector('.themepark-entry-currency')||{}).value||'',
+      priceForeign: Number((row.querySelector('.themepark-entry-price-foreign')||{}).value)||0,
       price: Number((row.querySelector('.themepark-entry-price')||{}).value)||0,
       notes: (row.querySelector('.themepark-entry-notes')||{}).value||''
     };
   }).filter(function(e){
-    return e.park||e.confirmationNumber||e.ticketType||e.price||e.notes;
+    return e.park||e.confirmationNumber||e.ticketType||e.currency||e.priceForeign||e.price||e.notes;
   });
 }
 // Transfer / car-service entries are the same dynamic add/remove pattern
@@ -19920,6 +19955,7 @@ function transferEntryRowInnerHtml(entry){
       '<div class="field"><label>Car Type</label><select class="transfer-entry-cartype"><option value="">-- Select --</option>'+selOpts(TRANSFER_CAR_TYPES,entry.carType)+'</select></div>'+
       '<div class="field"><label>Provider</label><input class="transfer-entry-provider" type="text" value="'+(entry.provider||'').toString().replace(/"/g,'&quot;')+'" placeholder="e.g. Blacklane"></div>'+
       '<div class="field"><label>Confirmation Number</label><input class="transfer-entry-conf" type="text" value="'+(entry.confirmationNumber||'').toString().replace(/"/g,'&quot;')+'"></div>'+
+      foreignPriceFieldsHtml('transfer-entry-currency','transfer-entry-price-foreign',entry.currency,entry.priceForeign)+
       '<div class="field"><label>Price ($)</label><input class="transfer-entry-price" type="number" value="'+(entry.price||'')+'"></div>'+
       '<div class="field full"><label>Notes</label><textarea class="transfer-entry-notes">'+(entry.notes||'')+'</textarea></div>'+
     '</div>';
@@ -19940,11 +19976,13 @@ function readTransferEntries(){
       carType: (row.querySelector('.transfer-entry-cartype')||{}).value||'',
       provider: (row.querySelector('.transfer-entry-provider')||{}).value||'',
       confirmationNumber: (row.querySelector('.transfer-entry-conf')||{}).value||'',
+      currency: (row.querySelector('.transfer-entry-currency')||{}).value||'',
+      priceForeign: Number((row.querySelector('.transfer-entry-price-foreign')||{}).value)||0,
       price: Number((row.querySelector('.transfer-entry-price')||{}).value)||0,
       notes: (row.querySelector('.transfer-entry-notes')||{}).value||''
     };
   }).filter(function(e){
-    return e.pickupDate||e.pickupTime||e.origin||e.destination||e.carType||e.provider||e.confirmationNumber||e.price||e.notes;
+    return e.pickupDate||e.pickupTime||e.origin||e.destination||e.carType||e.provider||e.confirmationNumber||e.currency||e.priceForeign||e.price||e.notes;
   });
 }
 // Car Rental / Train / Bus entries are the same dynamic add/remove pattern
@@ -19965,6 +20003,7 @@ function carEntryRowInnerHtml(entry){
       '<div class="field"><label>Confirmation Number</label><input class="car-entry-conf" type="text" value="'+(entry.confirmationNumber||'').toString().replace(/"/g,'&quot;')+'" placeholder="e.g. CR-778899"></div>'+
       '<div class="field"><label>Company</label><select class="car-entry-company"><option value="">-- Select --</option>'+selOpts(CAR_RENTALS,entry.company)+'</select></div>'+
       '<div class="field"><label>Car Size</label><select class="car-entry-size"><option value="">-- Select --</option>'+selOpts(CAR_SIZES,entry.carSize)+'</select></div>'+
+      foreignPriceFieldsHtml('car-entry-currency','car-entry-price-foreign',entry.currency,entry.priceForeign)+
       '<div class="field"><label>Price ($)</label><input class="car-entry-price" type="number" value="'+(entry.price||'')+'"></div>'+
       '<div class="field"><label>Pickup Location</label><input class="car-entry-pickuploc" type="text" value="'+(entry.pickupLocation||'').toString().replace(/"/g,'&quot;')+'" placeholder="e.g. Miami Airport (MIA)"></div>'+
       '<div class="field"><label>Dropoff Location</label><input class="car-entry-dropoffloc" type="text" value="'+(entry.dropoffLocation||'').toString().replace(/"/g,'&quot;')+'" placeholder="e.g. Miami Airport (MIA)"></div>'+
@@ -19987,6 +20026,8 @@ function readCarEntries(){
       confirmationNumber: (row.querySelector('.car-entry-conf')||{}).value||'',
       company: (row.querySelector('.car-entry-company')||{}).value||'',
       carSize: (row.querySelector('.car-entry-size')||{}).value||'',
+      currency: (row.querySelector('.car-entry-currency')||{}).value||'',
+      priceForeign: Number((row.querySelector('.car-entry-price-foreign')||{}).value)||0,
       price: Number((row.querySelector('.car-entry-price')||{}).value)||0,
       pickupLocation: (row.querySelector('.car-entry-pickuploc')||{}).value||'',
       dropoffLocation: (row.querySelector('.car-entry-dropoffloc')||{}).value||'',
@@ -19997,7 +20038,7 @@ function readCarEntries(){
       notes: (row.querySelector('.car-entry-notes')||{}).value||''
     };
   }).filter(function(e){
-    return e.confirmationNumber||e.company||e.carSize||e.price||e.pickupLocation||e.dropoffLocation||e.pickupDate||e.dropoffDate||e.notes;
+    return e.confirmationNumber||e.company||e.carSize||e.currency||e.priceForeign||e.price||e.pickupLocation||e.dropoffLocation||e.pickupDate||e.dropoffDate||e.notes;
   });
 }
 function trainEntryRowInnerHtml(entry){
@@ -20012,6 +20053,7 @@ function trainEntryRowInnerHtml(entry){
       '<div class="field"><label>Departure Date</label><input class="train-entry-depdate" type="date" value="'+(entry.departureDate||'')+'"></div>'+
       '<div class="field"><label>Return Date</label><input class="train-entry-retdate" type="date" value="'+(entry.returnDate||'')+'"></div>'+
       '<div class="field"><label>Class of Service</label><select class="train-entry-class"><option value="">-- Select --</option>'+selOpts(TRAIN_CLASSES,entry.classOfService)+'</select></div>'+
+      foreignPriceFieldsHtml('train-entry-currency','train-entry-price-foreign',entry.currency,entry.priceForeign)+
       '<div class="field"><label>Price ($)</label><input class="train-entry-price" type="number" value="'+(entry.price||'')+'"></div>'+
       '<div class="field"><label>Logo URL</label><input class="train-entry-logo" type="text" value="'+(entry.logoUrl||'').toString().replace(/"/g,'&quot;')+'" placeholder="optional — shown next to Train Details in Email Itinerary"></div>'+
       '<div class="field full"><label>Notes</label><textarea class="train-entry-notes">'+(entry.notes||'')+'</textarea></div>'+
@@ -20032,12 +20074,14 @@ function readTrainEntries(){
       departureDate: (row.querySelector('.train-entry-depdate')||{}).value||'',
       returnDate: (row.querySelector('.train-entry-retdate')||{}).value||'',
       classOfService: (row.querySelector('.train-entry-class')||{}).value||'',
+      currency: (row.querySelector('.train-entry-currency')||{}).value||'',
+      priceForeign: Number((row.querySelector('.train-entry-price-foreign')||{}).value)||0,
       price: Number((row.querySelector('.train-entry-price')||{}).value)||0,
       logoUrl: (row.querySelector('.train-entry-logo')||{}).value||'',
       notes: (row.querySelector('.train-entry-notes')||{}).value||''
     };
   }).filter(function(e){
-    return e.confirmationNumber||e.departureCity||e.arrivalCity||e.departureDate||e.returnDate||e.classOfService||e.price||e.logoUrl||e.notes;
+    return e.confirmationNumber||e.departureCity||e.arrivalCity||e.departureDate||e.returnDate||e.classOfService||e.currency||e.priceForeign||e.price||e.logoUrl||e.notes;
   });
 }
 function busEntryRowInnerHtml(entry){
@@ -20052,6 +20096,7 @@ function busEntryRowInnerHtml(entry){
       '<div class="field"><label>Departure Date</label><input class="bus-entry-depdate" type="date" value="'+(entry.departureDate||'')+'"></div>'+
       '<div class="field"><label>Return Date</label><input class="bus-entry-retdate" type="date" value="'+(entry.returnDate||'')+'"></div>'+
       '<div class="field"><label>Class of Service</label><select class="bus-entry-class"><option value="">-- Select --</option>'+selOpts(TRAIN_CLASSES,entry.classOfService)+'</select></div>'+
+      foreignPriceFieldsHtml('bus-entry-currency','bus-entry-price-foreign',entry.currency,entry.priceForeign)+
       '<div class="field"><label>Price ($)</label><input class="bus-entry-price" type="number" value="'+(entry.price||'')+'"></div>'+
       '<div class="field"><label>Logo URL</label><input class="bus-entry-logo" type="text" value="'+(entry.logoUrl||'').toString().replace(/"/g,'&quot;')+'" placeholder="optional — shown next to Bus Details in Email Itinerary"></div>'+
       '<div class="field full"><label>Notes</label><textarea class="bus-entry-notes">'+(entry.notes||'')+'</textarea></div>'+
@@ -20072,12 +20117,14 @@ function readBusEntries(){
       departureDate: (row.querySelector('.bus-entry-depdate')||{}).value||'',
       returnDate: (row.querySelector('.bus-entry-retdate')||{}).value||'',
       classOfService: (row.querySelector('.bus-entry-class')||{}).value||'',
+      currency: (row.querySelector('.bus-entry-currency')||{}).value||'',
+      priceForeign: Number((row.querySelector('.bus-entry-price-foreign')||{}).value)||0,
       price: Number((row.querySelector('.bus-entry-price')||{}).value)||0,
       logoUrl: (row.querySelector('.bus-entry-logo')||{}).value||'',
       notes: (row.querySelector('.bus-entry-notes')||{}).value||''
     };
   }).filter(function(e){
-    return e.confirmationNumber||e.departureCity||e.arrivalCity||e.departureDate||e.returnDate||e.classOfService||e.price||e.logoUrl||e.notes;
+    return e.confirmationNumber||e.departureCity||e.arrivalCity||e.departureDate||e.returnDate||e.classOfService||e.currency||e.priceForeign||e.price||e.logoUrl||e.notes;
   });
 }
 // Cabin entries are the same dynamic add/remove pattern as hotel/tour
@@ -20234,6 +20281,7 @@ function airlineRecordRowInnerHtml(record){
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
       '<div class="field"><label>Number of Passengers</label><select class="airline-record-numpax">'+airPaxNumOptionsHtml(record.numPassengers)+'</select></div>'+
       '<div class="field"><label>Non-Stop Flights Only</label><select class="airline-record-nonstop"><option value="">-- Select --</option>'+selOpts(['Yes','No'],record.nonStop)+'</select></div>'+
+      foreignPriceFieldsHtml('airline-record-currency','airline-record-price-foreign',record.currency,record.priceForeign)+
       '<div class="field"><label>Price ($)</label><input class="airline-record-price" type="number" value="'+(record.price||'')+'"></div>'+
     '</div>'+
     '<div class="field full"><label>Passengers <span class="hint" style="text-transform:none;font-weight:400">(select every client on this record — hold Ctrl/Cmd to select more than one, must match Number of Passengers)</span></label>'+
@@ -20262,6 +20310,8 @@ function readAirlineRecords(){
     return {
       numPassengers: Number((row.querySelector('.airline-record-numpax')||{}).value)||0,
       nonStop: (row.querySelector('.airline-record-nonstop')||{}).value||'',
+      currency: (row.querySelector('.airline-record-currency')||{}).value||'',
+      priceForeign: Number((row.querySelector('.airline-record-price-foreign')||{}).value)||0,
       price: Number((row.querySelector('.airline-record-price')||{}).value)||0,
       passengerClientIds: paxSel ? Array.from(paxSel.selectedOptions).map(function(o){return o.value;}) : [],
       notes: (row.querySelector('.airline-record-notes')||{}).value||'',
@@ -20269,7 +20319,7 @@ function readAirlineRecords(){
       pts: readPointsEntriesFrom(row.querySelector('.record-pts-entries'))
     };
   }).filter(function(r){
-    return r.numPassengers||r.nonStop||r.price||r.passengerClientIds.length||r.notes||r.segments.length||r.pts.length;
+    return r.numPassengers||r.nonStop||r.currency||r.priceForeign||r.price||r.passengerClientIds.length||r.notes||r.segments.length||r.pts.length;
   });
 }
 // Live feedback only — the actual save-blocking check lives in saveTrip(),
@@ -20421,6 +20471,8 @@ function bookedTripDetailsHtml(bd){
       fld('Departure Port',inp('tb-cruise-port','text',cru.departurePort,'e.g. Fort Lauderdale, FL'))+
       fld('Return Port',inp('tb-cruise-return-port','text',cru.returnPort,'e.g. Fort Lauderdale, FL'))+
       fld('Loyalty Number',inp('tb-cruise-loyalty','text',cru.loyaltyNumber))+
+      fld('Currency',sel('tb-cruise-currency',FOREIGN_CURRENCIES,cru.currency))+
+      fld('Price (Other Currency)',inp('tb-cruise-price-foreign','number',cru.priceForeign))+
       fld('Price ($)',inp('tb-cruise-price','number',cru.price))+
       fld('Miles Man Booking Fee ($)',inp('tb-cruise-fee','number',cru.milesManFee,'Service fee charged for booking this sailing'))+
       fld('Insurance Premium ($)',inp('tb-cruise-insurance','number',cru.insurancePremium,'If purchased for this sailing, through the cruise line or a separate insurer'))+
@@ -20697,6 +20749,37 @@ function bindBookedTripDetailsListeners(){
         if(propWrap) ssSyncInputToSelect(propWrap);
       });
     });
+    // Adds whatever hotel name is already typed into the Hotel field's own
+    // search input as a new Hotel-category Supplier — no second prompt()
+    // box asking for the name again, unlike addPropertyToVendorPrompt()
+    // above (that one's fine re-asking since Property has no text of its
+    // own to read: it's scoped to a brand's existing property list, not a
+    // free-typed name).
+    hotelEntriesEl.addEventListener('click', function(e){
+      var addBrandBtn = e.target.closest ? e.target.closest('.hotel-entry-add-brand-btn') : null;
+      if(!addBrandBtn) return;
+      var row = addBrandBtn.closest('.hotel-entry-row');
+      var brandSel = row && row.querySelector('.hotel-entry-brand');
+      if(!brandSel) return;
+      var brandWrap = brandSel.closest('.searchable-select');
+      var typedName = ((brandWrap && brandWrap.querySelector('.searchable-select-input'))||{}).value||'';
+      typedName = typedName.trim();
+      if(!typedName){ toast('Type a hotel name first','err'); return; }
+      var finalName = hotelBrandList().find(function(n){ return n.toLowerCase()===typedName.toLowerCase(); });
+      if(!finalName){
+        snapshot('Add hotel supplier');
+        db.vendors.push({id:newId('V',db.vendors), name:typedName, type:'Supplier', category:'Hotel', notesLog:[], clientIds:[], properties:[]});
+        saveDB();
+        toast(typedName+' added as a new Hotel supplier','ok');
+        finalName = typedName;
+      } else {
+        toast(finalName+' already exists — selected it','ok');
+      }
+      brandSel.innerHTML = '<option value="">-- Select --</option>'+selOpts(hotelBrandList(), finalName);
+      brandSel.value = finalName;
+      if(brandWrap) ssSyncInputToSelect(brandWrap);
+      brandSel.dispatchEvent(new Event('change', {bubbles:true}));
+    });
     // Each hotel entry has its own nested Points Used list (unlike every
     // other section's single, section-level list) — delegated here at the
     // hotel-entries-container level so it works for both entries rendered
@@ -20897,7 +20980,7 @@ function readBookedTripDetails(){
       confirmationNumber: gv('tb-cruise-conf'), cruiseLine: gv('tb-cruise-line'), shipName: gv('tb-cruise-ship'),
       sailingDate: gv('tb-cruise-sailing'), returnDate: gv('tb-cruise-return'), nights: gn('tb-cruise-nights'),
       departurePort: gv('tb-cruise-port'), returnPort: gv('tb-cruise-return-port'),
-      loyaltyNumber: gv('tb-cruise-loyalty'), price: gn('tb-cruise-price'), milesManFee: gn('tb-cruise-fee'), insurancePremium: gn('tb-cruise-insurance'), insuranceCoverage: gn('tb-cruise-coverage'), notes: gv('tb-cruise-notes'), cabins: readCabinEntries(),
+      loyaltyNumber: gv('tb-cruise-loyalty'), currency: gv('tb-cruise-currency'), priceForeign: gn('tb-cruise-price-foreign'), price: gn('tb-cruise-price'), milesManFee: gn('tb-cruise-fee'), insurancePremium: gn('tb-cruise-insurance'), insuranceCoverage: gn('tb-cruise-coverage'), notes: gv('tb-cruise-notes'), cabins: readCabinEntries(),
       pts: readPointsEntriesFrom(document.getElementById('tb-cruise-pts-entries'))
     },
     carRental: readCarEntries(),
