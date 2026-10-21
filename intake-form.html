@@ -192,6 +192,10 @@
         <div class="balance-grid" id="car-rental-balances-grid"></div>
       </div>
       <div class="field full">
+        <label>Train Points Balances <span class="hint">(optional — Amtrak Guest Rewards or another program)</span></label>
+        <div class="balance-grid" id="train-balances-grid"></div>
+      </div>
+      <div class="field full">
         <label>Credit Card Points Balances <span class="hint">(optional — card name only, no account numbers)</span></label>
         <div class="balance-grid" id="cc-balances-grid"></div>
       </div>
@@ -808,6 +812,24 @@
       '<select name="Hotel Certificate - Other Qty"><option value="">Qty</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5+</option></select></div>';
     return rows;
   }
+  // Train loyalty is just Amtrak plus whatever else a traveler happens to
+  // have — Amtrak's own row (account number + points) plus one free-text
+  // "Other" row, same "<prefix> - Other"/"<prefix> Other Program" field-
+  // name shape as the Hotel Certificates "Other" row above. Field names
+  // here are shared verbatim with the CRM's own extractTrainBalance()/
+  // buildTripFormFieldLabels() (index.html) so a submission parses
+  // straight onto the client record. prefix is 'Train' for the primary
+  // traveler or 'Traveler N Train' for an additional one (see
+  // travelerBlockHtml() below).
+  function trainBalanceGridHtml(prefix){
+    return '<div class="balance-row"><span>Amtrak</span>'+
+        '<input type="text" name="'+prefix+' Account - Amtrak" placeholder="Account #" style="width:100px;padding:6px 8px;font-size:12px;border:1px solid #d1d5db;border-radius:6px;font-family:inherit">'+
+        '<input type="number" min="0" name="'+prefix+' - Amtrak" placeholder="Points"></div>'+
+      '<div class="balance-row"><span style="flex:none;white-space:nowrap">Other</span>'+
+        '<input type="text" name="'+prefix+' Other Program" placeholder="Program" style="flex:1;min-width:0;padding:6px 8px;font-size:12px;border:1px solid #d1d5db;border-radius:6px;font-family:inherit">'+
+        '<input type="text" name="'+prefix+' Account - Other" placeholder="Account #" style="width:100px;padding:6px 8px;font-size:12px;border:1px solid #d1d5db;border-radius:6px;font-family:inherit">'+
+        '<input type="number" min="0" name="'+prefix+' - Other" placeholder="Points"></div>';
+  }
   // Plain has/doesn't-have checkboxes, grouped by brand — no number/status
   // per card, so this is its own small builder rather than balanceGridHtml.
   // Shared by both the airline- and hotel-branded card checklists.
@@ -827,6 +849,7 @@
   buildBalanceGrid('cruise-balances-grid', CRUISE_LINES, 'Cruise', CRUISE_STATUS);
   buildBalanceGrid('car-rental-balances-grid', CAR_RENTALS, 'Car Rental', CAR_RENTAL_STATUS);
   buildBalanceGrid('cc-balances-grid', CREDIT_CARDS, 'Credit Card', null);
+  document.getElementById('train-balances-grid').innerHTML = trainBalanceGridHtml('Train');
   document.getElementById('hotel-certificates-grid').innerHTML = hotelCertificatesGridHtml();
   buildBrandedCcChecklist('airline-cc-checklist', AIRLINE_CREDIT_CARDS, 'Airline Credit Card');
   buildBrandedCcChecklist('hotel-cc-checklist', HOTEL_CREDIT_CARDS, 'Hotel Credit Card');
@@ -876,6 +899,7 @@
         '<div class="field full"><label>Hotel Points Balances <span class="hint">(optional)</span></label><div class="balance-grid">'+balanceGridHtml(HOTELS,p+' Hotel',HOTEL_STATUS)+'</div></div>'+
         '<div class="field full"><label>Cruise Line Loyalty <span class="hint">(optional)</span></label><div class="balance-grid">'+balanceGridHtml(CRUISE_LINES,p+' Cruise',CRUISE_STATUS)+'</div></div>'+
         '<div class="field full"><label>Car Rental Loyalty <span class="hint">(optional)</span></label><div class="balance-grid">'+balanceGridHtml(CAR_RENTALS,p+' Car Rental',CAR_RENTAL_STATUS)+'</div></div>'+
+        '<div class="field full"><label>Train Points Balances <span class="hint">(optional)</span></label><div class="balance-grid">'+trainBalanceGridHtml(p+' Train')+'</div></div>'+
         '<div class="field full"><label>Credit Card Points Balances <span class="hint">(optional)</span></label><div class="balance-grid">'+balanceGridHtml(CREDIT_CARDS,p+' Credit Card',null)+'</div></div>'+
         '<div class="field full"><label>Airline Credit Cards <span class="hint">(check any that apply)</span></label><div class="cc-checklist">'+brandedCcChecklistHtml(AIRLINE_CREDIT_CARDS,p+' Airline Credit Card')+'</div></div>'+
         '<div class="field full"><label>Hotel Credit Cards <span class="hint">(check any that apply)</span></label><div class="cc-checklist">'+brandedCcChecklistHtml(HOTEL_CREDIT_CARDS,p+' Hotel Credit Card')+'</div></div>'+
