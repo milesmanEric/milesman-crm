@@ -18437,8 +18437,13 @@ function searchableSelectWrap(selectHtml, placeholder){
   // Pull the pre-selected option's own (already-HTML-escaped) label straight
   // out of the markup being wrapped, rather than escaping it again here —
   // every option-building call site in this file consistently emits
-  // value="..." immediately followed by an optional " selected".
-  var m = selectHtml.match(/<option value="[^"]+"\s+selected>([^<]*)<\/option>/);
+  // value="..." followed by an optional " selected", though some (e.g.
+  // hotelPropertyOptionsHtml's data-city/data-country) put more attributes
+  // after "selected" and before the closing ">" — [^>]* on both sides
+  // tolerates any of those instead of requiring "selected" immediately
+  // before ">", which silently left the proxy input blank (while the real
+  // <select> underneath still held the right value) for exactly that case.
+  var m = selectHtml.match(/<option value="[^"]+"[^>]*\sselected[^>]*>([^<]*)<\/option>/);
   var initialText = m ? m[1] : '';
   return '<div class="searchable-select">'+
     selectHtml+
