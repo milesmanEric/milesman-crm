@@ -2724,24 +2724,28 @@ async function loadDB(){
     // had isPayingClient set (fixed at the creation site too, but that only
     // helps future imports) — payingClientPicklist() (the Add Task/Trip
     // client dropdown) filters to isPayingClient-only, so any client with a
-    // real trip on file but no flag was silently invisible there. Only sets
-    // the flag for a client who actually has a trip; never unsets it (safe
-    // to run repeatedly).
-    var payingFlagsFixed=0;
-    var clientIdsWithTrips = {};
-    db.trips.forEach(function(t){
-      if(t.clientId) clientIdsWithTrips[t.clientId]=true;
-      (t.clientIds||[]).forEach(function(cid){ if(cid) clientIdsWithTrips[cid]=true; });
-    });
-    db.clients.forEach(function(c){
-      if(!c.isPayingClient && clientIdsWithTrips[c.id]){
-        c.isPayingClient = true;
-        payingFlagsFixed++;
+    // real trip on file but no flag was silently invisible there. Gated by
+    // a flag so it truly only runs once — without it, this re-ran on every
+    // load and stomped a client deliberately unmarked as Paying afterward
+    // right back to true.
+    if(!localStorage.getItem('mm_paying_flags_backfilled')){
+      var payingFlagsFixed=0;
+      var clientIdsWithTrips = {};
+      db.trips.forEach(function(t){
+        if(t.clientId) clientIdsWithTrips[t.clientId]=true;
+        (t.clientIds||[]).forEach(function(cid){ if(cid) clientIdsWithTrips[cid]=true; });
+      });
+      db.clients.forEach(function(c){
+        if(!c.isPayingClient && clientIdsWithTrips[c.id]){
+          c.isPayingClient = true;
+          payingFlagsFixed++;
+        }
+      });
+      if(payingFlagsFixed>0){
+        saveDB();
+        console.log('[CRM] Marked '+payingFlagsFixed+' client(s) with existing trips as Paying Client');
       }
-    });
-    if(payingFlagsFixed>0){
-      saveDB();
-      console.log('[CRM] Marked '+payingFlagsFixed+' client(s) with existing trips as Paying Client');
+      localStorage.setItem('mm_paying_flags_backfilled','1');
     }
     // The generic 'Tool' bookmark category was renamed to 'Award Tools'
     // (it was only ever used for Seats.aero/ExpertFlyer/Point.me/
@@ -17237,7 +17241,14 @@ function renderClients(){
   document.querySelectorAll('.client-paying-cb').forEach(function(cb){
     cb.addEventListener('change', function(){
       var c = db.clients.find(function(x){return x.id===cb.dataset.id;});
-      if(c){ c.isPayingClient = cb.checked; saveDB(); toast(c.name+(cb.checked?' marked as paying client':' unmarked as paying client'),'ok'); }
+      if(c){
+        c.isPayingClient = cb.checked;
+        saveDB();
+        toast(c.name+(cb.checked?' marked as paying client':' unmarked as paying client'),'ok');
+        // Re-render so "Hide subscribers & non-paying clients" reacts
+        // immediately instead of only on the next unrelated render.
+        if(fHideSubOnly) renderClients();
+      }
     });
   });
   document.querySelectorAll('.client-sub-cb').forEach(function(cb){
