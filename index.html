@@ -19260,11 +19260,13 @@ function pointsEntryRowInnerHtml(entry){
   return '<div style="display:flex;justify-content:flex-end;margin-bottom:4px">'+
       '<button type="button" class="del-points-entry-btn" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:12px">&#128465;&#65039; Remove</button>'+
     '</div>'+
-    '<div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:8px">'+
+    '<div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:8px">'+
       '<div class="field"><label>Program</label><select class="points-entry-program">'+pointsProgramOptionsHtml(entry.program)+'</select></div>'+
       '<div class="field"><label>Points/Miles Used</label><input class="points-entry-amount" type="number" value="'+(entry.amount||'')+'"></div>'+
       '<div class="field"><label>Cost ($)</label><input class="points-entry-cost" type="number" value="'+(entry.cost||'')+'"></div>'+
-    '</div>';
+      '<div class="field"><label>Cash Value ($) <span class="hint" style="text-transform:none;font-weight:400">(estimated dollar value of the points/miles redeemed)</span></label><input class="points-entry-cashvalue" type="number" value="'+(entry.cashValue||'')+'"></div>'+
+    '</div>'+
+    '<div class="field full"><label>Notes</label><textarea class="points-entry-notes">'+(entry.notes||'')+'</textarea></div>';
 }
 function pointsEntryRowHtml(entry){
   return '<div class="points-entry-row" style="border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin-bottom:10px;background:#fafafa">'+pointsEntryRowInnerHtml(entry)+'</div>';
@@ -19283,9 +19285,11 @@ function readPointsEntriesFrom(containerEl){
     return {
       program: (row.querySelector('.points-entry-program')||{}).value||'',
       amount: Number((row.querySelector('.points-entry-amount')||{}).value)||0,
-      cost: Number((row.querySelector('.points-entry-cost')||{}).value)||0
+      cost: Number((row.querySelector('.points-entry-cost')||{}).value)||0,
+      cashValue: Number((row.querySelector('.points-entry-cashvalue')||{}).value)||0,
+      notes: (row.querySelector('.points-entry-notes')||{}).value||''
     };
-  }).filter(function(e){ return e.program||e.amount||e.cost; });
+  }).filter(function(e){ return e.program||e.amount||e.cost||e.cashValue||e.notes; });
 }
 // Same row markup as pointsEntriesListHtml but with a class-marked (not
 // id-marked) empty placeholder, since this is used inside a per-hotel-entry
@@ -19303,7 +19307,9 @@ function pointsEntriesSectionHtml(entries, containerId, addBtnId){
 // Aggregates every Points Used entry across every Booked Trip Details
 // section (Airline/Hotel/Cruise/Car Rental/Tours/Theme Park/Train/Bus) by
 // program, plus every section's Price($) field and every points entry's own
-// Cost($) — both represent real cash spent — into one rollup. Recomputed
+// Cost($) — both represent real cash spent — into one rollup. Each entry's
+// Cash Value($) (the estimated worth of the redemption, not cash actually
+// spent) is tracked separately and never added into totalCash. Recomputed
 // live off the current form state (see refreshBookedTripSummary()), not a
 // static snapshot, so it stays accurate while the form is being filled in.
 function computeBookedTripSummary(bd){
@@ -19320,13 +19326,18 @@ function computeBookedTripSummary(bd){
     .concat(bd.busPts||[]);
   var byProgram = {};
   allPts.forEach(function(p){
-    if(!p.program && !p.amount && !p.cost) return;
+    if(!p.program && !p.amount && !p.cost && !p.cashValue) return;
     var key = p.program || '(no program selected)';
-    if(!byProgram[key]) byProgram[key] = {program:key, points:0};
+    if(!byProgram[key]) byProgram[key] = {program:key, points:0, cashValue:0};
     byProgram[key].points += Number(p.amount)||0;
+    byProgram[key].cashValue += Number(p.cashValue)||0;
   });
   var rows = Object.keys(byProgram).map(function(k){return byProgram[k];}).sort(function(a,b){return b.points-a.points;});
   var totalPtsCost = allPts.reduce(function(a,p){return a+(Number(p.cost)||0);},0);
+  // Cash Value is the estimated worth of a redemption, not cash actually
+  // spent — kept separate from totalCash below (real money out the door),
+  // same distinction as Cost($) vs. this.
+  var totalPtsValue = allPts.reduce(function(a,p){return a+(Number(p.cashValue)||0);},0);
   var totalPrice = airlineRecords.reduce(function(a,r){return a+(r.price||0);},0)
     + (bd.hotel||[]).reduce(function(a,h){return a+(h.price||0);},0)
     + (bd.cruise.price||0)
@@ -19347,7 +19358,7 @@ function computeBookedTripSummary(bd){
     + (bd.themeParkInsurancePremium||0)
     + (bd.trainInsurancePremium||0)
     + (bd.busInsurancePremium||0);
-  return {rows:rows, totalCash: totalPrice + totalPtsCost + totalInsurance};
+  return {rows:rows, totalCash: totalPrice + totalPtsCost + totalInsurance, totalPtsValue: totalPtsValue};
 }
 // Invoice Number only shows here when the trip has no Supplier linked — a
 // linked Supplier means the invoice went to that supplier, not the client,
@@ -19357,13 +19368,14 @@ function bookedTripSummaryHtml(summary, invoicedToClient, invoiceNumber){
   var invoiceLine = (invoicedToClient && invoiceNumber) ?
     '<div style="font-size:13px;color:#374151;margin-bottom:10px">Invoice Number: <strong>'+escHtml(invoiceNumber)+'</strong></div>' : '';
   return invoiceLine + (summary.rows.length ?
-    '<div class="tbl-wrap"><table class="report-table"><thead><tr><th>Program</th><th style="text-align:right">Points/Miles Used</th></tr></thead><tbody>'+
+    '<div class="tbl-wrap"><table class="report-table"><thead><tr><th>Program</th><th style="text-align:right">Points/Miles Used</th><th style="text-align:right">Cash Value</th></tr></thead><tbody>'+
     summary.rows.map(function(r){
-      return '<tr><td>'+escHtml(r.program)+'</td><td style="text-align:right">'+fmt(r.points)+'</td></tr>';
+      return '<tr><td>'+escHtml(r.program)+'</td><td style="text-align:right">'+fmt(r.points)+'</td><td style="text-align:right">'+(r.cashValue?'$'+money(r.cashValue):'—')+'</td></tr>';
     }).join('')+
     '</tbody></table></div>'
     : '<div style="color:#aaa;font-size:12px;padding:6px 0">No points/miles redemptions added yet</div>')+
-    '<div style="margin-top:10px;font-size:14px;font-weight:700;color:#111">Total Cash Paid: $'+money(summary.totalCash)+'</div>';
+    '<div style="margin-top:10px;font-size:14px;font-weight:700;color:#111">Total Cash Paid: $'+money(summary.totalCash)+'</div>'+
+    (summary.totalPtsValue ? '<div style="font-size:12px;color:#6b7280">Total Points/Miles Cash Value: $'+money(summary.totalPtsValue)+'</div>' : '');
 }
 // Bound to every input/change event inside the modal (see
 // bindBookedTripDetailsListeners) rather than to each individual field,
