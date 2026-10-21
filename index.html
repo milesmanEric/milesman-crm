@@ -1083,6 +1083,11 @@ const HOTEL_PROPERTY_SEEDS = {
 };
 const CAR_RENTALS = ['Hertz','Avis','Enterprise','National','Budget','Alamo','Sixt','Europcar','Thrifty','Dollar'];
 const CREDIT_CARDS = ['Chase Sapphire Preferred','Chase Sapphire Reserve','Chase Ink Business Preferred','Amex Platinum','Amex Gold','Amex Business Platinum','Amex Business Gold','Capital One Venture X','Citi Premier','Citi Prestige','Bilt Mastercard'];
+// Bank transferable-points currencies (distinct from any one co-branded
+// Credit Card above) — a client can transfer these straight to a partner
+// airline/hotel program, which is what the "Points Transferred From" field
+// on a Hotel entry/flight segment (see transferredFromOptionsHtml) tracks.
+const BANK_POINTS_PROGRAMS = ['Chase Ultimate Rewards','American Express Membership Rewards','Citi ThankYou Points','Capital One Miles','Bilt Rewards'];
 // Real airline-branded co-branded credit cards, grouped by airline — a
 // simple "does the client hold this card" checklist, unrelated to the
 // points-balance grids above (no balance/status per card, just presence).
@@ -9405,6 +9410,7 @@ function resolvePendingTravelerMatch(id, cid, skipSnapshot){
   if(pm.hotelBalances && Object.keys(pm.hotelBalances).length){var hm=mergeBalanceObjects(client.hotelBalances,pm.hotelBalances); if(hm.added.length) client.hotelBalances=hm.merged;}
   if(pm.cruiseBalances && Object.keys(pm.cruiseBalances).length){var cbm=mergeBalanceObjects(client.cruiseBalances,pm.cruiseBalances); if(cbm.added.length) client.cruiseBalances=cbm.merged;}
   if(pm.carRentalBalances && Object.keys(pm.carRentalBalances).length){var crbm=mergeBalanceObjects(client.carRentalBalances,pm.carRentalBalances); if(crbm.added.length) client.carRentalBalances=crbm.merged;}
+  if(pm.trainBalance){var tbm=mergeTrainBalance(client.trainBalance,pm.trainBalance); if(tbm.added.length) client.trainBalance=tbm.merged;}
   if(pm.creditCardBalances && Object.keys(pm.creditCardBalances).length){var cm=mergeCreditCardBalances(client.creditCardBalances,pm.creditCardBalances); if(cm.added.length) client.creditCardBalances=cm.merged;}
   if((pm.airlineCreditCards||[]).length){var accm=mergeCardChecklist(client.airlineCreditCards,pm.airlineCreditCards); if(accm.added.length) client.airlineCreditCards=accm.merged;}
   if((pm.hotelCreditCards||[]).length){var hccm=mergeCardChecklist(client.hotelCreditCards,pm.hotelCreditCards); if(hccm.added.length) client.hotelCreditCards=hccm.merged;}
@@ -9522,6 +9528,21 @@ function processTripFormRow(getVal, counters){
     });
     return Object.keys(out).length ? out : null;
   }
+  // Train loyalty is just Amtrak plus a free-text "Other" program — reads
+  // the "Train - Amtrak"/"Train Account - Amtrak" pair plus "Train Other
+  // Program"/"Train Account - Other"/"Train - Other", matching the field
+  // names trainBalanceGridHtml() in intake-form.html submits. prefix lets
+  // this read either the primary contact's own fields ('Train') or a
+  // companion traveler's ('Traveler N Train').
+  function extractTrainBalance(prefix){
+    var amtrakBalance = parseFloat((getVal(prefix+' - Amtrak')||'').replace(/[,$]/g,''))||0;
+    var amtrakAccountNumber = getVal(prefix+' Account - Amtrak');
+    var otherProgram = getVal(prefix+' Other Program');
+    var otherAccountNumber = getVal(prefix+' Account - Other');
+    var otherBalance = parseFloat((getVal(prefix+' - Other')||'').replace(/[,$]/g,''))||0;
+    if(!amtrakBalance && !amtrakAccountNumber && !otherProgram && !otherAccountNumber && !otherBalance) return null;
+    return {amtrakBalance:amtrakBalance, amtrakAccountNumber:amtrakAccountNumber, otherProgram:otherProgram, otherAccountNumber:otherAccountNumber, otherBalance:otherBalance};
+  }
   // Reads the "Airline Credit Card - <card name>" checkboxes the intake
   // form's airlineCreditCardsHtml() submits — a plain has/doesn't-have
   // checklist (unlike the balance grids above), so this just checks
@@ -9590,6 +9611,7 @@ function processTripFormRow(getVal, counters){
     var tHotelBal=extractBalances(HOTELS,tp+' Hotel',true);
     var tCruiseBal=extractBalances(CRUISE_LINES,tp+' Cruise',true);
     var tCarRentalBal=extractBalances(CAR_RENTALS,tp+' Car Rental',true);
+    var tTrainBal=extractTrainBalance(tp+' Train');
     var tCcBal=extractBalances(CREDIT_CARDS,tp+' Credit Card',false);
     var tAirlineCc=extractCardChecklist(AIRLINE_CREDIT_CARDS, tp+' Airline Credit Card');
     var tHotelCc=extractCardChecklist(HOTEL_CREDIT_CARDS, tp+' Hotel Credit Card');
@@ -9635,6 +9657,7 @@ function processTripFormRow(getVal, counters){
       if(tHotelBal){var thm=mergeBalanceObjects(tClient.hotelBalances,tHotelBal); if(thm.added.length){tClient.hotelBalances=thm.merged;tFilled.push('hotelBalances');}}
       if(tCruiseBal){var tcbm=mergeBalanceObjects(tClient.cruiseBalances,tCruiseBal); if(tcbm.added.length){tClient.cruiseBalances=tcbm.merged;tFilled.push('cruiseBalances');}}
       if(tCarRentalBal){var tcrbm=mergeBalanceObjects(tClient.carRentalBalances,tCarRentalBal); if(tcrbm.added.length){tClient.carRentalBalances=tcrbm.merged;tFilled.push('carRentalBalances');}}
+      if(tTrainBal){var ttbm=mergeTrainBalance(tClient.trainBalance,tTrainBal); if(ttbm.added.length){tClient.trainBalance=ttbm.merged;tFilled.push('trainBalance');}}
       if(tCcBal){var tcm=mergeCreditCardBalances(tClient.creditCardBalances,tCcBal); if(tcm.added.length){tClient.creditCardBalances=tcm.merged;tFilled.push('creditCardBalances');}}
       if(tAirlineCc){var taccm=mergeCardChecklist(tClient.airlineCreditCards,tAirlineCc); if(taccm.added.length){tClient.airlineCreditCards=taccm.merged;tFilled.push('airlineCreditCards');}}
       if(tHotelCc){var thccm=mergeCardChecklist(tClient.hotelCreditCards,tHotelCc); if(thccm.added.length){tClient.hotelCreditCards=thccm.merged;tFilled.push('hotelCreditCards');}}
@@ -9657,7 +9680,7 @@ function processTripFormRow(getVal, counters){
         pendingAccumulator.push({
           id: newId('PM', (db.pendingTravelerMatches||[]).concat(pendingAccumulator)),
           name: tName, fields: tFields, discounts: tDiscounts, interests: tInterests,
-          mileageBalances: tAirlineBal||{}, hotelBalances: tHotelBal||{}, cruiseBalances: tCruiseBal||{}, carRentalBalances: tCarRentalBal||{}, creditCardBalances: tCcBal||{},
+          mileageBalances: tAirlineBal||{}, hotelBalances: tHotelBal||{}, cruiseBalances: tCruiseBal||{}, carRentalBalances: tCarRentalBal||{}, trainBalance: tTrainBal||null, creditCardBalances: tCcBal||{},
           airlineCreditCards: tAirlineCc||[], hotelCreditCards: tHotelCc||[],
           candidateClientIds: sameLastNameCandidates.map(function(c){return c.id;}),
           noteLine: pendingNoteLine,
@@ -9668,7 +9691,7 @@ function processTripFormRow(getVal, counters){
       } else {
         tClient = Object.assign({id:newId('C',db.clients), name:toLastFirst(tName),
           discounts:tDiscounts, interests:tInterests,
-          mileageBalances:tAirlineBal||{}, hotelBalances:tHotelBal||{}, cruiseBalances:tCruiseBal||{}, carRentalBalances:tCarRentalBal||{}, creditCardBalances:tCcBal||{}, airlineCreditCards:tAirlineCc||[], hotelCreditCards:tHotelCc||[],
+          mileageBalances:tAirlineBal||{}, hotelBalances:tHotelBal||{}, cruiseBalances:tCruiseBal||{}, carRentalBalances:tCarRentalBal||{}, trainBalance:tTrainBal||null, creditCardBalances:tCcBal||{}, airlineCreditCards:tAirlineCc||[], hotelCreditCards:tHotelCc||[],
           notes:'', joined:today(), totalTrips:0, notesLog:[]}, tFields);
         db.clients.push(tClient);
         counters.added++;
@@ -9774,6 +9797,7 @@ function processTripFormRow(getVal, counters){
   var hotelBalances = extractBalances(HOTELS, 'Hotel', true);
   var cruiseBalances = extractBalances(CRUISE_LINES, 'Cruise', true);
   var carRentalBalances = extractBalances(CAR_RENTALS, 'Car Rental', true);
+  var trainBalance = extractTrainBalance('Train');
   var creditCardBalances = extractBalances(CREDIT_CARDS, 'Credit Card', false);
   var airlineCreditCards = extractCardChecklist(AIRLINE_CREDIT_CARDS, 'Airline Credit Card');
   var hotelCreditCards = extractCardChecklist(HOTEL_CREDIT_CARDS, 'Hotel Credit Card');
@@ -9825,6 +9849,10 @@ function processTripFormRow(getVal, counters){
       var crbm=mergeBalanceObjects(client.carRentalBalances,carRentalBalances);
       if(crbm.added.length){client.carRentalBalances=crbm.merged;filled.push('carRentalBalances ('+crbm.added.join(', ')+')');}
     }
+    if(trainBalance){
+      var tbm=mergeTrainBalance(client.trainBalance,trainBalance);
+      if(tbm.added.length){client.trainBalance=tbm.merged;filled.push('trainBalance ('+tbm.added.join(', ')+')');}
+    }
     if(creditCardBalances){
       var cm=mergeCreditCardBalances(client.creditCardBalances,creditCardBalances);
       if(cm.added.length){client.creditCardBalances=cm.merged;filled.push('creditCardBalances ('+cm.added.join(', ')+')');}
@@ -9854,7 +9882,7 @@ function processTripFormRow(getVal, counters){
       birthdate:birthdate, countryOfCitizenship:countryOfCitizenship, countryOfBirth:countryOfBirth, passportExpiration:passportExpiration, referredBy:referredBy, referredByDetail:referredByDetail, okToText:okToText,
       discounts:discounts, discountOther:discountOther, interests:interests, interestOther:interestOther,
       preferredAirline:preferredAirline, preferredHotel:preferredHotel, preferredCruiseLine:preferredCruiseLine,
-      mileageBalances:mileageBalances||{}, hotelBalances:hotelBalances||{}, cruiseBalances:cruiseBalances||{}, carRentalBalances:carRentalBalances||{}, creditCardBalances:creditCardBalances||{}, airlineCreditCards:airlineCreditCards||[], hotelCreditCards:hotelCreditCards||[],
+      mileageBalances:mileageBalances||{}, hotelBalances:hotelBalances||{}, cruiseBalances:cruiseBalances||{}, carRentalBalances:carRentalBalances||{}, trainBalance:trainBalance||null, creditCardBalances:creditCardBalances||{}, airlineCreditCards:airlineCreditCards||[], hotelCreditCards:hotelCreditCards||[],
       notes:'', joined:today(), totalTrips:0, notesLog:[]};
     db.clients.push(client);
     counters.added++;
@@ -10232,10 +10260,16 @@ function buildTripFormFieldLabels(){
       cardsByBrand[brand].forEach(function(card){ labels.push(prefix+' - '+card); });
     });
   }
+  // Matches extractTrainBalance()'s field names in processTripFormRow —
+  // Amtrak's own pair plus the free-text "Other" trio.
+  function addTrainBalanceLabels(prefix){
+    labels.push(prefix+' - Amtrak', prefix+' Account - Amtrak', prefix+' Other Program', prefix+' Account - Other', prefix+' - Other');
+  }
   addBalanceLabels('Airline', AIRLINES, true);
   addBalanceLabels('Hotel', HOTELS, true);
   addBalanceLabels('Cruise', CRUISE_LINES, true);
   addBalanceLabels('Car Rental', CAR_RENTALS, true);
+  addTrainBalanceLabels('Train');
   addBalanceLabels('Credit Card', CREDIT_CARDS, false);
   addCardChecklistLabels(AIRLINE_CREDIT_CARDS, 'Airline Credit Card');
   addCardChecklistLabels(HOTEL_CREDIT_CARDS, 'Hotel Credit Card');
@@ -10293,6 +10327,7 @@ function buildTripFormFieldLabels(){
     addBalanceLabels(p+' Hotel', HOTELS, true);
     addBalanceLabels(p+' Cruise', CRUISE_LINES, true);
     addBalanceLabels(p+' Car Rental', CAR_RENTALS, true);
+    addTrainBalanceLabels(p+' Train');
     addBalanceLabels(p+' Credit Card', CREDIT_CARDS, false);
     addCardChecklistLabels(AIRLINE_CREDIT_CARDS, p+' Airline Credit Card');
     addCardChecklistLabels(HOTEL_CREDIT_CARDS, p+' Hotel Credit Card');
@@ -11463,6 +11498,22 @@ function mergeBalanceObjects(existingBalances,newBalances){
         status: incoming.status ? incoming.status : (existing.status||'')
       };
       added.push(name);
+    }
+  });
+  return {merged:merged,added:added};
+}
+// Same overwrite-unless-blank/zero rule, for client.trainBalance — a flat
+// {amtrakBalance,amtrakAccountNumber,otherProgram,otherAccountNumber,
+// otherBalance} object (see extractTrainBalance() in processTripFormRow)
+// rather than a name-keyed map like mileageBalances/hotelBalances, so each
+// of its five fields gets checked and merged individually instead of by key.
+function mergeTrainBalance(existingBalance,incomingBalance){
+  const merged=Object.assign({},existingBalance||{});
+  const added=[];
+  ['amtrakBalance','amtrakAccountNumber','otherProgram','otherAccountNumber','otherBalance'].forEach(function(k){
+    if(incomingBalance&&incomingBalance[k]){
+      merged[k]=incomingBalance[k];
+      added.push(k);
     }
   });
   return {merged:merged,added:added};
@@ -18513,6 +18564,53 @@ function balanceGrid(label,idPrefix,list,data,statusList){
     '</div>'+
   '</div>';
 }
+// Train loyalty is just Amtrak plus whatever else a client happens to have
+// (a foreign rail program, etc.) — rather than a fixed multi-row list like
+// balanceGrid() above, this is Amtrak's own row plus one free-text "Other"
+// row (same "X"/"X Other" pairing convention as hotelCertificatesFieldHtml's
+// Other brand row), each with its own Account Number alongside the points
+// balance, parameterized by idPrefix so the Client form and Trip form (see
+// tripBalanceSectionsHtml) can each render their own copy without id clashes.
+function trainBalanceFieldHtml(idPrefix,data){
+  data = data || {};
+  var gridId = idPrefix+'-grid';
+  function esc(v){ return (v||'').toString().replace(/"/g,'&quot;'); }
+  function fmtBal(v){ return v?Number(v).toLocaleString():''; }
+  // Collapsed-by-default toggle, same balance-grid-toggle/balance-grid-arrow
+  // markup and delegated bindBalanceGridToggles() listener every other
+  // balance section on this form already uses, so Train fits the same
+  // collapsed-row layout instead of standing out as the one section that's
+  // always expanded.
+  return '<div class="field full">'+
+    '<label class="balance-grid-toggle" data-target="'+gridId+'" style="cursor:pointer;user-select:none;display:flex;align-items:center;gap:6px">'+
+      '<span class="balance-grid-arrow" style="display:inline-block;font-size:10px;transition:transform .15s;transform:rotate(0deg)">&#9656;</span>'+
+      'Train Points Balances <span class="hint" style="text-transform:none;font-weight:400">(optional — Amtrak Guest Rewards or another program)</span>'+
+    '</label>'+
+    '<div id="'+gridId+'" style="display:none;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:8px;border:1px solid #e5e7eb;border-radius:8px;padding:10px;background:#fafafa">'+
+      '<div style="display:flex;align-items:center;gap:8px">'+
+        '<span style="flex:1;font-size:12px;color:#374151">Amtrak</span>'+
+        '<input id="'+idPrefix+'-amtrak-acct" type="text" value="'+esc(data.amtrakAccountNumber)+'" placeholder="Account #" style="width:110px;padding:5px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12px;font-family:inherit">'+
+        '<input id="'+idPrefix+'-amtrak-pts" class="balance-num-input" type="text" inputmode="numeric" value="'+fmtBal(data.amtrakBalance)+'" placeholder="Points" style="width:90px;padding:5px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12px;font-family:inherit">'+
+      '</div>'+
+      '<div style="display:flex;align-items:center;gap:8px">'+
+        '<input id="'+idPrefix+'-other-program" type="text" value="'+esc(data.otherProgram)+'" placeholder="Other program" style="flex:1;min-width:0;padding:5px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12px;font-family:inherit">'+
+        '<input id="'+idPrefix+'-other-acct" type="text" value="'+esc(data.otherAccountNumber)+'" placeholder="Account #" style="width:110px;padding:5px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12px;font-family:inherit">'+
+        '<input id="'+idPrefix+'-other-pts" class="balance-num-input" type="text" inputmode="numeric" value="'+fmtBal(data.otherBalance)+'" placeholder="Points" style="width:90px;padding:5px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12px;font-family:inherit">'+
+      '</div>'+
+    '</div>'+
+  '</div>';
+}
+function readTrainBalance(idPrefix){
+  function gv(id){ var el=document.getElementById(id); return el?el.value:''; }
+  function numVal(id){ var el=document.getElementById(id); return el?(Number(el.value.replace(/[^\d]/g,''))||0):0; }
+  return {
+    amtrakAccountNumber: gv(idPrefix+'-amtrak-acct'),
+    amtrakBalance: numVal(idPrefix+'-amtrak-pts'),
+    otherProgram: gv(idPrefix+'-other-program'),
+    otherAccountNumber: gv(idPrefix+'-other-acct'),
+    otherBalance: numVal(idPrefix+'-other-pts')
+  };
+}
 // Delegated on the modal (rather than bound per-toggle) since balanceGrid()
 // output gets replaced wholesale when the trip form's Client dropdown
 // changes, or when a different form (Client/Trip/Task) is opened next —
@@ -18781,6 +18879,7 @@ function openClientForm(id){
       balanceGrid('Hotel Point Balances','hb',HOTELS,d.hotelBalances,HOTEL_STATUS)+
       balanceGrid('Cruise Line Loyalty','cl',CRUISE_LINES,d.cruiseBalances,CRUISE_STATUS)+
       balanceGrid('Car Rental Loyalty','cr',CAR_RENTALS,d.carRentalBalances,CAR_RENTAL_STATUS)+
+      trainBalanceFieldHtml('tbf',d.trainBalance)+
       balanceGrid('Credit Card Point Balances','cb',CREDIT_CARDS,d.creditCardBalances)+
       airlineCreditCardsGrid('facc',d.airlineCreditCards)+
       hotelCreditCardsGrid('fhcc',d.hotelCreditCards)+
@@ -19208,6 +19307,7 @@ function tripBalanceSectionsHtml(clientId){
   var c = clientId ? db.clients.find(function(x){return x.id===clientId;}) : null;
   return balanceGrid('Mileage Balances','mb',AIRLINES,c?c.mileageBalances:null,AIRLINE_STATUS)+
          balanceGrid('Hotel Point Balances','hb',HOTELS,c?c.hotelBalances:null,HOTEL_STATUS)+
+         trainBalanceFieldHtml('ttb',c?c.trainBalance:null)+
          balanceGrid('Credit Card Point Balances','cb',CREDIT_CARDS,c?c.creditCardBalances:null)+
          airlineCreditCardsGrid('facc',c?c.airlineCreditCards:null)+
          hotelCreditCardsGrid('fhcc',c?c.hotelCreditCards:null);
@@ -19246,6 +19346,21 @@ function bindTripBalanceListeners(){
 function pointsProgramOptionsHtml(selected){
   function opts(list){ return list.map(function(o){return '<option value="'+o+'"'+(o===selected?' selected':'')+'>'+o+'</option>';}).join(''); }
   return '<option value="">Select...</option>'+
+    '<optgroup label="Airlines">'+opts(AIRLINES)+'</optgroup>'+
+    '<optgroup label="Hotels">'+opts(hotelBrandList())+'</optgroup>'+
+    '<optgroup label="Credit Cards">'+opts(CREDIT_CARDS)+'</optgroup>';
+}
+// Same grouped-picklist idea as pointsProgramOptionsHtml above, but for the
+// "Points Transferred From" field on a Hotel entry/flight segment — the
+// program points were moved OUT of before being redeemed for this specific
+// booking (e.g. Chase Ultimate Rewards transferred to Hyatt). Adds a Banks
+// group for transferable bank currencies, which a redemption's own Program
+// field (pointsProgramOptionsHtml) never needs since that's the program
+// actually redeemed, not the one points moved from.
+function transferredFromOptionsHtml(selected){
+  function opts(list){ return list.map(function(o){return '<option value="'+o+'"'+(o===selected?' selected':'')+'>'+escHtml(o)+'</option>';}).join(''); }
+  return '<option value="">-- Select --</option>'+
+    '<optgroup label="Banks">'+opts(BANK_POINTS_PROGRAMS)+'</optgroup>'+
     '<optgroup label="Airlines">'+opts(AIRLINES)+'</optgroup>'+
     '<optgroup label="Hotels">'+opts(hotelBrandList())+'</optgroup>'+
     '<optgroup label="Credit Cards">'+opts(CREDIT_CARDS)+'</optgroup>';
@@ -19522,6 +19637,7 @@ function hotelEntryRowInnerHtml(entry){
       '<div class="field"><label>Third Party Agency</label><select class="hotel-entry-agency"><option value="">-- Select --</option>'+selOpts(THIRD_PARTY_AGENCIES,entry.thirdPartyAgency)+'</select></div>'+
       '<div class="field"><label>Third Party Agency Booking Number</label><input class="hotel-entry-agency-booknum" type="text" value="'+(entry.thirdPartyAgencyBookingNumber||'').toString().replace(/"/g,'&quot;')+'"></div>'+
       '<div class="field full"><label>Notes</label><textarea class="hotel-entry-notes">'+(entry.notes||'')+'</textarea></div>'+
+      '<div class="field full"><label>Points Transferred From <span class="hint" style="text-transform:none;font-weight:400">(if the points redeemed below were transferred in from another program first)</span></label><select class="hotel-entry-transferred-from">'+transferredFromOptionsHtml(entry.transferredFrom)+'</select></div>'+
       '<div class="field full"><label>Points Used <span class="hint" style="text-transform:none;font-weight:400">(add one row per miles/points redemption)</span></label>'+
         '<div class="hotel-pts-entries">'+pointsEntriesListHtmlNoId(entry.pts||[])+'</div>'+
         '<button type="button" class="hotel-pts-add-btn" style="padding:5px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit">+ Add Points Used</button>'+
@@ -19548,11 +19664,12 @@ function readHotelEntries(){
       allInclusive: !!(row.querySelector('.hotel-entry-all-inclusive')||{}).checked,
       thirdPartyAgency: (row.querySelector('.hotel-entry-agency')||{}).value||'',
       thirdPartyAgencyBookingNumber: (row.querySelector('.hotel-entry-agency-booknum')||{}).value||'',
+      transferredFrom: (row.querySelector('.hotel-entry-transferred-from')||{}).value||'',
       pts: readPointsEntriesFrom(row.querySelector('.hotel-pts-entries')),
       notes: (row.querySelector('.hotel-entry-notes')||{}).value||''
     };
   }).filter(function(e){
-    return e.hotelBrand||e.property||e.city||e.country||e.confirmationNumber||e.checkInDate||e.nights||e.price||e.allInclusive||e.thirdPartyAgency||e.thirdPartyAgencyBookingNumber||(e.pts&&e.pts.length)||e.notes;
+    return e.hotelBrand||e.property||e.city||e.country||e.confirmationNumber||e.checkInDate||e.nights||e.price||e.allInclusive||e.thirdPartyAgency||e.thirdPartyAgencyBookingNumber||e.transferredFrom||(e.pts&&e.pts.length)||e.notes;
   });
 }
 // Net Rate Hotel Voucher — a standalone printable/emailable PDF the client
@@ -19994,7 +20111,8 @@ function flightEntryRowInnerHtml(entry){
       '<div class="field"><label>Arrival Time</label><input class="flight-entry-arrivaltime" type="time" value="'+(entry.arrivalTime||'')+'"></div>'+
       '<div class="field"><label>Third Party Agency</label><select class="flight-entry-agency"><option value="">-- Select --</option>'+selOpts(THIRD_PARTY_AGENCIES,entry.thirdPartyAgency)+'</select></div>'+
       '<div class="field"><label>Third Party Agency Booking Number</label><input class="flight-entry-agency-booknum" type="text" value="'+(entry.thirdPartyAgencyBookingNumber||'').toString().replace(/"/g,'&quot;')+'"></div>'+
-    '</div>';
+    '</div>'+
+    '<div class="field full"><label>Points Transferred From <span class="hint" style="text-transform:none;font-weight:400">(if this segment was booked with points transferred in from another program first)</span></label><select class="flight-entry-transferred-from">'+transferredFromOptionsHtml(entry.transferredFrom)+'</select></div>';
 }
 function flightEntryRowHtml(entry){
   return '<div class="flight-entry-row" style="border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin-bottom:10px;background:#fafafa">'+flightEntryRowInnerHtml(entry)+'</div>';
@@ -20040,10 +20158,11 @@ function readFlightEntriesFrom(containerEl){
       arrivalTime: (row.querySelector('.flight-entry-arrivaltime')||{}).value||'',
       classOfService: (row.querySelector('.flight-entry-class')||{}).value||'',
       thirdPartyAgency: (row.querySelector('.flight-entry-agency')||{}).value||'',
-      thirdPartyAgencyBookingNumber: (row.querySelector('.flight-entry-agency-booknum')||{}).value||''
+      thirdPartyAgencyBookingNumber: (row.querySelector('.flight-entry-agency-booknum')||{}).value||'',
+      transferredFrom: (row.querySelector('.flight-entry-transferred-from')||{}).value||''
     };
   }).filter(function(e){
-    return e.recordNumber||e.airline||e.flightNumber||e.origin||e.destination||e.departDate||e.departTime||e.arrivalTime||e.classOfService||e.thirdPartyAgency||e.thirdPartyAgencyBookingNumber;
+    return e.recordNumber||e.airline||e.flightNumber||e.origin||e.destination||e.departDate||e.departTime||e.arrivalTime||e.classOfService||e.thirdPartyAgency||e.thirdPartyAgencyBookingNumber||e.transferredFrom;
   });
 }
 // An Airline Record is one booking covering a group of passengers/flight
@@ -20950,6 +21069,7 @@ function saveClient(id){
   const creditCardBalances=readBalanceGrid('cb',CREDIT_CARDS);
   const cruiseBalances=readBalanceGrid('cl',CRUISE_LINES,CRUISE_STATUS);
   const carRentalBalances=readBalanceGrid('cr',CAR_RENTALS,CAR_RENTAL_STATUS);
+  const trainBalance=readTrainBalance('tbf');
   const airlineCreditCards=readCardChecklist('facc');
   const hotelCreditCards=readCardChecklist('fhcc');
   const referredBy=gv('fref');
@@ -20966,7 +21086,7 @@ function saveClient(id){
       certNumber:certRaw?Number(certRaw):undefined
     };
   }).filter(function(rc){return rc.referredName;});
-  const data={name:name,email:email,phone:gv('fp'),streetAddress:gv('fst'),city:gv('fcty'),state:gv('fstate'),zip:gv('fzip'),birthdate:gv('fbd'),countryOfCitizenship:gv('fcoc'),countryOfBirth:gv('fcob'),passportExpiration:gv('fped'),referredBy:referredBy,referredByDetail:referredByDetail,discounts:discountData.discounts,discountOther:discountData.discountOther,interests:interestData.interests,interestOther:interestData.interestOther,preferredAirline:gv('fpa'),preferredHotel:gv('fph'),preferredCruiseLine:gv('fpc'),mileageBalances:mileageBalances,hotelBalances:hotelBalances,cruiseBalances:cruiseBalances,carRentalBalances:carRentalBalances,creditCardBalances:creditCardBalances,airlineCreditCards:airlineCreditCards,hotelCreditCards:hotelCreditCards,notesLog:notesLog,isPayingClient:document.getElementById('f-paying')?document.getElementById('f-paying').checked:false,isSubscriber:document.getElementById('f-subscriber')?document.getElementById('f-subscriber').checked:false,okToText:document.getElementById('f-oktotext')?document.getElementById('f-oktotext').checked:false,attachments:window._currentClientAttachments||[],referralCredits:referralCredits};
+  const data={name:name,email:email,phone:gv('fp'),streetAddress:gv('fst'),city:gv('fcty'),state:gv('fstate'),zip:gv('fzip'),birthdate:gv('fbd'),countryOfCitizenship:gv('fcoc'),countryOfBirth:gv('fcob'),passportExpiration:gv('fped'),referredBy:referredBy,referredByDetail:referredByDetail,discounts:discountData.discounts,discountOther:discountData.discountOther,interests:interestData.interests,interestOther:interestData.interestOther,preferredAirline:gv('fpa'),preferredHotel:gv('fph'),preferredCruiseLine:gv('fpc'),mileageBalances:mileageBalances,hotelBalances:hotelBalances,cruiseBalances:cruiseBalances,carRentalBalances:carRentalBalances,trainBalance:trainBalance,creditCardBalances:creditCardBalances,airlineCreditCards:airlineCreditCards,hotelCreditCards:hotelCreditCards,notesLog:notesLog,isPayingClient:document.getElementById('f-paying')?document.getElementById('f-paying').checked:false,isSubscriber:document.getElementById('f-subscriber')?document.getElementById('f-subscriber').checked:false,okToText:document.getElementById('f-oktotext')?document.getElementById('f-oktotext').checked:false,attachments:window._currentClientAttachments||[],referralCredits:referralCredits};
   var resultId = id;
   if(id){
     db.clients=db.clients.map(function(c){return c.id===id?Object.assign({},c,data):c;});
@@ -21028,6 +21148,7 @@ function saveTrip(id){
   if(client){
     client.mileageBalances=readBalanceGrid('mb',AIRLINES,AIRLINE_STATUS);
     client.hotelBalances=readBalanceGrid('hb',HOTELS,HOTEL_STATUS);
+    client.trainBalance=readTrainBalance('ttb');
     client.creditCardBalances=readBalanceGrid('cb',CREDIT_CARDS);
     client.airlineCreditCards=readCardChecklist('facc');
     client.hotelCreditCards=readCardChecklist('fhcc');
