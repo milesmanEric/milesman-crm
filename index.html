@@ -19535,7 +19535,12 @@ function computeBookedTripSummary(bd){
     + (bd.themeParkMilesManFee||0)
     + (bd.trainMilesManFee||0)
     + (bd.busMilesManFee||0);
-  return {rows:rows, transfers:transfers, totalCash: totalPrice + totalPtsCost + totalInsurance + totalMilesManFee, totalPtsValue: totalPtsValue};
+  // Credits to be Received (e.g. a future-stay credit owed back on a hotel
+  // booking) reduce real cash paid, same as totalCash below — unlike
+  // totalPtsValue above, this isn't an estimate, so it comes straight off
+  // the top rather than being tracked separately.
+  var totalCreditsReceived = (bd.hotel||[]).reduce(function(a,h){return a+(h.creditsReceived||0);},0);
+  return {rows:rows, transfers:transfers, totalCash: totalPrice + totalPtsCost + totalInsurance + totalMilesManFee - totalCreditsReceived, totalCreditsReceived:totalCreditsReceived, totalPtsValue: totalPtsValue};
 }
 // Invoice Number only shows here when the trip has no Supplier linked — a
 // linked Supplier means the invoice went to that supplier, not the client,
@@ -19559,6 +19564,7 @@ function bookedTripSummaryHtml(summary, invoicedToClient, invoiceNumber){
     '</tbody></table></div>'
     : '<div style="color:#aaa;font-size:12px;padding:6px 0">No points/miles redemptions added yet</div>')+
     '<div style="margin-top:10px;font-size:14px;font-weight:700;color:#111">Total Cash Paid: $'+money(summary.totalCash)+'</div>'+
+    (summary.totalCreditsReceived ? '<div style="font-size:12px;color:#6b7280">(includes Credits to be Received: -$'+money(summary.totalCreditsReceived)+')</div>' : '')+
     (summary.totalPtsValue ? '<div style="font-size:12px;color:#6b7280">Total Points/Miles Cash Value: $'+money(summary.totalPtsValue)+'</div>' : '');
 }
 // Bound to every input/change event inside the modal (see
@@ -19715,6 +19721,7 @@ function hotelEntryRowInnerHtml(entry){
       '<div class="field"><label>Nights</label><input class="hotel-entry-nights" type="number" value="'+(entry.nights||'')+'"></div>'+
       foreignPriceFieldsHtml('hotel-entry-currency','hotel-entry-price-foreign',entry.currency,entry.priceForeign)+
       '<div class="field"><label>Price ($)</label><input class="hotel-entry-price" type="number" value="'+(entry.price||'')+'"></div>'+
+      '<div class="field"><label>Credits to be Received ($) <span class="hint" style="text-transform:none;font-weight:400">(e.g. a future-stay credit owed back — subtracted from cash paid in the summary)</span></label><input class="hotel-entry-credits" type="number" value="'+(entry.creditsReceived||'')+'"></div>'+
       '<div class="field"><label style="display:flex;align-items:center;gap:6px;font-weight:500;cursor:pointer;margin-top:22px"><input type="checkbox" class="hotel-entry-all-inclusive"'+(entry.allInclusive?' checked':'')+' style="width:15px;height:15px"> All-Inclusive</label></div>'+
       '<div class="field"><label>Third Party Agency</label><select class="hotel-entry-agency"><option value="">-- Select --</option>'+selOpts(THIRD_PARTY_AGENCIES,entry.thirdPartyAgency)+'</select></div>'+
       '<div class="field"><label>Third Party Agency Booking Number</label><input class="hotel-entry-agency-booknum" type="text" value="'+(entry.thirdPartyAgencyBookingNumber||'').toString().replace(/"/g,'&quot;')+'"></div>'+
@@ -19747,6 +19754,7 @@ function readHotelEntries(){
       currency: (row.querySelector('.hotel-entry-currency')||{}).value||'',
       priceForeign: Number((row.querySelector('.hotel-entry-price-foreign')||{}).value)||0,
       price: Number((row.querySelector('.hotel-entry-price')||{}).value)||0,
+      creditsReceived: Number((row.querySelector('.hotel-entry-credits')||{}).value)||0,
       allInclusive: !!(row.querySelector('.hotel-entry-all-inclusive')||{}).checked,
       thirdPartyAgency: (row.querySelector('.hotel-entry-agency')||{}).value||'',
       thirdPartyAgencyBookingNumber: (row.querySelector('.hotel-entry-agency-booknum')||{}).value||'',
@@ -19757,7 +19765,7 @@ function readHotelEntries(){
       notes: (row.querySelector('.hotel-entry-notes')||{}).value||''
     };
   }).filter(function(e){
-    return e.hotelBrand||e.property||e.city||e.country||e.confirmationNumber||e.checkInDate||e.nights||e.currency||e.priceForeign||e.price||e.allInclusive||e.thirdPartyAgency||e.thirdPartyAgencyBookingNumber||e.transferredFrom||e.transferredAmount||e.transferredTo||(e.pts&&e.pts.length)||e.notes;
+    return e.hotelBrand||e.property||e.city||e.country||e.confirmationNumber||e.checkInDate||e.nights||e.currency||e.priceForeign||e.price||e.creditsReceived||e.allInclusive||e.thirdPartyAgency||e.thirdPartyAgencyBookingNumber||e.transferredFrom||e.transferredAmount||e.transferredTo||(e.pts&&e.pts.length)||e.notes;
   });
 }
 // Net Rate Hotel Voucher — a standalone printable/emailable PDF the client
@@ -20217,6 +20225,7 @@ function flightEntryRowInnerHtml(entry){
       '<div class="field"><label>Arrival Time</label><input class="flight-entry-arrivaltime" type="time" value="'+(entry.arrivalTime||'')+'"></div>'+
       '<div class="field"><label>Third Party Agency</label><select class="flight-entry-agency"><option value="">-- Select --</option>'+selOpts(THIRD_PARTY_AGENCIES,entry.thirdPartyAgency)+'</select></div>'+
       '<div class="field"><label>Third Party Agency Booking Number</label><input class="flight-entry-agency-booknum" type="text" value="'+(entry.thirdPartyAgencyBookingNumber||'').toString().replace(/"/g,'&quot;')+'"></div>'+
+      foreignPriceFieldsHtml('flight-entry-currency','flight-entry-price-foreign',entry.currency,entry.priceForeign)+
       '<div class="field"><label>Points Transferred From <span class="hint" style="text-transform:none;font-weight:400">(if this segment was booked with points transferred in from another program first)</span></label><select class="flight-entry-transferred-from">'+transferredFromOptionsHtml(entry.transferredFrom)+'</select></div>'+
       '<div class="field"><label>Points/Miles Transferred</label><input class="flight-entry-transferred-amount" type="number" value="'+(entry.transferredAmount||'')+'"></div>'+
       '<div class="field"><label>Points Transferred To <span class="hint" style="text-transform:none;font-weight:400">(if the points were moved onward into another program before redeeming)</span></label><select class="flight-entry-transferred-to">'+transferredFromOptionsHtml(entry.transferredTo)+'</select></div>'+
@@ -20267,12 +20276,14 @@ function readFlightEntriesFrom(containerEl){
       classOfService: (row.querySelector('.flight-entry-class')||{}).value||'',
       thirdPartyAgency: (row.querySelector('.flight-entry-agency')||{}).value||'',
       thirdPartyAgencyBookingNumber: (row.querySelector('.flight-entry-agency-booknum')||{}).value||'',
+      currency: (row.querySelector('.flight-entry-currency')||{}).value||'',
+      priceForeign: Number((row.querySelector('.flight-entry-price-foreign')||{}).value)||0,
       transferredFrom: (row.querySelector('.flight-entry-transferred-from')||{}).value||'',
       transferredAmount: Number((row.querySelector('.flight-entry-transferred-amount')||{}).value)||0,
       transferredTo: (row.querySelector('.flight-entry-transferred-to')||{}).value||''
     };
   }).filter(function(e){
-    return e.recordNumber||e.airline||e.flightNumber||e.origin||e.destination||e.departDate||e.departTime||e.arrivalTime||e.classOfService||e.thirdPartyAgency||e.thirdPartyAgencyBookingNumber||e.transferredFrom||e.transferredAmount||e.transferredTo;
+    return e.recordNumber||e.airline||e.flightNumber||e.origin||e.destination||e.departDate||e.departTime||e.arrivalTime||e.classOfService||e.thirdPartyAgency||e.thirdPartyAgencyBookingNumber||e.currency||e.priceForeign||e.transferredFrom||e.transferredAmount||e.transferredTo;
   });
 }
 // An Airline Record is one booking covering a group of passengers/flight
@@ -20309,7 +20320,6 @@ function airlineRecordRowInnerHtml(record){
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
       '<div class="field"><label>Number of Passengers</label><select class="airline-record-numpax">'+airPaxNumOptionsHtml(record.numPassengers)+'</select></div>'+
       '<div class="field"><label>Non-Stop Flights Only</label><select class="airline-record-nonstop"><option value="">-- Select --</option>'+selOpts(['Yes','No'],record.nonStop)+'</select></div>'+
-      foreignPriceFieldsHtml('airline-record-currency','airline-record-price-foreign',record.currency,record.priceForeign)+
       '<div class="field"><label>Price ($)</label><input class="airline-record-price" type="number" value="'+(record.price||'')+'"></div>'+
     '</div>'+
     '<div class="field full"><label>Passengers <span class="hint" style="text-transform:none;font-weight:400">(select every client on this record — hold Ctrl/Cmd to select more than one, must match Number of Passengers)</span></label>'+
@@ -20338,8 +20348,6 @@ function readAirlineRecords(){
     return {
       numPassengers: Number((row.querySelector('.airline-record-numpax')||{}).value)||0,
       nonStop: (row.querySelector('.airline-record-nonstop')||{}).value||'',
-      currency: (row.querySelector('.airline-record-currency')||{}).value||'',
-      priceForeign: Number((row.querySelector('.airline-record-price-foreign')||{}).value)||0,
       price: Number((row.querySelector('.airline-record-price')||{}).value)||0,
       passengerClientIds: paxSel ? Array.from(paxSel.selectedOptions).map(function(o){return o.value;}) : [],
       notes: (row.querySelector('.airline-record-notes')||{}).value||'',
@@ -20347,7 +20355,7 @@ function readAirlineRecords(){
       pts: readPointsEntriesFrom(row.querySelector('.record-pts-entries'))
     };
   }).filter(function(r){
-    return r.numPassengers||r.nonStop||r.currency||r.priceForeign||r.price||r.passengerClientIds.length||r.notes||r.segments.length||r.pts.length;
+    return r.numPassengers||r.nonStop||r.price||r.passengerClientIds.length||r.notes||r.segments.length||r.pts.length;
   });
 }
 // Live feedback only — the actual save-blocking check lives in saveTrip(),
