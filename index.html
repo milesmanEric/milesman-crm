@@ -19670,14 +19670,15 @@ function computeBookedTripSummary(bd){
 // linked Supplier means the invoice went to that supplier, not the client,
 // so surfacing "the" invoice number on this client-facing summary would be
 // misleading (there could be a separate supplier-side invoice entirely).
-// Renders one transfer as a "Transferred to"/"Transferred from" pair, the
-// "from" nested one level deeper so it visually relates directly to the
-// "to" line directly above it — the "to" line is skipped when the entry
-// never had a further hop entered (Points Transferred To left blank),
-// since then there's nothing more to pair the "from" line against.
-function transferPairHtml(t){
-  var toLine = t.to ? '<tr style="color:#6b7280;font-size:12px"><td style="padding-left:24px">&#8618; Transferred to: '+escHtml(t.to)+'</td><td style="text-align:right;padding-right:24px">—</td><td style="text-align:right">—</td></tr>' : '';
-  return toLine+'<tr style="color:#6b7280;font-size:12px"><td style="padding-left:'+(t.to?'40px':'24px')+'">&#8618; Transferred from: '+escHtml(t.program)+'</td><td style="text-align:right;padding-right:4px">'+(t.amount?fmt(t.amount):'—')+'</td><td style="text-align:right">—</td></tr>';
+// Renders one transfer as a "Transferred from" line directly beneath the
+// program row it fed. The "Transferred to" line used to be drawn above it,
+// but only when the entry's optional Points Transferred To field was filled
+// in — so some transfers had it and some didn't, and it just repeated the
+// program row above. showTo is only true for the unmatched list at the
+// bottom, where there's no program row above to say where the points went.
+function transferPairHtml(t, showTo){
+  var toLine = (showTo && t.to) ? '<tr style="color:#6b7280;font-size:12px"><td style="padding-left:24px">&#8618; Transferred to: '+escHtml(t.to)+'</td><td style="text-align:right;padding-right:24px">—</td><td style="text-align:right">—</td></tr>' : '';
+  return toLine+'<tr style="color:#6b7280;font-size:12px"><td style="padding-left:'+((showTo&&t.to)?'40px':'24px')+'">&#8618; Transferred from: '+escHtml(t.program)+'</td><td style="text-align:right;padding-right:4px">'+(t.amount?fmt(t.amount):'—')+'</td><td style="text-align:right">—</td></tr>';
 }
 function bookedTripSummaryHtml(summary, invoicedToClient, invoiceNumber){
   var invoiceLine = (invoicedToClient && invoiceNumber) ?
@@ -19689,11 +19690,11 @@ function bookedTripSummaryHtml(summary, invoicedToClient, invoiceNumber){
       // (indented), right below the program they were transferred into —
       // see computeBookedTripSummary's attachTransfer.
       return '<tr><td>'+escHtml(r.program)+'</td><td style="text-align:right;padding-right:24px">'+fmt(r.points)+'</td><td style="text-align:right">'+(r.cashValue?'$'+money(r.cashValue):'—')+'</td></tr>'+
-        (r.transfers||[]).map(transferPairHtml).join('');
+        (r.transfers||[]).map(function(t){return transferPairHtml(t,false);}).join('');
     }).join('')+
     // Transfers whose entry has no Points Used row yet to nest under —
     // listed as their own block at the bottom so the data isn't lost.
-    (summary.unmatchedTransfers||[]).map(transferPairHtml).join('')+
+    (summary.unmatchedTransfers||[]).map(function(t){return transferPairHtml(t,true);}).join('')+
     '</tbody></table></div>'
     : '<div style="color:#aaa;font-size:12px;padding:6px 0">No points/miles redemptions added yet</div>')+
     '<div style="margin-top:10px;font-size:14px;font-weight:700;color:#111">Total Cash Paid: $'+money(summary.totalCash)+'</div>'+
