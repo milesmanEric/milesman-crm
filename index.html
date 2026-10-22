@@ -19482,20 +19482,35 @@ function computeBookedTripSummary(bd){
   });
   var rows = Object.keys(byProgram).map(function(k){return byProgram[k];}).sort(function(a,b){return b.points-a.points;});
   // Points Transferred From/Amount live on each Hotel entry and each
-  // Airline flight segment (not on a Points Used row itself — a booking's
-  // one transfer can cover more than one redemption), so these are
-  // collected separately and rendered as their own indented lines beneath
-  // the Points Used table (see bookedTripSummaryHtml) rather than matched
-  // up to one specific program row.
-  var transfers = [];
+  // Airline flight segment, not on a Points Used row itself (a booking's
+  // one transfer can feed more than one redemption) — so each transfer is
+  // nested under every program its own entry/record actually redeemed
+  // points in (row.transfers, rendered directly beneath that program's row
+  // in bookedTripSummaryHtml), rather than matched to one single row. A
+  // transfer whose entry has no Points Used rows yet has nothing to nest
+  // under, so it falls back into the unmatched list rendered at the bottom.
+  var transfersByProgram = {};
+  var unmatchedTransfers = [];
+  function attachTransfer(programsUsed, transfer){
+    if(!programsUsed.length){ unmatchedTransfers.push(transfer); return; }
+    programsUsed.forEach(function(prog){
+      if(!transfersByProgram[prog]) transfersByProgram[prog] = [];
+      transfersByProgram[prog].push(transfer);
+    });
+  }
   (bd.hotel||[]).forEach(function(h){
-    if(h.transferredFrom || h.transferredAmount) transfers.push({program: h.transferredFrom || '(no program selected)', amount: Number(h.transferredAmount)||0});
+    if(!h.transferredFrom && !h.transferredAmount) return;
+    var progs = (h.pts||[]).map(function(p){return p.program||'(no program selected)';}).filter(function(v,i,a){return a.indexOf(v)===i;});
+    attachTransfer(progs, {program: h.transferredFrom || '(no program selected)', amount: Number(h.transferredAmount)||0});
   });
   airlineRecords.forEach(function(r){
+    var recordPrograms = (r.pts||[]).map(function(p){return p.program||'(no program selected)';}).filter(function(v,i,a){return a.indexOf(v)===i;});
     (r.segments||[]).forEach(function(seg){
-      if(seg.transferredFrom || seg.transferredAmount) transfers.push({program: seg.transferredFrom || '(no program selected)', amount: Number(seg.transferredAmount)||0});
+      if(!seg.transferredFrom && !seg.transferredAmount) return;
+      attachTransfer(recordPrograms, {program: seg.transferredFrom || '(no program selected)', amount: Number(seg.transferredAmount)||0});
     });
   });
+  rows.forEach(function(row){ row.transfers = transfersByProgram[row.program] || []; });
   var totalPtsCost = allPts.reduce(function(a,p){return a+(Number(p.cost)||0);},0);
   // Cash Value is the estimated worth of a redemption, not cash actually
   // spent — kept separate from totalCash below (real money out the door),
@@ -19540,7 +19555,7 @@ function computeBookedTripSummary(bd){
   // totalPtsValue above, this isn't an estimate, so it comes straight off
   // the top rather than being tracked separately.
   var totalCreditsReceived = (bd.hotel||[]).reduce(function(a,h){return a+(h.creditsReceived||0);},0);
-  return {rows:rows, transfers:transfers, totalCash: totalPrice + totalPtsCost + totalInsurance + totalMilesManFee - totalCreditsReceived, totalCreditsReceived:totalCreditsReceived, totalPtsValue: totalPtsValue};
+  return {rows:rows, unmatchedTransfers:unmatchedTransfers, totalCash: totalPrice + totalPtsCost + totalInsurance + totalMilesManFee - totalCreditsReceived, totalCreditsReceived:totalCreditsReceived, totalPtsValue: totalPtsValue};
 }
 // Invoice Number only shows here when the trip has no Supplier linked — a
 // linked Supplier means the invoice went to that supplier, not the client,
@@ -19552,13 +19567,17 @@ function bookedTripSummaryHtml(summary, invoicedToClient, invoiceNumber){
   return invoiceLine + (summary.rows.length ?
     '<div class="tbl-wrap"><table class="report-table"><thead><tr><th>Program</th><th style="text-align:right">Points/Miles Used</th><th style="text-align:right">Cash Value</th></tr></thead><tbody>'+
     summary.rows.map(function(r){
-      return '<tr><td>'+escHtml(r.program)+'</td><td style="text-align:right">'+fmt(r.points)+'</td><td style="text-align:right">'+(r.cashValue?'$'+money(r.cashValue):'—')+'</td></tr>';
+      // Each row's own Points Transferred From/Amount lines go directly
+      // beneath it (indented), right below the program they were
+      // transferred into — see computeBookedTripSummary's attachTransfer.
+      return '<tr><td>'+escHtml(r.program)+'</td><td style="text-align:right">'+fmt(r.points)+'</td><td style="text-align:right">'+(r.cashValue?'$'+money(r.cashValue):'—')+'</td></tr>'+
+        (r.transfers||[]).map(function(t){
+          return '<tr style="color:#6b7280;font-size:12px"><td style="padding-left:24px">&#8618; Transferred from: '+escHtml(t.program)+'</td><td style="text-align:right">'+(t.amount?fmt(t.amount):'—')+'</td><td style="text-align:right">—</td></tr>';
+        }).join('');
     }).join('')+
-    // Points Transferred From/Amount, indented beneath the Points Used
-    // rows above — not matched to one specific program row (see the
-    // comment on computeBookedTripSummary's own transfers collection for
-    // why), just listed as its own nested block under the table as a whole.
-    (summary.transfers||[]).map(function(t){
+    // Transfers whose entry has no Points Used row yet to nest under —
+    // listed as their own block at the bottom so the data isn't lost.
+    (summary.unmatchedTransfers||[]).map(function(t){
       return '<tr style="color:#6b7280;font-size:12px"><td style="padding-left:24px">&#8618; Transferred from: '+escHtml(t.program)+'</td><td style="text-align:right">'+(t.amount?fmt(t.amount):'—')+'</td><td style="text-align:right">—</td></tr>';
     }).join('')+
     '</tbody></table></div>'
