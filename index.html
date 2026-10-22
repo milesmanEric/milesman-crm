@@ -20160,6 +20160,8 @@ function trainEntryRowInnerHtml(entry){
       '<div class="field"><label>Return Date</label><input class="train-entry-retdate" type="date" value="'+(entry.returnDate||'')+'"></div>'+
       '<div class="field"><label>Class of Service</label><select class="train-entry-class"><option value="">-- Select --</option>'+selOpts(TRAIN_CLASSES,entry.classOfService)+'</select></div>'+
       '<div class="field"><label>Number of Passengers</label><input class="train-entry-numpax" type="number" min="1" step="1" value="'+(entry.numPassengers||'')+'"></div>'+
+      '<div class="field"><label>Third Party Agency</label><select class="train-entry-agency"><option value="">-- Select --</option>'+selOpts(THIRD_PARTY_AGENCIES,entry.thirdPartyAgency)+'</select></div>'+
+      '<div class="field"><label>Third Party Agency Booking Number</label><input class="train-entry-agency-booknum" type="text" value="'+(entry.thirdPartyAgencyBookingNumber||'').toString().replace(/"/g,'&quot;')+'"></div>'+
       foreignPriceFieldsHtml('train-entry-currency','train-entry-price-foreign',entry.currency,entry.priceForeign)+
       '<div class="field"><label>Price ($)</label><input class="train-entry-price" type="number" value="'+(entry.price||'')+'"></div>'+
       '<div class="field"><label>Miles Man Booking Fee ($)</label><input class="train-entry-fee" type="number" value="'+(entry.milesManFee||'')+'"></div>'+
@@ -20183,6 +20185,8 @@ function readTrainEntries(){
       returnDate: (row.querySelector('.train-entry-retdate')||{}).value||'',
       classOfService: (row.querySelector('.train-entry-class')||{}).value||'',
       numPassengers: Number((row.querySelector('.train-entry-numpax')||{}).value)||0,
+      thirdPartyAgency: (row.querySelector('.train-entry-agency')||{}).value||'',
+      thirdPartyAgencyBookingNumber: (row.querySelector('.train-entry-agency-booknum')||{}).value||'',
       currency: (row.querySelector('.train-entry-currency')||{}).value||'',
       priceForeign: Number((row.querySelector('.train-entry-price-foreign')||{}).value)||0,
       price: Number((row.querySelector('.train-entry-price')||{}).value)||0,
@@ -20191,7 +20195,7 @@ function readTrainEntries(){
       notes: (row.querySelector('.train-entry-notes')||{}).value||''
     };
   }).filter(function(e){
-    return e.confirmationNumber||e.departureCity||e.arrivalCity||e.departureDate||e.returnDate||e.classOfService||e.numPassengers||e.currency||e.priceForeign||e.price||e.milesManFee||e.logoUrl||e.notes;
+    return e.confirmationNumber||e.departureCity||e.arrivalCity||e.departureDate||e.returnDate||e.classOfService||e.numPassengers||e.thirdPartyAgency||e.thirdPartyAgencyBookingNumber||e.currency||e.priceForeign||e.price||e.milesManFee||e.logoUrl||e.notes;
   });
 }
 function busEntryRowInnerHtml(entry){
