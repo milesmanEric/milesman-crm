@@ -1587,15 +1587,46 @@ function instrumentDbWipeTracing(){
 instrumentDbWipeTracing();
 const UNDO_STACK = [];
 const MAX_UNDO = 20;
+// Each snapshot used to be one JSON.stringify(db) — 20 full copies of the
+// whole database (every client note, every logged email body) held in memory
+// at once, which is what pushed Chrome's tab into the gigabytes. Now a
+// snapshot is {collection: json}, and a collection that hasn't changed since
+// the previous snapshot reuses that snapshot's string instead of a new copy;
+// the stack is also capped by total size, not just by count.
+const MAX_UNDO_CHARS = 24 * 1000 * 1000;
+function undoStackChars(){
+  // Count each distinct string once — shared collections are one allocation.
+  var seen = new Set(), n = 0;
+  UNDO_STACK.forEach(function(snap){
+    Object.keys(snap.data).forEach(function(k){
+      var str = snap.data[k];
+      if(seen.has(str)) return;
+      seen.add(str); n += str.length;
+    });
+  });
+  return n;
+}
 function snapshot(label){
-  UNDO_STACK.push({label:label||'action', data:JSON.stringify(db)});
-  if(UNDO_STACK.length > MAX_UNDO) UNDO_STACK.shift();
+  var prev = UNDO_STACK.length ? UNDO_STACK[UNDO_STACK.length-1].data : null;
+  var data = {};
+  Object.keys(db).forEach(function(k){
+    var json = JSON.stringify(db[k]);
+    if(json === undefined) return;
+    data[k] = (prev && prev[k] === json) ? prev[k] : json;
+  });
+  UNDO_STACK.push({label:label||'action', data:data});
+  while(UNDO_STACK.length > MAX_UNDO) UNDO_STACK.shift();
+  while(UNDO_STACK.length > 1 && undoStackChars() > MAX_UNDO_CHARS) UNDO_STACK.shift();
   updateUndoBtn();
 }
 function undo(){
   if(!UNDO_STACK.length){toast('Nothing to undo','err');return;}
   const prev = UNDO_STACK.pop();
-  try{ db = JSON.parse(prev.data); instrumentDbWipeTracing(); }catch(e){ toast('Undo failed','err');return; }
+  try{
+    var restored = {};
+    Object.keys(prev.data).forEach(function(k){ restored[k] = JSON.parse(prev.data[k]); });
+    db = restored; instrumentDbWipeTracing();
+  }catch(e){ toast('Undo failed','err');return; }
   saveDB(); render();
   updateUndoBtn();
   toast('Undid: '+prev.label,'ok');
@@ -2265,6 +2296,10 @@ function saveDB(){
   }
   try{
     var json = JSON.stringify(db);
+    if(!window._loggedDbSize){
+      window._loggedDbSize = true;
+      debugLog('Database size this session: '+(json.length/1048576).toFixed(2)+' MB of JSON ('+db.clients.length+' clients, '+db.trips.length+' trips)');
+    }
     recordGoodDbCounts();
     _dbSavesInFlight++;
     var savingLbl=document.getElementById('sync-lbl');
@@ -2297,7 +2332,7 @@ function saveDB(){
           // protect, since losing debug history is nowhere near as bad as
           // losing this save. If it still doesn't fit after that, this
           // rethrows and falls through to the same failure reporting below.
-          localStorage.removeItem('mm_debug_log');
+          clearDebugLogStorage();
           localStorage.setItem(LS_KEY, encoded);
           debugLog('saveDB(): local storage was full — cleared debug log history to free room, retried, succeeded');
         } else {
@@ -2847,15 +2882,42 @@ const av = (name,sz) => { sz=sz||30; var fn=getFirstName(name)||name||'?'; retur
 
 
 // ── Debug Panel ───────────────────────────────────────────────────────────
+// The persisted copy used to be re-read, re-parsed, re-stringified and
+// re-written (up to 1000 entries) on EVERY debugLog() call — and a single
+// sync logs hundreds of lines — which churned through megabytes of garbage
+// strings per sync. Keep the entries in one in-memory array instead and
+// write it to localStorage once per burst (and on pagehide).
+var _debugLogBuf = null;
+var _debugLogFlushTimer = null;
+function debugLogBuf(){
+  if(_debugLogBuf) return _debugLogBuf;
+  try{ _debugLogBuf = JSON.parse(localStorage.getItem('mm_debug_log')||'[]'); }catch(e){ _debugLogBuf = []; }
+  if(!Array.isArray(_debugLogBuf)) _debugLogBuf = [];
+  return _debugLogBuf;
+}
+function flushDebugLog(){
+  if(_debugLogFlushTimer){ clearTimeout(_debugLogFlushTimer); _debugLogFlushTimer = null; }
+  if(!_debugLogBuf) return;
+  try{ localStorage.setItem('mm_debug_log', JSON.stringify(_debugLogBuf)); }catch(e){}
+}
+function clearDebugLogStorage(){
+  _debugLogBuf = [];
+  if(_debugLogFlushTimer){ clearTimeout(_debugLogFlushTimer); _debugLogFlushTimer = null; }
+  try{ localStorage.removeItem('mm_debug_log'); }catch(e){}
+}
+window.addEventListener('pagehide', flushDebugLog);
 function debugLog(msg){
-  // Persist to localStorage so it survives redirects
   const ts = new Date().toLocaleTimeString();
+  msg = String(msg);
+  // A few call sites log whole address lists / stack traces; one entry is
+  // never worth more than this, and 1000 of them are kept in memory.
+  if(msg.length > 1500) msg = msg.slice(0,1500)+'… ['+(msg.length-1500)+' more chars]';
   const entry = ts + ' > ' + msg;
   try{
-    const prev = JSON.parse(localStorage.getItem('mm_debug_log')||'[]');
-    prev.push(entry);
-    if(prev.length > 1000) prev.shift();
-    localStorage.setItem('mm_debug_log', JSON.stringify(prev));
+    const buf = debugLogBuf();
+    buf.push(entry);
+    if(buf.length > 1000) buf.splice(0, buf.length-1000);
+    if(!_debugLogFlushTimer) _debugLogFlushTimer = setTimeout(flushDebugLog, 1000);
   }catch(e){}
   // Update panel DOM, capped to prevent memory leak from unbounded node accumulation.
   // Newest entry goes on top, so prepend rather than append — and cap by
@@ -2877,7 +2939,7 @@ function debugLog(msg){
 
 function loadDebugLog(){
   try{
-    const entries = JSON.parse(localStorage.getItem('mm_debug_log')||'[]');
+    const entries = debugLogBuf();
     if(!entries.length) return;
     const log=$('debug-log');
     const panel=$('debug-panel');
@@ -3140,6 +3202,7 @@ function contactEmailPhoneLine(c){
   if(c.propertyName) parts.push(escHtml(c.propertyName));
   return parts.length ? parts.join(' &middot; ') : '&nbsp;';
 }
+const EMAIL_NOTE_MAX_CHARS = 4000;
 function emailToNote(msg){
   const dt=new Date(msg.receivedDateTime);
   const ts=dt.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})+' '+dt.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
@@ -3147,7 +3210,11 @@ function emailToNote(msg){
   const dir=isSent?'Sent':'Received';
   const noteType=isSent?'Email Sent':'Email Received';
   const subj=msg.subject||'(no subject)';
-  const body=msg.body?stripHtml(msg.body.content||''):(msg.bodyPreview||'');
+  let body=msg.body?stripHtml(msg.body.content||''):(msg.bodyPreview||'');
+  // Every synced email's full text lives in the database (and in every undo
+  // snapshot, save, and backup of it); a long reply chain is easily 50KB+.
+  // The start of the message is what's useful in a timeline.
+  if(body.length > EMAIL_NOTE_MAX_CHARS) body = body.slice(0,EMAIL_NOTE_MAX_CHARS)+'… [message truncated]';
   return {ts:ts,text:dir+': '+subj+(body?'\n'+body:''),source:'outlook',msgId:msg.id,noteType:noteType};
 }
 async function syncOutlook(){
@@ -26481,7 +26548,7 @@ function bindClick(id, handler){
   });
   bindClick('btn-import-suppliers-sb', importVendorsCSV);
   bindClick('btn-undo', undo);
-  bindClick('debug-clear', function(){$('debug-log').innerHTML='';localStorage.removeItem('mm_debug_log');});
+  bindClick('debug-clear', function(){$('debug-log').innerHTML='';clearDebugLogStorage();});
 
   bindClick('btn-drive-signout', function(){
     localStorage.removeItem('mm_drive_token');
