@@ -1281,7 +1281,7 @@ function quoteTableStructure(cfg){
 const STATUSES = ['Planning','Confirmed','Upcoming','In Progress','Completed','Cancelled'];
 const TYPES    = ['Leisure','Business','Honeymoon','Family','Adventure','Cruise'];
 const CLASSES  = ['Basic Economy','Economy','Premium Economy','Business','First'];
-const THIRD_PARTY_AGENCIES = ['American Express Travel','Chase Travel'];
+const THIRD_PARTY_AGENCIES = ['American Express Travel','Chase Travel','Rail Europe'];
 const FOREIGN_CURRENCIES = ['EUR - Euro','GBP - British Pound','CAD - Canadian Dollar','AUD - Australian Dollar','MXN - Mexican Peso','JPY - Japanese Yen','CHF - Swiss Franc','NZD - New Zealand Dollar','Other'];
 const NOTE_TYPES = ['Email Sent','Email Received','Initial Call','Follow-up','Post-Trip Follow-up','General','Trip Import','Text Message Sent','Text Message Received','Lead','Mailchimp Email Sent','Facebook Message','Marketing Plan'];
 // 'Sales Outreach' is direct 1:1 selling (a call, a personal email, a
@@ -7122,7 +7122,10 @@ const TRAVEL_ITEM_TYPES = {
     {key:'arrivalCity', label:'Arrival City'},
     {key:'departureDate', label:'Departure Date', type:'date'},
     {key:'returnDate', label:'Return Date', type:'date'},
-    {key:'classOfService', label:'Class of Service', opts:TRAIN_CLASSES}
+    {key:'classOfService', label:'Class of Service', opts:TRAIN_CLASSES},
+    {key:'numPassengers', label:'Number of Passengers', type:'number'},
+    {key:'thirdPartyAgency', label:'Third Party Agency', opts:THIRD_PARTY_AGENCIES},
+    {key:'thirdPartyAgencyBookingNumber', label:'Third Party Agency Booking Number'}
   ]},
   'Bus': {fields:[
     {key:'departureCity', label:'Departure City'},
@@ -8587,7 +8590,7 @@ function tripToTravelItems(trip){
   });
   [['Train', b.train], ['Bus', b.bus]].forEach(function(pair){
     asArr(pair[1]).forEach(function(x){
-      push(pair[0], {departureCity:x.departureCity, arrivalCity:x.arrivalCity, departureDate:x.departureDate, returnDate:x.returnDate, classOfService:x.classOfService, notes:x.notes, confirmationNumber:x.confirmationNumber, price:x.price});
+      push(pair[0], {departureCity:x.departureCity, arrivalCity:x.arrivalCity, departureDate:x.departureDate, returnDate:x.returnDate, classOfService:x.classOfService, numPassengers:x.numPassengers, thirdPartyAgency:x.thirdPartyAgency, thirdPartyAgencyBookingNumber:x.thirdPartyAgencyBookingNumber, notes:x.notes, confirmationNumber:x.confirmationNumber, price:x.price});
     });
   });
   return items;
@@ -10069,6 +10072,9 @@ function processTripFormRow(getVal, counters){
   addLine('Train Departure City', getVal('Train Departure City'));
   addLine('Train Arrival City', getVal('Train Arrival City'));
   addLine('Train Class of Service', getVal('Train Class of Service'));
+  addLine('Train Number of Passengers', getVal('Train Number of Passengers'));
+  addLine('Train Third Party Agency', getVal('Train Third Party Agency'));
+  addLine('Train Third Party Agency Booking Number', getVal('Train Third Party Agency Booking Number'));
   addLine('Bus Departure Date', getVal('Bus Departure Date'));
   addLine('Bus Return Date', getVal('Bus Return Date'));
   addLine('Bus Departure City', getVal('Bus Departure City'));
@@ -10284,7 +10290,7 @@ function buildTripFormFieldLabels(){
     'Airline','Airline Other','Origin','Destination','Trip Direction','Depart Date','Return Date','Class of Service','Non-Stop Flights Only','Trip Type',
     'Cruise Line','Cruise Line Other','Ship Name','Cruise Nights','Sailing Date','Departure Port','Cabin Type','People In Cabin','Cruise Loyalty Number','Cruisetour',
     'Car Rental Company','Car Rental Company Other','Car Size','Pickup Location','Dropoff Location','Pickup Date','Dropoff Date','Pickup Time','Dropoff Time',
-    'Train Departure Date','Train Return Date','Train Departure City','Train Arrival City','Train Class of Service',
+    'Train Departure Date','Train Return Date','Train Departure City','Train Arrival City','Train Class of Service','Train Number of Passengers','Train Third Party Agency','Train Third Party Agency Booking Number',
     'Bus Departure Date','Bus Return Date','Bus Departure City','Bus Arrival City','Bus Class of Service',
     'Payment Preference','Notes','Trip Insurance','Total Budget');
   for(var ci=1; ci<=20; ci++){ labels.push('City '+ci, 'City '+ci+' Departure Date'); }

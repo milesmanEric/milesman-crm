@@ -462,6 +462,23 @@
               <option>Sleeper Car</option>
             </select>
           </div>
+          <div class="field">
+            <label>Number of Passengers</label>
+            <input type="number" name="Train Number of Passengers" min="1" step="1">
+          </div>
+          <div class="field">
+            <label for="train-agency-select">Third Party Agency <span class="hint">(if booked through one)</span></label>
+            <select id="train-agency-select" name="Train Third Party Agency">
+              <option value="">-- Select --</option>
+              <option>American Express Travel</option>
+              <option>Chase Travel</option>
+              <option>Rail Europe</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Third Party Agency Booking Number</label>
+            <input type="text" name="Train Third Party Agency Booking Number">
+          </div>
         </div>
       </div>
       <div class="field full" id="bus-details-wrap" style="display:none">
