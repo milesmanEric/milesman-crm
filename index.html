@@ -19676,19 +19676,19 @@ function computeBookedTripSummary(bd){
 // never had a further hop entered (Points Transferred To left blank),
 // since then there's nothing more to pair the "from" line against.
 function transferPairHtml(t){
-  var toLine = t.to ? '<tr style="color:#6b7280;font-size:12px"><td style="padding-left:24px">&#8618; Transferred to: '+escHtml(t.to)+'</td><td style="text-align:right">—</td><td style="text-align:right">—</td></tr>' : '';
-  return toLine+'<tr style="color:#6b7280;font-size:12px"><td style="padding-left:'+(t.to?'40px':'24px')+'">&#8618; Transferred from: '+escHtml(t.program)+'</td><td style="text-align:right">'+(t.amount?fmt(t.amount):'—')+'</td><td style="text-align:right">—</td></tr>';
+  var toLine = t.to ? '<tr style="color:#6b7280;font-size:12px"><td style="padding-left:24px">&#8618; Transferred to: '+escHtml(t.to)+'</td><td style="text-align:right;padding-right:28px">—</td><td style="text-align:right">—</td></tr>' : '';
+  return toLine+'<tr style="color:#6b7280;font-size:12px"><td style="padding-left:'+(t.to?'40px':'24px')+'">&#8618; Transferred from: '+escHtml(t.program)+'</td><td style="text-align:right;padding-right:28px">'+(t.amount?fmt(t.amount):'—')+'</td><td style="text-align:right">—</td></tr>';
 }
 function bookedTripSummaryHtml(summary, invoicedToClient, invoiceNumber){
   var invoiceLine = (invoicedToClient && invoiceNumber) ?
     '<div style="font-size:13px;color:#374151;margin-bottom:10px">Invoice Number: <strong>'+escHtml(invoiceNumber)+'</strong></div>' : '';
   return invoiceLine + (summary.rows.length ?
-    '<div class="tbl-wrap"><table class="report-table"><thead><tr><th>Program</th><th style="text-align:right">Points/Miles Used</th><th style="text-align:right">Cash Value</th></tr></thead><tbody>'+
+    '<div class="tbl-wrap"><table class="report-table"><thead><tr><th>Program</th><th style="text-align:right;padding-right:28px">Points/Miles Used</th><th style="text-align:right">Cash Value</th></tr></thead><tbody>'+
     summary.rows.map(function(r){
       // Each row's own Transferred to/from pairs go directly beneath it
       // (indented), right below the program they were transferred into —
       // see computeBookedTripSummary's attachTransfer.
-      return '<tr><td>'+escHtml(r.program)+'</td><td style="text-align:right">'+fmt(r.points)+'</td><td style="text-align:right">'+(r.cashValue?'$'+money(r.cashValue):'—')+'</td></tr>'+
+      return '<tr><td>'+escHtml(r.program)+'</td><td style="text-align:right;padding-right:28px">'+fmt(r.points)+'</td><td style="text-align:right">'+(r.cashValue?'$'+money(r.cashValue):'—')+'</td></tr>'+
         (r.transfers||[]).map(transferPairHtml).join('');
     }).join('')+
     // Transfers whose entry has no Points Used row yet to nest under —
