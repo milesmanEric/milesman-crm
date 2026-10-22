@@ -10968,11 +10968,14 @@ function classifyRowCells(row, pageColumns){
 }
 async function extractRevenueTableFromPdf(arrayBuffer, password){
   var pdfjsLib = await loadPdfJs();
-  var pdf = await pdfjsLib.getDocument({data:arrayBuffer, password:password}).promise;
-  // destroy() frees the worker-side document (parsed fonts, page caches);
-  // without it every imported PDF stayed resident for the life of the tab.
+  var task = pdfjsLib.getDocument({data:arrayBuffer, password:password});
+  var pdf = await task.promise;
+  // Destroying the loading task frees the worker-side document (parsed
+  // fonts, page caches); without it every imported PDF stayed resident for
+  // the life of the tab. (PDFDocumentProxy itself has no destroy() in this
+  // pdf.js version — calling it threw and broke every import.)
   try{ return await extractRevenueTableFromPdfDoc(pdf); }
-  finally{ pdf.destroy(); }
+  finally{ releasePdfTask(task); }
 }
 async function extractRevenueTableFromPdfDoc(pdf){
 
@@ -11108,7 +11111,8 @@ const REPORT_TOTAL_CONFIGS = [
 // reports aren't a fixed table shape, so there's nothing to classify.
 async function extractAllPdfRows(arrayBuffer, password){
   var pdfjsLib = await loadPdfJs();
-  var pdf = await pdfjsLib.getDocument({data:arrayBuffer, password:password}).promise;
+  var task = pdfjsLib.getDocument({data:arrayBuffer, password:password});
+  var pdf = await task.promise;
   var allRows = [];
   try{
     for(var p=1; p<=pdf.numPages; p++){
@@ -11120,7 +11124,7 @@ async function extractAllPdfRows(arrayBuffer, password){
       });
       allRows = allRows.concat(groupPdfItemsIntoRows(items));
     }
-  }finally{ pdf.destroy(); }
+  }finally{ releasePdfTask(task); }
   return allRows;
 }
 // QuickBooks prints a grand-total row at the very end of both an End of Day
@@ -11434,9 +11438,18 @@ function loadPdfJs(){
   }
   return _pdfjsLibPromise;
 }
+// Best-effort cleanup — must never throw or reject, since it runs in a
+// finally block after the extraction result is already in hand.
+function releasePdfTask(task){
+  try{
+    var r = task && task.destroy && task.destroy();
+    if(r && r.catch) r.catch(function(){});
+  }catch(e){}
+}
 async function extractPdfText(arrayBuffer){
   const pdfjsLib=await loadPdfJs();
-  const pdf=await pdfjsLib.getDocument({data:arrayBuffer}).promise;
+  const task=pdfjsLib.getDocument({data:arrayBuffer});
+  const pdf=await task.promise;
   let text='';
   try{
     for(let p=1;p<=pdf.numPages;p++){
@@ -11444,7 +11457,7 @@ async function extractPdfText(arrayBuffer){
       const content=await page.getTextContent();
       text+=content.items.map(function(it){return it.str;}).join(' ')+' ';
     }
-  }finally{ pdf.destroy(); }
+  }finally{ releasePdfTask(task); }
   return text.replace(/[‘’]/g,"'").replace(/[“”]/g,'"').replace(/\s+/g,' ').trim();
 }
 // Every question label in the template, used as boundaries so we know where
