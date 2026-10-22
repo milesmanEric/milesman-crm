@@ -19650,15 +19650,16 @@ function computeBookedTripSummary(bd){
   // the top rather than being tracked separately.
   var totalCreditsReceived = (bd.hotel||[]).reduce(function(a,h){return a+(h.creditsReceived||0);},0);
   // Resort/Food & Beverage Credit is an amenity value included with the
-  // stay, not cash owed back — shown as its own total (same "informational,
-  // not subtracted" treatment as totalPtsValue) rather than folded into
-  // totalCash.
+  // stay, not cash owed back — shown as its own total (never folded into
+  // totalCash, which is real money out the door) but added into
+  // totalTripValue below, like totalPtsValue.
   var totalResortCredit = (bd.hotel||[]).reduce(function(a,h){return a+(h.resortCredit||0);},0);
   var totalCash = totalPrice + totalPtsCost + totalInsurance + totalMilesManFee - totalCreditsReceived;
   // Total Trip Value is what the whole booking is actually worth — real
   // cash paid plus the estimated cash value of whatever was redeemed with
-  // points/miles, the two halves tracked separately everywhere above.
-  var totalTripValue = totalCash + totalPtsValue;
+  // points/miles, the two halves tracked separately everywhere above —
+  // plus the resort/food & beverage credit value included with the stays.
+  var totalTripValue = totalCash + totalPtsValue + totalResortCredit;
   return {rows:rows, unmatchedTransfers:unmatchedTransfers, totalCash:totalCash, totalCreditsReceived:totalCreditsReceived, totalResortCredit:totalResortCredit, totalPtsValue:totalPtsValue, totalMilesManFee:totalMilesManFee, totalTripValue:totalTripValue};
 }
 // Invoice Number only shows here when the trip has no Supplier linked — a
@@ -19695,7 +19696,7 @@ function bookedTripSummaryHtml(summary, invoicedToClient, invoiceNumber){
     (summary.totalCreditsReceived ? '<div style="font-size:12px;color:#6b7280">(includes Credits to be Received: $'+money(summary.totalCreditsReceived)+')</div>' : '')+
     (summary.totalMilesManFee ? '<div style="font-size:12px;color:#6b7280">Total Miles Man Fees: $'+money(summary.totalMilesManFee)+'</div>' : '')+
     (summary.totalPtsValue ? '<div style="font-size:12px;color:#6b7280">Total Points/Miles Cash Value: $'+money(summary.totalPtsValue)+'</div>' : '')+
-    (summary.totalResortCredit ? '<div style="font-size:12px;color:#6b7280">Total Resort/Food &amp; beverage Credits: $'+money(summary.totalResortCredit)+'</div>' : '')+
+    (summary.totalResortCredit ? '<div style="font-size:12px;color:#6b7280">Total Resort/Food &amp; Beverage Credits: $'+money(summary.totalResortCredit)+' (included in Total Trip Value)</div>' : '')+
     '<div style="margin-top:4px;font-size:14px;font-weight:700;color:#111">Total Trip Value: $'+money(summary.totalTripValue)+'</div>';
 }
 // Bound to every input/change event inside the modal (see
@@ -19856,7 +19857,7 @@ function hotelEntryRowInnerHtml(entry){
       '<div class="field"><label>Price ($)</label><input class="hotel-entry-price" type="number" value="'+(entry.price||'')+'"></div>'+
       '<div class="field"><label>Miles Man Booking Fee ($)</label><input class="hotel-entry-fee" type="number" value="'+(entry.milesManFee||'')+'"></div>'+
       '<div class="field"><label>Credits to be Received ($) <span class="hint" style="text-transform:none;font-weight:400">(e.g. a future-stay credit owed back — subtracted from cash paid in the summary)</span></label><input class="hotel-entry-credits" type="number" value="'+(entry.creditsReceived||'')+'"></div>'+
-      '<div class="field"><label>Resort/Food &amp; Beverage Credit ($) <span class="hint" style="text-transform:none;font-weight:400">(e.g. a daily resort credit included with this stay — totaled in the summary)</span></label><input class="hotel-entry-resort-credit" type="number" value="'+(entry.resortCredit||'')+'"></div>'+
+      '<div class="field"><label>Resort/Food &amp; Beverage Credit ($) <span class="hint" style="text-transform:none;font-weight:400">(e.g. a daily resort credit included with this stay — added to Total Trip Value in the summary)</span></label><input class="hotel-entry-resort-credit" type="number" value="'+(entry.resortCredit||'')+'"></div>'+
       '<div class="field"><label style="display:flex;align-items:center;gap:6px;font-weight:500;cursor:pointer;margin-top:22px"><input type="checkbox" class="hotel-entry-all-inclusive"'+(entry.allInclusive?' checked':'')+' style="width:15px;height:15px"> All-Inclusive</label></div>'+
       '<div class="field"><label>Third Party Agency</label><select class="hotel-entry-agency"><option value="">-- Select --</option>'+selOpts(THIRD_PARTY_AGENCIES,entry.thirdPartyAgency)+'</select></div>'+
       '<div class="field"><label>Third Party Agency Booking Number</label><input class="hotel-entry-agency-booknum" type="text" value="'+(entry.thirdPartyAgencyBookingNumber||'').toString().replace(/"/g,'&quot;')+'"></div>'+
