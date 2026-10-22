@@ -169,7 +169,7 @@ The trip form has two parts:
 
 None of this is required — fill in whatever you actually have confirmed. Leave a category blank if it doesn't apply to that trip.
 
-Just above the Summary, a **Budget** section holds the trip's **Total Budget**, with a live note listing which sections (Airline, Hotel, Cruise, and so on) currently have details filled in and so fall under that budget, plus a reminder that any Miles Man fees are on top of it. Both the Budget and each hotel's All-Inclusive checkbox also appear on the public Book a Trip form, and a submission's answers carry over into the trip it creates.
+Just above the Booked Trip Details sections (before Airline), a **Budget** section holds the trip's **Total Budget**, with a live note listing which sections (Airline, Hotel, Cruise, and so on) currently have details filled in and so fall under that budget, plus a reminder that any Miles Man fees are on top of it. Both the Budget and each hotel's All-Inclusive checkbox also appear on the public Book a Trip form, and a submission's answers carry over into the trip it creates.
 
 At the very bottom, a **Summary** section totals everything up live as you fill the form in: every points/miles redemption across every category, added up by program, and a **Total Cash Paid** figure (every Price field plus every points redemption's cash cost, all added together). Nothing to click — it just stays current as you type. If the trip has no Supplier linked, the Summary also shows the Invoice Number — once a Supplier is picked, the invoice is assumed to have gone to them instead, so it drops off this client-facing summary.
 

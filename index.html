@@ -20687,6 +20687,12 @@ function bookedTripDetailsHtml(bd){
     });
   }
   return ''+
+    '<div class="modal-section-title">Budget</div>'+
+    '<div style="display:grid;grid-column:1/-1;grid-template-columns:1fr 1fr;gap:12px">'+
+      fld('Total Budget ($)',inp('tb-budget-total','number',bd.totalBudget))+
+      '<div class="field full"><div class="hint" id="tb-budget-includes" style="text-transform:none;font-weight:400"></div></div>'+
+      '<div class="field full"><div class="hint" style="text-transform:none;font-weight:400">Any Miles Man fees will be in addition to this budgeted amount.</div></div>'+
+    '</div>'+
     '<div class="modal-section-title">Booked Trip Details</div>'+
     fld('Trip Name',inp('tb-trip-name','text',bd.tripName,'e.g. Smith Family Alaska Cruise'))+
     bookedCatSectionHtml('airline','Airline',
@@ -20773,12 +20779,6 @@ function bookedTripDetailsHtml(bd){
       fld('Insurance Premium ($)',inp('tb-bus-insurance','number',busInsurancePremium,'If purchased for this trip, through the bus line or a separate insurer'))+
       fld('Coverage Amount ($)',inp('tb-bus-coverage','number',busInsuranceCoverage,'Total coverage provided by the policy above'))+
       pointsEntriesSectionHtml(busPts, 'tb-bus-pts-entries', 'tb-bus-pts-add-btn'))+
-    '<div class="modal-section-title">Budget</div>'+
-    '<div style="display:grid;grid-column:1/-1;grid-template-columns:1fr 1fr;gap:12px">'+
-      fld('Total Budget ($)',inp('tb-budget-total','number',bd.totalBudget))+
-      '<div class="field full"><div class="hint" id="tb-budget-includes" style="text-transform:none;font-weight:400"></div></div>'+
-      '<div class="field full"><div class="hint" style="text-transform:none;font-weight:400">Any Miles Man fees will be in addition to this budgeted amount.</div></div>'+
-    '</div>'+
     '<div class="modal-section-title">Summary</div>'+
     '<div id="tb-booked-summary"></div>';
 }
