@@ -787,6 +787,10 @@ const DRIVE_AUTH_SERVER = 'https://milesman-auth.vercel.app';
 // card authorization PDF to — cid/name in the query string are how the
 // upload gets labeled/foldered without the client ever logging in.
 const CC_AUTH_UPLOAD_URL = 'https://milesmaneric.github.io/milesman-crm/cc-auth-upload.html';
+// Public, standalone page a client fills out after their trip — name/email/
+// destination in the query string prefill it the same way CC_AUTH_UPLOAD_URL
+// does above, so the client doesn't have to retype who they are.
+const POST_TRIP_SURVEY_URL = 'https://milesmaneric.github.io/milesman-crm/post-trip-survey.html';
 // WordPress.com OAuth2 (Jetpack Stats access for the Analytics tab) — see
 // https://developer.wordpress.com/docs/oauth2/. Unlike Drive/Outlook, this
 // flow needs no PKCE (WordPress.com's Authorization Code Grant is a
@@ -12845,6 +12849,13 @@ var TEMPLATES = [
     body:"Hi {{firstName}},\n\nYour trip is almost here! I just wanted to reach out and wish you a fantastic time on your upcoming adventure.\n\nIf anything comes up or you have any last-minute questions before you head out, don't hesitate to reach out — I'm just a call or email away.\n\nSafe travels, and enjoy every moment!\n\nBest,\nEric"
   },
   {
+    id:'posttripsurvey',
+    name:'Post-Trip Survey',
+    description:'Ask a client for feedback after their trip wraps up',
+    subject:'How Was Your Trip?',
+    body:"Hi {{firstName}},\n\nWelcome home! I hope you had an amazing trip — I'd love to hear all about it.\n\nWould you mind taking a minute to share your feedback? It really helps me keep improving the experience for you and every client:\n\n{{surveyLink}}\n\nThanks so much, and let me know if you're already dreaming up the next one!\n\nBest,\nEric"
+  },
+  {
     id:'referralcredit',
     name:'Referral Credit Earned',
     description:'Let a client know they earned a $100 credit for referring someone, with a certificate',
@@ -12992,11 +13003,17 @@ function fillTemplate(body, clients, referredClients){
   var firstNames = joinNames(clients.map(function(c){return getFirstName(c.name)||c.name||'';}));
   var fullNames = joinNames(clients.map(function(c){return toFirstLast(c.name)||'';}));
   var referredNames = joinNames(referredClients.map(function(c){return toFirstLastNoMiddle(c.name)||c.name||'';}));
+  // Prefills the post-trip survey's Name/Email fields the same way
+  // CC_AUTH_UPLOAD_URL's link already does for the credit-card form, so the
+  // client isn't asked to retype who they are.
+  var surveyLink = POST_TRIP_SURVEY_URL+'?name='+encodeURIComponent(clients[0]?toFirstLast(clients[0].name)||'':'')+
+    '&email='+encodeURIComponent(clients[0]?clients[0].email||'':'');
   return body
     .replace(/{{firstName}}/g, firstNames)
     .replace(/{{fullName}}/g, fullNames)
     .replace(/{{email}}/g, clients[0]?clients[0].email||'':'')
-    .replace(/{{referredName}}/g, referredNames);
+    .replace(/{{referredName}}/g, referredNames)
+    .replace(/{{surveyLink}}/g, surveyLink);
 }
 // Records one referral-credit row per (referrer, referred person) pair on
 // each referrer's client record — shown/edited in the Referral Credits
