@@ -19415,7 +19415,9 @@ function pointsEntryRowInnerHtml(entry){
       '<div class="field"><label>Currency</label><select class="points-entry-currency"><option value="">-- Select --</option>'+selOpts(FOREIGN_CURRENCIES,entry.currency)+'</select></div>'+
       '<div class="field"><label>Cost (Other Currency)</label><input class="points-entry-cost-foreign" type="number" value="'+(entry.costForeign||'')+'"></div>'+
       '<div class="field"><label>Cost ($)</label><input class="points-entry-cost" type="number" value="'+(entry.cost||'')+'"></div>'+
-      '<div class="field"><label>Cash Value ($) <span class="hint" style="text-transform:none;font-weight:400">(estimated dollar value of the points/miles redeemed)</span></label><input class="points-entry-cashvalue" type="number" value="'+(entry.cashValue||'')+'"></div>'+
+      '<div class="field"><label>Currency</label><select class="points-entry-cashvalue-currency"><option value="">-- Select --</option>'+selOpts(FOREIGN_CURRENCIES,entry.cashValueCurrency)+'</select></div>'+
+      '<div class="field"><label>Cash Value (Other Currency)</label><input class="points-entry-cashvalue-foreign" type="number" value="'+(entry.cashValueForeign||'')+'"></div>'+
+      '<div class="field"><label>Cash Value ($) <span class="hint" style="text-transform:none;font-weight:400">(value if booked via cash)</span></label><input class="points-entry-cashvalue" type="number" value="'+(entry.cashValue||'')+'"></div>'+
     '</div>'+
     '<div class="field full"><label>Notes</label><textarea class="points-entry-notes">'+(entry.notes||'')+'</textarea></div>';
 }
@@ -19439,10 +19441,12 @@ function readPointsEntriesFrom(containerEl){
       currency: (row.querySelector('.points-entry-currency')||{}).value||'',
       costForeign: Number((row.querySelector('.points-entry-cost-foreign')||{}).value)||0,
       cost: Number((row.querySelector('.points-entry-cost')||{}).value)||0,
+      cashValueCurrency: (row.querySelector('.points-entry-cashvalue-currency')||{}).value||'',
+      cashValueForeign: Number((row.querySelector('.points-entry-cashvalue-foreign')||{}).value)||0,
       cashValue: Number((row.querySelector('.points-entry-cashvalue')||{}).value)||0,
       notes: (row.querySelector('.points-entry-notes')||{}).value||''
     };
-  }).filter(function(e){ return e.program||e.amount||e.currency||e.costForeign||e.cost||e.cashValue||e.notes; });
+  }).filter(function(e){ return e.program||e.amount||e.currency||e.costForeign||e.cost||e.cashValueCurrency||e.cashValueForeign||e.cashValue||e.notes; });
 }
 // Same row markup as pointsEntriesListHtml but with a class-marked (not
 // id-marked) empty placeholder, since this is used inside a per-hotel-entry
