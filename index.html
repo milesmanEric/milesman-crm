@@ -10965,6 +10965,12 @@ function classifyRowCells(row, pageColumns){
 async function extractRevenueTableFromPdf(arrayBuffer, password){
   var pdfjsLib = await loadPdfJs();
   var pdf = await pdfjsLib.getDocument({data:arrayBuffer, password:password}).promise;
+  // destroy() frees the worker-side document (parsed fonts, page caches);
+  // without it every imported PDF stayed resident for the life of the tab.
+  try{ return await extractRevenueTableFromPdfDoc(pdf); }
+  finally{ pdf.destroy(); }
+}
+async function extractRevenueTableFromPdfDoc(pdf){
 
   // Longer reports repeat the column headers on every page they spill onto —
   // both for the primary Date/Num/Memo/Name/Ship Date/Item columns AND,
@@ -11101,15 +11107,17 @@ async function extractAllPdfRows(arrayBuffer, password){
   var pdfjsLib = await loadPdfJs();
   var pdf = await pdfjsLib.getDocument({data:arrayBuffer, password:password}).promise;
   var allRows = [];
-  for(var p=1; p<=pdf.numPages; p++){
-    var page = await pdf.getPage(p);
-    var content = await page.getTextContent();
-    var items = content.items.map(function(it){
-      var tr = it.transform;
-      return {str:it.str, x:tr[4], y:tr[5], w:it.width};
-    });
-    allRows = allRows.concat(groupPdfItemsIntoRows(items));
-  }
+  try{
+    for(var p=1; p<=pdf.numPages; p++){
+      var page = await pdf.getPage(p);
+      var content = await page.getTextContent();
+      var items = content.items.map(function(it){
+        var tr = it.transform;
+        return {str:it.str, x:tr[4], y:tr[5], w:it.width};
+      });
+      allRows = allRows.concat(groupPdfItemsIntoRows(items));
+    }
+  }finally{ pdf.destroy(); }
   return allRows;
 }
 // QuickBooks prints a grand-total row at the very end of both an End of Day
@@ -11427,11 +11435,13 @@ async function extractPdfText(arrayBuffer){
   const pdfjsLib=await loadPdfJs();
   const pdf=await pdfjsLib.getDocument({data:arrayBuffer}).promise;
   let text='';
-  for(let p=1;p<=pdf.numPages;p++){
-    const page=await pdf.getPage(p);
-    const content=await page.getTextContent();
-    text+=content.items.map(function(it){return it.str;}).join(' ')+' ';
-  }
+  try{
+    for(let p=1;p<=pdf.numPages;p++){
+      const page=await pdf.getPage(p);
+      const content=await page.getTextContent();
+      text+=content.items.map(function(it){return it.str;}).join(' ')+' ';
+    }
+  }finally{ pdf.destroy(); }
   return text.replace(/[‘’]/g,"'").replace(/[“”]/g,'"').replace(/\s+/g,' ').trim();
 }
 // Every question label in the template, used as boundaries so we know where
