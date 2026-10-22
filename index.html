@@ -19412,6 +19412,8 @@ function pointsEntryRowInnerHtml(entry){
     '<div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:8px">'+
       '<div class="field"><label>Program</label><select class="points-entry-program">'+pointsProgramOptionsHtml(entry.program)+'</select></div>'+
       '<div class="field"><label>Points/Miles Used</label><input class="points-entry-amount" type="number" value="'+(entry.amount||'')+'"></div>'+
+      '<div class="field"><label>Currency</label><select class="points-entry-currency"><option value="">-- Select --</option>'+selOpts(FOREIGN_CURRENCIES,entry.currency)+'</select></div>'+
+      '<div class="field"><label>Cost (Other Currency)</label><input class="points-entry-cost-foreign" type="number" value="'+(entry.costForeign||'')+'"></div>'+
       '<div class="field"><label>Cost ($)</label><input class="points-entry-cost" type="number" value="'+(entry.cost||'')+'"></div>'+
       '<div class="field"><label>Cash Value ($) <span class="hint" style="text-transform:none;font-weight:400">(estimated dollar value of the points/miles redeemed)</span></label><input class="points-entry-cashvalue" type="number" value="'+(entry.cashValue||'')+'"></div>'+
     '</div>'+
@@ -19434,11 +19436,13 @@ function readPointsEntriesFrom(containerEl){
     return {
       program: (row.querySelector('.points-entry-program')||{}).value||'',
       amount: Number((row.querySelector('.points-entry-amount')||{}).value)||0,
+      currency: (row.querySelector('.points-entry-currency')||{}).value||'',
+      costForeign: Number((row.querySelector('.points-entry-cost-foreign')||{}).value)||0,
       cost: Number((row.querySelector('.points-entry-cost')||{}).value)||0,
       cashValue: Number((row.querySelector('.points-entry-cashvalue')||{}).value)||0,
       notes: (row.querySelector('.points-entry-notes')||{}).value||''
     };
-  }).filter(function(e){ return e.program||e.amount||e.cost||e.cashValue||e.notes; });
+  }).filter(function(e){ return e.program||e.amount||e.currency||e.costForeign||e.cost||e.cashValue||e.notes; });
 }
 // Same row markup as pointsEntriesListHtml but with a class-marked (not
 // id-marked) empty placeholder, since this is used inside a per-hotel-entry
