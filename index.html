@@ -14287,7 +14287,7 @@ function refreshVendorClientsSummary(){
 // "Paste a URL" Add-Supplier detection ───────────────────────────────────
 // A pasted URL is routed one of two ways: a known hotel-brand domain means
 // it's a specific PROPERTY (added straight to that brand's existing
-// Supplier record, see addPropertyToVendorPrompt), while anything else is
+// Supplier record, see addPropertyToVendor), while anything else is
 // treated as its own INDEPENDENT supplier and gets its form fields
 // pre-filled. Domain routing never depends on fetching the page (so it
 // still works even if the fetch below fails) — only field pre-fill needs
@@ -19484,31 +19484,42 @@ function computeBookedTripSummary(bd){
   var rows = Object.keys(byProgram).map(function(k){return byProgram[k];}).sort(function(a,b){return b.points-a.points;});
   // Points Transferred From/Amount live on each Hotel entry and each
   // Airline flight segment, not on a Points Used row itself (a booking's
-  // one transfer can feed more than one redemption) — so each transfer is
-  // nested under every program its own entry/record actually redeemed
-  // points in (row.transfers, rendered directly beneath that program's row
-  // in bookedTripSummaryHtml), rather than matched to one single row. A
-  // transfer whose entry has no Points Used rows yet has nothing to nest
-  // under, so it falls back into the unmatched list rendered at the bottom.
+  // one transfer can feed more than one redemption) — so each transfer
+  // nests under the program it was actually transferred TO (row.transfers,
+  // rendered as a "Transferred to"/"Transferred from" pair directly
+  // beneath that program's row in bookedTripSummaryHtml). An entry's own
+  // Points Transferred To is the explicit, user-chosen anchor for this —
+  // only when it's blank (no further hop entered) do we fall back to
+  // whatever program(s) that same entry's own Points Used rows redeemed.
+  // Transferred To can also name a Bank/Credit Card (transferredFromOptionsHtml
+  // offers those groups, since money can keep moving before it's ever
+  // redeemed), which never appears as a Points Used row of its own — so an
+  // anchor only counts when it actually matches one of this trip's real
+  // rows; anything else (that bank/card case, or no anchor at all) falls
+  // into the unmatched list rendered at the bottom instead of vanishing.
+  var rowProgramSet = {};
+  rows.forEach(function(row){ rowProgramSet[row.program] = true; });
   var transfersByProgram = {};
   var unmatchedTransfers = [];
-  function attachTransfer(programsUsed, transfer){
-    if(!programsUsed.length){ unmatchedTransfers.push(transfer); return; }
-    programsUsed.forEach(function(prog){
+  function attachTransfer(candidatePrograms, transfer){
+    var matched = candidatePrograms.filter(function(p){ return rowProgramSet[p]; });
+    if(!matched.length){ unmatchedTransfers.push(transfer); return; }
+    matched.forEach(function(prog){
       if(!transfersByProgram[prog]) transfersByProgram[prog] = [];
       transfersByProgram[prog].push(transfer);
     });
   }
   (bd.hotel||[]).forEach(function(h){
     if(!h.transferredFrom && !h.transferredAmount) return;
-    var progs = (h.pts||[]).map(function(p){return p.program||'(no program selected)';}).filter(function(v,i,a){return a.indexOf(v)===i;});
-    attachTransfer(progs, {program: h.transferredFrom || '(no program selected)', amount: Number(h.transferredAmount)||0});
+    var anchors = h.transferredTo ? [h.transferredTo] : (h.pts||[]).map(function(p){return p.program||'(no program selected)';}).filter(function(v,i,a){return a.indexOf(v)===i;});
+    attachTransfer(anchors, {program: h.transferredFrom || '(no program selected)', amount: Number(h.transferredAmount)||0, to: h.transferredTo||''});
   });
   airlineRecords.forEach(function(r){
     var recordPrograms = (r.pts||[]).map(function(p){return p.program||'(no program selected)';}).filter(function(v,i,a){return a.indexOf(v)===i;});
     (r.segments||[]).forEach(function(seg){
       if(!seg.transferredFrom && !seg.transferredAmount) return;
-      attachTransfer(recordPrograms, {program: seg.transferredFrom || '(no program selected)', amount: Number(seg.transferredAmount)||0});
+      var anchors = seg.transferredTo ? [seg.transferredTo] : recordPrograms;
+      attachTransfer(anchors, {program: seg.transferredFrom || '(no program selected)', amount: Number(seg.transferredAmount)||0, to: seg.transferredTo||''});
     });
   });
   rows.forEach(function(row){ row.transfers = transfersByProgram[row.program] || []; });
@@ -19567,25 +19578,30 @@ function computeBookedTripSummary(bd){
 // linked Supplier means the invoice went to that supplier, not the client,
 // so surfacing "the" invoice number on this client-facing summary would be
 // misleading (there could be a separate supplier-side invoice entirely).
+// Renders one transfer as a "Transferred to"/"Transferred from" pair, the
+// "from" nested one level deeper so it visually relates directly to the
+// "to" line directly above it — the "to" line is skipped when the entry
+// never had a further hop entered (Points Transferred To left blank),
+// since then there's nothing more to pair the "from" line against.
+function transferPairHtml(t){
+  var toLine = t.to ? '<tr style="color:#6b7280;font-size:12px"><td style="padding-left:24px">&#8618; Transferred to: '+escHtml(t.to)+'</td><td style="text-align:right">—</td><td style="text-align:right">—</td></tr>' : '';
+  return toLine+'<tr style="color:#6b7280;font-size:12px"><td style="padding-left:'+(t.to?'40px':'24px')+'">&#8618; Transferred from: '+escHtml(t.program)+'</td><td style="text-align:right">'+(t.amount?fmt(t.amount):'—')+'</td><td style="text-align:right">—</td></tr>';
+}
 function bookedTripSummaryHtml(summary, invoicedToClient, invoiceNumber){
   var invoiceLine = (invoicedToClient && invoiceNumber) ?
     '<div style="font-size:13px;color:#374151;margin-bottom:10px">Invoice Number: <strong>'+escHtml(invoiceNumber)+'</strong></div>' : '';
   return invoiceLine + (summary.rows.length ?
     '<div class="tbl-wrap"><table class="report-table"><thead><tr><th>Program</th><th style="text-align:right">Points/Miles Used</th><th style="text-align:right">Cash Value</th></tr></thead><tbody>'+
     summary.rows.map(function(r){
-      // Each row's own Points Transferred From/Amount lines go directly
-      // beneath it (indented), right below the program they were
-      // transferred into — see computeBookedTripSummary's attachTransfer.
+      // Each row's own Transferred to/from pairs go directly beneath it
+      // (indented), right below the program they were transferred into —
+      // see computeBookedTripSummary's attachTransfer.
       return '<tr><td>'+escHtml(r.program)+'</td><td style="text-align:right">'+fmt(r.points)+'</td><td style="text-align:right">'+(r.cashValue?'$'+money(r.cashValue):'—')+'</td></tr>'+
-        (r.transfers||[]).map(function(t){
-          return '<tr style="color:#6b7280;font-size:12px"><td style="padding-left:24px">&#8618; Transferred from: '+escHtml(t.program)+'</td><td style="text-align:right">'+(t.amount?fmt(t.amount):'—')+'</td><td style="text-align:right">—</td></tr>';
-        }).join('');
+        (r.transfers||[]).map(transferPairHtml).join('');
     }).join('')+
     // Transfers whose entry has no Points Used row yet to nest under —
     // listed as their own block at the bottom so the data isn't lost.
-    (summary.unmatchedTransfers||[]).map(function(t){
-      return '<tr style="color:#6b7280;font-size:12px"><td style="padding-left:24px">&#8618; Transferred from: '+escHtml(t.program)+'</td><td style="text-align:right">'+(t.amount?fmt(t.amount):'—')+'</td><td style="text-align:right">—</td></tr>';
-    }).join('')+
+    (summary.unmatchedTransfers||[]).map(transferPairHtml).join('')+
     '</tbody></table></div>'
     : '<div style="color:#aaa;font-size:12px;padding:6px 0">No points/miles redemptions added yet</div>')+
     '<div style="margin-top:10px;font-size:14px;font-weight:700;color:#111">Total Cash Paid: $'+money(summary.totalCash)+'</div>'+
@@ -19689,12 +19705,14 @@ function hotelPropertyOptionsHtml(hotelBrand, selected){
 // vendorPropertiesListHtml), just persisted immediately with saveDB()
 // instead of deferred to that form's "Save Supplier" click, since there's
 // no supplier-properties editor visible here to hold the change until then.
-function addPropertyToVendorPrompt(hotelBrand, onAdded){
+// Takes the name directly (read from the Property field's own searchable-
+// select input by the caller) rather than prompt()-ing for it again — that
+// field is a searchable select with its own free-typed proxy input, same
+// as Hotel Brand's, so there's always already-typed text to read.
+function addPropertyToVendor(hotelBrand, name, onAdded){
   var vendor = db.vendors.find(function(v){ return v.name===hotelBrand; });
   if(!vendor){ toast('No supplier record found for '+hotelBrand,'err'); return; }
-  var name = prompt('Add a new property for '+hotelBrand+':');
-  if(name==null) return;
-  name = name.trim();
+  name = (name||'').trim();
   if(!name) return;
   vendor.properties = vendor.properties || [];
   var existing = vendor.properties.find(function(p){ return p.name.toLowerCase()===name.toLowerCase(); });
@@ -19710,7 +19728,7 @@ function addPropertyToVendorPrompt(hotelBrand, onAdded){
   onAdded(name);
 }
 // Wraps a Hotel Property picklist with a "+ Add" button that calls
-// addPropertyToVendorPrompt() above — shared by the top-level Hotel
+// addPropertyToVendor() above — shared by the top-level Hotel
 // Property field and each Booked Trip Details hotel entry row.
 function hotelPropertyFieldWithAddBtnHtml(selectHtml, addBtnClass, addBtnId){
   return '<div style="display:flex;gap:6px;align-items:flex-start">'+
@@ -20435,6 +20453,21 @@ function bookedCatSectionHtml(key, title, innerHtml){
     '</div>'+
     '<div id="'+bodyId+'" style="display:'+(isCollapsed?'none':'grid')+';grid-column:1/-1;grid-template-columns:1fr 1fr;gap:12px">'+innerHtml+'</div>';
 }
+// Miles Man Booking Fee moved from one section-level amount to each entry/
+// segment (see hotelEntryRowInnerHtml, flightEntryRowInnerHtml, etc.) — a
+// trip saved before that change still has its fee on the old section-level
+// field (e.g. bd.hotelMilesManFee), which would otherwise look like it
+// vanished. Backfill it onto the first entry only (never every entry, or
+// the total would multiply), purely for display until the next save
+// finishes the migration by capturing it straight off that entry's own
+// field.
+function backfillSharedMilesManFee(entries, legacyFee){
+  legacyFee = Number(legacyFee)||0;
+  if(!legacyFee || !entries.length || entries.some(function(e){return e && e.milesManFee;})) return entries;
+  var filled = entries.slice();
+  filled[0] = Object.assign({}, filled[0]||{}, {milesManFee: legacyFee});
+  return filled;
+}
 function bookedTripDetailsHtml(bd){
   bd = bd || {};
   var air = bd.airline||{}, cru = bd.cruise||{};
@@ -20451,8 +20484,10 @@ function bookedTripDetailsHtml(bd){
     if(!h.pts && (h.program||h.amount)) return Object.assign({}, h, {pts:[{program:h.program||'', amount:h.amount||0, cost:0}]});
     return h;
   });
+  hotelEntries = backfillSharedMilesManFee(hotelEntries, bd.hotelMilesManFee);
   var tourEntries = Array.isArray(bd.tours) ? bd.tours : (bd.tours && Object.keys(bd.tours).length ? [bd.tours] : []);
   if(!tourEntries.length) tourEntries = [{}];
+  tourEntries = backfillSharedMilesManFee(tourEntries, bd.toursMilesManFee);
   // Old single-object themePark ({park, confirmationNumber, ticketType,
   // price, insurancePremium, insuranceCoverage, notes, pts}) has its
   // insurance/notes/pts fields promoted up to the section-level
@@ -20463,6 +20498,7 @@ function bookedTripDetailsHtml(bd){
   // appears to vanish.
   var themeParkEntries = Array.isArray(bd.themePark) ? bd.themePark : (bd.themePark && Object.keys(bd.themePark).length ? [bd.themePark] : []);
   if(!themeParkEntries.length) themeParkEntries = [{}];
+  themeParkEntries = backfillSharedMilesManFee(themeParkEntries, bd.themeParkMilesManFee);
   var themeParkInsurancePremium = bd.themeParkInsurancePremium || (!Array.isArray(bd.themePark) && bd.themePark ? bd.themePark.insurancePremium : 0) || 0;
   var themeParkInsuranceCoverage = bd.themeParkInsuranceCoverage || (!Array.isArray(bd.themePark) && bd.themePark ? bd.themePark.insuranceCoverage : 0) || 0;
   var themeParkPts = bd.themeParkPts || (!Array.isArray(bd.themePark) && bd.themePark ? bd.themePark.pts : null) || [];
@@ -20473,21 +20509,25 @@ function bookedTripDetailsHtml(bd){
   // the first time this trip is saved through readBookedTripDetails().
   var carEntries = Array.isArray(bd.carRental) ? bd.carRental : (bd.carRental && Object.keys(bd.carRental).length ? [bd.carRental] : []);
   if(!carEntries.length) carEntries = [{}];
+  carEntries = backfillSharedMilesManFee(carEntries, bd.carRentalMilesManFee);
   var carInsurancePremium = bd.carRentalInsurancePremium || (!Array.isArray(bd.carRental) && bd.carRental ? bd.carRental.insurancePremium : 0) || 0;
   var carInsuranceCoverage = bd.carRentalInsuranceCoverage || (!Array.isArray(bd.carRental) && bd.carRental ? bd.carRental.insuranceCoverage : 0) || 0;
   var carPts = bd.carRentalPts || (!Array.isArray(bd.carRental) && bd.carRental ? bd.carRental.pts : null) || [];
   var trainEntries = Array.isArray(bd.train) ? bd.train : (bd.train && Object.keys(bd.train).length ? [bd.train] : []);
   if(!trainEntries.length) trainEntries = [{}];
+  trainEntries = backfillSharedMilesManFee(trainEntries, bd.trainMilesManFee);
   var trainInsurancePremium = bd.trainInsurancePremium || (!Array.isArray(bd.train) && bd.train ? bd.train.insurancePremium : 0) || 0;
   var trainInsuranceCoverage = bd.trainInsuranceCoverage || (!Array.isArray(bd.train) && bd.train ? bd.train.insuranceCoverage : 0) || 0;
   var trainPts = bd.trainPts || (!Array.isArray(bd.train) && bd.train ? bd.train.pts : null) || [];
   var busEntries = Array.isArray(bd.bus) ? bd.bus : (bd.bus && Object.keys(bd.bus).length ? [bd.bus] : []);
   if(!busEntries.length) busEntries = [{}];
+  busEntries = backfillSharedMilesManFee(busEntries, bd.busMilesManFee);
   var busInsurancePremium = bd.busInsurancePremium || (!Array.isArray(bd.bus) && bd.bus ? bd.bus.insurancePremium : 0) || 0;
   var busInsuranceCoverage = bd.busInsuranceCoverage || (!Array.isArray(bd.bus) && bd.bus ? bd.bus.insuranceCoverage : 0) || 0;
   var busPts = bd.busPts || (!Array.isArray(bd.bus) && bd.bus ? bd.bus.pts : null) || [];
   var transferEntries = Array.isArray(bd.transfers) ? bd.transfers : [];
   if(!transferEntries.length) transferEntries = [{}];
+  transferEntries = backfillSharedMilesManFee(transferEntries, bd.transfersMilesManFee);
   // booked.cruise used to hold one cabinType/peopleInCabin pair directly —
   // now a booking can cover more than one cabin, so those live per-entry in
   // booked.cruise.cabins instead. An old trip's single-cabin shape still
@@ -20518,6 +20558,20 @@ function bookedTripDetailsHtml(bd){
     }
   }
   if(!airlineRecords.length) airlineRecords = [{}];
+  // Miles Man Booking Fee moved from the whole Airline section down to
+  // each flight segment — a trip saved before that change has its fee on
+  // the old bd.airline.milesManFee instead, so backfill it onto the first
+  // segment of the first record only (never every segment, or the total
+  // would multiply), purely for display until the next save finishes the
+  // migration.
+  if(air.milesManFee && !airlineRecords.some(function(r){return (r.segments||[]).some(function(s){return s && s.milesManFee;});})){
+    airlineRecords = airlineRecords.map(function(r, idx){
+      if(idx !== 0) return r;
+      var segs = Array.isArray(r.segments) && r.segments.length ? r.segments.slice() : [{}];
+      segs[0] = Object.assign({}, segs[0]||{}, {milesManFee: Number(air.milesManFee)||0});
+      return Object.assign({}, r, {segments: segs});
+    });
+  }
   return ''+
     '<div class="modal-section-title">Booked Trip Details</div>'+
     fld('Trip Name',inp('tb-trip-name','text',bd.tripName,'e.g. Smith Family Alaska Cruise'))+
@@ -20810,19 +20864,19 @@ function bindBookedTripDetailsListeners(){
       var brandSel = row && row.querySelector('.hotel-entry-brand');
       var hotelBrand = brandSel && brandSel.value;
       if(!hotelBrand){ toast('Select a Hotel first','err'); return; }
-      addPropertyToVendorPrompt(hotelBrand, function(name){
-        var propSel = row.querySelector('.hotel-entry-property');
+      var propSel = row.querySelector('.hotel-entry-property');
+      var propWrap = propSel && propSel.closest('.searchable-select');
+      var typedName = ((propWrap && propWrap.querySelector('.searchable-select-input'))||{}).value||'';
+      typedName = typedName.trim();
+      if(!typedName){ toast('Type a property name first','err'); return; }
+      addPropertyToVendor(hotelBrand, typedName, function(name){
         propSel.innerHTML = hotelPropertyOptionsHtml(hotelBrand, name);
-        var propWrap = propSel.closest('.searchable-select');
         if(propWrap) ssSyncInputToSelect(propWrap);
       });
     });
-    // Adds whatever hotel name is already typed into the Hotel field's own
-    // search input as a new Hotel-category Supplier — no second prompt()
-    // box asking for the name again, unlike addPropertyToVendorPrompt()
-    // above (that one's fine re-asking since Property has no text of its
-    // own to read: it's scoped to a brand's existing property list, not a
-    // free-typed name).
+    // Adds whatever hotel/property name is already typed into that field's
+    // own search input as a new Hotel supplier/property — no prompt() box
+    // asking for the name again, for either button.
     hotelEntriesEl.addEventListener('click', function(e){
       var addBrandBtn = e.target.closest ? e.target.closest('.hotel-entry-add-brand-btn') : null;
       if(!addBrandBtn) return;
@@ -21210,10 +21264,13 @@ function openTripForm(id){
   if(addHotelPropBtn) addHotelPropBtn.addEventListener('click',function(){
     var hotelBrand = document.getElementById('tho').value;
     if(!hotelBrand){ toast('Select a Hotel Brand first','err'); return; }
-    addPropertyToVendorPrompt(hotelBrand, function(name){
-      var propSel = document.getElementById('thp');
+    var propSel = document.getElementById('thp');
+    var propWrap = propSel && propSel.closest('.searchable-select');
+    var typedName = ((propWrap && propWrap.querySelector('.searchable-select-input'))||{}).value||'';
+    typedName = typedName.trim();
+    if(!typedName){ toast('Type a property name first','err'); return; }
+    addPropertyToVendor(hotelBrand, typedName, function(name){
       propSel.innerHTML = hotelPropertyOptionsHtml(hotelBrand, name);
-      var propWrap = propSel.closest('.searchable-select');
       if(propWrap) ssSyncInputToSelect(propWrap);
     });
   });
