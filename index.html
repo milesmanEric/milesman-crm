@@ -19605,9 +19605,9 @@ function bookedTripSummaryHtml(summary, invoicedToClient, invoiceNumber){
     '</tbody></table></div>'
     : '<div style="color:#aaa;font-size:12px;padding:6px 0">No points/miles redemptions added yet</div>')+
     '<div style="margin-top:10px;font-size:14px;font-weight:700;color:#111">Total Cash Paid: $'+money(summary.totalCash)+'</div>'+
-    (summary.totalCreditsReceived ? '<div style="font-size:12px;color:#6b7280">(includes Credits to be Received: -$'+money(summary.totalCreditsReceived)+')</div>' : '')+
+    (summary.totalCreditsReceived ? '<div style="font-size:12px;color:#6b7280">(includes Credits to be Received: $'+money(summary.totalCreditsReceived)+')</div>' : '')+
     (summary.totalPtsValue ? '<div style="font-size:12px;color:#6b7280">Total Points/Miles Cash Value: $'+money(summary.totalPtsValue)+'</div>' : '')+
-    (summary.totalResortCredit ? '<div style="font-size:12px;color:#6b7280">Total Resort/Food &amp; Beverage Credit: $'+money(summary.totalResortCredit)+'</div>' : '');
+    (summary.totalResortCredit ? '<div style="font-size:12px;color:#6b7280">Total Resort/Food &amp; beverage Credits: $'+money(summary.totalResortCredit)+'</div>' : '');
 }
 // Bound to every input/change event inside the modal (see
 // bindBookedTripDetailsListeners) rather than to each individual field,
