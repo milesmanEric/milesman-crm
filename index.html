@@ -19677,7 +19677,7 @@ function computeBookedTripSummary(bd){
 // since then there's nothing more to pair the "from" line against.
 function transferPairHtml(t){
   var toLine = t.to ? '<tr style="color:#6b7280;font-size:12px"><td style="padding-left:24px">&#8618; Transferred to: '+escHtml(t.to)+'</td><td style="text-align:right;padding-right:24px">—</td><td style="text-align:right">—</td></tr>' : '';
-  return toLine+'<tr style="color:#6b7280;font-size:12px"><td style="padding-left:'+(t.to?'40px':'24px')+'">&#8618; Transferred from: '+escHtml(t.program)+'</td><td style="text-align:right;padding-right:24px">'+(t.amount?fmt(t.amount):'—')+'</td><td style="text-align:right">—</td></tr>';
+  return toLine+'<tr style="color:#6b7280;font-size:12px"><td style="padding-left:'+(t.to?'40px':'24px')+'">&#8618; Transferred from: '+escHtml(t.program)+'</td><td style="text-align:right;padding-right:4px">'+(t.amount?fmt(t.amount):'—')+'</td><td style="text-align:right">—</td></tr>';
 }
 function bookedTripSummaryHtml(summary, invoicedToClient, invoiceNumber){
   var invoiceLine = (invoicedToClient && invoiceNumber) ?
