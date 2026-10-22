@@ -19579,7 +19579,12 @@ function computeBookedTripSummary(bd){
   // not subtracted" treatment as totalPtsValue) rather than folded into
   // totalCash.
   var totalResortCredit = (bd.hotel||[]).reduce(function(a,h){return a+(h.resortCredit||0);},0);
-  return {rows:rows, unmatchedTransfers:unmatchedTransfers, totalCash: totalPrice + totalPtsCost + totalInsurance + totalMilesManFee - totalCreditsReceived, totalCreditsReceived:totalCreditsReceived, totalResortCredit:totalResortCredit, totalPtsValue: totalPtsValue};
+  var totalCash = totalPrice + totalPtsCost + totalInsurance + totalMilesManFee - totalCreditsReceived;
+  // Total Trip Value is what the whole booking is actually worth — real
+  // cash paid plus the estimated cash value of whatever was redeemed with
+  // points/miles, the two halves tracked separately everywhere above.
+  var totalTripValue = totalCash + totalPtsValue;
+  return {rows:rows, unmatchedTransfers:unmatchedTransfers, totalCash:totalCash, totalCreditsReceived:totalCreditsReceived, totalResortCredit:totalResortCredit, totalPtsValue:totalPtsValue, totalMilesManFee:totalMilesManFee, totalTripValue:totalTripValue};
 }
 // Invoice Number only shows here when the trip has no Supplier linked — a
 // linked Supplier means the invoice went to that supplier, not the client,
@@ -19613,8 +19618,10 @@ function bookedTripSummaryHtml(summary, invoicedToClient, invoiceNumber){
     : '<div style="color:#aaa;font-size:12px;padding:6px 0">No points/miles redemptions added yet</div>')+
     '<div style="margin-top:10px;font-size:14px;font-weight:700;color:#111">Total Cash Paid: $'+money(summary.totalCash)+'</div>'+
     (summary.totalCreditsReceived ? '<div style="font-size:12px;color:#6b7280">(includes Credits to be Received: $'+money(summary.totalCreditsReceived)+')</div>' : '')+
+    (summary.totalMilesManFee ? '<div style="font-size:12px;color:#6b7280">Total Miles Man Fees: $'+money(summary.totalMilesManFee)+'</div>' : '')+
     (summary.totalPtsValue ? '<div style="font-size:12px;color:#6b7280">Total Points/Miles Cash Value: $'+money(summary.totalPtsValue)+'</div>' : '')+
-    (summary.totalResortCredit ? '<div style="font-size:12px;color:#6b7280">Total Resort/Food &amp; beverage Credits: $'+money(summary.totalResortCredit)+'</div>' : '');
+    (summary.totalResortCredit ? '<div style="font-size:12px;color:#6b7280">Total Resort/Food &amp; beverage Credits: $'+money(summary.totalResortCredit)+'</div>' : '')+
+    '<div style="margin-top:4px;font-size:14px;font-weight:700;color:#111">Total Trip Value: $'+money(summary.totalTripValue)+'</div>';
 }
 // Bound to every input/change event inside the modal (see
 // bindBookedTripDetailsListeners) rather than to each individual field,
