@@ -8004,6 +8004,7 @@ function itineraryEmailBodyHtml(opts){
       itineraryDetailRow('Departure Date', t.departureDate) +
       itineraryDetailRow('Return Date', t.returnDate) +
       itineraryDetailRow('Class of Service', t.classOfService) +
+      itineraryDetailRow('Passengers', t.numPassengers) +
       itineraryDetailRow('Confirmation Number', t.confirmationNumber);
     return itineraryDetailBox(trainEntries.length>1 ? 'Train '+(i+1)+' Details' : 'Train Details', rows, t.logoUrl);
   }).join('');
@@ -8238,6 +8239,7 @@ function tripItineraryPlainText(opts){
       itineraryDetailRowText('Departure Date', t.departureDate) +
       itineraryDetailRowText('Return Date', t.returnDate) +
       itineraryDetailRowText('Class of Service', t.classOfService) +
+      itineraryDetailRowText('Passengers', t.numPassengers) +
       itineraryDetailRowText('Confirmation Number', t.confirmationNumber);
     out += itineraryPlainTextSection(trainEntries.length>1?'Train '+(i+1)+' Details':'Train Details', rows);
   });
@@ -8365,7 +8367,7 @@ function tripToItineraryOpts(trip, client, extraNotes){
       return {
         departureCity: t.departureCity||'', arrivalCity: t.arrivalCity||'',
         departureDate: t.departureDate?fmtDate(t.departureDate):'', returnDate: t.returnDate?fmtDate(t.returnDate):'',
-        classOfService: t.classOfService||'', confirmationNumber: t.confirmationNumber||'', logoUrl: t.logoUrl||''
+        classOfService: t.classOfService||'', numPassengers: t.numPassengers||'', confirmationNumber: t.confirmationNumber||'', logoUrl: t.logoUrl||''
       };
     }),
     busEntries: busEntries.map(function(x){
@@ -20157,6 +20159,7 @@ function trainEntryRowInnerHtml(entry){
       '<div class="field"><label>Departure Date</label><input class="train-entry-depdate" type="date" value="'+(entry.departureDate||'')+'"></div>'+
       '<div class="field"><label>Return Date</label><input class="train-entry-retdate" type="date" value="'+(entry.returnDate||'')+'"></div>'+
       '<div class="field"><label>Class of Service</label><select class="train-entry-class"><option value="">-- Select --</option>'+selOpts(TRAIN_CLASSES,entry.classOfService)+'</select></div>'+
+      '<div class="field"><label>Number of Passengers</label><input class="train-entry-numpax" type="number" min="1" step="1" value="'+(entry.numPassengers||'')+'"></div>'+
       foreignPriceFieldsHtml('train-entry-currency','train-entry-price-foreign',entry.currency,entry.priceForeign)+
       '<div class="field"><label>Price ($)</label><input class="train-entry-price" type="number" value="'+(entry.price||'')+'"></div>'+
       '<div class="field"><label>Miles Man Booking Fee ($)</label><input class="train-entry-fee" type="number" value="'+(entry.milesManFee||'')+'"></div>'+
@@ -20179,6 +20182,7 @@ function readTrainEntries(){
       departureDate: (row.querySelector('.train-entry-depdate')||{}).value||'',
       returnDate: (row.querySelector('.train-entry-retdate')||{}).value||'',
       classOfService: (row.querySelector('.train-entry-class')||{}).value||'',
+      numPassengers: Number((row.querySelector('.train-entry-numpax')||{}).value)||0,
       currency: (row.querySelector('.train-entry-currency')||{}).value||'',
       priceForeign: Number((row.querySelector('.train-entry-price-foreign')||{}).value)||0,
       price: Number((row.querySelector('.train-entry-price')||{}).value)||0,
@@ -20187,7 +20191,7 @@ function readTrainEntries(){
       notes: (row.querySelector('.train-entry-notes')||{}).value||''
     };
   }).filter(function(e){
-    return e.confirmationNumber||e.departureCity||e.arrivalCity||e.departureDate||e.returnDate||e.classOfService||e.currency||e.priceForeign||e.price||e.milesManFee||e.logoUrl||e.notes;
+    return e.confirmationNumber||e.departureCity||e.arrivalCity||e.departureDate||e.returnDate||e.classOfService||e.numPassengers||e.currency||e.priceForeign||e.price||e.milesManFee||e.logoUrl||e.notes;
   });
 }
 function busEntryRowInnerHtml(entry){
