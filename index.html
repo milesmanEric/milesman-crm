@@ -6007,20 +6007,30 @@ function loadTableFromFile(file){
     }
   });
 }
-// Applies the fixed cleanup pipeline: drop rows with no value in column E,
-// drop columns with no value in any data row, drop rows with an empty
-// Class, then drop rows where Name exactly equals Class. Shared by both
-// Clean Supplier File and Clean Revenue File — Clean Revenue File's
-// cleanup was a strict subset of this, so there was no reason to keep two
-// separate pipelines.
+// Applies the fixed cleanup pipeline: drop rows with no value in column E
+// (Ship Date) unless they carry both a Name and a Class, drop columns with
+// no value in any data row, and drop rows with neither Class nor Name.
+// Rows where Name equals Class are kept — extractRevenueRow() imports those
+// as a plain client trip with no supplier. Shared by both Clean Supplier
+// File and Clean Revenue File — Clean Revenue File's cleanup was a strict
+// subset of this, so there was no reason to keep two separate pipelines.
 function cleanImportTable(rows){
   if(!rows.length) throw new Error('File appears to be empty');
   var header = rows[0];
   var body = rows.slice(1);
 
+  // A supplier invoice (Name = supplier, Class = the client it was for)
+  // often has no Ship Date at all — dropping it on that alone lost real
+  // invoices that had a client to attach to. Only rows that also lack a
+  // Name or a Class (subtotals, blank spacer lines) are dropped here.
+  // importRevenueRowForClient() already falls back to the invoice date for
+  // the trip date when Ship Date is blank.
+  var origClassIdx = header.findIndex(function(h){return (h||'').toString().trim().toLowerCase()==='class';});
+  var origNameIdx  = header.findIndex(function(h){return (h||'').toString().trim().toLowerCase()==='name';});
   var removedNoColE = 0;
   body = body.filter(function(row){
-    var keep = !isEmptyCell(row[4]);
+    var keep = !isEmptyCell(row[4]) ||
+      (origClassIdx!==-1 && origNameIdx!==-1 && !isEmptyCell(row[origClassIdx]) && !isEmptyCell(row[origNameIdx]));
     if(!keep) removedNoColE++;
     return keep;
   });
@@ -6038,7 +6048,11 @@ function cleanImportTable(rows){
   var colHasValue = new Array(numCols).fill(false);
   header.forEach(function(h,i){
     var hLower=(h||'').toString().trim().toLowerCase();
-    if(hLower==='class' || hLower==='name') colHasValue[i]=true;
+    // Ship Date is exempt too: extractRevenueRow() falls back to a fixed
+    // column index when the header is missing, so a pruned all-blank Ship
+    // Date column (now possible, since rows without one are kept) would
+    // shift every later column into the wrong slot.
+    if(hLower==='class' || hLower==='name' || hLower==='ship date' || hLower==='shipdate') colHasValue[i]=true;
   });
   body.forEach(function(row){
     for(var i=0;i<numCols;i++){ if(!isEmptyCell(row[i])) colHasValue[i]=true; }
@@ -6064,18 +6078,9 @@ function cleanImportTable(rows){
     return keep;
   });
 
-  var removedNameEqClass = 0;
-  body = body.filter(function(row){
-    var n=(row[nameIdx]||'').toString().trim();
-    var c=(row[classIdx]||'').toString().trim();
-    var keep = !(n && c && n===c);
-    if(!keep) removedNameEqClass++;
-    return keep;
-  });
-
   return {header:header, rows:body, stats:{
     removedNoColE:removedNoColE, removedCols:removedCols,
-    removedEmptyClass:removedEmptyClass, removedNameEqClass:removedNameEqClass
+    removedEmptyClass:removedEmptyClass
   }};
 }
 function rowsToCSV(header, rows){
@@ -6191,8 +6196,7 @@ function cleanAndImportRevenue(){
       const s = result.stats;
       const summary = 'Removed '+s.removedNoColE+' row'+(s.removedNoColE!==1?'s':'')+' with no value in column E, '+
         s.removedCols+' empty column'+(s.removedCols!==1?'s':'')+', '+
-        s.removedEmptyClass+' row'+(s.removedEmptyClass!==1?'s':'')+' with no Class and no Name, and '+
-        s.removedNameEqClass+' row'+(s.removedNameEqClass!==1?'s':'')+' where Name matched Class. '+
+        s.removedEmptyClass+' row'+(s.removedEmptyClass!==1?'s':'')+' with no Class and no Name. '+
         result.rows.length+' row'+(result.rows.length!==1?'s':'')+' remain.';
       debugLog('Clean & Import Revenue: '+summary);
       if(!confirm(summary+'\n\nImport these as revenue trips (matching or creating clients and suppliers)?')){
@@ -11056,8 +11060,7 @@ async function cleanAndImportRevenuePdfEmail(arrayBuffer, filename){
   }
   var s = result.stats;
   debugLog('Revenue report email "'+filename+'": removed '+s.removedNoColE+' row(s) with no Ship Date, '+
-    s.removedCols+' empty column(s), '+s.removedEmptyClass+' row(s) with no Class and no Name, and '+
-    s.removedNameEqClass+' row(s) where Name matched Class. '+result.rows.length+' row(s) remain.');
+    s.removedCols+' empty column(s), and '+s.removedEmptyClass+' row(s) with no Class and no Name. '+result.rows.length+' row(s) remain.');
 
   try{
     var csv = rowsToCSV(result.header, result.rows);
