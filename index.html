@@ -19464,7 +19464,7 @@ function pointsEntriesSectionHtml(entries, containerId, addBtnId){
 function computeBookedTripSummary(bd){
   var airlineRecords = (bd.airline && bd.airline.records) || [];
   var allPts = []
-    .concat([].concat.apply([], airlineRecords.map(function(r){return r.pts||[];})))
+    .concat([].concat.apply([], airlineRecords.map(function(r){return [].concat.apply([], (r.segments||[]).map(function(seg){return seg.pts||[];}));})))
     .concat([].concat.apply([], (bd.hotel||[]).map(function(h){return h.pts||[];})))
     .concat(bd.cruise.pts||[])
     .concat(bd.carRentalPts||[])
@@ -19515,10 +19515,9 @@ function computeBookedTripSummary(bd){
     attachTransfer(anchors, {program: h.transferredFrom || '(no program selected)', amount: Number(h.transferredAmount)||0, to: h.transferredTo||''});
   });
   airlineRecords.forEach(function(r){
-    var recordPrograms = (r.pts||[]).map(function(p){return p.program||'(no program selected)';}).filter(function(v,i,a){return a.indexOf(v)===i;});
     (r.segments||[]).forEach(function(seg){
       if(!seg.transferredFrom && !seg.transferredAmount) return;
-      var anchors = seg.transferredTo ? [seg.transferredTo] : recordPrograms;
+      var anchors = seg.transferredTo ? [seg.transferredTo] : (seg.pts||[]).map(function(p){return p.program||'(no program selected)';}).filter(function(v,i,a){return a.indexOf(v)===i;});
       attachTransfer(anchors, {program: seg.transferredFrom || '(no program selected)', amount: Number(seg.transferredAmount)||0, to: seg.transferredTo||''});
     });
   });
@@ -20286,10 +20285,15 @@ function flightEntryRowInnerHtml(entry){
       '<div class="field"><label>Third Party Agency</label><select class="flight-entry-agency"><option value="">-- Select --</option>'+selOpts(THIRD_PARTY_AGENCIES,entry.thirdPartyAgency)+'</select></div>'+
       '<div class="field"><label>Third Party Agency Booking Number</label><input class="flight-entry-agency-booknum" type="text" value="'+(entry.thirdPartyAgencyBookingNumber||'').toString().replace(/"/g,'&quot;')+'"></div>'+
       foreignPriceFieldsHtml('flight-entry-currency','flight-entry-price-foreign',entry.currency,entry.priceForeign)+
+      '<div class="field"><label>Price (US$)</label><input class="flight-entry-price" type="number" value="'+(entry.price||'')+'"></div>'+
       '<div class="field"><label>Miles Man Booking Fee ($)</label><input class="flight-entry-fee" type="number" value="'+(entry.milesManFee||'')+'"></div>'+
       '<div class="field"><label>Points Transferred From <span class="hint" style="text-transform:none;font-weight:400">(if this segment was booked with points transferred in from another program first)</span></label><select class="flight-entry-transferred-from">'+transferredFromOptionsHtml(entry.transferredFrom)+'</select></div>'+
       '<div class="field"><label>Points/Miles Transferred</label><input class="flight-entry-transferred-amount" type="number" value="'+(entry.transferredAmount||'')+'"></div>'+
       '<div class="field"><label>Points Transferred To <span class="hint" style="text-transform:none;font-weight:400">(if the points were moved onward into another program before redeeming)</span></label><select class="flight-entry-transferred-to">'+transferredFromOptionsHtml(entry.transferredTo)+'</select></div>'+
+    '</div>'+
+    '<div class="field full"><label>Points Used <span class="hint" style="text-transform:none;font-weight:400">(add one row per miles/points redemption on this specific segment)</span></label>'+
+      '<div class="flight-pts-entries">'+pointsEntriesListHtmlNoId(entry.pts||[])+'</div>'+
+      '<button type="button" class="flight-pts-add-btn" style="padding:5px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit">+ Add Points Used</button>'+
     '</div>';
 }
 function flightEntryRowHtml(entry){
@@ -20339,13 +20343,15 @@ function readFlightEntriesFrom(containerEl){
       thirdPartyAgencyBookingNumber: (row.querySelector('.flight-entry-agency-booknum')||{}).value||'',
       currency: (row.querySelector('.flight-entry-currency')||{}).value||'',
       priceForeign: Number((row.querySelector('.flight-entry-price-foreign')||{}).value)||0,
+      price: Number((row.querySelector('.flight-entry-price')||{}).value)||0,
       milesManFee: Number((row.querySelector('.flight-entry-fee')||{}).value)||0,
       transferredFrom: (row.querySelector('.flight-entry-transferred-from')||{}).value||'',
       transferredAmount: Number((row.querySelector('.flight-entry-transferred-amount')||{}).value)||0,
-      transferredTo: (row.querySelector('.flight-entry-transferred-to')||{}).value||''
+      transferredTo: (row.querySelector('.flight-entry-transferred-to')||{}).value||'',
+      pts: readPointsEntriesFrom(row.querySelector('.flight-pts-entries'))
     };
   }).filter(function(e){
-    return e.recordNumber||e.airline||e.flightNumber||e.origin||e.destination||e.departDate||e.departTime||e.arrivalTime||e.classOfService||e.thirdPartyAgency||e.thirdPartyAgencyBookingNumber||e.currency||e.priceForeign||e.milesManFee||e.transferredFrom||e.transferredAmount||e.transferredTo;
+    return e.recordNumber||e.airline||e.flightNumber||e.origin||e.destination||e.departDate||e.departTime||e.arrivalTime||e.classOfService||e.thirdPartyAgency||e.thirdPartyAgencyBookingNumber||e.currency||e.priceForeign||e.price||e.milesManFee||e.transferredFrom||e.transferredAmount||e.transferredTo||(e.pts&&e.pts.length);
   });
 }
 // An Airline Record is one booking covering a group of passengers/flight
@@ -20376,6 +20382,15 @@ function airlineRecordRowInnerHtml(record){
       return Object.keys(fill).length ? Object.assign({}, seg, fill) : seg;
     });
   }
+  // Points Used moved from the whole record down to each flight segment —
+  // a record saved before that change still has its redemptions on
+  // record.pts, so backfill them onto the first segment only (never every
+  // segment, or the same redemption would look like it happened on each
+  // one) when no segment has its own yet.
+  if((record.pts||[]).length && !flightEntries.some(function(seg){return (seg.pts||[]).length;})){
+    flightEntries = flightEntries.slice();
+    flightEntries[0] = Object.assign({}, flightEntries[0], {pts: record.pts});
+  }
   return '<div style="display:flex;justify-content:flex-end;margin-bottom:4px">'+
       '<button type="button" class="del-airline-record-btn" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:12px">&#128465;&#65039; Remove Record</button>'+
     '</div>'+
@@ -20389,13 +20404,9 @@ function airlineRecordRowInnerHtml(record){
       '<div class="airline-record-pax-warning" style="font-size:12px;color:#dc2626;margin-top:4px;display:none"></div>'+
     '</div>'+
     '<div class="field full"><label>Notes</label><textarea class="airline-record-notes">'+(record.notes||'')+'</textarea></div>'+
-    '<div class="field full"><label>Flights <span class="hint" style="text-transform:none;font-weight:400">(add one entry per flight segment on this record)</span></label>'+
+    '<div class="field full"><label>Flights <span class="hint" style="text-transform:none;font-weight:400">(add one entry per flight segment on this record — Points Used now lives on each segment)</span></label>'+
       '<div class="record-flight-entries">'+flightEntriesListHtmlNoId(flightEntries)+'</div>'+
       '<button type="button" class="record-flight-add-btn" style="padding:5px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit">+ Add Flight</button>'+
-    '</div>'+
-    '<div class="field full"><label>Points Used <span class="hint" style="text-transform:none;font-weight:400">(add one row per miles/points redemption on this record)</span></label>'+
-      '<div class="record-pts-entries">'+pointsEntriesListHtmlNoId(record.pts||[])+'</div>'+
-      '<button type="button" class="record-pts-add-btn" style="padding:5px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit">+ Add Points Used</button>'+
     '</div>';
 }
 function airlineRecordRowHtml(record){
@@ -20413,11 +20424,10 @@ function readAirlineRecords(){
       price: Number((row.querySelector('.airline-record-price')||{}).value)||0,
       passengerClientIds: paxSel ? Array.from(paxSel.selectedOptions).map(function(o){return o.value;}) : [],
       notes: (row.querySelector('.airline-record-notes')||{}).value||'',
-      segments: readFlightEntriesFrom(row.querySelector('.record-flight-entries')),
-      pts: readPointsEntriesFrom(row.querySelector('.record-pts-entries'))
+      segments: readFlightEntriesFrom(row.querySelector('.record-flight-entries'))
     };
   }).filter(function(r){
-    return r.numPassengers||r.nonStop||r.price||r.passengerClientIds.length||r.notes||r.segments.length||r.pts.length;
+    return r.numPassengers||r.nonStop||r.price||r.passengerClientIds.length||r.notes||r.segments.length;
   });
 }
 // Live feedback only — the actual save-blocking check lives in saveTrip(),
@@ -20549,11 +20559,19 @@ function bookedTripDetailsHtml(bd){
         oldSegments.push({airline:air.airline||'', flightNumber:'', origin:air.destination||'', destination:air.origin||'', departDate:air.returnDate||'', departTime:'', arrivalTime:'', classOfService:air.classOfService||''});
       }
     }
-    if(air.confirmationNumber||air.price||air.numPassengers||(air.passengerClientIds&&air.passengerClientIds.length)||air.notes||air.nonStop||oldSegments.length||(air.pts&&air.pts.length)){
+    // Points Used moved from the whole record down to each flight segment
+    // — this old flat shape's air.pts has nowhere else to go, so land it
+    // on the first segment (creating one if there isn't one yet) rather
+    // than dropping it.
+    if(air.pts && air.pts.length){
+      if(!oldSegments.length) oldSegments.push({});
+      oldSegments[0] = Object.assign({}, oldSegments[0], {pts: air.pts});
+    }
+    if(air.confirmationNumber||air.price||air.numPassengers||(air.passengerClientIds&&air.passengerClientIds.length)||air.notes||air.nonStop||oldSegments.length){
       airlineRecords = [{
         recordNumber: air.confirmationNumber||'', nonStop: air.nonStop||'', price: air.price||0,
         numPassengers: air.numPassengers||0, passengerClientIds: air.passengerClientIds||[],
-        notes: air.notes||'', segments: oldSegments, pts: air.pts||[]
+        notes: air.notes||'', segments: oldSegments
       }];
     }
   }
@@ -20767,9 +20785,9 @@ function bindBookedTripDetailsListeners(){
         }
         return;
       }
-      var addPtsBtn = e.target.closest ? e.target.closest('.record-pts-add-btn') : null;
+      var addPtsBtn = e.target.closest ? e.target.closest('.flight-pts-add-btn') : null;
       if(addPtsBtn){
-        var ptsContainer = addPtsBtn.closest('.airline-record-row').querySelector('.record-pts-entries');
+        var ptsContainer = addPtsBtn.closest('.flight-entry-row').querySelector('.flight-pts-entries');
         var emptyP = ptsContainer.querySelector('.pts-entries-empty');
         if(emptyP) emptyP.remove();
         var pdiv = document.createElement('div');
@@ -20781,7 +20799,7 @@ function bindBookedTripDetailsListeners(){
       }
       var delPtsBtn = e.target.closest ? e.target.closest('.del-points-entry-btn') : null;
       if(delPtsBtn){
-        var ptsContainer2 = delPtsBtn.closest('.record-pts-entries');
+        var ptsContainer2 = delPtsBtn.closest('.flight-pts-entries');
         var prow = delPtsBtn.closest('.points-entry-row');
         if(prow) prow.remove();
         if(ptsContainer2 && !ptsContainer2.querySelector('.points-entry-row')){
