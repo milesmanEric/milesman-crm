@@ -16760,17 +16760,18 @@ function tripBookedPriceTotal(t){
   total += num(b.trainInsurancePremium) + (Array.isArray(b.train) ? 0 : num(b.train && b.train.insurancePremium));
   total += num(b.busInsurancePremium) + (Array.isArray(b.bus) ? 0 : num(b.bus && b.bus.insurancePremium));
   // Miles Man's own booking fee is real cash cost too, same reasoning as
-  // insurance above — never existed on any pre-array shape, so no legacy
-  // single-object fallback is needed here the way insurance's above do.
-  total += num(b.airline && b.airline.milesManFee);
-  total += num(b.hotelMilesManFee);
+  // insurance above — lives per-entry/segment (see hotelEntryRowInnerHtml,
+  // flightEntryRowInnerHtml, etc.), same granularity as each category's own
+  // price field, rather than as one section-level amount.
+  total += airlineRecords.reduce(function(a,r){return a+(Array.isArray(r&&r.segments)?r.segments:[]).reduce(function(a2,seg){return a2+num(seg&&seg.milesManFee);},0);},0);
+  total += hotels.reduce(function(a,h){return a+num(h&&h.milesManFee);},0);
   total += num(b.cruise && b.cruise.milesManFee);
-  total += num(b.carRentalMilesManFee);
-  total += num(b.transfersMilesManFee);
-  total += num(b.toursMilesManFee);
-  total += num(b.themeParkMilesManFee);
-  total += num(b.trainMilesManFee);
-  total += num(b.busMilesManFee);
+  total += carRentals.reduce(function(a,x){return a+num(x&&x.milesManFee);},0);
+  total += transfers.reduce(function(a,x){return a+num(x&&x.milesManFee);},0);
+  total += tours.reduce(function(a,x){return a+num(x&&x.milesManFee);},0);
+  total += themeParks.reduce(function(a,x){return a+num(x&&x.milesManFee);},0);
+  total += trains.reduce(function(a,x){return a+num(x&&x.milesManFee);},0);
+  total += buses.reduce(function(a,x){return a+num(x&&x.milesManFee);},0);
   return total;
 }
 // Same type/color convention the Planner's Type column uses (b-blue
@@ -19541,21 +19542,26 @@ function computeBookedTripSummary(bd){
   // "Any Miles Man fees will be in addition to this budgeted amount,"
   // which is exactly why this folds into totalCash but never into
   // totalBudget.
-  var totalMilesManFee = (bd.airline.milesManFee||0)
-    + (bd.hotelMilesManFee||0)
+  var totalMilesManFee = airlineRecords.reduce(function(a,r){return a+(r.segments||[]).reduce(function(a2,seg){return a2+(seg.milesManFee||0);},0);},0)
+    + (bd.hotel||[]).reduce(function(a,h){return a+(h.milesManFee||0);},0)
     + (bd.cruise.milesManFee||0)
-    + (bd.carRentalMilesManFee||0)
-    + (bd.transfersMilesManFee||0)
-    + (bd.toursMilesManFee||0)
-    + (bd.themeParkMilesManFee||0)
-    + (bd.trainMilesManFee||0)
-    + (bd.busMilesManFee||0);
+    + (bd.carRental||[]).reduce(function(a,c){return a+(c.milesManFee||0);},0)
+    + (bd.transfers||[]).reduce(function(a,t){return a+(t.milesManFee||0);},0)
+    + (bd.tours||[]).reduce(function(a,t){return a+(t.milesManFee||0);},0)
+    + (bd.themePark||[]).reduce(function(a,t){return a+(t.milesManFee||0);},0)
+    + (bd.train||[]).reduce(function(a,t){return a+(t.milesManFee||0);},0)
+    + (bd.bus||[]).reduce(function(a,t){return a+(t.milesManFee||0);},0);
   // Credits to be Received (e.g. a future-stay credit owed back on a hotel
   // booking) reduce real cash paid, same as totalCash below — unlike
   // totalPtsValue above, this isn't an estimate, so it comes straight off
   // the top rather than being tracked separately.
   var totalCreditsReceived = (bd.hotel||[]).reduce(function(a,h){return a+(h.creditsReceived||0);},0);
-  return {rows:rows, unmatchedTransfers:unmatchedTransfers, totalCash: totalPrice + totalPtsCost + totalInsurance + totalMilesManFee - totalCreditsReceived, totalCreditsReceived:totalCreditsReceived, totalPtsValue: totalPtsValue};
+  // Resort/Food & Beverage Credit is an amenity value included with the
+  // stay, not cash owed back — shown as its own total (same "informational,
+  // not subtracted" treatment as totalPtsValue) rather than folded into
+  // totalCash.
+  var totalResortCredit = (bd.hotel||[]).reduce(function(a,h){return a+(h.resortCredit||0);},0);
+  return {rows:rows, unmatchedTransfers:unmatchedTransfers, totalCash: totalPrice + totalPtsCost + totalInsurance + totalMilesManFee - totalCreditsReceived, totalCreditsReceived:totalCreditsReceived, totalResortCredit:totalResortCredit, totalPtsValue: totalPtsValue};
 }
 // Invoice Number only shows here when the trip has no Supplier linked — a
 // linked Supplier means the invoice went to that supplier, not the client,
@@ -19584,7 +19590,8 @@ function bookedTripSummaryHtml(summary, invoicedToClient, invoiceNumber){
     : '<div style="color:#aaa;font-size:12px;padding:6px 0">No points/miles redemptions added yet</div>')+
     '<div style="margin-top:10px;font-size:14px;font-weight:700;color:#111">Total Cash Paid: $'+money(summary.totalCash)+'</div>'+
     (summary.totalCreditsReceived ? '<div style="font-size:12px;color:#6b7280">(includes Credits to be Received: -$'+money(summary.totalCreditsReceived)+')</div>' : '')+
-    (summary.totalPtsValue ? '<div style="font-size:12px;color:#6b7280">Total Points/Miles Cash Value: $'+money(summary.totalPtsValue)+'</div>' : '');
+    (summary.totalPtsValue ? '<div style="font-size:12px;color:#6b7280">Total Points/Miles Cash Value: $'+money(summary.totalPtsValue)+'</div>' : '')+
+    (summary.totalResortCredit ? '<div style="font-size:12px;color:#6b7280">Total Resort/Food &amp; Beverage Credit: $'+money(summary.totalResortCredit)+'</div>' : '');
 }
 // Bound to every input/change event inside the modal (see
 // bindBookedTripDetailsListeners) rather than to each individual field,
@@ -19740,7 +19747,9 @@ function hotelEntryRowInnerHtml(entry){
       '<div class="field"><label>Nights</label><input class="hotel-entry-nights" type="number" value="'+(entry.nights||'')+'"></div>'+
       foreignPriceFieldsHtml('hotel-entry-currency','hotel-entry-price-foreign',entry.currency,entry.priceForeign)+
       '<div class="field"><label>Price ($)</label><input class="hotel-entry-price" type="number" value="'+(entry.price||'')+'"></div>'+
+      '<div class="field"><label>Miles Man Booking Fee ($)</label><input class="hotel-entry-fee" type="number" value="'+(entry.milesManFee||'')+'"></div>'+
       '<div class="field"><label>Credits to be Received ($) <span class="hint" style="text-transform:none;font-weight:400">(e.g. a future-stay credit owed back — subtracted from cash paid in the summary)</span></label><input class="hotel-entry-credits" type="number" value="'+(entry.creditsReceived||'')+'"></div>'+
+      '<div class="field"><label>Resort/Food &amp; Beverage Credit ($) <span class="hint" style="text-transform:none;font-weight:400">(e.g. a daily resort credit included with this stay — totaled in the summary)</span></label><input class="hotel-entry-resort-credit" type="number" value="'+(entry.resortCredit||'')+'"></div>'+
       '<div class="field"><label style="display:flex;align-items:center;gap:6px;font-weight:500;cursor:pointer;margin-top:22px"><input type="checkbox" class="hotel-entry-all-inclusive"'+(entry.allInclusive?' checked':'')+' style="width:15px;height:15px"> All-Inclusive</label></div>'+
       '<div class="field"><label>Third Party Agency</label><select class="hotel-entry-agency"><option value="">-- Select --</option>'+selOpts(THIRD_PARTY_AGENCIES,entry.thirdPartyAgency)+'</select></div>'+
       '<div class="field"><label>Third Party Agency Booking Number</label><input class="hotel-entry-agency-booknum" type="text" value="'+(entry.thirdPartyAgencyBookingNumber||'').toString().replace(/"/g,'&quot;')+'"></div>'+
@@ -19773,7 +19782,9 @@ function readHotelEntries(){
       currency: (row.querySelector('.hotel-entry-currency')||{}).value||'',
       priceForeign: Number((row.querySelector('.hotel-entry-price-foreign')||{}).value)||0,
       price: Number((row.querySelector('.hotel-entry-price')||{}).value)||0,
+      milesManFee: Number((row.querySelector('.hotel-entry-fee')||{}).value)||0,
       creditsReceived: Number((row.querySelector('.hotel-entry-credits')||{}).value)||0,
+      resortCredit: Number((row.querySelector('.hotel-entry-resort-credit')||{}).value)||0,
       allInclusive: !!(row.querySelector('.hotel-entry-all-inclusive')||{}).checked,
       thirdPartyAgency: (row.querySelector('.hotel-entry-agency')||{}).value||'',
       thirdPartyAgencyBookingNumber: (row.querySelector('.hotel-entry-agency-booknum')||{}).value||'',
@@ -19784,7 +19795,7 @@ function readHotelEntries(){
       notes: (row.querySelector('.hotel-entry-notes')||{}).value||''
     };
   }).filter(function(e){
-    return e.hotelBrand||e.property||e.city||e.country||e.confirmationNumber||e.checkInDate||e.nights||e.currency||e.priceForeign||e.price||e.creditsReceived||e.allInclusive||e.thirdPartyAgency||e.thirdPartyAgencyBookingNumber||e.transferredFrom||e.transferredAmount||e.transferredTo||(e.pts&&e.pts.length)||e.notes;
+    return e.hotelBrand||e.property||e.city||e.country||e.confirmationNumber||e.checkInDate||e.nights||e.currency||e.priceForeign||e.price||e.milesManFee||e.creditsReceived||e.resortCredit||e.allInclusive||e.thirdPartyAgency||e.thirdPartyAgencyBookingNumber||e.transferredFrom||e.transferredAmount||e.transferredTo||(e.pts&&e.pts.length)||e.notes;
   });
 }
 // Net Rate Hotel Voucher — a standalone printable/emailable PDF the client
@@ -19921,6 +19932,7 @@ function tourEntryRowInnerHtml(entry){
       '<div class="field"><label>Tour Vendor</label><select class="tour-entry-vendor"><option value="">-- Select --</option>'+selOpts(TOUR_VENDORS,entry.vendor)+'</select></div>'+
       foreignPriceFieldsHtml('tour-entry-currency','tour-entry-price-foreign',entry.currency,entry.priceForeign)+
       '<div class="field"><label>Price ($)</label><input class="tour-entry-price" type="number" value="'+(entry.price||'')+'"></div>'+
+      '<div class="field"><label>Miles Man Booking Fee ($)</label><input class="tour-entry-fee" type="number" value="'+(entry.milesManFee||'')+'"></div>'+
       '<div class="field full"><label>Description</label><textarea class="tour-entry-desc">'+(entry.description||'')+'</textarea></div>'+
     '</div>';
 }
@@ -19938,10 +19950,11 @@ function readTourEntries(){
       currency: (row.querySelector('.tour-entry-currency')||{}).value||'',
       priceForeign: Number((row.querySelector('.tour-entry-price-foreign')||{}).value)||0,
       price: Number((row.querySelector('.tour-entry-price')||{}).value)||0,
+      milesManFee: Number((row.querySelector('.tour-entry-fee')||{}).value)||0,
       description: (row.querySelector('.tour-entry-desc')||{}).value||''
     };
   }).filter(function(e){
-    return e.confirmationNumber||e.vendor||e.currency||e.priceForeign||e.price||e.description;
+    return e.confirmationNumber||e.vendor||e.currency||e.priceForeign||e.price||e.milesManFee||e.description;
   });
 }
 // Theme Park entries are the same dynamic add/remove pattern as Tours
@@ -19965,6 +19978,7 @@ function themeParkEntryRowInnerHtml(entry){
       '<div class="field"><label>Ticket Type</label><input class="themepark-entry-ticket" type="text" value="'+(entry.ticketType||'').toString().replace(/"/g,'&quot;')+'" placeholder="e.g. Park Hopper"></div>'+
       foreignPriceFieldsHtml('themepark-entry-currency','themepark-entry-price-foreign',entry.currency,entry.priceForeign)+
       '<div class="field"><label>Price ($)</label><input class="themepark-entry-price" type="number" value="'+(entry.price||'')+'"></div>'+
+      '<div class="field"><label>Miles Man Booking Fee ($)</label><input class="themepark-entry-fee" type="number" value="'+(entry.milesManFee||'')+'"></div>'+
       '<div class="field full"><label>Notes</label><textarea class="themepark-entry-notes">'+(entry.notes||'')+'</textarea></div>'+
     '</div>';
 }
@@ -19983,10 +19997,11 @@ function readThemeParkEntries(){
       currency: (row.querySelector('.themepark-entry-currency')||{}).value||'',
       priceForeign: Number((row.querySelector('.themepark-entry-price-foreign')||{}).value)||0,
       price: Number((row.querySelector('.themepark-entry-price')||{}).value)||0,
+      milesManFee: Number((row.querySelector('.themepark-entry-fee')||{}).value)||0,
       notes: (row.querySelector('.themepark-entry-notes')||{}).value||''
     };
   }).filter(function(e){
-    return e.park||e.confirmationNumber||e.ticketType||e.currency||e.priceForeign||e.price||e.notes;
+    return e.park||e.confirmationNumber||e.ticketType||e.currency||e.priceForeign||e.price||e.milesManFee||e.notes;
   });
 }
 // Transfer / car-service entries are the same dynamic add/remove pattern
@@ -20010,6 +20025,7 @@ function transferEntryRowInnerHtml(entry){
       '<div class="field"><label>Confirmation Number</label><input class="transfer-entry-conf" type="text" value="'+(entry.confirmationNumber||'').toString().replace(/"/g,'&quot;')+'"></div>'+
       foreignPriceFieldsHtml('transfer-entry-currency','transfer-entry-price-foreign',entry.currency,entry.priceForeign)+
       '<div class="field"><label>Price ($)</label><input class="transfer-entry-price" type="number" value="'+(entry.price||'')+'"></div>'+
+      '<div class="field"><label>Miles Man Booking Fee ($)</label><input class="transfer-entry-fee" type="number" value="'+(entry.milesManFee||'')+'"></div>'+
       '<div class="field full"><label>Notes</label><textarea class="transfer-entry-notes">'+(entry.notes||'')+'</textarea></div>'+
     '</div>';
 }
@@ -20032,10 +20048,11 @@ function readTransferEntries(){
       currency: (row.querySelector('.transfer-entry-currency')||{}).value||'',
       priceForeign: Number((row.querySelector('.transfer-entry-price-foreign')||{}).value)||0,
       price: Number((row.querySelector('.transfer-entry-price')||{}).value)||0,
+      milesManFee: Number((row.querySelector('.transfer-entry-fee')||{}).value)||0,
       notes: (row.querySelector('.transfer-entry-notes')||{}).value||''
     };
   }).filter(function(e){
-    return e.pickupDate||e.pickupTime||e.origin||e.destination||e.carType||e.provider||e.confirmationNumber||e.currency||e.priceForeign||e.price||e.notes;
+    return e.pickupDate||e.pickupTime||e.origin||e.destination||e.carType||e.provider||e.confirmationNumber||e.currency||e.priceForeign||e.price||e.milesManFee||e.notes;
   });
 }
 // Car Rental / Train / Bus entries are the same dynamic add/remove pattern
@@ -20058,6 +20075,7 @@ function carEntryRowInnerHtml(entry){
       '<div class="field"><label>Car Size</label><select class="car-entry-size"><option value="">-- Select --</option>'+selOpts(CAR_SIZES,entry.carSize)+'</select></div>'+
       foreignPriceFieldsHtml('car-entry-currency','car-entry-price-foreign',entry.currency,entry.priceForeign)+
       '<div class="field"><label>Price ($)</label><input class="car-entry-price" type="number" value="'+(entry.price||'')+'"></div>'+
+      '<div class="field"><label>Miles Man Booking Fee ($)</label><input class="car-entry-fee" type="number" value="'+(entry.milesManFee||'')+'"></div>'+
       '<div class="field"><label>Pickup Location</label><input class="car-entry-pickuploc" type="text" value="'+(entry.pickupLocation||'').toString().replace(/"/g,'&quot;')+'" placeholder="e.g. Miami Airport (MIA)"></div>'+
       '<div class="field"><label>Dropoff Location</label><input class="car-entry-dropoffloc" type="text" value="'+(entry.dropoffLocation||'').toString().replace(/"/g,'&quot;')+'" placeholder="e.g. Miami Airport (MIA)"></div>'+
       '<div class="field"><label>Pickup Date</label><input class="car-entry-pickupdate" type="date" value="'+(entry.pickupDate||'')+'"></div>'+
@@ -20082,6 +20100,7 @@ function readCarEntries(){
       currency: (row.querySelector('.car-entry-currency')||{}).value||'',
       priceForeign: Number((row.querySelector('.car-entry-price-foreign')||{}).value)||0,
       price: Number((row.querySelector('.car-entry-price')||{}).value)||0,
+      milesManFee: Number((row.querySelector('.car-entry-fee')||{}).value)||0,
       pickupLocation: (row.querySelector('.car-entry-pickuploc')||{}).value||'',
       dropoffLocation: (row.querySelector('.car-entry-dropoffloc')||{}).value||'',
       pickupDate: (row.querySelector('.car-entry-pickupdate')||{}).value||'',
@@ -20091,7 +20110,7 @@ function readCarEntries(){
       notes: (row.querySelector('.car-entry-notes')||{}).value||''
     };
   }).filter(function(e){
-    return e.confirmationNumber||e.company||e.carSize||e.currency||e.priceForeign||e.price||e.pickupLocation||e.dropoffLocation||e.pickupDate||e.dropoffDate||e.notes;
+    return e.confirmationNumber||e.company||e.carSize||e.currency||e.priceForeign||e.price||e.milesManFee||e.pickupLocation||e.dropoffLocation||e.pickupDate||e.dropoffDate||e.notes;
   });
 }
 function trainEntryRowInnerHtml(entry){
@@ -20108,6 +20127,7 @@ function trainEntryRowInnerHtml(entry){
       '<div class="field"><label>Class of Service</label><select class="train-entry-class"><option value="">-- Select --</option>'+selOpts(TRAIN_CLASSES,entry.classOfService)+'</select></div>'+
       foreignPriceFieldsHtml('train-entry-currency','train-entry-price-foreign',entry.currency,entry.priceForeign)+
       '<div class="field"><label>Price ($)</label><input class="train-entry-price" type="number" value="'+(entry.price||'')+'"></div>'+
+      '<div class="field"><label>Miles Man Booking Fee ($)</label><input class="train-entry-fee" type="number" value="'+(entry.milesManFee||'')+'"></div>'+
       '<div class="field"><label>Logo URL</label><input class="train-entry-logo" type="text" value="'+(entry.logoUrl||'').toString().replace(/"/g,'&quot;')+'" placeholder="optional — shown next to Train Details in Email Itinerary"></div>'+
       '<div class="field full"><label>Notes</label><textarea class="train-entry-notes">'+(entry.notes||'')+'</textarea></div>'+
     '</div>';
@@ -20130,11 +20150,12 @@ function readTrainEntries(){
       currency: (row.querySelector('.train-entry-currency')||{}).value||'',
       priceForeign: Number((row.querySelector('.train-entry-price-foreign')||{}).value)||0,
       price: Number((row.querySelector('.train-entry-price')||{}).value)||0,
+      milesManFee: Number((row.querySelector('.train-entry-fee')||{}).value)||0,
       logoUrl: (row.querySelector('.train-entry-logo')||{}).value||'',
       notes: (row.querySelector('.train-entry-notes')||{}).value||''
     };
   }).filter(function(e){
-    return e.confirmationNumber||e.departureCity||e.arrivalCity||e.departureDate||e.returnDate||e.classOfService||e.currency||e.priceForeign||e.price||e.logoUrl||e.notes;
+    return e.confirmationNumber||e.departureCity||e.arrivalCity||e.departureDate||e.returnDate||e.classOfService||e.currency||e.priceForeign||e.price||e.milesManFee||e.logoUrl||e.notes;
   });
 }
 function busEntryRowInnerHtml(entry){
@@ -20151,6 +20172,7 @@ function busEntryRowInnerHtml(entry){
       '<div class="field"><label>Class of Service</label><select class="bus-entry-class"><option value="">-- Select --</option>'+selOpts(TRAIN_CLASSES,entry.classOfService)+'</select></div>'+
       foreignPriceFieldsHtml('bus-entry-currency','bus-entry-price-foreign',entry.currency,entry.priceForeign)+
       '<div class="field"><label>Price ($)</label><input class="bus-entry-price" type="number" value="'+(entry.price||'')+'"></div>'+
+      '<div class="field"><label>Miles Man Booking Fee ($)</label><input class="bus-entry-fee" type="number" value="'+(entry.milesManFee||'')+'"></div>'+
       '<div class="field"><label>Logo URL</label><input class="bus-entry-logo" type="text" value="'+(entry.logoUrl||'').toString().replace(/"/g,'&quot;')+'" placeholder="optional — shown next to Bus Details in Email Itinerary"></div>'+
       '<div class="field full"><label>Notes</label><textarea class="bus-entry-notes">'+(entry.notes||'')+'</textarea></div>'+
     '</div>';
@@ -20173,11 +20195,12 @@ function readBusEntries(){
       currency: (row.querySelector('.bus-entry-currency')||{}).value||'',
       priceForeign: Number((row.querySelector('.bus-entry-price-foreign')||{}).value)||0,
       price: Number((row.querySelector('.bus-entry-price')||{}).value)||0,
+      milesManFee: Number((row.querySelector('.bus-entry-fee')||{}).value)||0,
       logoUrl: (row.querySelector('.bus-entry-logo')||{}).value||'',
       notes: (row.querySelector('.bus-entry-notes')||{}).value||''
     };
   }).filter(function(e){
-    return e.confirmationNumber||e.departureCity||e.arrivalCity||e.departureDate||e.returnDate||e.classOfService||e.currency||e.priceForeign||e.price||e.logoUrl||e.notes;
+    return e.confirmationNumber||e.departureCity||e.arrivalCity||e.departureDate||e.returnDate||e.classOfService||e.currency||e.priceForeign||e.price||e.milesManFee||e.logoUrl||e.notes;
   });
 }
 // Cabin entries are the same dynamic add/remove pattern as hotel/tour
@@ -20224,9 +20247,9 @@ function readCabinEntries(){
 // Airline-section level (one price covers the whole booking), while
 // Record Number, Third Party Agency, Third Party Agency Booking Number,
 // Airline, Flight Number, Origin, Destination, Depart Date, Depart Time,
-// Arrival Time, and Class of Service vary per segment (a connecting or
-// round-trip record can carry a different record locator/agency booking
-// per leg).
+// Arrival Time, Class of Service, and Miles Man Booking Fee vary per
+// segment (a connecting or round-trip record can carry a different record
+// locator/agency booking/fee per leg).
 function flightEntryRowInnerHtml(entry){
   entry = entry || {};
   return '<div style="display:flex;justify-content:flex-end;margin-bottom:4px">'+
@@ -20245,6 +20268,7 @@ function flightEntryRowInnerHtml(entry){
       '<div class="field"><label>Third Party Agency</label><select class="flight-entry-agency"><option value="">-- Select --</option>'+selOpts(THIRD_PARTY_AGENCIES,entry.thirdPartyAgency)+'</select></div>'+
       '<div class="field"><label>Third Party Agency Booking Number</label><input class="flight-entry-agency-booknum" type="text" value="'+(entry.thirdPartyAgencyBookingNumber||'').toString().replace(/"/g,'&quot;')+'"></div>'+
       foreignPriceFieldsHtml('flight-entry-currency','flight-entry-price-foreign',entry.currency,entry.priceForeign)+
+      '<div class="field"><label>Miles Man Booking Fee ($)</label><input class="flight-entry-fee" type="number" value="'+(entry.milesManFee||'')+'"></div>'+
       '<div class="field"><label>Points Transferred From <span class="hint" style="text-transform:none;font-weight:400">(if this segment was booked with points transferred in from another program first)</span></label><select class="flight-entry-transferred-from">'+transferredFromOptionsHtml(entry.transferredFrom)+'</select></div>'+
       '<div class="field"><label>Points/Miles Transferred</label><input class="flight-entry-transferred-amount" type="number" value="'+(entry.transferredAmount||'')+'"></div>'+
       '<div class="field"><label>Points Transferred To <span class="hint" style="text-transform:none;font-weight:400">(if the points were moved onward into another program before redeeming)</span></label><select class="flight-entry-transferred-to">'+transferredFromOptionsHtml(entry.transferredTo)+'</select></div>'+
@@ -20297,12 +20321,13 @@ function readFlightEntriesFrom(containerEl){
       thirdPartyAgencyBookingNumber: (row.querySelector('.flight-entry-agency-booknum')||{}).value||'',
       currency: (row.querySelector('.flight-entry-currency')||{}).value||'',
       priceForeign: Number((row.querySelector('.flight-entry-price-foreign')||{}).value)||0,
+      milesManFee: Number((row.querySelector('.flight-entry-fee')||{}).value)||0,
       transferredFrom: (row.querySelector('.flight-entry-transferred-from')||{}).value||'',
       transferredAmount: Number((row.querySelector('.flight-entry-transferred-amount')||{}).value)||0,
       transferredTo: (row.querySelector('.flight-entry-transferred-to')||{}).value||''
     };
   }).filter(function(e){
-    return e.recordNumber||e.airline||e.flightNumber||e.origin||e.destination||e.departDate||e.departTime||e.arrivalTime||e.classOfService||e.thirdPartyAgency||e.thirdPartyAgencyBookingNumber||e.currency||e.priceForeign||e.transferredFrom||e.transferredAmount||e.transferredTo;
+    return e.recordNumber||e.airline||e.flightNumber||e.origin||e.destination||e.departDate||e.departTime||e.arrivalTime||e.classOfService||e.thirdPartyAgency||e.thirdPartyAgencyBookingNumber||e.currency||e.priceForeign||e.milesManFee||e.transferredFrom||e.transferredAmount||e.transferredTo;
   });
 }
 // An Airline Record is one booking covering a group of passengers/flight
@@ -20440,7 +20465,6 @@ function bookedTripDetailsHtml(bd){
   if(!themeParkEntries.length) themeParkEntries = [{}];
   var themeParkInsurancePremium = bd.themeParkInsurancePremium || (!Array.isArray(bd.themePark) && bd.themePark ? bd.themePark.insurancePremium : 0) || 0;
   var themeParkInsuranceCoverage = bd.themeParkInsuranceCoverage || (!Array.isArray(bd.themePark) && bd.themePark ? bd.themePark.insuranceCoverage : 0) || 0;
-  var themeParkMilesManFee = bd.themeParkMilesManFee || 0;
   var themeParkPts = bd.themeParkPts || (!Array.isArray(bd.themePark) && bd.themePark ? bd.themePark.pts : null) || [];
   // Car Rental/Train/Bus moved from one flat record each to an entries
   // list, same shape change as Tours/Theme Park above — an old, not-yet-
@@ -20451,19 +20475,16 @@ function bookedTripDetailsHtml(bd){
   if(!carEntries.length) carEntries = [{}];
   var carInsurancePremium = bd.carRentalInsurancePremium || (!Array.isArray(bd.carRental) && bd.carRental ? bd.carRental.insurancePremium : 0) || 0;
   var carInsuranceCoverage = bd.carRentalInsuranceCoverage || (!Array.isArray(bd.carRental) && bd.carRental ? bd.carRental.insuranceCoverage : 0) || 0;
-  var carMilesManFee = bd.carRentalMilesManFee || 0;
   var carPts = bd.carRentalPts || (!Array.isArray(bd.carRental) && bd.carRental ? bd.carRental.pts : null) || [];
   var trainEntries = Array.isArray(bd.train) ? bd.train : (bd.train && Object.keys(bd.train).length ? [bd.train] : []);
   if(!trainEntries.length) trainEntries = [{}];
   var trainInsurancePremium = bd.trainInsurancePremium || (!Array.isArray(bd.train) && bd.train ? bd.train.insurancePremium : 0) || 0;
   var trainInsuranceCoverage = bd.trainInsuranceCoverage || (!Array.isArray(bd.train) && bd.train ? bd.train.insuranceCoverage : 0) || 0;
-  var trainMilesManFee = bd.trainMilesManFee || 0;
   var trainPts = bd.trainPts || (!Array.isArray(bd.train) && bd.train ? bd.train.pts : null) || [];
   var busEntries = Array.isArray(bd.bus) ? bd.bus : (bd.bus && Object.keys(bd.bus).length ? [bd.bus] : []);
   if(!busEntries.length) busEntries = [{}];
   var busInsurancePremium = bd.busInsurancePremium || (!Array.isArray(bd.bus) && bd.bus ? bd.bus.insurancePremium : 0) || 0;
   var busInsuranceCoverage = bd.busInsuranceCoverage || (!Array.isArray(bd.bus) && bd.bus ? bd.bus.insuranceCoverage : 0) || 0;
-  var busMilesManFee = bd.busMilesManFee || 0;
   var busPts = bd.busPts || (!Array.isArray(bd.bus) && bd.bus ? bd.bus.pts : null) || [];
   var transferEntries = Array.isArray(bd.transfers) ? bd.transfers : [];
   if(!transferEntries.length) transferEntries = [{}];
@@ -20505,7 +20526,6 @@ function bookedTripDetailsHtml(bd){
         '<div id="tb-airline-records">'+airlineRecordsListHtml(airlineRecords)+'</div>'+
         '<button type="button" id="tb-airline-record-add-btn" style="padding:5px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit">+ Add Record</button>'+
       '</div>'+
-      fld('Miles Man Booking Fee ($)',inp('tb-air-fee','number',air.milesManFee,'Service fee charged for booking this flight'))+
       fld('Insurance Premium ($)',inp('tb-air-insurance','number',air.insurancePremium,'If purchased for this flight, through the airline or a separate insurer'))+
       fld('Coverage Amount ($)',inp('tb-air-coverage','number',air.insuranceCoverage,'Total coverage provided by the policy above')))+
     bookedCatSectionHtml('hotel','Hotel',
@@ -20513,7 +20533,6 @@ function bookedTripDetailsHtml(bd){
         '<div id="tb-hotel-entries">'+hotelEntriesListHtml(hotelEntries)+'</div>'+
         '<button type="button" id="tb-hotel-add-btn" style="padding:5px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit">+ Add Hotel</button>'+
       '</div>'+
-      fld('Miles Man Booking Fee ($)',inp('tb-hotel-fee','number',bd.hotelMilesManFee,'Service fee charged for booking this stay'))+
       fld('Insurance Premium ($)',inp('tb-hotel-insurance','number',bd.hotelInsurancePremium,'If purchased for this stay, through the hotel or a separate insurer'))+
       fld('Coverage Amount ($)',inp('tb-hotel-coverage','number',bd.hotelInsuranceCoverage,'Total coverage provided by the policy above')))+
     bookedCatSectionHtml('cruise','Cruise',
@@ -20543,7 +20562,6 @@ function bookedTripDetailsHtml(bd){
         '<div id="tb-car-entries">'+carEntriesListHtml(carEntries)+'</div>'+
         '<button type="button" id="tb-car-add-btn" style="padding:5px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit">+ Add Car Rental</button>'+
       '</div>'+
-      fld('Miles Man Booking Fee ($)',inp('tb-car-fee','number',carMilesManFee,'Service fee charged for booking these rentals'))+
       fld('Insurance Premium ($)',inp('tb-car-insurance','number',carInsurancePremium,'If purchased for these rentals, through the rental company or a separate insurer'))+
       fld('Coverage Amount ($)',inp('tb-car-coverage','number',carInsuranceCoverage,'Total coverage provided by the policy above'))+
       pointsEntriesSectionHtml(carPts, 'tb-car-pts-entries', 'tb-car-pts-add-btn'))+
@@ -20552,7 +20570,6 @@ function bookedTripDetailsHtml(bd){
         '<div id="tb-transfer-entries">'+transferEntriesListHtml(transferEntries)+'</div>'+
         '<button type="button" id="tb-transfer-add-btn" style="padding:5px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit">+ Add Ride</button>'+
       '</div>'+
-      fld('Miles Man Booking Fee ($)',inp('tb-transfers-fee','number',bd.transfersMilesManFee,'Service fee charged for booking these transfers'))+
       fld('Insurance Premium ($)',inp('tb-transfers-insurance','number',bd.transfersInsurancePremium,'If purchased for these transfers, through the provider or a separate insurer'))+
       fld('Coverage Amount ($)',inp('tb-transfers-coverage','number',bd.transfersInsuranceCoverage,'Total coverage provided by the policy above'))+
       pointsEntriesSectionHtml(bd.transfersPts||[], 'tb-transfers-pts-entries', 'tb-transfers-pts-add-btn'))+
@@ -20561,7 +20578,6 @@ function bookedTripDetailsHtml(bd){
         '<div id="tb-tours-entries">'+tourEntriesListHtml(tourEntries)+'</div>'+
         '<button type="button" id="tb-tours-add-btn" style="padding:5px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit">+ Add Tour</button>'+
       '</div>'+
-      fld('Miles Man Booking Fee ($)',inp('tb-tours-fee','number',bd.toursMilesManFee,'Service fee charged for booking these tours'))+
       fld('Insurance Premium ($)',inp('tb-tours-insurance','number',bd.toursInsurancePremium,'If purchased for these tours, through the vendor or a separate insurer'))+
       fld('Coverage Amount ($)',inp('tb-tours-coverage','number',bd.toursInsuranceCoverage,'Total coverage provided by the policy above'))+
       pointsEntriesSectionHtml(bd.toursPts||[], 'tb-tours-pts-entries', 'tb-tours-pts-add-btn'))+
@@ -20570,7 +20586,6 @@ function bookedTripDetailsHtml(bd){
         '<div id="tb-themepark-entries">'+themeParkEntriesListHtml(themeParkEntries)+'</div>'+
         '<button type="button" id="tb-themepark-add-btn" style="padding:5px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit">+ Add Theme Park</button>'+
       '</div>'+
-      fld('Miles Man Booking Fee ($)',inp('tb-tp-fee','number',themeParkMilesManFee,'Service fee charged for booking these tickets'))+
       fld('Insurance Premium ($)',inp('tb-tp-insurance','number',themeParkInsurancePremium,'If purchased for these tickets, through the park or a separate insurer'))+
       fld('Coverage Amount ($)',inp('tb-tp-coverage','number',themeParkInsuranceCoverage,'Total coverage provided by the policy above'))+
       pointsEntriesSectionHtml(themeParkPts, 'tb-tp-pts-entries', 'tb-tp-pts-add-btn'))+
@@ -20579,7 +20594,6 @@ function bookedTripDetailsHtml(bd){
         '<div id="tb-train-entries">'+trainEntriesListHtml(trainEntries)+'</div>'+
         '<button type="button" id="tb-train-add-btn" style="padding:5px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit">+ Add Train</button>'+
       '</div>'+
-      fld('Miles Man Booking Fee ($)',inp('tb-train-fee','number',trainMilesManFee,'Service fee charged for booking this train travel'))+
       fld('Insurance Premium ($)',inp('tb-train-insurance','number',trainInsurancePremium,'If purchased for this trip, through the rail line or a separate insurer'))+
       fld('Coverage Amount ($)',inp('tb-train-coverage','number',trainInsuranceCoverage,'Total coverage provided by the policy above'))+
       pointsEntriesSectionHtml(trainPts, 'tb-train-pts-entries', 'tb-train-pts-add-btn'))+
@@ -20588,7 +20602,6 @@ function bookedTripDetailsHtml(bd){
         '<div id="tb-bus-entries">'+busEntriesListHtml(busEntries)+'</div>'+
         '<button type="button" id="tb-bus-add-btn" style="padding:5px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit">+ Add Bus</button>'+
       '</div>'+
-      fld('Miles Man Booking Fee ($)',inp('tb-bus-fee','number',busMilesManFee,'Service fee charged for booking this bus travel'))+
       fld('Insurance Premium ($)',inp('tb-bus-insurance','number',busInsurancePremium,'If purchased for this trip, through the bus line or a separate insurer'))+
       fld('Coverage Amount ($)',inp('tb-bus-coverage','number',busInsuranceCoverage,'Total coverage provided by the policy above'))+
       pointsEntriesSectionHtml(busPts, 'tb-bus-pts-entries', 'tb-bus-pts-add-btn'))+
@@ -21025,10 +21038,9 @@ function readBookedTripDetails(){
   return {
     tripName: gv('tb-trip-name'),
     airline: {
-      records: readAirlineRecords(), milesManFee: gn('tb-air-fee'), insurancePremium: gn('tb-air-insurance'), insuranceCoverage: gn('tb-air-coverage')
+      records: readAirlineRecords(), insurancePremium: gn('tb-air-insurance'), insuranceCoverage: gn('tb-air-coverage')
     },
     hotel: readHotelEntries(),
-    hotelMilesManFee: gn('tb-hotel-fee'),
     hotelInsurancePremium: gn('tb-hotel-insurance'),
     hotelInsuranceCoverage: gn('tb-hotel-coverage'),
     cruise: {
@@ -21040,32 +21052,26 @@ function readBookedTripDetails(){
     },
     carRental: readCarEntries(),
     carRentalPts: readPointsEntriesFrom(document.getElementById('tb-car-pts-entries')),
-    carRentalMilesManFee: gn('tb-car-fee'),
     carRentalInsurancePremium: gn('tb-car-insurance'),
     carRentalInsuranceCoverage: gn('tb-car-coverage'),
     transfers: readTransferEntries(),
     transfersPts: readPointsEntriesFrom(document.getElementById('tb-transfers-pts-entries')),
-    transfersMilesManFee: gn('tb-transfers-fee'),
     transfersInsurancePremium: gn('tb-transfers-insurance'),
     transfersInsuranceCoverage: gn('tb-transfers-coverage'),
     tours: readTourEntries(),
     toursPts: readPointsEntriesFrom(document.getElementById('tb-tours-pts-entries')),
-    toursMilesManFee: gn('tb-tours-fee'),
     toursInsurancePremium: gn('tb-tours-insurance'),
     toursInsuranceCoverage: gn('tb-tours-coverage'),
     themePark: readThemeParkEntries(),
     themeParkPts: readPointsEntriesFrom(document.getElementById('tb-tp-pts-entries')),
-    themeParkMilesManFee: gn('tb-tp-fee'),
     themeParkInsurancePremium: gn('tb-tp-insurance'),
     themeParkInsuranceCoverage: gn('tb-tp-coverage'),
     train: readTrainEntries(),
     trainPts: readPointsEntriesFrom(document.getElementById('tb-train-pts-entries')),
-    trainMilesManFee: gn('tb-train-fee'),
     trainInsurancePremium: gn('tb-train-insurance'),
     trainInsuranceCoverage: gn('tb-train-coverage'),
     bus: readBusEntries(),
     busPts: readPointsEntriesFrom(document.getElementById('tb-bus-pts-entries')),
-    busMilesManFee: gn('tb-bus-fee'),
     busInsurancePremium: gn('tb-bus-insurance'),
     busInsuranceCoverage: gn('tb-bus-coverage'),
     totalBudget: gn('tb-budget-total')
