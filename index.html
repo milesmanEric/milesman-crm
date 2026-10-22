@@ -16847,6 +16847,10 @@ function tripBookedPriceTotal(t){
   total += themeParks.reduce(function(a,x){return a+num(x&&x.milesManFee);},0);
   total += trains.reduce(function(a,x){return a+num(x&&x.milesManFee);},0);
   total += buses.reduce(function(a,x){return a+num(x&&x.milesManFee);},0);
+  // A hotel's Resort/Food & Beverage Credit is value included with the stay,
+  // counted toward Total Trip Value the same way computeBookedTripSummary()
+  // does (it is never part of cash paid).
+  total += hotels.reduce(function(a,h){return a+num(h&&h.resortCredit);},0);
   return total;
 }
 // Same type/color convention the Planner's Type column uses (b-blue
