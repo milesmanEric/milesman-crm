@@ -7092,10 +7092,57 @@ async function getOrCreateDriveItinerariesFolder(token){
   _driveItinerariesFolderId = created.id;
   return _driveItinerariesFolderId;
 }
+// Same html2canvas-into-jsPDF approach as generateQuotePdfBlob, but the
+// capture container is exactly 600px — the itinerary card's own width
+// (see itineraryEmailBodyHtml()) — instead of 650px with extra margin on
+// each side. That gap was centering the card (and the Miles Man logo inside
+// it) a little right of the page's actual left edge; matching the width
+// exactly flushes the card — and the logo at its top — against the page's
+// left margin, so a printed/downloaded itinerary reads as a proper
+// letterhead with the logo in the top-left corner.
+async function generateItineraryPdfBlob(bodyHtml){
+  var html2pdfLib = await loadHtml2PdfLib();
+  var container = document.createElement('div');
+  container.style.cssText='position:fixed;top:0;left:0;width:600px;background:#fff;z-index:-1';
+  container.innerHTML = bodyHtml;
+  document.body.appendChild(container);
+  void container.offsetHeight;
+  var w = container.scrollWidth, h = container.scrollHeight;
+  try{
+    return await html2pdfLib().set({
+      margin:10, image:{type:'jpeg',quality:0.95},
+      html2canvas:{scale:2, width:w, height:h, windowWidth:w, windowHeight:h},
+      jsPDF:{unit:'pt', format:'letter'}
+    }).from(container).outputPdf('blob');
+  } finally {
+    document.body.removeChild(container);
+  }
+}
+function itineraryPdfFilename(client, trip){
+  return ([client?client.name:'Itinerary', trip.destination||'Itinerary', trip.departDate||today()].join('.')+'.pdf').replace(/[\\/:*?"<>|]/g,'-');
+}
+// Lets the client click a "Download PDF" button in the Email Itinerary
+// modal and get the exact same PDF saveItineraryPdfToDrive() files away
+// silently in Drive — same generator, same filename convention — just
+// delivered as a direct browser download instead (same downloadPdfBlob()
+// pattern the referral certificate uses, since there's nowhere else on this
+// static, no-backend page to hand someone a file except through the
+// browser's own download flow).
+async function downloadItineraryPdf(client, trip, bodyHtml){
+  try{
+    var blob = await generateItineraryPdfBlob(bodyHtml);
+    downloadPdfBlob(blob, itineraryPdfFilename(client, trip));
+    toast('Itinerary PDF downloaded','ok');
+  }catch(e){
+    console.error(e);
+    debugLog('Itinerary PDF download failed: '+e.message);
+    toast('Could not generate itinerary PDF: '+e.message,'err');
+  }
+}
 async function saveItineraryPdfToDrive(client, trip, bodyHtml, subject){
   try{
     debugLog('Itinerary PDF: rendering "'+subject+'"...');
-    var blob = await generateQuotePdfBlob(bodyHtml);
+    var blob = await generateItineraryPdfBlob(bodyHtml);
     // Silent variant deliberately — this runs unattended right after the
     // mailto: opens, so it must never force-redirect the page to Google's
     // login screen if Drive isn't connected yet (that would hijack the tab
@@ -7107,8 +7154,7 @@ async function saveItineraryPdfToDrive(client, trip, bodyHtml, subject){
       return;
     }
     var folderId = await getOrCreateDriveItinerariesFolder(token);
-    var filenameParts = [client?client.name:'Itinerary', trip.destination||'Itinerary', trip.departDate||today()];
-    var filename = (filenameParts.join('.')+'.pdf').replace(/[\\/:*?"<>|]/g,'-');
+    var filename = itineraryPdfFilename(client, trip);
     var meta = new Blob([JSON.stringify({name:filename, mimeType:'application/pdf', parents:[folderId]})], {type:'application/json'});
     var form = new FormData(); form.append('metadata', meta); form.append('file', blob);
     var r = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink', {
@@ -7972,7 +8018,14 @@ function itineraryEmailBodyHtml(opts){
   // filled in for that category at all, so the itinerary reflects
   // whatever's actually completed there instead of a stale/blank summary.
   var airlineRecords = opts.airlineRecords || [];
+  // flightBoxesHtml (grouped by Airline Record, for the "By Category"
+  // layout) and flightChronoItems (one item per individual flight segment,
+  // each carrying its own depart date/time, for the "Chronological" layout)
+  // are built from the same loop — a single record can span several
+  // segments on different dates, so category mode keeps them together as
+  // one box while chronological mode needs each leg sortable on its own.
   var flightBoxesHtml;
+  var flightChronoItems = [];
   if(airlineRecords.length){
     // One box per Airline Record — Passengers up top (since a trip can
     // have more than one record, each covering different passengers/fare
@@ -7986,7 +8039,7 @@ function itineraryEmailBodyHtml(opts){
       var segs = rec.segments||[];
       var segRows = segs.map(function(f, i){
         var p = segs.length>1 ? ('Flight '+(i+1)+': ') : '';
-        return itineraryDetailRow(p+'Record Number', f.recordNumber) +
+        var segRowsHtml = itineraryDetailRow(p+'Record Number', f.recordNumber) +
           itineraryDetailRow(p+'Airline', f.airline) +
           itineraryDetailRow(p+'Flight Number', f.flightNumber) +
           itineraryDetailRow(p+'Route', f.origin&&f.destination ? (f.origin+' → '+f.destination) : '') +
@@ -7994,6 +8047,11 @@ function itineraryEmailBodyHtml(opts){
           itineraryDetailRow(p+'Depart Time', f.departTime) +
           itineraryDetailRow(p+'Arrival Time', f.arrivalTime) +
           itineraryDetailRow(p+'Class of Service', f.classOfService);
+        flightChronoItems.push({
+          date: f.departDate||'', time: f.departTime||'',
+          html: itineraryDetailBox('Flight'+(f.origin&&f.destination?' — '+f.origin+' → '+f.destination:''), itineraryDetailRow('Passengers', rec.passengers)+segRowsHtml, AIRLINE_LOGOS[f.airline])
+        });
+        return segRowsHtml;
       }).join('');
       var primaryAirline = segs[0] && segs[0].airline;
       return itineraryDetailBox(boxTitle, headRows+segRows, AIRLINE_LOGOS[primaryAirline]);
@@ -8010,23 +8068,29 @@ function itineraryEmailBodyHtml(opts){
       itineraryDetailRow('Class of Service', opts.flightClass)
     ) : '';
     flightBoxesHtml = itineraryDetailBox('Flight Details', flightRows, AIRLINE_LOGOS[opts.airline]);
+    // No per-segment dates to sort by here (this is the legacy single-field
+    // fallback, not real Booked Trip Details segments) — goes in
+    // chronological mode's "no specific date" bucket, same as tours/parks.
+    if(flightRows) flightChronoItems.push({date:'', time:'', html: flightBoxesHtml});
   }
   var hotelEntries = opts.hotelEntries || [];
-  var hotelBoxesHtml;
+  // hotelItems feeds both layouts — see the flight block above for why.
+  var hotelItems;
   if(hotelEntries.length){
-    hotelBoxesHtml = hotelEntries.map(function(h, i){
+    hotelItems = hotelEntries.map(function(h, i){
       var rows = itineraryDetailRow('Hotel', h.hotelBrand) +
         itineraryDetailRow('Location', [h.city, h.country].filter(Boolean).join(', ')) +
         itineraryDetailRow('Check-in Date', h.checkInDate?fmtDate(h.checkInDate):'') +
         itineraryDetailRow('Nights', h.nights?(h.nights+(h.nights===1?' night':' nights')):'') +
         itineraryDetailRow('Confirmation Number', h.confirmationNumber);
-      return itineraryDetailBox(hotelEntries.length>1 ? 'Hotel '+(i+1)+' Details' : 'Hotel Details', rows, HOTEL_LOGOS[h.hotelBrand]);
-    }).join('');
+      return {date: h.checkInDate||'', time:'', html: itineraryDetailBox(hotelEntries.length>1 ? 'Hotel '+(i+1)+' Details' : 'Hotel Details', rows, HOTEL_LOGOS[h.hotelBrand])};
+    });
   } else {
     var hotelRows = itineraryDetailRow('Hotel', opts.hotel) +
       itineraryDetailRow('Nights', opts.hotelNights);
-    hotelBoxesHtml = itineraryDetailBox('Hotel Details', hotelRows, HOTEL_LOGOS[opts.hotel]);
+    hotelItems = hotelRows ? [{date:'', time:'', html: itineraryDetailBox('Hotel Details', hotelRows, HOTEL_LOGOS[opts.hotel])}] : [];
   }
+  var hotelBoxesHtml = hotelItems.map(function(it){return it.html;}).join('');
   var cruiseCabins = opts.cruiseCabins || [];
   var cruiseCabinRows = cruiseCabins.map(function(c, i){
     var label = cruiseCabins.length>1 ? 'Cabin '+(i+1) : 'Cabin Type';
@@ -8043,58 +8107,69 @@ function itineraryEmailBodyHtml(opts){
     cruiseCabinRows +
     itineraryDetailRow('Confirmation Number', opts.cruiseConfirmationNumber) +
     itineraryDetailRow('Loyalty Number', opts.cruiseLoyaltyNumber);
+  var cruiseBoxHtml = itineraryDetailBox('Cruise Details', cruiseRows, CRUISE_LOGOS[opts.cruiseLine]);
+  var cruiseItems = cruiseRows ? [{date: opts.cruiseSailingDateRaw||'', time:'', html: cruiseBoxHtml}] : [];
   var carEntries = opts.carEntries || [];
-  var carRentalBoxesHtml = carEntries.map(function(c, i){
+  var carItems = carEntries.map(function(c, i){
     var rows = itineraryDetailRow('Company', c.company) +
       itineraryDetailRow('Car Size', c.carSize) +
       itineraryDetailRow('Pickup', [c.pickupLocation,c.pickupDate].filter(Boolean).join(' — ')) +
       itineraryDetailRow('Dropoff', [c.dropoffLocation,c.dropoffDate].filter(Boolean).join(' — ')) +
       itineraryDetailRow('Confirmation Number', c.confirmationNumber);
-    return itineraryDetailBox(carEntries.length>1 ? 'Car Rental '+(i+1)+' Details' : 'Car Rental Details', rows, CAR_RENTAL_LOGOS[c.company]);
-  }).join('');
+    return {date: c.pickupDateRaw||'', time:'', html: itineraryDetailBox(carEntries.length>1 ? 'Car Rental '+(i+1)+' Details' : 'Car Rental Details', rows, CAR_RENTAL_LOGOS[c.company])};
+  });
+  var carRentalBoxesHtml = carItems.map(function(it){return it.html;}).join('');
   var transferEntries = opts.transferEntries || [];
-  var transfersBoxesHtml = transferEntries.map(function(x, i){
+  var transferItems = transferEntries.map(function(x, i){
     var rows = itineraryDetailRow('Pickup', [x.pickupDate, x.pickupTime].filter(Boolean).join(' at ')) +
       itineraryDetailRow('From', x.origin) +
       itineraryDetailRow('To', x.destination) +
       itineraryDetailRow('Car Type', x.carType) +
       itineraryDetailRow('Provider', x.provider) +
       itineraryDetailRow('Confirmation Number', x.confirmationNumber);
-    return itineraryDetailBox(transferEntries.length>1 ? 'Transfer '+(i+1) : 'Transfer Details', rows);
-  }).join('');
+    return {date: x.pickupDateRaw||'', time: x.pickupTime||'', html: itineraryDetailBox(transferEntries.length>1 ? 'Transfer '+(i+1) : 'Transfer Details', rows)};
+  });
+  var transfersBoxesHtml = transferItems.map(function(it){return it.html;}).join('');
   var tourEntries = opts.tourEntries || [];
-  var toursBoxesHtml = tourEntries.map(function(t, i){
+  var tourItems = tourEntries.map(function(t, i){
     var rows = itineraryDetailRow('Vendor', t.vendor) +
       itineraryDetailRow('Description', t.description) +
       itineraryDetailRow('Confirmation Number', t.confirmationNumber);
-    return itineraryDetailBox(tourEntries.length>1 ? 'Tour '+(i+1)+' Details' : 'Tour Details', rows);
-  }).join('');
+    // Tours have no date field in Booked Trip Details, so these always
+    // land in the chronological layout's "no specific date" bucket.
+    return {date:'', time:'', html: itineraryDetailBox(tourEntries.length>1 ? 'Tour '+(i+1)+' Details' : 'Tour Details', rows)};
+  });
+  var toursBoxesHtml = tourItems.map(function(it){return it.html;}).join('');
   var themeParkEntries = opts.themeParkEntries || [];
-  var themeParkBoxesHtml = themeParkEntries.map(function(p, i){
+  var themeParkItems = themeParkEntries.map(function(p, i){
     var rows = itineraryDetailRow('Park', p.park) +
       itineraryDetailRow('Ticket Type', p.ticketType) +
       itineraryDetailRow('Confirmation Number', p.confirmationNumber);
-    return itineraryDetailBox(themeParkEntries.length>1 ? 'Theme Park '+(i+1)+' Details' : 'Theme Park Details', rows);
-  }).join('');
+    // Same "no date field at all" situation as tours above.
+    return {date:'', time:'', html: itineraryDetailBox(themeParkEntries.length>1 ? 'Theme Park '+(i+1)+' Details' : 'Theme Park Details', rows)};
+  });
+  var themeParkBoxesHtml = themeParkItems.map(function(it){return it.html;}).join('');
   var trainEntries = opts.trainEntries || [];
-  var trainBoxesHtml = trainEntries.map(function(t, i){
+  var trainItems = trainEntries.map(function(t, i){
     var rows = itineraryDetailRow('Route', t.departureCity&&t.arrivalCity ? (t.departureCity+' → '+t.arrivalCity) : '') +
       itineraryDetailRow('Departure Date', t.departureDate) +
       itineraryDetailRow('Return Date', t.returnDate) +
       itineraryDetailRow('Class of Service', t.classOfService) +
       itineraryDetailRow('Passengers', t.numPassengers) +
       itineraryDetailRow('Confirmation Number', t.confirmationNumber);
-    return itineraryDetailBox(trainEntries.length>1 ? 'Train '+(i+1)+' Details' : 'Train Details', rows, t.logoUrl);
-  }).join('');
+    return {date: t.departureDateRaw||'', time:'', html: itineraryDetailBox(trainEntries.length>1 ? 'Train '+(i+1)+' Details' : 'Train Details', rows, t.logoUrl)};
+  });
+  var trainBoxesHtml = trainItems.map(function(it){return it.html;}).join('');
   var busEntries = opts.busEntries || [];
-  var busBoxesHtml = busEntries.map(function(x, i){
+  var busItems = busEntries.map(function(x, i){
     var rows = itineraryDetailRow('Route', x.departureCity&&x.arrivalCity ? (x.departureCity+' → '+x.arrivalCity) : '') +
       itineraryDetailRow('Departure Date', x.departureDate) +
       itineraryDetailRow('Return Date', x.returnDate) +
       itineraryDetailRow('Class of Service', x.classOfService) +
       itineraryDetailRow('Confirmation Number', x.confirmationNumber);
-    return itineraryDetailBox(busEntries.length>1 ? 'Bus '+(i+1)+' Details' : 'Bus Details', rows, x.logoUrl);
-  }).join('');
+    return {date: x.departureDateRaw||'', time:'', html: itineraryDetailBox(busEntries.length>1 ? 'Bus '+(i+1)+' Details' : 'Bus Details', rows, x.logoUrl)};
+  });
+  var busBoxesHtml = busItems.map(function(it){return it.html;}).join('');
   // Booking Ref (the trip's Invoice Number) only shows when there's no
   // Supplier linked — a linked Supplier means the invoice went to that
   // supplier, not the client, so surfacing "the" invoice number on this
@@ -8119,6 +8194,42 @@ function itineraryEmailBodyHtml(opts){
   var totalInsurance = insuranceLineItems.reduce(function(a,li){return a+li[1];},0);
   var insuranceRows = insuranceLineItems.map(function(li){ return itineraryDetailRow(li[0]+' Insurance', '$'+money(li[1])); }).join('') +
     (insuranceLineItems.length>1 ? itineraryDetailRow('Total', '$'+money(totalInsurance)) : '');
+  // "category" (default) keeps the original fixed Flight/Hotel/Cruise/…
+  // section order; "chronological" merges every dated item (flight legs,
+  // hotel stays, the cruise, car rentals, transfers, trains, buses) into one
+  // timeline sorted by date (then time), with anything that has no date to
+  // sort by — Tours and Theme Park have no date field at all, and the rare
+  // item in a dated category that's missing its date — trailing underneath
+  // in its own "no specific date" section rather than silently dropped.
+  var bodySectionsHtml;
+  if(opts.layout === 'chronological'){
+    var timelineItems = [].concat(flightChronoItems, hotelItems, cruiseItems, carItems, transferItems, trainItems, busItems)
+      .filter(function(it){ return it.html; });
+    var datedItems = timelineItems.filter(function(it){ return it.date; }).sort(function(a,b){
+      var ak = a.date+' '+(a.time||''), bk = b.date+' '+(b.time||'');
+      return ak<bk ? -1 : (ak>bk ? 1 : 0);
+    });
+    var otherItems = timelineItems.filter(function(it){ return !it.date; }).concat(tourItems, themeParkItems).filter(function(it){ return it.html; });
+    bodySectionsHtml =
+      itineraryDetailBox('Also Part of This Vacation', linkedTripsRows)+
+      datedItems.map(function(it){ return it.html; }).join('')+
+      (otherItems.length ? (
+        '<tr><td style="padding:16px 32px 0 32px;"><p style="font-family:\'Times New Roman\',Times,serif; font-size:12px; color:#888888; text-transform:uppercase; letter-spacing:.04em; margin:0;">Other Bookings (No Specific Date)</p></td></tr>'+
+        otherItems.map(function(it){ return it.html; }).join('')
+      ) : '');
+  } else {
+    bodySectionsHtml =
+      itineraryDetailBox('Also Part of This Vacation', linkedTripsRows)+
+      flightBoxesHtml+
+      hotelBoxesHtml+
+      cruiseBoxHtml+
+      carRentalBoxesHtml+
+      transfersBoxesHtml+
+      toursBoxesHtml+
+      themeParkBoxesHtml+
+      trainBoxesHtml+
+      busBoxesHtml;
+  }
   return ''+
 '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f5f7; padding:30px 0;">'+
 '<tr>'+
@@ -8146,16 +8257,7 @@ function itineraryEmailBodyHtml(opts){
 '</table>'+
 '</td>'+
 '</tr>'+
-itineraryDetailBox('Also Part of This Vacation', linkedTripsRows)+
-flightBoxesHtml+
-hotelBoxesHtml+
-itineraryDetailBox('Cruise Details', cruiseRows, CRUISE_LOGOS[opts.cruiseLine])+
-carRentalBoxesHtml+
-transfersBoxesHtml+
-toursBoxesHtml+
-themeParkBoxesHtml+
-trainBoxesHtml+
-busBoxesHtml+
+bodySectionsHtml+
 itineraryDetailBox('Insurance', insuranceRows)+
 itineraryDetailBox('Booking Details', bookingRows)+
 (opts.notes?(
@@ -8414,6 +8516,11 @@ function tripToItineraryOpts(trip, client, extraNotes){
     hotelEntries: hotelEntries,
     cruiseConfirmationNumber: cru.confirmationNumber||'',
     cruiseSailingDate: cru.sailingDate?fmtDate(cru.sailingDate):'',
+    // Unformatted ISO copy of the date above — itineraryEmailBodyHtml()'s
+    // chronological layout sorts on this (a fmtDate() string like "Oct 22,
+    // 2026" doesn't sort correctly as text) while every display row still
+    // reads from the formatted field above.
+    cruiseSailingDateRaw: cru.sailingDate||'',
     cruiseReturnDate: cru.returnDate?fmtDate(cru.returnDate):'',
     cruiseNights: cru.nights?(cru.nights+(cru.nights===1?' night':' nights')):'',
     cruiseDeparturePort: cru.departurePort||'',
@@ -8425,12 +8532,15 @@ function tripToItineraryOpts(trip, client, extraNotes){
         company: c.company||'', carSize: c.carSize||'',
         pickupLocation: c.pickupLocation||'', dropoffLocation: c.dropoffLocation||'',
         pickupDate: c.pickupDate?fmtDate(c.pickupDate):'', dropoffDate: c.dropoffDate?fmtDate(c.dropoffDate):'',
+        // See cruiseSailingDateRaw above — unformatted ISO sort key.
+        pickupDateRaw: c.pickupDate||'',
         confirmationNumber: c.confirmationNumber||''
       };
     }),
     transferEntries: transferEntries.map(function(x){
       return {
         pickupDate: x.pickupDate?fmtDate(x.pickupDate):'',
+        pickupDateRaw: x.pickupDate||'',
         pickupTime: x.pickupTime||'',
         origin: x.origin||'',
         destination: x.destination||'',
@@ -8445,6 +8555,7 @@ function tripToItineraryOpts(trip, client, extraNotes){
       return {
         departureCity: t.departureCity||'', arrivalCity: t.arrivalCity||'',
         departureDate: t.departureDate?fmtDate(t.departureDate):'', returnDate: t.returnDate?fmtDate(t.returnDate):'',
+        departureDateRaw: t.departureDate||'',
         classOfService: t.classOfService||'', numPassengers: t.numPassengers||'', confirmationNumber: t.confirmationNumber||'', logoUrl: t.logoUrl||''
       };
     }),
@@ -8452,6 +8563,7 @@ function tripToItineraryOpts(trip, client, extraNotes){
       return {
         departureCity: x.departureCity||'', arrivalCity: x.arrivalCity||'',
         departureDate: x.departureDate?fmtDate(x.departureDate):'', returnDate: x.returnDate?fmtDate(x.returnDate):'',
+        departureDateRaw: x.departureDate||'',
         classOfService: x.classOfService||'', confirmationNumber: x.confirmationNumber||'', logoUrl: x.logoUrl||''
       };
     }),
@@ -8492,13 +8604,17 @@ function openEmailItineraryModal(){
     '<div class="fg">'+
       fld('Client',searchableSelectWrap('<select id="ei-client"><option value="">-- Select client --</option>'+clientOpts+'</select>','Search clients...'),true)+
       fld('Trip',searchableSelectWrap('<select id="ei-trip"><option value="">-- Select client first --</option></select>','Search trips...'),true)+
+      '<div class="field full"><label>Itinerary Layout</label><div style="display:flex;gap:14px">'+
+        '<label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:500;color:#333;cursor:pointer"><input type="radio" name="ei-layout" value="category" checked style="width:15px;height:15px"> By Category <span class="hint" style="text-transform:none;font-weight:400">(Flights, Hotel, Cruise, …)</span></label>'+
+        '<label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:500;color:#333;cursor:pointer"><input type="radio" name="ei-layout" value="chronological" style="width:15px;height:15px"> Chronological <span class="hint" style="text-transform:none;font-weight:400">(sorted by date)</span></label>'+
+      '</div></div>'+
       '<div class="field full"><label>Additional Note <span class="hint" style="text-transform:none;font-weight:400">(optional — appended after the trip details)</span></label><textarea id="ei-notes" rows="3" placeholder="Optional personal note to include"></textarea></div>'+
       '<div class="field full" id="ei-preview-wrap" style="display:none">'+
         '<label>Preview</label>'+
         '<iframe id="ei-preview-frame" style="width:100%;height:420px;border:1px solid #e5e7eb;border-radius:8px;background:#fff"></iframe>'+
       '</div>'+
     '</div>'+
-    '<div class="form-actions form-actions-sticky"><button class="cancel-btn" id="modal-cancel">Cancel</button><button class="cancel-btn" id="ei-preview">Preview</button><button class="save-btn" id="ei-send">Email Itinerary</button></div>';
+    '<div class="form-actions form-actions-sticky"><button class="cancel-btn" id="modal-cancel">Cancel</button><button class="cancel-btn" id="ei-preview">Preview</button><button class="cancel-btn" id="ei-download-pdf">&#128196; Download PDF</button><button class="save-btn" id="ei-send">Email Itinerary</button></div>';
 
   $('overlay').classList.add('open');
   $('modal-close').addEventListener('click', closeModal);
@@ -8533,7 +8649,10 @@ function openEmailItineraryModal(){
     var trip = db.trips.find(function(t){return t.id===tripId;});
     if(!trip){toast('Trip not found','err');return null;}
     var extraNotes = gv('ei-notes');
-    return {client:client, trip:trip, opts:tripToItineraryOpts(trip, client, extraNotes)};
+    var opts = tripToItineraryOpts(trip, client, extraNotes);
+    var layoutEl = document.querySelector('input[name="ei-layout"]:checked');
+    opts.layout = layoutEl ? layoutEl.value : 'category';
+    return {client:client, trip:trip, opts:opts};
   }
 
   document.getElementById('ei-preview').addEventListener('click', function(){
@@ -8544,6 +8663,12 @@ function openEmailItineraryModal(){
     wrap.style.display = 'block';
     document.getElementById('ei-preview-frame').srcdoc = html;
     wrap.scrollIntoView({behavior:'smooth', block:'nearest'});
+  });
+
+  document.getElementById('ei-download-pdf').addEventListener('click', function(){
+    var d = collectItineraryData();
+    if(!d) return;
+    downloadItineraryPdf(d.client, d.trip, itineraryEmailBodyHtml(d.opts));
   });
 
   document.getElementById('ei-send').addEventListener('click', function(){
