@@ -7151,11 +7151,23 @@ async function generateItineraryPdfBlob(bodyHtml){
   await waitForImagesToLoad(container);
   void container.offsetHeight;
   var w = container.scrollWidth, h = container.scrollHeight;
-  debugLog('Itinerary PDF: capturing at '+w+'x'+h+'px, '+container.querySelectorAll('img').length+' image(s) remaining after stripping non-data: URIs');
+  // html2pdf.js builds ONE canvas for the entire document before slicing it
+  // into pages — unlike a quote or voucher (always short), a well-booked
+  // itinerary can run long enough that width×height×scale exceeds the
+  // browser's maximum canvas size. Many browsers (especially under
+  // software/constrained GPU rendering, common on a locked-down work
+  // machine) don't throw when that happens — they silently hand back a
+  // blank canvas, which is exactly "the PDF is blank, no error anywhere."
+  // Scaling down for a long document keeps the canvas within a size that's
+  // safe even on weaker hardware, rather than always using a fixed scale:2
+  // that only a short document is guaranteed to fit under.
+  var MAX_CANVAS_DIM = 4000;
+  var scale = Math.max(0.5, Math.min(2, MAX_CANVAS_DIM / Math.max(w, h, 1)));
+  debugLog('Itinerary PDF: capturing at '+w+'x'+h+'px (scale '+scale+'), '+container.querySelectorAll('img').length+' image(s) remaining after stripping non-data: URIs');
   try{
     var blob = await html2pdfLib().set({
       margin:10, image:{type:'jpeg',quality:0.95},
-      html2canvas:{scale:2, width:w, height:h, windowWidth:w, windowHeight:h, useCORS:true},
+      html2canvas:{scale:scale, width:w, height:h, windowWidth:w, windowHeight:h, useCORS:true},
       // Without an explicit pagebreak mode, html2pdf.js (as of 0.10.x)
       // slices the captured canvas into page-height chunks with no regard
       // for where content actually ends — if the true content height isn't
