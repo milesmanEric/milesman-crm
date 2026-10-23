@@ -7124,19 +7124,38 @@ function waitForImagesToLoad(container){
     });
   }));
 }
+// A Train/Bus entry's free-typed "Logo URL" field is the one place an
+// itinerary can carry a real cross-origin <img>. html2canvas has to read
+// pixel data back off the canvas it draws into to build the capture — once
+// ANY cross-origin image without permissive CORS headers lands on that
+// canvas, the whole canvas is "tainted" and that read throws (or, on some
+// browser/library version combinations, silently comes back blank) for
+// EVERYTHING on it, not just that one logo — which reads as the entire PDF,
+// or everything past that point, rendering blank. Waiting for the image to
+// load (see waitForImagesToLoad above) doesn't help: a tainted canvas is
+// tainted whether the image loaded instantly or not. Removing any non-data:
+// image before capture removes the hazard entirely — that logo is cosmetic,
+// never worth risking the rest of the document for.
+function stripNonDataUriImages(container){
+  Array.from(container.querySelectorAll('img')).forEach(function(img){
+    if(!/^data:/i.test(img.getAttribute('src')||'')) img.remove();
+  });
+}
 async function generateItineraryPdfBlob(bodyHtml){
   var html2pdfLib = await loadHtml2PdfLib();
   var container = document.createElement('div');
   container.style.cssText='position:fixed;top:0;left:0;width:600px;background:#fff;z-index:-1';
   container.innerHTML = bodyHtml;
   document.body.appendChild(container);
+  stripNonDataUriImages(container);
   await waitForImagesToLoad(container);
   void container.offsetHeight;
   var w = container.scrollWidth, h = container.scrollHeight;
+  debugLog('Itinerary PDF: capturing at '+w+'x'+h+'px, '+container.querySelectorAll('img').length+' image(s) remaining after stripping non-data: URIs');
   try{
-    return await html2pdfLib().set({
+    var blob = await html2pdfLib().set({
       margin:10, image:{type:'jpeg',quality:0.95},
-      html2canvas:{scale:2, width:w, height:h, windowWidth:w, windowHeight:h},
+      html2canvas:{scale:2, width:w, height:h, windowWidth:w, windowHeight:h, useCORS:true},
       // Without an explicit pagebreak mode, html2pdf.js (as of 0.10.x)
       // slices the captured canvas into page-height chunks with no regard
       // for where content actually ends — if the true content height isn't
@@ -7149,6 +7168,8 @@ async function generateItineraryPdfBlob(bodyHtml){
       pagebreak:{mode:['avoid-all','css','legacy']},
       jsPDF:{unit:'pt', format:'letter'}
     }).from(container).outputPdf('blob');
+    debugLog('Itinerary PDF: generated blob, '+blob.size+' bytes');
+    return blob;
   } finally {
     document.body.removeChild(container);
   }
