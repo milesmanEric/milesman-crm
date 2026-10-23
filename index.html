@@ -7254,13 +7254,29 @@ async function saveItineraryPdfToDrive(client, trip, bodyHtml, subject){
   }
 }
 // Loads jsPDF directly rather than going through html2canvas at all — see
-// generateItineraryPdfBlobFromOpts() below for why.
+// generateItineraryPdfBlobFromOpts() below for why. html2pdf.bundle.min.js
+// (loaded for the OTHER PDF generators above) only uses jsPDF internally
+// for its own html2pdf() API — it doesn't re-expose jsPDF as a separate
+// global the way this first assumed, confirmed by the real failure: "jsPDF
+// was not found on window.jspdf after loading html2pdf.js". jsPDF's own
+// standalone UMD build does expose window.jspdf.jsPDF, so this loads that
+// directly instead of relying on it riding along with an unrelated bundle.
+let _jsPdfLibPromise=null;
 function loadJsPdfCtor(){
-  return loadHtml2PdfLib().then(function(){
-    // html2pdf.bundle.min.js bundles jsPDF and exposes its UMD global here.
-    if(window.jspdf && window.jspdf.jsPDF) return window.jspdf.jsPDF;
-    throw new Error('jsPDF was not found on window.jspdf after loading html2pdf.js');
-  });
+  if(!_jsPdfLibPromise){
+    _jsPdfLibPromise=new Promise(function(resolve,reject){
+      if(window.jspdf && window.jspdf.jsPDF){resolve(window.jspdf.jsPDF);return;}
+      var s=document.createElement('script');
+      s.src='https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js';
+      s.onload=function(){
+        if(window.jspdf && window.jspdf.jsPDF) resolve(window.jspdf.jsPDF);
+        else reject(new Error('jsPDF was not found on window.jspdf after loading jspdf.umd.min.js'));
+      };
+      s.onerror=function(){reject(new Error('Failed to load jsPDF'));};
+      document.head.appendChild(s);
+    });
+  }
+  return _jsPdfLibPromise;
 }
 // A long, real-world itinerary (many Airline Records/flight segments, hotel
 // stays, cruise, cars, transfers, tours, trains, buses) reliably came back
