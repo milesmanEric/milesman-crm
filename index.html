@@ -1393,6 +1393,7 @@ const DEFAULT_MARKETING_PLAN = [
 ];
 const THEME_PARKS = ['Disney World','Disneyland California','Universal Studios Hollywood','Universal Studios Orlando'];
 const TRAIN_CLASSES = ['Coach','Business Class','First Class','Sleeper Car'];
+const TRAIN_CARRIERS = ['Amtrak','Frecciarossa','Eurostar'];
 const CAR_SIZES = ['Economy','Compact','Midsize','Full-size','SUV','Minivan','Luxury','Convertible'];
 // Vehicle-class preference for a private transfer / car service ride —
 // deliberately coarser than CAR_SIZES (which is for self-drive rentals).
@@ -1776,6 +1777,23 @@ const CAR_RENTAL_LOGOS = {
   'Sixt': SIXT_LOGO_DATA_URI,
   'Europcar': EUROPCAR_LOGO_DATA_URI,
   'Thrifty': THRIFTY_LOGO_DATA_URI
+};
+// Train carrier logos (Amtrak/Frecciarossa/Eurostar) for the Train Details
+// box in Email Itinerary and the Train travel-item card in Email
+// Quote/Trip Confirmation — same free-license-only sourcing rule as every
+// other *_LOGOS table above. This session's sandbox network access doesn't
+// reach Wikimedia Commons/Wikipedia (where every other brand logo above
+// was sourced from), so these stay blank for now — falls back to no logo
+// in the itinerary PDF, or to a manually pasted Logo URL on the Train
+// entry itself in the HTML email, same as any carrier without a sourced
+// logo — until a real file can be spliced in here.
+const AMTRAK_LOGO_DATA_URI = '';
+const FRECCIAROSSA_LOGO_DATA_URI = '';
+const EUROSTAR_LOGO_DATA_URI = '';
+const TRAIN_LOGOS = {
+  'Amtrak': AMTRAK_LOGO_DATA_URI,
+  'Frecciarossa': FRECCIAROSSA_LOGO_DATA_URI,
+  'Eurostar': EUROSTAR_LOGO_DATA_URI
 };
 // Cruise Details box in Email Itinerary — separate from the Email Quote
 // templates' own cruiseLogoDataUri (which QUOTE_CRUISE_CONFIG/getQuoteConfig
@@ -7515,6 +7533,7 @@ const TRAVEL_ITEM_TYPES = {
     {key:'date', label:'First Day', type:'date'}
   ]},
   'Train': {fields:[
+    {key:'carrier', label:'Carrier', opts:TRAIN_CARRIERS},
     {key:'departureCity', label:'Departure City'},
     {key:'arrivalCity', label:'Arrival City'},
     {key:'departureDate', label:'Departure Date', type:'date'},
@@ -7523,7 +7542,7 @@ const TRAVEL_ITEM_TYPES = {
     {key:'numPassengers', label:'Number of Passengers', type:'number'},
     {key:'thirdPartyAgency', label:'Third Party Agency', opts:THIRD_PARTY_AGENCIES},
     {key:'thirdPartyAgencyBookingNumber', label:'Third Party Agency Booking Number'}
-  ]},
+  ], logoKey:'carrier', logos:TRAIN_LOGOS},
   'Bus': {fields:[
     {key:'departureCity', label:'Departure City'},
     {key:'arrivalCity', label:'Arrival City'},
@@ -8432,7 +8451,8 @@ function itineraryEmailBodyHtml(opts){
   var themeParkBoxesHtml = themeParkItems.map(function(it){return it.html;}).join('');
   var trainEntries = opts.trainEntries || [];
   var trainItems = trainEntries.map(function(t, i){
-    var rows = itineraryDetailRow('Route', t.departureCity&&t.arrivalCity ? (t.departureCity+' → '+t.arrivalCity) : '') +
+    var rows = itineraryDetailRow('Carrier', t.carrier) +
+      itineraryDetailRow('Route', t.departureCity&&t.arrivalCity ? (t.departureCity+' → '+t.arrivalCity) : '') +
       itineraryDetailRow('Departure Date', t.departureDate) +
       itineraryDetailRow('Departure Time', t.departureTime?fmtTime(t.departureTime):'') +
       itineraryDetailRow('Arrival Time', t.arrivalTime?fmtTime(t.arrivalTime):'') +
@@ -8440,7 +8460,11 @@ function itineraryEmailBodyHtml(opts){
       itineraryDetailRow('Class of Service', t.classOfService) +
       itineraryDetailRow('Passengers', t.numPassengers) +
       itineraryDetailRow('Confirmation Number', t.confirmationNumber);
-    return {date: t.departureDateRaw||'', time: t.departureTime||'', html: itineraryDetailBox(trainEntries.length>1 ? 'Train '+(i+1)+' Details' : 'Train Details', rows, t.logoUrl)};
+    // TRAIN_LOGOS (an embedded data: URI, same as AIRLINE_LOGOS/HOTEL_LOGOS/
+    // CAR_RENTAL_LOGOS) takes priority over the manually pasted Logo URL —
+    // both are safe here since this is a plain <img src>, not the PDF's
+    // canvas-based rasterization pipeline.
+    return {date: t.departureDateRaw||'', time: t.departureTime||'', html: itineraryDetailBox(trainEntries.length>1 ? 'Train '+(i+1)+' Details' : 'Train Details', rows, TRAIN_LOGOS[t.carrier]||t.logoUrl)};
   });
   var trainBoxesHtml = trainItems.map(function(it){return it.html;}).join('');
   var busEntries = opts.busEntries || [];
@@ -8728,7 +8752,8 @@ function buildItinerarySections(opts){
 
   var trainEntries = opts.trainEntries || [];
   trainEntries.forEach(function(t,i){
-    var rows = itineraryDetailRowText('Route', t.departureCity&&t.arrivalCity?(t.departureCity+' to '+t.arrivalCity):'') +
+    var rows = itineraryDetailRowText('Carrier', t.carrier) +
+      itineraryDetailRowText('Route', t.departureCity&&t.arrivalCity?(t.departureCity+' to '+t.arrivalCity):'') +
       itineraryDetailRowText('Departure Date', t.departureDate) +
       itineraryDetailRowText('Departure Time', t.departureTime?fmtTime(t.departureTime):'') +
       itineraryDetailRowText('Arrival Time', t.arrivalTime?fmtTime(t.arrivalTime):'') +
@@ -8736,7 +8761,12 @@ function buildItinerarySections(opts){
       itineraryDetailRowText('Class of Service', t.classOfService) +
       itineraryDetailRowText('Passengers', t.numPassengers) +
       itineraryDetailRowText('Confirmation Number', t.confirmationNumber);
-    items.push({date:t.departureDateRaw||'', time:t.departureTime||'', heading:trainEntries.length>1?'Train '+(i+1)+' Details':'Train Details', rows:rows, logo:''});
+    // Only the embedded TRAIN_LOGOS data: URI feeds the PDF's logo — unlike
+    // the HTML email, this goes through generateItineraryPdfBlobFromOpts()'s
+    // canvas-based SVG rasterization, so an arbitrary remote Logo URL (the
+    // manually pasted t.logoUrl field) must never be fed into it; that's the
+    // exact cross-origin canvas-taint bug that once made this PDF blank.
+    items.push({date:t.departureDateRaw||'', time:t.departureTime||'', heading:trainEntries.length>1?'Train '+(i+1)+' Details':'Train Details', rows:rows, logo:TRAIN_LOGOS[t.carrier]||''});
   });
 
   var busEntries = opts.busEntries || [];
@@ -8950,6 +8980,7 @@ function tripToItineraryOpts(trip, client, extraNotes){
     themeParkEntries: themeParkEntries,
     trainEntries: trainEntries.map(function(t){
       return {
+        carrier: t.carrier||'',
         departureCity: t.departureCity||'', arrivalCity: t.arrivalCity||'',
         departureDate: t.departureDate?fmtDate(t.departureDate):'', returnDate: t.returnDate?fmtDate(t.returnDate):'',
         departureDateRaw: t.departureDate||'',
@@ -20859,6 +20890,7 @@ function trainEntryRowInnerHtml(entry){
       '<button type="button" class="del-train-entry-btn" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:12px">&#128465;&#65039; Remove</button>'+
     '</div>'+
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
+      '<div class="field"><label>Carrier</label><select class="train-entry-carrier"><option value="">-- Select --</option>'+selOpts(TRAIN_CARRIERS,entry.carrier)+'</select></div>'+
       '<div class="field"><label>Confirmation Number</label><input class="train-entry-conf" type="text" value="'+(entry.confirmationNumber||'').toString().replace(/"/g,'&quot;')+'" placeholder="e.g. AMTK-556677"></div>'+
       '<div class="field"><label>Departure City</label><input class="train-entry-depcity" type="text" value="'+(entry.departureCity||'').toString().replace(/"/g,'&quot;')+'" placeholder="e.g. New York, NY"></div>'+
       '<div class="field"><label>Arrival City</label><input class="train-entry-arrcity" type="text" value="'+(entry.arrivalCity||'').toString().replace(/"/g,'&quot;')+'" placeholder="e.g. Washington, DC"></div>'+
@@ -20886,6 +20918,7 @@ function trainEntriesListHtml(entries){
 function readTrainEntries(){
   return Array.from(document.querySelectorAll('#tb-train-entries .train-entry-row')).map(function(row){
     return {
+      carrier: (row.querySelector('.train-entry-carrier')||{}).value||'',
       confirmationNumber: (row.querySelector('.train-entry-conf')||{}).value||'',
       departureCity: (row.querySelector('.train-entry-depcity')||{}).value||'',
       arrivalCity: (row.querySelector('.train-entry-arrcity')||{}).value||'',
@@ -20905,7 +20938,7 @@ function readTrainEntries(){
       notes: (row.querySelector('.train-entry-notes')||{}).value||''
     };
   }).filter(function(e){
-    return e.confirmationNumber||e.departureCity||e.arrivalCity||e.departureDate||e.returnDate||e.departureTime||e.arrivalTime||e.classOfService||e.numPassengers||e.thirdPartyAgency||e.thirdPartyAgencyBookingNumber||e.currency||e.priceForeign||e.price||e.milesManFee||e.logoUrl||e.notes;
+    return e.carrier||e.confirmationNumber||e.departureCity||e.arrivalCity||e.departureDate||e.returnDate||e.departureTime||e.arrivalTime||e.classOfService||e.numPassengers||e.thirdPartyAgency||e.thirdPartyAgencyBookingNumber||e.currency||e.priceForeign||e.price||e.milesManFee||e.logoUrl||e.notes;
   });
 }
 function busEntryRowInnerHtml(entry){
