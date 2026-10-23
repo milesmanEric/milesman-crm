@@ -7100,18 +7100,53 @@ async function getOrCreateDriveItinerariesFolder(token){
 // exactly flushes the card — and the logo at its top — against the page's
 // left margin, so a printed/downloaded itinerary reads as a proper
 // letterhead with the logo in the top-left corner.
+// Every logo in an itinerary (Miles Man's own, plus each Airline/Hotel/Cruise/
+// Car Rental box's brand logo) is an embedded data: URI and decodes near
+// instantly, except a Train/Bus entry's free-typed "Logo URL" field, which
+// can point at a real network image. Measuring container.scrollHeight
+// before that image has actually loaded (an <img> with no width/height
+// attributes, relying on CSS height:auto, contributes no layout height
+// until the browser knows its natural size) undercounts the page's true
+// height — html2canvas is then told to capture/paginate at that too-short
+// height, which is exactly what produces the trailing blank pages this
+// generates when a slow/broken Logo URL is present. A 3s-per-image cap
+// means one dead link can't hang PDF generation indefinitely — it just
+// renders without that logo, same as it would have before this existed.
+function waitForImagesToLoad(container){
+  var imgs = Array.from(container.querySelectorAll('img'));
+  return Promise.all(imgs.map(function(img){
+    if(img.complete) return Promise.resolve();
+    return new Promise(function(resolve){
+      var done = function(){ img.removeEventListener('load', done); img.removeEventListener('error', done); resolve(); };
+      img.addEventListener('load', done);
+      img.addEventListener('error', done);
+      setTimeout(done, 3000);
+    });
+  }));
+}
 async function generateItineraryPdfBlob(bodyHtml){
   var html2pdfLib = await loadHtml2PdfLib();
   var container = document.createElement('div');
   container.style.cssText='position:fixed;top:0;left:0;width:600px;background:#fff;z-index:-1';
   container.innerHTML = bodyHtml;
   document.body.appendChild(container);
+  await waitForImagesToLoad(container);
   void container.offsetHeight;
   var w = container.scrollWidth, h = container.scrollHeight;
   try{
     return await html2pdfLib().set({
       margin:10, image:{type:'jpeg',quality:0.95},
       html2canvas:{scale:2, width:w, height:h, windowWidth:w, windowHeight:h},
+      // Without an explicit pagebreak mode, html2pdf.js (as of 0.10.x)
+      // slices the captured canvas into page-height chunks with no regard
+      // for where content actually ends — if the true content height isn't
+      // an exact multiple of the page height (almost never is), the last
+      // slice is mostly or entirely blank, and ever reads as one or more
+      // blank trailing pages once the image-undercount bug above compounds
+      // it. 'avoid-all' keeps a box (one itineraryDetailBox()) from being
+      // split across a page boundary in the first place, so there's never
+      // a half-cut element padding out a trailing page.
+      pagebreak:{mode:['avoid-all','css','legacy']},
       jsPDF:{unit:'pt', format:'letter'}
     }).from(container).outputPdf('blob');
   } finally {
@@ -8176,9 +8211,18 @@ function itineraryEmailBodyHtml(opts){
   // client-facing itinerary would be misleading (there could be a separate
   // supplier-side invoice entirely). Same rule as bookedTripSummaryHtml's
   // invoicedToClient check.
+  // Same line-by-line breakdown as bookedTripSummaryHtml() — Total Cash
+  // Paid, then whichever of Credits Received/Miles Man Fees/Points Cash
+  // Value/Resort Credit actually apply, then Total Trip Value — so the
+  // client-facing total isn't just a single unexplained number.
   var bookingRows = (opts.supplierName ? '' : itineraryDetailRow('Confirmation / Booking Ref', opts.bookingRef)) +
     itineraryDetailRow('Supplier', opts.supplierName) +
     itineraryDetailRow('Points Used', opts.pointsUsed) +
+    itineraryDetailRow('Total Cash Paid', opts.totalCashPaid) +
+    itineraryDetailRow('(Includes Credits to be Received)', opts.creditsReceived) +
+    itineraryDetailRow('Total Miles Man Fees', opts.totalMilesManFee) +
+    itineraryDetailRow('Total Points/Miles Cash Value', opts.ptsCashValue) +
+    itineraryDetailRow('Total Resort/Food & Beverage Credits', opts.resortCreditTotal) +
     itineraryDetailRow('Total Trip Value', opts.totalValue);
   // One row per category that actually has a premium recorded — purchased
   // either through that segment's own supplier (e.g. a cruise line's own
@@ -8460,6 +8504,15 @@ function tripToItineraryOpts(trip, client, extraNotes){
   var sup = trip.supplierId ? db.vendors.find(function(v){return v.id===trip.supplierId;}) : null;
   var b = trip.booked || {};
   var air = b.airline||{}, cru = b.cruise||{};
+  // Total Trip Value on the itinerary now matches the Booked Trip Summary
+  // panel's own figure exactly (same computeBookedTripSummary() calculation
+  // used there) rather than the older, simpler tripBookedPriceTotal() sum —
+  // that only added up each entry's Price/Insurance/Miles Man Fee/Resort
+  // Credit fields, silently leaving out Credits to be Received and the cash
+  // value of any points redemptions. computeBookedTripSummary() assumes
+  // bd.airline/bd.cruise are real objects (it reads straight off them, e.g.
+  // bd.cruise.price, with no further null-guard) — air/cru above already are.
+  var tripSummary = computeBookedTripSummary(Object.assign({}, b, {airline:air, cruise:cru}));
   var tourEntries = Array.isArray(b.tours) ? b.tours : (b.tours && Object.keys(b.tours).length ? [b.tours] : []);
   var themeParkEntries = Array.isArray(b.themePark) ? b.themePark : (b.themePark && Object.keys(b.themePark).length ? [b.themePark] : []);
   var transferEntries = Array.isArray(b.transfers) ? b.transfers : [];
@@ -8585,12 +8638,19 @@ function tripToItineraryOpts(trip, client, extraNotes){
     busInsurance: b.busInsurancePremium || (!Array.isArray(b.bus) && b.bus ? (b.bus.insurancePremium||0) : 0),
     bookingRef: trip.bookingRef||'',
     supplierName: (sup?sup.name:trip.supplierName)||'',
-    // Points Used and Total Trip Value are sourced from Booked Trip Details
-    // (tripBookedPoints/tripBookedPriceTotal), not the trip's top-level
-    // pointsUsed/totalValue/cashPaid — those get set directly from the
-    // revenue import and aren't meant to be quoted back to the client.
+    // Points Used is sourced from Booked Trip Details (tripBookedPoints),
+    // not the trip's top-level pointsUsed/cashPaid — those get set directly
+    // from the revenue import and aren't meant to be quoted back to the
+    // client. Total Trip Value and its breakdown below come straight off
+    // tripSummary (see above) so the itinerary's number always matches the
+    // Booked Trip Summary panel's, line for line.
     pointsUsed: (function(){var p=tripBookedPoints(trip);return p?fmt(p):'';})(),
-    totalValue: (function(){var v=tripBookedPriceTotal(trip);return v?('$'+money(v)):'';})(),
+    totalValue: tripSummary.totalTripValue ? ('$'+money(tripSummary.totalTripValue)) : '',
+    totalCashPaid: tripSummary.totalCash ? ('$'+money(tripSummary.totalCash)) : '',
+    creditsReceived: tripSummary.totalCreditsReceived ? ('$'+money(tripSummary.totalCreditsReceived)) : '',
+    totalMilesManFee: tripSummary.totalMilesManFee ? ('$'+money(tripSummary.totalMilesManFee)) : '',
+    ptsCashValue: tripSummary.totalPtsValue ? ('$'+money(tripSummary.totalPtsValue)) : '',
+    resortCreditTotal: tripSummary.totalResortCredit ? ('$'+money(tripSummary.totalResortCredit)) : '',
     notes: trip.notes||'',
     extraNotes: extraNotes||''
   };
