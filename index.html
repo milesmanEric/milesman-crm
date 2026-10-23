@@ -8326,14 +8326,6 @@ function itineraryEmailBodyHtml(opts){
   var overviewRows = itineraryDetailRow('Destination', opts.destination) +
     itineraryDetailRow('Travel Dates', datesLine) +
     itineraryDetailRow('Passengers', opts.passengers);
-  // Other trip records linked via Linked Trips (same overall multi-city
-  // vacation, see saveTrip()) — each rendered as one row, tripName if it has
-  // one, destination otherwise, with its own date range as the value.
-  var linkedTripsRows = (opts.linkedTrips||[]).map(function(lt){
-    var label = lt.tripName || lt.destination || 'Linked trip';
-    var ltDatesLine = (lt.departDate?fmtDate(lt.departDate):'') + (lt.departDate&&lt.returnDate?' – ':'') + (lt.returnDate?fmtDate(lt.returnDate):'');
-    return itineraryDetailRow(label, ltDatesLine || lt.destination || '');
-  }).join('');
   // Flight/Hotel/Cruise prefer the actual Booked Trip Details entries
   // (real flight segments, hotel stays, cruise cabins) whenever that
   // section has anything recorded — only falling back to the trip's
@@ -8454,16 +8446,6 @@ function itineraryEmailBodyHtml(opts){
     return {date: x.pickupDateRaw||'', time: x.pickupTime||'', html: itineraryDetailBox(transferEntries.length>1 ? 'Transfer '+(i+1) : 'Transfer Details', rows)};
   });
   var transfersBoxesHtml = transferItems.map(function(it){return it.html;}).join('');
-  var tourEntries = opts.tourEntries || [];
-  var tourItems = tourEntries.map(function(t, i){
-    var rows = itineraryDetailRow('Vendor', t.vendor) +
-      itineraryDetailRow('Description', t.description) +
-      itineraryDetailRow('Confirmation Number', t.confirmationNumber);
-    // Tours have no date field in Booked Trip Details, so these always
-    // land in the chronological layout's "no specific date" bucket.
-    return {date:'', time:'', html: itineraryDetailBox(tourEntries.length>1 ? 'Tour '+(i+1)+' Details' : 'Tour Details', rows, TOUR_LOGOS[t.vendor])};
-  });
-  var toursBoxesHtml = tourItems.map(function(it){return it.html;}).join('');
   var themeParkEntries = opts.themeParkEntries || [];
   var themeParkItems = themeParkEntries.map(function(p, i){
     var rows = itineraryDetailRow('Park', p.park) +
@@ -8563,9 +8545,8 @@ function itineraryEmailBodyHtml(opts){
       }
       datedItemsHtml += it.html;
     });
-    var otherItems = timelineItems.filter(function(it){ return !it.date; }).concat(tourItems, themeParkItems).filter(function(it){ return it.html; });
+    var otherItems = timelineItems.filter(function(it){ return !it.date; }).concat(themeParkItems).filter(function(it){ return it.html; });
     bodySectionsHtml =
-      itineraryDetailBox('Also Part of This Vacation', linkedTripsRows)+
       datedItemsHtml+
       (otherItems.length ? (
         '<tr><td style="padding:16px 32px 0 32px;"><p style="font-family:\'Times New Roman\',Times,serif; font-size:12px; color:#888888; text-transform:uppercase; letter-spacing:.04em; margin:0;">Other Bookings (No Specific Date)</p></td></tr>'+
@@ -8573,13 +8554,11 @@ function itineraryEmailBodyHtml(opts){
       ) : '');
   } else {
     bodySectionsHtml =
-      itineraryDetailBox('Also Part of This Vacation', linkedTripsRows)+
       flightBoxesHtml+
       hotelBoxesHtml+
       cruiseBoxHtml+
       carRentalBoxesHtml+
       transfersBoxesHtml+
-      toursBoxesHtml+
       themeParkBoxesHtml+
       trainBoxesHtml+
       busBoxesHtml;
@@ -8614,13 +8593,6 @@ function itineraryEmailBodyHtml(opts){
 bodySectionsHtml+
 itineraryDetailBox('Insurance', insuranceRows)+
 itineraryDetailBox('Booking Details', bookingRows)+
-(opts.notes?(
-'<tr>'+
-'<td style="padding:16px 32px 0 32px;">'+
-'<p style="font-family:\'Times New Roman\',Times,serif; font-size:14px; color:#333333; line-height:1.5; margin:0 0 16px 0;"><strong>Trip Notes:</strong><br>'+escHtml(opts.notes).replace(/\n/g,'<br>')+'</p>'+
-'</td>'+
-'</tr>'
-):'')+
 (opts.extraNotes?(
 '<tr>'+
 '<td style="padding:0 32px;">'+
@@ -8683,16 +8655,14 @@ function buildItinerarySections(opts){
   var airlineRecords = opts.airlineRecords || [];
   var totalSegs = airlineRecords.reduce(function(a,r){return a+((r.segments||[]).length);},0);
   if(totalSegs){
-    var segCounter = 0;
     airlineRecords.forEach(function(rec){
       (rec.segments||[]).forEach(function(f){
-        segCounter++;
         // A plain " to " rather than a unicode arrow — jsPDF's built-in
         // standard fonts only cover WinAnsi encoding, so "→" (U+2192) has
         // no glyph to fall back to and renders as a stray/missing
         // character, which is what made these rows look broken.
         var route = f.origin&&f.destination ? (f.origin+' to '+f.destination) : '';
-        var heading = totalSegs>1 ? ('Flight '+segCounter+(route?' — '+route:'')) : 'Flight Details';
+        var heading = totalSegs>1 ? ('Flight'+(route?' — '+route:'')) : 'Flight Details';
         var rows = itineraryDetailRowText('Passengers', rec.passengers) +
           itineraryDetailRowText('Record Number', f.recordNumber) +
           itineraryDetailRowText('Airline', f.airline) +
@@ -8911,7 +8881,6 @@ function tripToItineraryOpts(trip, client, extraNotes){
   // bd.airline/bd.cruise are real objects (it reads straight off them, e.g.
   // bd.cruise.price, with no further null-guard) — air/cru above already are.
   var tripSummary = computeBookedTripSummary(Object.assign({}, b, {airline:air, cruise:cru}));
-  var tourEntries = Array.isArray(b.tours) ? b.tours : (b.tours && Object.keys(b.tours).length ? [b.tours] : []);
   var themeParkEntries = Array.isArray(b.themePark) ? b.themePark : (b.themePark && Object.keys(b.themePark).length ? [b.themePark] : []);
   var transferEntries = Array.isArray(b.transfers) ? b.transfers : [];
   var carEntries = Array.isArray(b.carRental) ? b.carRental : (b.carRental && Object.keys(b.carRental).length ? [b.carRental] : []);
@@ -8944,14 +8913,9 @@ function tripToItineraryOpts(trip, client, extraNotes){
     var c = db.clients.find(function(x){return x.id===cid;});
     return c ? (toFirstLast(c.name)||c.name||'') : '';
   }).filter(Boolean);
-  var linkedTrips = (trip.linkedTripIds||[]).map(function(tid){
-    var t = db.trips.find(function(x){return x.id===tid;});
-    return t ? {destination:t.destination||'', departDate:t.departDate||'', returnDate:t.returnDate||'', tripName:(t.booked&&t.booked.tripName)||''} : null;
-  }).filter(Boolean);
   return {
     clientFirstName: client?getFirstName(client.name):'',
     passengers: joinNames(passengerNames),
-    linkedTrips: linkedTrips,
     tripName: b.tripName||'',
     destination: trip.destination||'',
     origin: trip.origin||'',
@@ -9000,7 +8964,6 @@ function tripToItineraryOpts(trip, client, extraNotes){
         confirmationNumber: x.confirmationNumber||''
       };
     }),
-    tourEntries: tourEntries,
     themeParkEntries: themeParkEntries,
     trainEntries: trainEntries.map(function(t){
       return {
