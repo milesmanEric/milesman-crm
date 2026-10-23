@@ -14610,6 +14610,7 @@ function renderVendors(){
           (v.phone?'<span>&#128222; '+v.phone+'</span>':'')+
         '</div>':'')+
         (v.website?'<div style="font-size:12px;margin-top:8px"><a href="'+(v.website.indexOf('http')===0?v.website:'https://'+v.website)+'" target="_blank" style="color:#2563eb;text-decoration:none">&#127760; '+escHtml(v.website)+'</a></div>':'')+
+        ((v.city||v.country)?'<div style="font-size:12px;color:#666;margin-top:4px">&#128205; '+escHtml([v.city,v.country].filter(Boolean).join(', '))+'</div>':'')+
         '<div style="margin-top:10px;border-top:1px solid #f0f0f0;padding-top:8px">'+
           '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'+
             '<div style="font-size:11px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:.05em">Contacts'+((v.contacts||[]).length?' ('+v.contacts.length+')':'')+'</div>'+
@@ -15200,6 +15201,8 @@ function openVendorForm(id){
       fld('Email', inp('vem','email',d.email,''))+
       fld('Phone', inp('vph','text',d.phone,''))+
       fld('Website', inp('vwb','text',d.website,'https://'))+
+      fld('City', inp('vcity','text',d.city,''))+
+      fld('Country', inp('vcountry','text',d.country,''))+
       '<div class="field full"><label>Notes</label><textarea id="vno" rows="2">'+(d.notes||'')+'</textarea></div>'+
       // Used to be hidden unless Type==='Referral Partner', on the
       // assumption only referral partners ever needed manual client links —
@@ -15670,7 +15673,7 @@ function saveVendor(id){
   var data = {
     name:name, type:gv('vtype'), category:gv('vcat'),
     notesLog:notesLog, contactName:gv('vcn'), email:gv('vem'), phone:gv('vph'),
-    website:gv('vwb'), notes:gv('vno'), clientIds:clientIds
+    website:gv('vwb'), city:gv('vcity'), country:gv('vcountry'), notes:gv('vno'), clientIds:clientIds
   };
   // Only present on a Hotel-category supplier's form — null (not an empty
   // array) when the section wasn't shown at all, so switching a supplier's
@@ -27605,6 +27608,8 @@ const ASSISTANT_TOOLS = [
         email: { type: 'string' },
         phone: { type: 'string' },
         website: { type: 'string' },
+        city: { type: 'string' },
+        country: { type: 'string' },
         notes: { type: 'string' }
       },
       required: ['name']
@@ -27624,6 +27629,8 @@ const ASSISTANT_TOOLS = [
         email: { type: 'string' },
         phone: { type: 'string' },
         website: { type: 'string' },
+        city: { type: 'string' },
+        country: { type: 'string' },
         notes: { type: 'string' }
       },
       required: ['id']
@@ -27790,7 +27797,7 @@ async function runAssistantTool(name, input){
     var vq = (input.query||'').toLowerCase();
     var vMatches = db.vendors.filter(function(v){
       return (v.name||'').toLowerCase().indexOf(vq)!==-1;
-    }).slice(0,10).map(function(v){ return {id:v.id, name:v.name, type:v.type, category:v.category, contactName:v.contactName, email:v.email, phone:v.phone, website:v.website, notes:v.notes}; });
+    }).slice(0,10).map(function(v){ return {id:v.id, name:v.name, type:v.type, category:v.category, contactName:v.contactName, email:v.email, phone:v.phone, website:v.website, city:v.city, country:v.country, notes:v.notes}; });
     return {vendors: vMatches};
   }
   if(name === 'create_vendor'){
@@ -27799,6 +27806,7 @@ async function runAssistantTool(name, input){
     var newVendor = {
       id: newId('V', db.vendors), name: input.name, type: input.type||'', category: input.category||'',
       contactName: input.contactName||'', email: input.email||'', phone: input.phone||'', website: input.website||'',
+      city: input.city||'', country: input.country||'',
       notes: input.notes||'', notesLog: [], clientIds: []
     };
     db.vendors.push(newVendor);
@@ -27810,7 +27818,7 @@ async function runAssistantTool(name, input){
     if(!vendorExisting) return {error:'No supplier found with id '+input.id};
     snapshot('Assistant: update vendor');
     var vendorUpdated = Object.assign({}, vendorExisting);
-    ['name','type','category','contactName','email','phone','website','notes'].forEach(function(f){
+    ['name','type','category','contactName','email','phone','website','city','country','notes'].forEach(function(f){
       if(input[f]!==undefined) vendorUpdated[f] = input[f];
     });
     db.vendors = db.vendors.map(function(v){ return v.id===input.id ? vendorUpdated : v; });
