@@ -6411,6 +6411,16 @@ function fmtDate(s){
   if(isNaN(d)) return s;
   return d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
 }
+// Full "Monday, November 3, 2026" form — used for the chronological
+// itinerary layout's per-day headings (itineraryEmailBodyHtml() and
+// tripItineraryPlainText()), where fmtDate()'s shorter "Nov 3, 2026" reads
+// too terse as a standalone day heading.
+function fmtWeekdayDate(s){
+  if(!s) return '';
+  var d = new Date(s+'T12:00:00');
+  if(isNaN(d)) return s;
+  return d.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
+}
 // Every time field that feeds the itinerary (Flight Depart/Arrival, Train
 // Departure/Arrival, Transfer pickup) is a plain <input type="time"> value
 // — a raw 24-hour "HH:MM" string, not a Date — so this formats that string
@@ -8264,6 +8274,10 @@ titleHtml+
 '</td>'+
 '</tr>';
 }
+// Standing closing line for every client-facing itinerary (HTML email and
+// PDF/plain-text) — appended after any per-send Additional Note, right
+// before the "Best, Eric" signoff.
+var ITINERARY_CLOSING_NOTE = 'If you have any questions or issues while traveling, I can be reached via text or WhatsApp at 908-419-7700.  Have a wonderful trip!';
 function itineraryEmailBodyHtml(opts){
   var datesLine = (opts.departDate?fmtDate(opts.departDate):'') + (opts.departDate&&opts.returnDate?' – ':'') + (opts.returnDate?fmtDate(opts.returnDate):'');
   var overviewRows = itineraryDetailRow('Destination', opts.destination) +
@@ -8350,12 +8364,12 @@ function itineraryEmailBodyHtml(opts){
         itineraryDetailRow('Check-in Date', h.checkInDate?fmtDate(h.checkInDate):'') +
         itineraryDetailRow('Nights', h.nights?(h.nights+(h.nights===1?' night':' nights')):'') +
         itineraryDetailRow('Confirmation Number', h.confirmationNumber);
-      return {date: h.checkInDate||'', time:'', html: itineraryDetailBox(hotelEntries.length>1 ? 'Hotel '+(i+1)+' Details' : 'Hotel Details', rows, HOTEL_LOGOS[h.hotelBrand])};
+      return {date: h.checkInDate||'', time:'', isHotel:true, html: itineraryDetailBox(hotelEntries.length>1 ? 'Hotel '+(i+1)+' Details' : 'Hotel Details', rows, HOTEL_LOGOS[h.hotelBrand])};
     });
   } else {
     var hotelRows = itineraryDetailRow('Hotel', opts.hotel) +
       itineraryDetailRow('Nights', opts.hotelNights);
-    hotelItems = hotelRows ? [{date:'', time:'', html: itineraryDetailBox('Hotel Details', hotelRows, HOTEL_LOGOS[opts.hotel])}] : [];
+    hotelItems = hotelRows ? [{date:'', time:'', isHotel:true, html: itineraryDetailBox('Hotel Details', hotelRows, HOTEL_LOGOS[opts.hotel])}] : [];
   }
   var hotelBoxesHtml = hotelItems.map(function(it){return it.html;}).join('');
   var cruiseCabins = opts.cruiseCabins || [];
@@ -8473,22 +8487,38 @@ function itineraryEmailBodyHtml(opts){
   // "category" (default) keeps the original fixed Flight/Hotel/Cruise/…
   // section order; "chronological" merges every dated item (flight legs,
   // hotel stays, the cruise, car rentals, transfers, trains, buses) into one
-  // timeline sorted by date (then time), with anything that has no date to
+  // timeline sorted by date (then time), grouped under a per-day heading
+  // (e.g. "Monday, November 3, 2026"), with anything that has no date to
   // sort by — Tours and Theme Park have no date field at all, and the rare
   // item in a dated category that's missing its date — trailing underneath
   // in its own "no specific date" section rather than silently dropped.
+  // Within a day, the hotel stay always sorts last regardless of its
+  // (always-blank) time — it reads as "where you're sleeping that night"
+  // rather than a scheduled event competing with the day's actual
+  // flights/transfers/tours for position.
   var bodySectionsHtml;
   if(opts.layout === 'chronological'){
     var timelineItems = [].concat(flightChronoItems, hotelItems, cruiseItems, carItems, transferItems, trainItems, busItems)
       .filter(function(it){ return it.html; });
     var datedItems = timelineItems.filter(function(it){ return it.date; }).sort(function(a,b){
-      var ak = a.date+' '+(a.time||''), bk = b.date+' '+(b.time||'');
+      if(a.date !== b.date) return a.date<b.date ? -1 : 1;
+      var ah = a.isHotel?1:0, bh = b.isHotel?1:0;
+      if(ah !== bh) return ah-bh;
+      var ak = a.time||'', bk = b.time||'';
       return ak<bk ? -1 : (ak>bk ? 1 : 0);
+    });
+    var datedItemsHtml = '', lastDay = null;
+    datedItems.forEach(function(it){
+      if(it.date !== lastDay){
+        datedItemsHtml += '<tr><td style="padding:20px 32px 4px 32px;"><p style="font-family:\'Times New Roman\',Times,serif; font-size:15px; font-weight:700; color:#1a1aff; border-bottom:2px solid #1a1aff; padding-bottom:4px; margin:0;">'+escHtml(fmtWeekdayDate(it.date))+'</p></td></tr>';
+        lastDay = it.date;
+      }
+      datedItemsHtml += it.html;
     });
     var otherItems = timelineItems.filter(function(it){ return !it.date; }).concat(tourItems, themeParkItems).filter(function(it){ return it.html; });
     bodySectionsHtml =
       itineraryDetailBox('Also Part of This Vacation', linkedTripsRows)+
-      datedItems.map(function(it){ return it.html; }).join('')+
+      datedItemsHtml+
       (otherItems.length ? (
         '<tr><td style="padding:16px 32px 0 32px;"><p style="font-family:\'Times New Roman\',Times,serif; font-size:12px; color:#888888; text-transform:uppercase; letter-spacing:.04em; margin:0;">Other Bookings (No Specific Date)</p></td></tr>'+
         otherItems.map(function(it){ return it.html; }).join('')
@@ -8550,6 +8580,11 @@ itineraryDetailBox('Booking Details', bookingRows)+
 '</td>'+
 '</tr>'
 ):'')+
+'<tr>'+
+'<td style="padding:0 32px;">'+
+'<p style="font-family:\'Times New Roman\',Times,serif; font-size:14px; color:#333333; line-height:1.5; margin:0;">'+escHtml(ITINERARY_CLOSING_NOTE)+'</p>'+
+'</td>'+
+'</tr>'+
 '<tr>'+
 '<td style="padding:24px 32px 32px 32px; border-top:1px solid #eeeeee;">'+
 '<p style="font-family:\'Times New Roman\',Times,serif; font-size:14px; color:#333333; line-height:1.5; margin:20px 0 0 0;">'+
@@ -8638,11 +8673,11 @@ function buildItinerarySections(opts){
         itineraryDetailRowText('Check-in Date', h.checkInDate?fmtDate(h.checkInDate):'') +
         itineraryDetailRowText('Nights', h.nights?(h.nights+(h.nights===1?' night':' nights')):'') +
         itineraryDetailRowText('Confirmation Number', h.confirmationNumber);
-      items.push({date:h.checkInDate||'', time:'', heading:hotelEntries.length>1?'Hotel '+(i+1)+' Details':'Hotel Details', rows:rows, logo:HOTEL_LOGOS[h.hotelBrand]||''});
+      items.push({date:h.checkInDate||'', time:'', isHotel:true, heading:hotelEntries.length>1?'Hotel '+(i+1)+' Details':'Hotel Details', rows:rows, logo:HOTEL_LOGOS[h.hotelBrand]||''});
     });
   } else if(opts.hotel){
     var hotelRows = itineraryDetailRowText('Hotel', opts.hotel) + itineraryDetailRowText('Nights', opts.hotelNights);
-    items.push({date:'', time:'', heading:'Hotel Details', rows:hotelRows, logo:HOTEL_LOGOS[opts.hotel]||''});
+    items.push({date:'', time:'', isHotel:true, heading:'Hotel Details', rows:hotelRows, logo:HOTEL_LOGOS[opts.hotel]||''});
   }
 
   var cruiseCabins = opts.cruiseCabins || [];
@@ -8724,22 +8759,35 @@ function tripItineraryPlainText(opts){
   out += itineraryDetailRowText('Passengers', opts.passengers);
 
   // "category" (default) keeps the fixed Flight/Hotel/Cruise/… section
-  // order; "chronological" sorts every dated item by date (then time),
+  // order; "chronological" sorts every dated item by date (then time) and
+  // groups them under a per-day heading (e.g. "Monday, November 3, 2026"),
   // with anything that has no date to sort by (Theme Park, and the rare
   // item in a dated category missing its date) trailing underneath in its
   // own "no specific date" section — same rule itineraryEmailBodyHtml()
   // applies to the HTML version, which this previously didn't honor at
   // all (opts.layout was read into opts but tripItineraryPlainText() never
   // checked it, so the PDF/Planner-task text always came out in category
-  // order regardless of which radio was selected).
+  // order regardless of which radio was selected). Within a day, the hotel
+  // stay always sorts last — see itineraryEmailBodyHtml()'s matching
+  // comment on why.
   var items = buildItinerarySections(opts);
   if(opts.layout === 'chronological'){
     var dated = items.filter(function(it){ return it.date; }).sort(function(a,b){
-      var ak = a.date+' '+(a.time||''), bk = b.date+' '+(b.time||'');
+      if(a.date !== b.date) return a.date<b.date ? -1 : 1;
+      var ah = a.isHotel?1:0, bh = b.isHotel?1:0;
+      if(ah !== bh) return ah-bh;
+      var ak = a.time||'', bk = b.time||'';
       return ak<bk ? -1 : (ak>bk ? 1 : 0);
     });
     var undated = items.filter(function(it){ return !it.date; });
-    dated.forEach(function(it){ out += itineraryPlainTextSection(it.heading, it.rows); });
+    var lastDay = null;
+    dated.forEach(function(it){
+      if(it.date !== lastDay){
+        out += '\n'+fmtWeekdayDate(it.date)+'\n';
+        lastDay = it.date;
+      }
+      out += itineraryPlainTextSection(it.heading, it.rows);
+    });
     if(undated.length){
       out += '\nOther Bookings (No Specific Date)\n';
       undated.forEach(function(it){ out += itineraryPlainTextSection(it.heading, it.rows); });
@@ -8777,6 +8825,8 @@ function tripItineraryPlainText(opts){
   // same as the HTML version — unlike the trip's own stored Notes field
   // above, that's deliberately typed in fresh for this one send.
   if(opts.extraNotes) out += '\n'+opts.extraNotes+'\n';
+
+  out += '\n'+ITINERARY_CLOSING_NOTE+'\n';
 
   return out;
 }
