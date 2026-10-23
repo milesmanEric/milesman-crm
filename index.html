@@ -7214,16 +7214,118 @@ async function generateItineraryPdfBlob(bodyHtml){
 function itineraryPdfFilename(client, trip){
   return ([client?client.name:'Itinerary', trip.destination||'Itinerary', trip.departDate||today()].join('.')+'.pdf').replace(/[\\/:*?"<>|]/g,'-');
 }
-// Lets the client click a "Download PDF" button in the Email Itinerary
-// modal and get the exact same PDF saveItineraryPdfToDrive() files away
-// silently in Drive — same generator, same filename convention — just
-// delivered as a direct browser download instead (same downloadPdfBlob()
-// pattern the referral certificate uses, since there's nowhere else on this
-// static, no-backend page to hand someone a file except through the
-// browser's own download flow).
-async function downloadItineraryPdf(client, trip, bodyHtml){
+// Shared by both the html2canvas-based generator above (still used for Trip
+// Confirmation's PDF, see tripConfirmationBodyHtml's own call site — that
+// document is always short and hasn't shown this bug) and the pure-jsPDF
+// generator below (used for the itinerary's own PDF, see
+// generateItineraryPdfBlobFromOpts) — just the "hand a blob to the Miles Man
+// Itineraries Drive folder" half, decoupled from how that blob got built.
+async function uploadItineraryPdfBlobToDrive(client, trip, blob, label){
+  // Silent variant deliberately — this runs unattended right after the
+  // mailto: opens, so it must never force-redirect the page to Google's
+  // login screen if Drive isn't connected yet (that would hijack the tab
+  // away from the email the user is actually trying to send).
+  var token = await getDriveTokenSilent();
+  if(!token){
+    debugLog(label+': Google Drive not connected — skipped saving (connect via File menu > Backup to Google Drive)');
+    toast(label+' not saved — connect Google Drive first (File menu)','info');
+    return;
+  }
+  var folderId = await getOrCreateDriveItinerariesFolder(token);
+  var filename = itineraryPdfFilename(client, trip);
+  var meta = new Blob([JSON.stringify({name:filename, mimeType:'application/pdf', parents:[folderId]})], {type:'application/json'});
+  var form = new FormData(); form.append('metadata', meta); form.append('file', blob);
+  var r = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink', {
+    method:'POST', headers:{Authorization:'Bearer '+token}, body:form
+  });
+  if(!r.ok) throw new Error('Drive returned '+r.status+' saving '+label.toLowerCase());
+  debugLog(label+' saved to Google Drive: "'+filename+'"');
+  toast(label+' saved to Google Drive','ok');
+}
+async function saveItineraryPdfToDrive(client, trip, bodyHtml, subject){
   try{
+    debugLog('Itinerary PDF: rendering "'+subject+'"...');
     var blob = await generateItineraryPdfBlob(bodyHtml);
+    await uploadItineraryPdfBlobToDrive(client, trip, blob, 'Itinerary PDF');
+  }catch(e){
+    console.error(e);
+    debugLog('Itinerary PDF save failed: '+e.message);
+    toast('Could not save itinerary PDF to Drive: '+e.message,'err');
+  }
+}
+// Loads jsPDF directly rather than going through html2canvas at all — see
+// generateItineraryPdfBlobFromOpts() below for why.
+function loadJsPdfCtor(){
+  return loadHtml2PdfLib().then(function(){
+    // html2pdf.bundle.min.js bundles jsPDF and exposes its UMD global here.
+    if(window.jspdf && window.jspdf.jsPDF) return window.jspdf.jsPDF;
+    throw new Error('jsPDF was not found on window.jspdf after loading html2pdf.js');
+  });
+}
+// A long, real-world itinerary (many Airline Records/flight segments, hotel
+// stays, cruise, cars, transfers, tours, trains, buses) reliably came back
+// as an essentially blank PDF through html2canvas — confirmed via Debug Log
+// diagnostics showing correct measured dimensions and page count, but a
+// near-empty output file, regardless of whether the capture container lived
+// in this page's own DOM or a fully isolated iframe (both tried, both
+// failed identically). That points at html2canvas itself failing to paint
+// this specific long, deeply nested table-based layout, not at anything
+// about where the DOM node lives. Rather than keep guessing at html2canvas
+// configuration, this renders the itinerary straight into jsPDF with its
+// own text/line/image APIs — the same foundational, well-supported
+// primitives jsPDF itself is built on, with no DOM screenshotting involved
+// at all — built from the same plain-text itinerary tripItineraryPlainText()
+// already produces for the pre-trip-departure Planner task preview, so the
+// content (if not the fancy styled-box look) matches what Preview shows.
+async function generateItineraryPdfBlobFromOpts(opts){
+  var jsPDFCtor = await loadJsPdfCtor();
+  var doc = new jsPDFCtor({unit:'pt', format:'letter'});
+  var pageWidth = doc.internal.pageSize.getWidth();
+  var pageHeight = doc.internal.pageSize.getHeight();
+  var margin = 40;
+  var maxWidth = pageWidth - margin*2;
+  var y = margin;
+
+  // Miles Man logo, top-left — doc.addImage() is a basic jsPDF primitive,
+  // not a DOM screenshot, so it doesn't share any of the above risk.
+  try{
+    var logoW = 90, logoH = 55; // matches the source PNG's own ~117x72 aspect ratio
+    doc.addImage(MILES_MAN_LOGO_DATA_URI, 'PNG', margin, y, logoW, logoH);
+    y += logoH + 18;
+  }catch(e){
+    debugLog('Itinerary PDF: logo addImage failed, continuing without it: '+e.message);
+  }
+
+  function ensureRoom(neededHeight){
+    if(y + neededHeight > pageHeight - margin){
+      doc.addPage();
+      y = margin;
+    }
+  }
+  var lineHeight = 14;
+  var text = tripItineraryPlainText(opts);
+  text.split('\n').forEach(function(rawLine){
+    if(!rawLine){ y += lineHeight/2; return; }
+    // itineraryDetailRowText() always emits "Label: value" rows; a bare
+    // line with no ": " is one of tripItineraryPlainText()'s own section
+    // titles (e.g. "Hotel Details") or the leading "Trip Itinerary — …"
+    // line — both styled bold to stand out from the rows under them.
+    var isHeading = rawLine.indexOf(': ') === -1;
+    doc.setFont('helvetica', isHeading ? 'bold' : 'normal');
+    doc.setFontSize(isHeading ? 12 : 10);
+    var wrapped = doc.splitTextToSize(rawLine, maxWidth);
+    wrapped.forEach(function(wrappedLine){
+      ensureRoom(lineHeight);
+      doc.text(wrappedLine, margin, y);
+      y += lineHeight;
+    });
+  });
+
+  return doc.output('blob');
+}
+async function downloadItineraryPdf(client, trip, opts){
+  try{
+    var blob = await generateItineraryPdfBlobFromOpts(opts);
     downloadPdfBlob(blob, itineraryPdfFilename(client, trip));
     toast('Itinerary PDF downloaded','ok');
   }catch(e){
@@ -7232,30 +7334,11 @@ async function downloadItineraryPdf(client, trip, bodyHtml){
     toast('Could not generate itinerary PDF: '+e.message,'err');
   }
 }
-async function saveItineraryPdfToDrive(client, trip, bodyHtml, subject){
+async function saveItineraryPdfToDriveFromOpts(client, trip, opts, subject){
   try{
     debugLog('Itinerary PDF: rendering "'+subject+'"...');
-    var blob = await generateItineraryPdfBlob(bodyHtml);
-    // Silent variant deliberately — this runs unattended right after the
-    // mailto: opens, so it must never force-redirect the page to Google's
-    // login screen if Drive isn't connected yet (that would hijack the tab
-    // away from the email the user is actually trying to send).
-    var token = await getDriveTokenSilent();
-    if(!token){
-      debugLog('Itinerary PDF: Google Drive not connected — skipped saving (connect via File menu > Backup to Google Drive)');
-      toast('Itinerary PDF not saved — connect Google Drive first (File menu)','info');
-      return;
-    }
-    var folderId = await getOrCreateDriveItinerariesFolder(token);
-    var filename = itineraryPdfFilename(client, trip);
-    var meta = new Blob([JSON.stringify({name:filename, mimeType:'application/pdf', parents:[folderId]})], {type:'application/json'});
-    var form = new FormData(); form.append('metadata', meta); form.append('file', blob);
-    var r = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink', {
-      method:'POST', headers:{Authorization:'Bearer '+token}, body:form
-    });
-    if(!r.ok) throw new Error('Drive returned '+r.status+' saving itinerary PDF');
-    debugLog('Itinerary PDF saved to Google Drive: "'+filename+'"');
-    toast('Itinerary PDF saved to Google Drive','ok');
+    var blob = await generateItineraryPdfBlobFromOpts(opts);
+    await uploadItineraryPdfBlobToDrive(client, trip, blob, 'Itinerary PDF');
   }catch(e){
     console.error(e);
     debugLog('Itinerary PDF save failed: '+e.message);
@@ -8550,11 +8633,25 @@ function tripItineraryPlainText(opts){
     out += itineraryPlainTextSection('Insurance', insRows);
   }
 
+  // Same line-by-line breakdown as the HTML version's bookingRows — see
+  // itineraryEmailBodyHtml() for why these come from tripSummary now.
   var bookingRows = (opts.supplierName ? '' : itineraryDetailRowText('Confirmation / Booking Ref', opts.bookingRef)) +
     itineraryDetailRowText('Supplier', opts.supplierName) +
     itineraryDetailRowText('Points Used', opts.pointsUsed) +
+    itineraryDetailRowText('Total Cash Paid', opts.totalCashPaid) +
+    itineraryDetailRowText('(Includes Credits to be Received)', opts.creditsReceived) +
+    itineraryDetailRowText('Total Miles Man Fees', opts.totalMilesManFee) +
+    itineraryDetailRowText('Total Points/Miles Cash Value', opts.ptsCashValue) +
+    itineraryDetailRowText('Total Resort/Food & Beverage Credits', opts.resortCreditTotal) +
     itineraryDetailRowText('Total Trip Value', opts.totalValue);
   out += itineraryPlainTextSection('Booking Details', bookingRows);
+
+  // Same two free-text notes the HTML version appends after Booking
+  // Details — missing here until now, since this function originally only
+  // fed the pre-trip-departure Planner task preview, where neither mattered
+  // as much as they do now that this is also the actual PDF's content.
+  if(opts.notes) out += '\nTrip Notes:\n'+opts.notes+'\n';
+  if(opts.extraNotes) out += '\n'+opts.extraNotes+'\n';
 
   return out;
 }
@@ -8786,7 +8883,7 @@ function openEmailItineraryModal(){
   document.getElementById('ei-download-pdf').addEventListener('click', function(){
     var d = collectItineraryData();
     if(!d) return;
-    downloadItineraryPdf(d.client, d.trip, itineraryEmailBodyHtml(d.opts));
+    downloadItineraryPdf(d.client, d.trip, d.opts);
   });
 
   document.getElementById('ei-send').addEventListener('click', function(){
@@ -8802,7 +8899,7 @@ function openEmailItineraryModal(){
     }else{
       toast('Could not copy the itinerary automatically — click Preview, then select all (Ctrl+A) and copy (Ctrl+C) from there to paste into Outlook','err');
     }
-    saveItineraryPdfToDrive(d.client, d.trip, bodyHtml, subject);
+    saveItineraryPdfToDriveFromOpts(d.client, d.trip, d.opts, subject);
 
     var ts = tsNow();
     var note = {ts:ts, text:'Itinerary: '+subject, noteType:'Email Sent'};
