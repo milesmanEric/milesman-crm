@@ -6411,6 +6411,19 @@ function fmtDate(s){
   if(isNaN(d)) return s;
   return d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
 }
+// Every time field that feeds the itinerary (Flight Depart/Arrival, Train
+// Departure/Arrival, Transfer pickup) is a plain <input type="time"> value
+// — a raw 24-hour "HH:MM" string, not a Date — so this formats that string
+// directly rather than round-tripping through a Date object.
+function fmtTime(s){
+  if(!s) return '';
+  var parts = s.split(':');
+  var h = parseInt(parts[0],10), m = parts[1];
+  if(isNaN(h) || !m) return s;
+  var ampm = h>=12 ? 'PM' : 'AM';
+  var h12 = h%12; if(h12===0) h12=12;
+  return h12+':'+m+' '+ampm;
+}
 function computeNights(depart,ret){
   if(!depart||!ret) return '';
   var d1=new Date(depart+'T12:00:00'), d2=new Date(ret+'T12:00:00');
@@ -8236,8 +8249,8 @@ function itineraryEmailBodyHtml(opts){
           itineraryDetailRow(p+'Flight Number', f.flightNumber) +
           itineraryDetailRow(p+'Route', f.origin&&f.destination ? (f.origin+' → '+f.destination) : '') +
           itineraryDetailRow(p+'Depart Date', f.departDate?fmtDate(f.departDate):'') +
-          itineraryDetailRow(p+'Depart Time', f.departTime) +
-          itineraryDetailRow(p+'Arrival Time', f.arrivalTime) +
+          itineraryDetailRow(p+'Depart Time', f.departTime?fmtTime(f.departTime):'') +
+          itineraryDetailRow(p+'Arrival Time', f.arrivalTime?fmtTime(f.arrivalTime):'') +
           itineraryDetailRow(p+'Class of Service', f.classOfService);
         flightChronoItems.push({
           date: f.departDate||'', time: f.departTime||'',
@@ -8271,6 +8284,7 @@ function itineraryEmailBodyHtml(opts){
   if(hotelEntries.length){
     hotelItems = hotelEntries.map(function(h, i){
       var rows = itineraryDetailRow('Hotel', h.hotelBrand) +
+        itineraryDetailRow('Property', h.property) +
         itineraryDetailRow('Location', [h.city, h.country].filter(Boolean).join(', ')) +
         itineraryDetailRow('Check-in Date', h.checkInDate?fmtDate(h.checkInDate):'') +
         itineraryDetailRow('Nights', h.nights?(h.nights+(h.nights===1?' night':' nights')):'') +
@@ -8313,7 +8327,7 @@ function itineraryEmailBodyHtml(opts){
   var carRentalBoxesHtml = carItems.map(function(it){return it.html;}).join('');
   var transferEntries = opts.transferEntries || [];
   var transferItems = transferEntries.map(function(x, i){
-    var rows = itineraryDetailRow('Pickup', [x.pickupDate, x.pickupTime].filter(Boolean).join(' at ')) +
+    var rows = itineraryDetailRow('Pickup', [x.pickupDate, x.pickupTime?fmtTime(x.pickupTime):''].filter(Boolean).join(' at ')) +
       itineraryDetailRow('From', x.origin) +
       itineraryDetailRow('To', x.destination) +
       itineraryDetailRow('Car Type', x.carType) +
@@ -8345,8 +8359,8 @@ function itineraryEmailBodyHtml(opts){
   var trainItems = trainEntries.map(function(t, i){
     var rows = itineraryDetailRow('Route', t.departureCity&&t.arrivalCity ? (t.departureCity+' → '+t.arrivalCity) : '') +
       itineraryDetailRow('Departure Date', t.departureDate) +
-      itineraryDetailRow('Departure Time', t.departureTime) +
-      itineraryDetailRow('Arrival Time', t.arrivalTime) +
+      itineraryDetailRow('Departure Time', t.departureTime?fmtTime(t.departureTime):'') +
+      itineraryDetailRow('Arrival Time', t.arrivalTime?fmtTime(t.arrivalTime):'') +
       itineraryDetailRow('Return Date', t.returnDate) +
       itineraryDetailRow('Class of Service', t.classOfService) +
       itineraryDetailRow('Passengers', t.numPassengers) +
@@ -8376,10 +8390,8 @@ function itineraryEmailBodyHtml(opts){
   // client-facing total isn't just a single unexplained number.
   var bookingRows = (opts.supplierName ? '' : itineraryDetailRow('Confirmation / Booking Ref', opts.bookingRef)) +
     itineraryDetailRow('Supplier', opts.supplierName) +
-    itineraryDetailRow('Points Used', opts.pointsUsed) +
     itineraryDetailRow('Total Cash Paid', opts.totalCashPaid) +
     itineraryDetailRow('(Includes Credits to be Received)', opts.creditsReceived) +
-    itineraryDetailRow('Total Miles Man Fees', opts.totalMilesManFee) +
     itineraryDetailRow('Total Points/Miles Cash Value', opts.ptsCashValue) +
     itineraryDetailRow('Total Resort/Food & Beverage Credits', opts.resortCreditTotal) +
     itineraryDetailRow('Total Trip Value', opts.totalValue);
@@ -8536,8 +8548,8 @@ function tripItineraryPlainText(opts){
           itineraryDetailRowText(p+'Flight Number', f.flightNumber) +
           itineraryDetailRowText(p+'Route', f.origin&&f.destination?(f.origin+' to '+f.destination):'') +
           itineraryDetailRowText(p+'Depart Date', f.departDate?fmtDate(f.departDate):'') +
-          itineraryDetailRowText(p+'Depart Time', f.departTime) +
-          itineraryDetailRowText(p+'Arrival Time', f.arrivalTime) +
+          itineraryDetailRowText(p+'Depart Time', f.departTime?fmtTime(f.departTime):'') +
+          itineraryDetailRowText(p+'Arrival Time', f.arrivalTime?fmtTime(f.arrivalTime):'') +
           itineraryDetailRowText(p+'Class of Service', f.classOfService);
       });
       out += itineraryPlainTextSection(title, rows);
@@ -8553,6 +8565,7 @@ function tripItineraryPlainText(opts){
   if(hotelEntries.length){
     hotelEntries.forEach(function(h,i){
       var rows = itineraryDetailRowText('Hotel', h.hotelBrand) +
+        itineraryDetailRowText('Property', h.property) +
         itineraryDetailRowText('Location', [h.city, h.country].filter(Boolean).join(', ')) +
         itineraryDetailRowText('Check-in Date', h.checkInDate?fmtDate(h.checkInDate):'') +
         itineraryDetailRowText('Nights', h.nights?(h.nights+(h.nights===1?' night':' nights')):'') +
@@ -8593,7 +8606,7 @@ function tripItineraryPlainText(opts){
 
   var transferEntries = opts.transferEntries || [];
   transferEntries.forEach(function(x,i){
-    var rows = itineraryDetailRowText('Pickup', [x.pickupDate, x.pickupTime].filter(Boolean).join(' at ')) +
+    var rows = itineraryDetailRowText('Pickup', [x.pickupDate, x.pickupTime?fmtTime(x.pickupTime):''].filter(Boolean).join(' at ')) +
       itineraryDetailRowText('From', x.origin) +
       itineraryDetailRowText('To', x.destination) +
       itineraryDetailRowText('Car Type', x.carType) +
@@ -8614,8 +8627,8 @@ function tripItineraryPlainText(opts){
   trainEntries.forEach(function(t,i){
     var rows = itineraryDetailRowText('Route', t.departureCity&&t.arrivalCity?(t.departureCity+' to '+t.arrivalCity):'') +
       itineraryDetailRowText('Departure Date', t.departureDate) +
-      itineraryDetailRowText('Departure Time', t.departureTime) +
-      itineraryDetailRowText('Arrival Time', t.arrivalTime) +
+      itineraryDetailRowText('Departure Time', t.departureTime?fmtTime(t.departureTime):'') +
+      itineraryDetailRowText('Arrival Time', t.arrivalTime?fmtTime(t.arrivalTime):'') +
       itineraryDetailRowText('Return Date', t.returnDate) +
       itineraryDetailRowText('Class of Service', t.classOfService) +
       itineraryDetailRowText('Passengers', t.numPassengers) +
@@ -8651,10 +8664,8 @@ function tripItineraryPlainText(opts){
   // itineraryEmailBodyHtml() for why these come from tripSummary now.
   var bookingRows = (opts.supplierName ? '' : itineraryDetailRowText('Confirmation / Booking Ref', opts.bookingRef)) +
     itineraryDetailRowText('Supplier', opts.supplierName) +
-    itineraryDetailRowText('Points Used', opts.pointsUsed) +
     itineraryDetailRowText('Total Cash Paid', opts.totalCashPaid) +
     itineraryDetailRowText('(Includes Credits to be Received)', opts.creditsReceived) +
-    itineraryDetailRowText('Total Miles Man Fees', opts.totalMilesManFee) +
     itineraryDetailRowText('Total Points/Miles Cash Value', opts.ptsCashValue) +
     itineraryDetailRowText('Total Resort/Food & Beverage Credits', opts.resortCreditTotal) +
     itineraryDetailRowText('Total Trip Value', opts.totalValue);
