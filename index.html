@@ -7321,7 +7321,7 @@ async function generateItineraryPdfBlobFromOpts(opts){
   var lineHeight = 14;
   var text = tripItineraryPlainText(opts);
   text.split('\n').forEach(function(rawLine){
-    if(!rawLine){ y += lineHeight/2; return; }
+    if(!rawLine){ y += lineHeight; return; }
     // itineraryDetailRowText() always emits "Label: value" rows; a bare
     // line with no ": " is one of tripItineraryPlainText()'s own section
     // titles (e.g. "Hotel Details") or the leading "Trip Itinerary — …"
@@ -8345,11 +8345,13 @@ function itineraryEmailBodyHtml(opts){
   var trainItems = trainEntries.map(function(t, i){
     var rows = itineraryDetailRow('Route', t.departureCity&&t.arrivalCity ? (t.departureCity+' → '+t.arrivalCity) : '') +
       itineraryDetailRow('Departure Date', t.departureDate) +
+      itineraryDetailRow('Departure Time', t.departureTime) +
+      itineraryDetailRow('Arrival Time', t.arrivalTime) +
       itineraryDetailRow('Return Date', t.returnDate) +
       itineraryDetailRow('Class of Service', t.classOfService) +
       itineraryDetailRow('Passengers', t.numPassengers) +
       itineraryDetailRow('Confirmation Number', t.confirmationNumber);
-    return {date: t.departureDateRaw||'', time:'', html: itineraryDetailBox(trainEntries.length>1 ? 'Train '+(i+1)+' Details' : 'Train Details', rows, t.logoUrl)};
+    return {date: t.departureDateRaw||'', time: t.departureTime||'', html: itineraryDetailBox(trainEntries.length>1 ? 'Train '+(i+1)+' Details' : 'Train Details', rows, t.logoUrl)};
   });
   var trainBoxesHtml = trainItems.map(function(it){return it.html;}).join('');
   var busEntries = opts.busEntries || [];
@@ -8513,12 +8515,6 @@ function tripItineraryPlainText(opts){
   out += itineraryDetailRowText('Travel Dates', datesLine);
   out += itineraryDetailRowText('Passengers', opts.passengers);
 
-  (opts.linkedTrips||[]).forEach(function(lt){
-    var label = lt.tripName || lt.destination || 'Linked trip';
-    var ltDatesLine = (lt.departDate?fmtDate(lt.departDate):'') + (lt.departDate&&lt.returnDate?' – ':'') + (lt.returnDate?fmtDate(lt.returnDate):'');
-    out += itineraryDetailRowText(label, ltDatesLine || lt.destination || '');
-  });
-
   var airlineRecords = opts.airlineRecords || [];
   if(airlineRecords.length){
     airlineRecords.forEach(function(rec, ri){
@@ -8527,10 +8523,18 @@ function tripItineraryPlainText(opts){
       var segs = rec.segments||[];
       segs.forEach(function(f,i){
         var p = segs.length>1 ? ('Flight '+(i+1)+' — ') : '';
+        // A blank line between each leg of a multi-segment (e.g. connecting
+        // or round-trip) record — otherwise one flight's rows ran straight
+        // into the next's with nothing marking where one ends.
+        if(i>0) rows += '\n';
+        // A plain " to " rather than a unicode arrow — jsPDF's built-in
+        // standard fonts only cover WinAnsi encoding, so "→" (U+2192) has
+        // no glyph to fall back to and renders as a stray/missing
+        // character, which is what made these rows look broken.
         rows += itineraryDetailRowText(p+'Record Number', f.recordNumber) +
           itineraryDetailRowText(p+'Airline', f.airline) +
           itineraryDetailRowText(p+'Flight Number', f.flightNumber) +
-          itineraryDetailRowText(p+'Route', f.origin&&f.destination?(f.origin+' → '+f.destination):'') +
+          itineraryDetailRowText(p+'Route', f.origin&&f.destination?(f.origin+' to '+f.destination):'') +
           itineraryDetailRowText(p+'Depart Date', f.departDate?fmtDate(f.departDate):'') +
           itineraryDetailRowText(p+'Depart Time', f.departTime) +
           itineraryDetailRowText(p+'Arrival Time', f.arrivalTime) +
@@ -8540,7 +8544,7 @@ function tripItineraryPlainText(opts){
     });
   } else if(opts.airline||opts.origin){
     var flightRows = itineraryDetailRowText('Airline', opts.airline) +
-      itineraryDetailRowText('Route', opts.origin&&opts.destination?(opts.origin+' → '+opts.destination):'') +
+      itineraryDetailRowText('Route', opts.origin&&opts.destination?(opts.origin+' to '+opts.destination):'') +
       itineraryDetailRowText('Class of Service', opts.flightClass);
     out += itineraryPlainTextSection('Flight Details', flightRows);
   }
@@ -8598,14 +8602,6 @@ function tripItineraryPlainText(opts){
     out += itineraryPlainTextSection(transferEntries.length>1?'Transfer '+(i+1):'Transfer Details', rows);
   });
 
-  var tourEntries = opts.tourEntries || [];
-  tourEntries.forEach(function(t,i){
-    var rows = itineraryDetailRowText('Vendor', t.vendor) +
-      itineraryDetailRowText('Description', t.description) +
-      itineraryDetailRowText('Confirmation Number', t.confirmationNumber);
-    out += itineraryPlainTextSection(tourEntries.length>1?'Tour '+(i+1)+' Details':'Tour Details', rows);
-  });
-
   var themeParkEntriesText = opts.themeParkEntries || [];
   themeParkEntriesText.forEach(function(p,i){
     var rows = itineraryDetailRowText('Park', p.park) +
@@ -8616,8 +8612,10 @@ function tripItineraryPlainText(opts){
 
   var trainEntries = opts.trainEntries || [];
   trainEntries.forEach(function(t,i){
-    var rows = itineraryDetailRowText('Route', t.departureCity&&t.arrivalCity?(t.departureCity+' → '+t.arrivalCity):'') +
+    var rows = itineraryDetailRowText('Route', t.departureCity&&t.arrivalCity?(t.departureCity+' to '+t.arrivalCity):'') +
       itineraryDetailRowText('Departure Date', t.departureDate) +
+      itineraryDetailRowText('Departure Time', t.departureTime) +
+      itineraryDetailRowText('Arrival Time', t.arrivalTime) +
       itineraryDetailRowText('Return Date', t.returnDate) +
       itineraryDetailRowText('Class of Service', t.classOfService) +
       itineraryDetailRowText('Passengers', t.numPassengers) +
@@ -8627,7 +8625,7 @@ function tripItineraryPlainText(opts){
 
   var busEntries = opts.busEntries || [];
   busEntries.forEach(function(x,i){
-    var rows = itineraryDetailRowText('Route', x.departureCity&&x.arrivalCity?(x.departureCity+' → '+x.arrivalCity):'') +
+    var rows = itineraryDetailRowText('Route', x.departureCity&&x.arrivalCity?(x.departureCity+' to '+x.arrivalCity):'') +
       itineraryDetailRowText('Departure Date', x.departureDate) +
       itineraryDetailRowText('Return Date', x.returnDate) +
       itineraryDetailRowText('Class of Service', x.classOfService) +
@@ -8662,11 +8660,9 @@ function tripItineraryPlainText(opts){
     itineraryDetailRowText('Total Trip Value', opts.totalValue);
   out += itineraryPlainTextSection('Booking Details', bookingRows);
 
-  // Same two free-text notes the HTML version appends after Booking
-  // Details — missing here until now, since this function originally only
-  // fed the pre-trip-departure Planner task preview, where neither mattered
-  // as much as they do now that this is also the actual PDF's content.
-  if(opts.notes) out += '\nTrip Notes:\n'+opts.notes+'\n';
+  // The per-send "Additional Note" (opts.extraNotes) still appends here,
+  // same as the HTML version — unlike the trip's own stored Notes field
+  // above, that's deliberately typed in fresh for this one send.
   if(opts.extraNotes) out += '\n'+opts.extraNotes+'\n';
 
   return out;
@@ -8780,6 +8776,7 @@ function tripToItineraryOpts(trip, client, extraNotes){
         departureCity: t.departureCity||'', arrivalCity: t.arrivalCity||'',
         departureDate: t.departureDate?fmtDate(t.departureDate):'', returnDate: t.returnDate?fmtDate(t.returnDate):'',
         departureDateRaw: t.departureDate||'',
+        departureTime: t.departureTime||'', arrivalTime: t.arrivalTime||'',
         classOfService: t.classOfService||'', numPassengers: t.numPassengers||'', confirmationNumber: t.confirmationNumber||'', logoUrl: t.logoUrl||''
       };
     }),
@@ -8827,7 +8824,17 @@ function tripToItineraryOpts(trip, client, extraNotes){
   };
 }
 function openEmailItineraryModal(){
-  var sortedClients = [...db.clients].sort(function(a,b){return (a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase());});
+  // Only clients who actually have a trip record to generate an itinerary
+  // from — same clientId/clientIds match the client-change handler below
+  // already uses to find that client's trips, so a client who'd just see
+  // "-- No trips for this client --" after picking them never shows up here.
+  var clientIdsWithTrips = new Set();
+  db.trips.forEach(function(t){
+    if(t.clientId) clientIdsWithTrips.add(t.clientId);
+    (t.clientIds||[]).forEach(function(cid){ clientIdsWithTrips.add(cid); });
+  });
+  var sortedClients = [...db.clients].filter(function(c){return clientIdsWithTrips.has(c.id);})
+    .sort(function(a,b){return (a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase());});
   var clientOpts = sortedClients.map(function(c){return '<option value="'+c.id+'">'+c.name+'</option>';}).join('');
 
   $('modal').innerHTML =
@@ -20677,6 +20684,8 @@ function trainEntryRowInnerHtml(entry){
       '<div class="field"><label>Arrival City</label><input class="train-entry-arrcity" type="text" value="'+(entry.arrivalCity||'').toString().replace(/"/g,'&quot;')+'" placeholder="e.g. Washington, DC"></div>'+
       '<div class="field"><label>Departure Date</label><input class="train-entry-depdate" type="date" value="'+(entry.departureDate||'')+'"></div>'+
       '<div class="field"><label>Return Date</label><input class="train-entry-retdate" type="date" value="'+(entry.returnDate||'')+'"></div>'+
+      '<div class="field"><label>Departure Time</label><input class="train-entry-deptime" type="time" value="'+(entry.departureTime||'')+'"></div>'+
+      '<div class="field"><label>Arrival Time</label><input class="train-entry-arrtime" type="time" value="'+(entry.arrivalTime||'')+'"></div>'+
       '<div class="field"><label>Class of Service</label><select class="train-entry-class"><option value="">-- Select --</option>'+selOpts(TRAIN_CLASSES,entry.classOfService)+'</select></div>'+
       '<div class="field"><label>Number of Passengers</label><input class="train-entry-numpax" type="number" min="1" step="1" value="'+(entry.numPassengers||'')+'"></div>'+
       '<div class="field"><label>Third Party Agency</label><select class="train-entry-agency"><option value="">-- Select --</option>'+selOpts(THIRD_PARTY_AGENCIES,entry.thirdPartyAgency)+'</select></div>'+
@@ -20702,6 +20711,8 @@ function readTrainEntries(){
       arrivalCity: (row.querySelector('.train-entry-arrcity')||{}).value||'',
       departureDate: (row.querySelector('.train-entry-depdate')||{}).value||'',
       returnDate: (row.querySelector('.train-entry-retdate')||{}).value||'',
+      departureTime: (row.querySelector('.train-entry-deptime')||{}).value||'',
+      arrivalTime: (row.querySelector('.train-entry-arrtime')||{}).value||'',
       classOfService: (row.querySelector('.train-entry-class')||{}).value||'',
       numPassengers: Number((row.querySelector('.train-entry-numpax')||{}).value)||0,
       thirdPartyAgency: (row.querySelector('.train-entry-agency')||{}).value||'',
@@ -20714,7 +20725,7 @@ function readTrainEntries(){
       notes: (row.querySelector('.train-entry-notes')||{}).value||''
     };
   }).filter(function(e){
-    return e.confirmationNumber||e.departureCity||e.arrivalCity||e.departureDate||e.returnDate||e.classOfService||e.numPassengers||e.thirdPartyAgency||e.thirdPartyAgencyBookingNumber||e.currency||e.priceForeign||e.price||e.milesManFee||e.logoUrl||e.notes;
+    return e.confirmationNumber||e.departureCity||e.arrivalCity||e.departureDate||e.returnDate||e.departureTime||e.arrivalTime||e.classOfService||e.numPassengers||e.thirdPartyAgency||e.thirdPartyAgencyBookingNumber||e.currency||e.priceForeign||e.price||e.milesManFee||e.logoUrl||e.notes;
   });
 }
 function busEntryRowInnerHtml(entry){
