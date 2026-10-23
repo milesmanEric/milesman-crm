@@ -7306,6 +7306,49 @@ function loadJsPdfCtor(){
 // at all — built from the same plain-text itinerary tripItineraryPlainText()
 // already produces for the pre-trip-departure Planner task preview, so the
 // content (if not the fancy styled-box look) matches what Preview shows.
+// Most brand logos (AIRLINE_LOGOS/HOTEL_LOGOS/CRUISE_LOGOS/CAR_RENTAL_LOGOS)
+// are SVG data URIs, which jsPDF's addImage() can't embed directly (it only
+// takes raster formats). Rasterizing one through an offscreen <canvas> is
+// safe here specifically because the source is always a same-origin data:
+// URI — unlike the earlier blank-PDF bug (a remote, cross-origin Train Logo
+// URL tainting the canvas), there's no network fetch and nothing to taint.
+function loadLogoAsPngDataUri(srcDataUri, maxDim){
+  return new Promise(function(resolve, reject){
+    var img = new Image();
+    img.onload = function(){
+      try{
+        var w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+        if(!w || !h){ reject(new Error('Logo image has no intrinsic size')); return; }
+        var scale = Math.min(1, maxDim/Math.max(w,h));
+        var cw = Math.max(1, Math.round(w*scale)), ch = Math.max(1, Math.round(h*scale));
+        var canvas = document.createElement('canvas');
+        canvas.width = cw; canvas.height = ch;
+        canvas.getContext('2d').drawImage(img, 0, 0, cw, ch);
+        resolve({dataUri: canvas.toDataURL('image/png'), width: cw, height: ch});
+      }catch(e){ reject(e); }
+    };
+    img.onerror = function(){ reject(new Error('Failed to load logo image')); };
+    img.src = srcDataUri;
+  });
+}
+// Resolves itineraryHeadingLogos()'s {heading: dataUri} map into
+// {heading: {dataUri, width, height}} for the PDF generator below. A logo
+// that fails to load (missing intrinsic size, decode error) is just left
+// out — that section's heading renders with no logo, same as a brand with
+// no logo at all.
+async function resolveHeadingLogos(headingLogosRaw){
+  var resolved = {};
+  var keys = Object.keys(headingLogosRaw);
+  for(var i=0;i<keys.length;i++){
+    var k = keys[i];
+    try{
+      resolved[k] = await loadLogoAsPngDataUri(headingLogosRaw[k], 160);
+    }catch(e){
+      debugLog('Itinerary PDF: could not load logo for "'+k+'" heading, continuing without it: '+e.message);
+    }
+  }
+  return resolved;
+}
 async function generateItineraryPdfBlobFromOpts(opts){
   var jsPDFCtor = await loadJsPdfCtor();
   var doc = new jsPDFCtor({unit:'pt', format:'letter'});
@@ -7332,6 +7375,12 @@ async function generateItineraryPdfBlobFromOpts(opts){
     }
   }
   var lineHeight = 14;
+  // Small brand-logo icon drawn beside a heading like "Hotel Details" —
+  // same logos the HTML itinerary shows via itineraryDetailBox(), scaled to
+  // fit this box while keeping each logo's native aspect ratio so a wide
+  // airline wordmark doesn't get squished to match a square car-rental one.
+  var maxLogoW = 54, maxLogoH = 16, logoGap = 6;
+  var headingLogos = await resolveHeadingLogos(itineraryHeadingLogos(opts));
   var text = tripItineraryPlainText(opts);
   text.split('\n').forEach(function(rawLine){
     if(!rawLine){ y += lineHeight; return; }
@@ -7342,10 +7391,22 @@ async function generateItineraryPdfBlobFromOpts(opts){
     var isHeading = rawLine.indexOf(': ') === -1;
     doc.setFont('helvetica', isHeading ? 'bold' : 'normal');
     doc.setFontSize(isHeading ? 12 : 10);
-    var wrapped = doc.splitTextToSize(rawLine, maxWidth);
-    wrapped.forEach(function(wrappedLine){
+    var logoInfo = isHeading ? headingLogos[rawLine] : null;
+    var textX = margin, wrapWidth = maxWidth, drawW = 0, drawH = 0;
+    if(logoInfo){
+      var scale = Math.min(maxLogoW/logoInfo.width, maxLogoH/logoInfo.height);
+      drawW = logoInfo.width*scale; drawH = logoInfo.height*scale;
+      textX = margin + drawW + logoGap;
+      wrapWidth = maxWidth - drawW - logoGap;
+    }
+    var wrapped = doc.splitTextToSize(rawLine, wrapWidth);
+    wrapped.forEach(function(wrappedLine, wi){
       ensureRoom(lineHeight);
-      doc.text(wrappedLine, margin, y);
+      if(logoInfo && wi===0){
+        try{ doc.addImage(logoInfo.dataUri, 'PNG', margin, y - drawH + 2, drawW, drawH); }
+        catch(e){ debugLog('Itinerary PDF: heading logo addImage failed, continuing without it: '+e.message); }
+      }
+      doc.text(wrappedLine, wi===0 ? textX : margin, y);
       y += lineHeight;
     });
   });
@@ -8677,6 +8738,43 @@ function tripItineraryPlainText(opts){
   if(opts.extraNotes) out += '\n'+opts.extraNotes+'\n';
 
   return out;
+}
+// Maps each section heading tripItineraryPlainText() can emit (e.g. "Hotel
+// Details", "Hotel 2 Details") to the matching brand logo data URI, mirroring
+// itineraryEmailBodyHtml()'s own AIRLINE_LOGOS/HOTEL_LOGOS/CRUISE_LOGOS/
+// CAR_RENTAL_LOGOS lookups — used only by the PDF generator (see
+// generateItineraryPdfBlobFromOpts()), since the plain-text output itself
+// also doubles as a human-readable Planner task description and shouldn't
+// carry embedded image data.
+function itineraryHeadingLogos(opts){
+  var map = {};
+  var airlineRecords = opts.airlineRecords || [];
+  if(airlineRecords.length){
+    airlineRecords.forEach(function(rec, ri){
+      var title = airlineRecords.length>1 ? 'Airline Record '+(ri+1) : 'Airline Record';
+      var segs = rec.segments||[];
+      var primaryAirline = segs[0] && segs[0].airline;
+      if(primaryAirline && AIRLINE_LOGOS[primaryAirline]) map[title] = AIRLINE_LOGOS[primaryAirline];
+    });
+  } else if((opts.airline||opts.origin) && AIRLINE_LOGOS[opts.airline]){
+    map['Flight Details'] = AIRLINE_LOGOS[opts.airline];
+  }
+  var hotelEntries = opts.hotelEntries || [];
+  if(hotelEntries.length){
+    hotelEntries.forEach(function(h,i){
+      var title = hotelEntries.length>1 ? 'Hotel '+(i+1)+' Details' : 'Hotel Details';
+      if(h.hotelBrand && HOTEL_LOGOS[h.hotelBrand]) map[title] = HOTEL_LOGOS[h.hotelBrand];
+    });
+  } else if(opts.hotel && HOTEL_LOGOS[opts.hotel]){
+    map['Hotel Details'] = HOTEL_LOGOS[opts.hotel];
+  }
+  if(opts.cruiseLine && CRUISE_LOGOS[opts.cruiseLine]) map['Cruise Details'] = CRUISE_LOGOS[opts.cruiseLine];
+  var carEntries = opts.carEntries || [];
+  carEntries.forEach(function(c,i){
+    var title = carEntries.length>1 ? 'Car Rental '+(i+1)+' Details' : 'Car Rental Details';
+    if(c.company && CAR_RENTAL_LOGOS[c.company]) map[title] = CAR_RENTAL_LOGOS[c.company];
+  });
+  return map;
 }
 function tripToItineraryOpts(trip, client, extraNotes){
   var sup = trip.supplierId ? db.vendors.find(function(v){return v.id===trip.supplierId;}) : null;
