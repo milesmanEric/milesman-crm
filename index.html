@@ -956,7 +956,7 @@ const CANVA_AUTH_SERVER = 'https://milesman-auth.vercel.app';
 const BACKUP_FILENAME  = 'milesman-crm-backup.json';
 
 const AIRLINES = ['American','United','Delta','Southwest','JetBlue','Qatar Airways','ANA','Emirates','Lufthansa','British Airways','Air France','Virgin Atlantic','Qantas','Etihad','JAL','Air Canada','Frontier','Alaska/Hawaiian Air'];
-const HOTELS   = ['Marriott','Disney','Hilton','Hyatt','Accor','IHG','Wyndham','Four Seasons','Ritz-Carlton','W Hotels','Kimpton','Conrad','Universal','Riu'];
+const HOTELS   = ['Marriott','Disney','Hilton','Hyatt','Accor','IHG','Wyndham','Four Seasons','Ritz-Carlton','W Hotels','Kimpton','Conrad','Universal','Riu','Eden Roc'];
 // Trip-booking Hotel Brand picklists (Booked Trip Details' hotel entries,
 // the trip's own Hotel Brand field, and the Points Used program picker)
 // use this instead of the static HOTELS list directly — the union of
@@ -8581,45 +8581,52 @@ function itineraryPlainTextSection(title, rowsText){ return rowsText ? ('\n'+tit
 // only-if-populated boxes) but as "Label: Value" lines instead of styled
 // HTML boxes — for contexts like the pre-trip well-wishes task where the
 // draft is a plain mailto: body, not a rendered HTML email.
-function tripItineraryPlainText(opts){
-  var datesLine = (opts.departDate?fmtDate(opts.departDate):'') + (opts.departDate&&opts.returnDate?' – ':'') + (opts.returnDate?fmtDate(opts.returnDate):'');
-  var out = 'Trip Itinerary'+((opts.tripName||opts.destination)?' — '+(opts.tripName||opts.destination):'')+'\n';
-  out += itineraryDetailRowText('Destination', opts.destination);
-  out += itineraryDetailRowText('Travel Dates', datesLine);
-  out += itineraryDetailRowText('Passengers', opts.passengers);
+// Builds one {date, time, heading, rows, logo} entry per flight segment,
+// hotel stay, cruise, car rental, transfer, theme park visit, train, and
+// bus leg — shared by tripItineraryPlainText() (which joins them in either
+// fixed category order or, when opts.layout==='chronological', sorted by
+// date/time) and itineraryHeadingLogos() (which just needs the heading ->
+// logo pairing for the PDF generator). A single shared builder means the
+// two can't drift the way two independently-written heading generators
+// eventually would. Each flight segment gets its OWN heading+logo (keyed
+// off that segment's own airline, e.g. AIRLINE_LOGOS[f.airline]) rather
+// than one shared logo per Airline Record, so a connecting or round-trip
+// record whose legs fly different airlines shows each one's own logo
+// next to its own leg, not just the first leg's airline for the whole
+// record.
+function buildItinerarySections(opts){
+  var items = [];
 
   var airlineRecords = opts.airlineRecords || [];
-  if(airlineRecords.length){
-    airlineRecords.forEach(function(rec, ri){
-      var title = airlineRecords.length>1 ? 'Airline Record '+(ri+1) : 'Airline Record';
-      var rows = itineraryDetailRowText('Passengers', rec.passengers);
-      var segs = rec.segments||[];
-      segs.forEach(function(f,i){
-        var p = segs.length>1 ? ('Flight '+(i+1)+' — ') : '';
-        // A blank line between each leg of a multi-segment (e.g. connecting
-        // or round-trip) record — otherwise one flight's rows ran straight
-        // into the next's with nothing marking where one ends.
-        if(i>0) rows += '\n';
+  var totalSegs = airlineRecords.reduce(function(a,r){return a+((r.segments||[]).length);},0);
+  if(totalSegs){
+    var segCounter = 0;
+    airlineRecords.forEach(function(rec){
+      (rec.segments||[]).forEach(function(f){
+        segCounter++;
         // A plain " to " rather than a unicode arrow — jsPDF's built-in
         // standard fonts only cover WinAnsi encoding, so "→" (U+2192) has
         // no glyph to fall back to and renders as a stray/missing
         // character, which is what made these rows look broken.
-        rows += itineraryDetailRowText(p+'Record Number', f.recordNumber) +
-          itineraryDetailRowText(p+'Airline', f.airline) +
-          itineraryDetailRowText(p+'Flight Number', f.flightNumber) +
-          itineraryDetailRowText(p+'Route', f.origin&&f.destination?(f.origin+' to '+f.destination):'') +
-          itineraryDetailRowText(p+'Depart Date', f.departDate?fmtDate(f.departDate):'') +
-          itineraryDetailRowText(p+'Depart Time', f.departTime?fmtTime(f.departTime):'') +
-          itineraryDetailRowText(p+'Arrival Time', f.arrivalTime?fmtTime(f.arrivalTime):'') +
-          itineraryDetailRowText(p+'Class of Service', f.classOfService);
+        var route = f.origin&&f.destination ? (f.origin+' to '+f.destination) : '';
+        var heading = totalSegs>1 ? ('Flight '+segCounter+(route?' — '+route:'')) : 'Flight Details';
+        var rows = itineraryDetailRowText('Passengers', rec.passengers) +
+          itineraryDetailRowText('Record Number', f.recordNumber) +
+          itineraryDetailRowText('Airline', f.airline) +
+          itineraryDetailRowText('Flight Number', f.flightNumber) +
+          itineraryDetailRowText('Route', route) +
+          itineraryDetailRowText('Depart Date', f.departDate?fmtDate(f.departDate):'') +
+          itineraryDetailRowText('Depart Time', f.departTime?fmtTime(f.departTime):'') +
+          itineraryDetailRowText('Arrival Time', f.arrivalTime?fmtTime(f.arrivalTime):'') +
+          itineraryDetailRowText('Class of Service', f.classOfService);
+        items.push({date:f.departDate||'', time:f.departTime||'', heading:heading, rows:rows, logo:AIRLINE_LOGOS[f.airline]||''});
       });
-      out += itineraryPlainTextSection(title, rows);
     });
   } else if(opts.airline||opts.origin){
     var flightRows = itineraryDetailRowText('Airline', opts.airline) +
       itineraryDetailRowText('Route', opts.origin&&opts.destination?(opts.origin+' to '+opts.destination):'') +
       itineraryDetailRowText('Class of Service', opts.flightClass);
-    out += itineraryPlainTextSection('Flight Details', flightRows);
+    items.push({date:'', time:'', heading:'Flight Details', rows:flightRows, logo:AIRLINE_LOGOS[opts.airline]||''});
   }
 
   var hotelEntries = opts.hotelEntries || [];
@@ -8631,11 +8638,11 @@ function tripItineraryPlainText(opts){
         itineraryDetailRowText('Check-in Date', h.checkInDate?fmtDate(h.checkInDate):'') +
         itineraryDetailRowText('Nights', h.nights?(h.nights+(h.nights===1?' night':' nights')):'') +
         itineraryDetailRowText('Confirmation Number', h.confirmationNumber);
-      out += itineraryPlainTextSection(hotelEntries.length>1?'Hotel '+(i+1)+' Details':'Hotel Details', rows);
+      items.push({date:h.checkInDate||'', time:'', heading:hotelEntries.length>1?'Hotel '+(i+1)+' Details':'Hotel Details', rows:rows, logo:HOTEL_LOGOS[h.hotelBrand]||''});
     });
   } else if(opts.hotel){
     var hotelRows = itineraryDetailRowText('Hotel', opts.hotel) + itineraryDetailRowText('Nights', opts.hotelNights);
-    out += itineraryPlainTextSection('Hotel Details', hotelRows);
+    items.push({date:'', time:'', heading:'Hotel Details', rows:hotelRows, logo:HOTEL_LOGOS[opts.hotel]||''});
   }
 
   var cruiseCabins = opts.cruiseCabins || [];
@@ -8653,7 +8660,7 @@ function tripItineraryPlainText(opts){
   });
   cruiseRows += itineraryDetailRowText('Confirmation Number', opts.cruiseConfirmationNumber) +
     itineraryDetailRowText('Loyalty Number', opts.cruiseLoyaltyNumber);
-  out += itineraryPlainTextSection('Cruise Details', cruiseRows);
+  items.push({date:opts.cruiseSailingDateRaw||'', time:'', heading:'Cruise Details', rows:cruiseRows, logo:CRUISE_LOGOS[opts.cruiseLine]||''});
 
   var carEntries = opts.carEntries || [];
   carEntries.forEach(function(c,i){
@@ -8662,7 +8669,7 @@ function tripItineraryPlainText(opts){
       itineraryDetailRowText('Pickup', [c.pickupLocation,c.pickupDate].filter(Boolean).join(' — ')) +
       itineraryDetailRowText('Dropoff', [c.dropoffLocation,c.dropoffDate].filter(Boolean).join(' — ')) +
       itineraryDetailRowText('Confirmation Number', c.confirmationNumber);
-    out += itineraryPlainTextSection(carEntries.length>1?'Car Rental '+(i+1)+' Details':'Car Rental Details', rows);
+    items.push({date:c.pickupDateRaw||'', time:'', heading:carEntries.length>1?'Car Rental '+(i+1)+' Details':'Car Rental Details', rows:rows, logo:CAR_RENTAL_LOGOS[c.company]||''});
   });
 
   var transferEntries = opts.transferEntries || [];
@@ -8673,15 +8680,15 @@ function tripItineraryPlainText(opts){
       itineraryDetailRowText('Car Type', x.carType) +
       itineraryDetailRowText('Provider', x.provider) +
       itineraryDetailRowText('Confirmation Number', x.confirmationNumber);
-    out += itineraryPlainTextSection(transferEntries.length>1?'Transfer '+(i+1):'Transfer Details', rows);
+    items.push({date:x.pickupDateRaw||'', time:x.pickupTime||'', heading:transferEntries.length>1?'Transfer '+(i+1):'Transfer Details', rows:rows, logo:''});
   });
 
-  var themeParkEntriesText = opts.themeParkEntries || [];
-  themeParkEntriesText.forEach(function(p,i){
+  var themeParkEntries = opts.themeParkEntries || [];
+  themeParkEntries.forEach(function(p,i){
     var rows = itineraryDetailRowText('Park', p.park) +
       itineraryDetailRowText('Ticket Type', p.ticketType) +
       itineraryDetailRowText('Confirmation Number', p.confirmationNumber);
-    out += itineraryPlainTextSection(themeParkEntriesText.length>1?'Theme Park '+(i+1)+' Details':'Theme Park Details', rows);
+    items.push({date:'', time:'', heading:themeParkEntries.length>1?'Theme Park '+(i+1)+' Details':'Theme Park Details', rows:rows, logo:''});
   });
 
   var trainEntries = opts.trainEntries || [];
@@ -8694,7 +8701,7 @@ function tripItineraryPlainText(opts){
       itineraryDetailRowText('Class of Service', t.classOfService) +
       itineraryDetailRowText('Passengers', t.numPassengers) +
       itineraryDetailRowText('Confirmation Number', t.confirmationNumber);
-    out += itineraryPlainTextSection(trainEntries.length>1?'Train '+(i+1)+' Details':'Train Details', rows);
+    items.push({date:t.departureDateRaw||'', time:t.departureTime||'', heading:trainEntries.length>1?'Train '+(i+1)+' Details':'Train Details', rows:rows, logo:''});
   });
 
   var busEntries = opts.busEntries || [];
@@ -8704,8 +8711,42 @@ function tripItineraryPlainText(opts){
       itineraryDetailRowText('Return Date', x.returnDate) +
       itineraryDetailRowText('Class of Service', x.classOfService) +
       itineraryDetailRowText('Confirmation Number', x.confirmationNumber);
-    out += itineraryPlainTextSection(busEntries.length>1?'Bus '+(i+1)+' Details':'Bus Details', rows);
+    items.push({date:x.departureDateRaw||'', time:'', heading:busEntries.length>1?'Bus '+(i+1)+' Details':'Bus Details', rows:rows, logo:''});
   });
+
+  return items.filter(function(it){ return it.rows; });
+}
+function tripItineraryPlainText(opts){
+  var datesLine = (opts.departDate?fmtDate(opts.departDate):'') + (opts.departDate&&opts.returnDate?' – ':'') + (opts.returnDate?fmtDate(opts.returnDate):'');
+  var out = 'Trip Itinerary'+((opts.tripName||opts.destination)?' — '+(opts.tripName||opts.destination):'')+'\n';
+  out += itineraryDetailRowText('Destination', opts.destination);
+  out += itineraryDetailRowText('Travel Dates', datesLine);
+  out += itineraryDetailRowText('Passengers', opts.passengers);
+
+  // "category" (default) keeps the fixed Flight/Hotel/Cruise/… section
+  // order; "chronological" sorts every dated item by date (then time),
+  // with anything that has no date to sort by (Theme Park, and the rare
+  // item in a dated category missing its date) trailing underneath in its
+  // own "no specific date" section — same rule itineraryEmailBodyHtml()
+  // applies to the HTML version, which this previously didn't honor at
+  // all (opts.layout was read into opts but tripItineraryPlainText() never
+  // checked it, so the PDF/Planner-task text always came out in category
+  // order regardless of which radio was selected).
+  var items = buildItinerarySections(opts);
+  if(opts.layout === 'chronological'){
+    var dated = items.filter(function(it){ return it.date; }).sort(function(a,b){
+      var ak = a.date+' '+(a.time||''), bk = b.date+' '+(b.time||'');
+      return ak<bk ? -1 : (ak>bk ? 1 : 0);
+    });
+    var undated = items.filter(function(it){ return !it.date; });
+    dated.forEach(function(it){ out += itineraryPlainTextSection(it.heading, it.rows); });
+    if(undated.length){
+      out += '\nOther Bookings (No Specific Date)\n';
+      undated.forEach(function(it){ out += itineraryPlainTextSection(it.heading, it.rows); });
+    }
+  } else {
+    items.forEach(function(it){ out += itineraryPlainTextSection(it.heading, it.rows); });
+  }
 
   var insuranceLineItems = [
     ['Airline', opts.airlineInsurance], ['Hotel', opts.hotelInsurance], ['Cruise', opts.cruiseInsurance],
@@ -8748,31 +8789,8 @@ function tripItineraryPlainText(opts){
 // carry embedded image data.
 function itineraryHeadingLogos(opts){
   var map = {};
-  var airlineRecords = opts.airlineRecords || [];
-  if(airlineRecords.length){
-    airlineRecords.forEach(function(rec, ri){
-      var title = airlineRecords.length>1 ? 'Airline Record '+(ri+1) : 'Airline Record';
-      var segs = rec.segments||[];
-      var primaryAirline = segs[0] && segs[0].airline;
-      if(primaryAirline && AIRLINE_LOGOS[primaryAirline]) map[title] = AIRLINE_LOGOS[primaryAirline];
-    });
-  } else if((opts.airline||opts.origin) && AIRLINE_LOGOS[opts.airline]){
-    map['Flight Details'] = AIRLINE_LOGOS[opts.airline];
-  }
-  var hotelEntries = opts.hotelEntries || [];
-  if(hotelEntries.length){
-    hotelEntries.forEach(function(h,i){
-      var title = hotelEntries.length>1 ? 'Hotel '+(i+1)+' Details' : 'Hotel Details';
-      if(h.hotelBrand && HOTEL_LOGOS[h.hotelBrand]) map[title] = HOTEL_LOGOS[h.hotelBrand];
-    });
-  } else if(opts.hotel && HOTEL_LOGOS[opts.hotel]){
-    map['Hotel Details'] = HOTEL_LOGOS[opts.hotel];
-  }
-  if(opts.cruiseLine && CRUISE_LOGOS[opts.cruiseLine]) map['Cruise Details'] = CRUISE_LOGOS[opts.cruiseLine];
-  var carEntries = opts.carEntries || [];
-  carEntries.forEach(function(c,i){
-    var title = carEntries.length>1 ? 'Car Rental '+(i+1)+' Details' : 'Car Rental Details';
-    if(c.company && CAR_RENTAL_LOGOS[c.company]) map[title] = CAR_RENTAL_LOGOS[c.company];
+  buildItinerarySections(opts).forEach(function(it){
+    if(it.logo) map[it.heading] = it.logo;
   });
   return map;
 }
