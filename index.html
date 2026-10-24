@@ -9070,8 +9070,13 @@ function openEmailItineraryModal(){
   // from — same clientId/clientIds match the client-change handler below
   // already uses to find that client's trips, so a client who'd just see
   // "-- No trips for this client --" after picking them never shows up here.
+  // A Cancelled trip doesn't count — there's no itinerary to send for one —
+  // so a client whose only trip(s) are Cancelled is excluded too, while a
+  // client with at least one non-Cancelled trip still shows up even if
+  // they also have a separate Cancelled one.
   var clientIdsWithTrips = new Set();
   db.trips.forEach(function(t){
+    if(t.status==='Cancelled') return;
     if(t.clientId) clientIdsWithTrips.add(t.clientId);
     (t.clientIds||[]).forEach(function(cid){ clientIdsWithTrips.add(cid); });
   });
