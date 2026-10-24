@@ -7383,20 +7383,26 @@ function loadLogoAsPngDataUri(srcDataUri, maxDim){
     img.src = srcDataUri;
   });
 }
-// Resolves itineraryHeadingLogos()'s {heading: dataUri} map into
-// {heading: {dataUri, width, height}} for the PDF generator below. A logo
+// Resolves orderedItinerarySections()'s per-section raw logo (a data: URI,
+// or '') into {dataUri, width, height} for the PDF generator below, kept
+// in the SAME array positions as the sections list (not keyed by heading
+// text — multiple sections of the same category can share an identical
+// heading now that per-category numbering has been removed, e.g. two
+// "Hotel Details" boxes, so a text-keyed map would silently let the
+// second section's logo overwrite the first's, or vice versa). A logo
 // that fails to load (missing intrinsic size, decode error) is just left
 // out — that section's heading renders with no logo, same as a brand with
 // no logo at all.
-async function resolveHeadingLogos(headingLogosRaw){
-  var resolved = {};
-  var keys = Object.keys(headingLogosRaw);
-  for(var i=0;i<keys.length;i++){
-    var k = keys[i];
-    try{
-      resolved[k] = await loadLogoAsPngDataUri(headingLogosRaw[k], 160);
-    }catch(e){
-      debugLog('Itinerary PDF: could not load logo for "'+k+'" heading, continuing without it: '+e.message);
+async function resolveSectionLogos(orderedSections){
+  var resolved = [];
+  for(var i=0;i<orderedSections.length;i++){
+    var entry = orderedSections[i];
+    if(entry.type==='section' && entry.logo){
+      try{
+        resolved[i] = await loadLogoAsPngDataUri(entry.logo, 160);
+      }catch(e){
+        debugLog('Itinerary PDF: could not load logo for "'+entry.heading+'" heading, continuing without it: '+e.message);
+      }
     }
   }
   return resolved;
@@ -7432,18 +7438,13 @@ async function generateItineraryPdfBlobFromOpts(opts){
   // fit this box while keeping each logo's native aspect ratio so a wide
   // airline wordmark doesn't get squished to match a square car-rental one.
   var maxLogoW = 54, maxLogoH = 16, logoGap = 6;
-  var headingLogos = await resolveHeadingLogos(itineraryHeadingLogos(opts));
-  var text = tripItineraryPlainText(opts);
-  text.split('\n').forEach(function(rawLine){
-    if(!rawLine){ y += lineHeight; return; }
-    // itineraryDetailRowText() always emits "Label: value" rows; a bare
-    // line with no ": " is one of tripItineraryPlainText()'s own section
-    // titles (e.g. "Hotel Details") or the leading "Trip Itinerary — …"
-    // line — both styled bold to stand out from the rows under them.
-    var isHeading = rawLine.indexOf(': ') === -1;
+
+  // Draws one line of text, optionally with a small logo to its left —
+  // logoInfo is only ever passed for a section heading line, never a body
+  // row, and only once that heading has successfully resolved a logo.
+  function drawLine(rawLine, isHeading, logoInfo){
     doc.setFont('helvetica', isHeading ? 'bold' : 'normal');
     doc.setFontSize(isHeading ? 12 : 10);
-    var logoInfo = isHeading ? headingLogos[rawLine] : null;
     var textX = margin, wrapWidth = maxWidth, drawW = 0, drawH = 0;
     if(logoInfo){
       var scale = Math.min(maxLogoW/logoInfo.width, maxLogoH/logoInfo.height);
@@ -7461,7 +7462,45 @@ async function generateItineraryPdfBlobFromOpts(opts){
       doc.text(wrappedLine, wi===0 ? textX : margin, y);
       y += lineHeight;
     });
+  }
+  // Draws a block of plain text (no logos) line by line — used for the
+  // header and the trailing Insurance/Booking Details/notes, neither of
+  // which ever carries a logo. itineraryDetailRowText() always emits
+  // "Label: value" rows; a bare line with no ": " is a section title
+  // (e.g. "Trip Itinerary — …", "Booking Details") — styled bold to stand
+  // out from the rows under it.
+  function drawText(text){
+    text.split('\n').forEach(function(rawLine){
+      if(!rawLine){ y += lineHeight; return; }
+      drawLine(rawLine, rawLine.indexOf(': ') === -1, null);
+    });
+  }
+
+  var datesLine = (opts.departDate?fmtDate(opts.departDate):'') + (opts.departDate&&opts.returnDate?' – ':'') + (opts.returnDate?fmtDate(opts.returnDate):'');
+  drawText('Trip Itinerary'+((opts.tripName||opts.destination)?' — '+(opts.tripName||opts.destination):'')+'\n'+
+    itineraryDetailRowText('Destination', opts.destination)+
+    itineraryDetailRowText('Travel Dates', datesLine)+
+    itineraryDetailRowText('Passengers', opts.passengers));
+
+  // Each section is paired with its OWN logo by array position (see
+  // resolveSectionLogos() for why — section headings are no longer
+  // guaranteed unique now that per-category numbering like "Hotel 2
+  // Details" has been removed), not by matching rendered text.
+  var orderedSections = orderedItinerarySections(opts);
+  var resolvedLogos = await resolveSectionLogos(orderedSections);
+  orderedSections.forEach(function(entry, i){
+    y += lineHeight;
+    if(entry.type === 'day'){
+      drawLine(entry.label, true, null);
+    } else {
+      drawLine(entry.heading, true, resolvedLogos[i]);
+      entry.rows.split('\n').filter(Boolean).forEach(function(rowLine){
+        drawLine(rowLine, false, null);
+      });
+    }
   });
+
+  drawText(itineraryTailText(opts));
 
   return doc.output('blob');
 }
@@ -8349,7 +8388,7 @@ function itineraryEmailBodyHtml(opts){
     // a different record locator per leg), rows prefixed "Flight N:" only
     // when the record actually has more than one segment.
     flightBoxesHtml = airlineRecords.map(function(rec, ri){
-      var boxTitle = airlineRecords.length>1 ? 'Airline Record '+(ri+1) : 'Airline Record';
+      var boxTitle = 'Airline Record';
       var headRows = itineraryDetailRow('Passengers', rec.passengers);
       var segs = rec.segments||[];
       var segRows = segs.map(function(f, i){
@@ -8399,7 +8438,7 @@ function itineraryEmailBodyHtml(opts){
         itineraryDetailRow('Check-in Date', h.checkInDate?fmtDate(h.checkInDate):'') +
         itineraryDetailRow('Nights', h.nights?(h.nights+(h.nights===1?' night':' nights')):'') +
         itineraryDetailRow('Confirmation Number', h.confirmationNumber);
-      return {date: h.checkInDate||'', time:'', isHotel:true, html: itineraryDetailBox(hotelEntries.length>1 ? 'Hotel '+(i+1)+' Details' : 'Hotel Details', rows, HOTEL_LOGOS[h.hotelBrand])};
+      return {date: h.checkInDate||'', time:'', isHotel:true, html: itineraryDetailBox('Hotel Details', rows, HOTEL_LOGOS[h.hotelBrand])};
     });
   } else {
     var hotelRows = itineraryDetailRow('Hotel', opts.hotel) +
@@ -8432,7 +8471,7 @@ function itineraryEmailBodyHtml(opts){
       itineraryDetailRow('Pickup', [c.pickupLocation,c.pickupDate].filter(Boolean).join(' — ')) +
       itineraryDetailRow('Dropoff', [c.dropoffLocation,c.dropoffDate].filter(Boolean).join(' — ')) +
       itineraryDetailRow('Confirmation Number', c.confirmationNumber);
-    return {date: c.pickupDateRaw||'', time:'', html: itineraryDetailBox(carEntries.length>1 ? 'Car Rental '+(i+1)+' Details' : 'Car Rental Details', rows, CAR_RENTAL_LOGOS[c.company])};
+    return {date: c.pickupDateRaw||'', time:'', html: itineraryDetailBox('Car Rental Details', rows, CAR_RENTAL_LOGOS[c.company])};
   });
   var carRentalBoxesHtml = carItems.map(function(it){return it.html;}).join('');
   var transferEntries = opts.transferEntries || [];
@@ -8443,7 +8482,7 @@ function itineraryEmailBodyHtml(opts){
       itineraryDetailRow('Car Type', x.carType) +
       itineraryDetailRow('Provider', x.provider) +
       itineraryDetailRow('Confirmation Number', x.confirmationNumber);
-    return {date: x.pickupDateRaw||'', time: x.pickupTime||'', html: itineraryDetailBox(transferEntries.length>1 ? 'Transfer '+(i+1) : 'Transfer Details', rows)};
+    return {date: x.pickupDateRaw||'', time: x.pickupTime||'', html: itineraryDetailBox('Transfer Details', rows)};
   });
   var transfersBoxesHtml = transferItems.map(function(it){return it.html;}).join('');
   var themeParkEntries = opts.themeParkEntries || [];
@@ -8452,7 +8491,7 @@ function itineraryEmailBodyHtml(opts){
       itineraryDetailRow('Ticket Type', p.ticketType) +
       itineraryDetailRow('Confirmation Number', p.confirmationNumber);
     // Same "no date field at all" situation as tours above.
-    return {date:'', time:'', html: itineraryDetailBox(themeParkEntries.length>1 ? 'Theme Park '+(i+1)+' Details' : 'Theme Park Details', rows)};
+    return {date:'', time:'', html: itineraryDetailBox('Theme Park Details', rows)};
   });
   var themeParkBoxesHtml = themeParkItems.map(function(it){return it.html;}).join('');
   var trainEntries = opts.trainEntries || [];
@@ -8470,7 +8509,7 @@ function itineraryEmailBodyHtml(opts){
     // CAR_RENTAL_LOGOS) takes priority over the manually pasted Logo URL —
     // both are safe here since this is a plain <img src>, not the PDF's
     // canvas-based rasterization pipeline.
-    return {date: t.departureDateRaw||'', time: t.departureTime||'', html: itineraryDetailBox(trainEntries.length>1 ? 'Train '+(i+1)+' Details' : 'Train Details', rows, TRAIN_LOGOS[t.carrier]||t.logoUrl)};
+    return {date: t.departureDateRaw||'', time: t.departureTime||'', html: itineraryDetailBox('Train Details', rows, TRAIN_LOGOS[t.carrier]||t.logoUrl)};
   });
   var trainBoxesHtml = trainItems.map(function(it){return it.html;}).join('');
   var busEntries = opts.busEntries || [];
@@ -8480,7 +8519,7 @@ function itineraryEmailBodyHtml(opts){
       itineraryDetailRow('Return Date', x.returnDate) +
       itineraryDetailRow('Class of Service', x.classOfService) +
       itineraryDetailRow('Confirmation Number', x.confirmationNumber);
-    return {date: x.departureDateRaw||'', time:'', html: itineraryDetailBox(busEntries.length>1 ? 'Bus '+(i+1)+' Details' : 'Bus Details', rows, x.logoUrl)};
+    return {date: x.departureDateRaw||'', time:'', html: itineraryDetailBox('Bus Details', rows, x.logoUrl)};
   });
   var busBoxesHtml = busItems.map(function(it){return it.html;}).join('');
   // Booking Ref (the trip's Invoice Number) only shows when there's no
@@ -8638,12 +8677,14 @@ function itineraryPlainTextSection(title, rowsText){ return rowsText ? ('\n'+tit
 // draft is a plain mailto: body, not a rendered HTML email.
 // Builds one {date, time, heading, rows, logo} entry per flight segment,
 // hotel stay, cruise, car rental, transfer, theme park visit, train, and
-// bus leg — shared by tripItineraryPlainText() (which joins them in either
-// fixed category order or, when opts.layout==='chronological', sorted by
-// date/time) and itineraryHeadingLogos() (which just needs the heading ->
-// logo pairing for the PDF generator). A single shared builder means the
-// two can't drift the way two independently-written heading generators
-// eventually would. Each flight segment gets its OWN heading+logo (keyed
+// bus leg — the raw material orderedItinerarySections() arranges into
+// either fixed category order or, when opts.layout==='chronological',
+// day-grouped date order, for both tripItineraryPlainText() (plain text)
+// and generateItineraryPdfBlobFromOpts() (which also needs each
+// section's own logo, positionally paired via resolveSectionLogos()
+// rather than by heading text, since headings are no longer guaranteed
+// unique — see that function's own comment). Each flight segment gets its
+// OWN heading+logo (keyed
 // off that segment's own airline, e.g. AIRLINE_LOGOS[f.airline]) rather
 // than one shared logo per Airline Record, so a connecting or round-trip
 // record whose legs fly different airlines shows each one's own logo
@@ -8691,7 +8732,7 @@ function buildItinerarySections(opts){
         itineraryDetailRowText('Check-in Date', h.checkInDate?fmtDate(h.checkInDate):'') +
         itineraryDetailRowText('Nights', h.nights?(h.nights+(h.nights===1?' night':' nights')):'') +
         itineraryDetailRowText('Confirmation Number', h.confirmationNumber);
-      items.push({date:h.checkInDate||'', time:'', isHotel:true, heading:hotelEntries.length>1?'Hotel '+(i+1)+' Details':'Hotel Details', rows:rows, logo:HOTEL_LOGOS[h.hotelBrand]||''});
+      items.push({date:h.checkInDate||'', time:'', isHotel:true, heading:'Hotel Details', rows:rows, logo:HOTEL_LOGOS[h.hotelBrand]||''});
     });
   } else if(opts.hotel){
     var hotelRows = itineraryDetailRowText('Hotel', opts.hotel) + itineraryDetailRowText('Nights', opts.hotelNights);
@@ -8722,7 +8763,7 @@ function buildItinerarySections(opts){
       itineraryDetailRowText('Pickup', [c.pickupLocation,c.pickupDate].filter(Boolean).join(' — ')) +
       itineraryDetailRowText('Dropoff', [c.dropoffLocation,c.dropoffDate].filter(Boolean).join(' — ')) +
       itineraryDetailRowText('Confirmation Number', c.confirmationNumber);
-    items.push({date:c.pickupDateRaw||'', time:'', heading:carEntries.length>1?'Car Rental '+(i+1)+' Details':'Car Rental Details', rows:rows, logo:CAR_RENTAL_LOGOS[c.company]||''});
+    items.push({date:c.pickupDateRaw||'', time:'', heading:'Car Rental Details', rows:rows, logo:CAR_RENTAL_LOGOS[c.company]||''});
   });
 
   var transferEntries = opts.transferEntries || [];
@@ -8733,7 +8774,7 @@ function buildItinerarySections(opts){
       itineraryDetailRowText('Car Type', x.carType) +
       itineraryDetailRowText('Provider', x.provider) +
       itineraryDetailRowText('Confirmation Number', x.confirmationNumber);
-    items.push({date:x.pickupDateRaw||'', time:x.pickupTime||'', heading:transferEntries.length>1?'Transfer '+(i+1):'Transfer Details', rows:rows, logo:''});
+    items.push({date:x.pickupDateRaw||'', time:x.pickupTime||'', heading:'Transfer Details', rows:rows, logo:''});
   });
 
   var themeParkEntries = opts.themeParkEntries || [];
@@ -8741,7 +8782,7 @@ function buildItinerarySections(opts){
     var rows = itineraryDetailRowText('Park', p.park) +
       itineraryDetailRowText('Ticket Type', p.ticketType) +
       itineraryDetailRowText('Confirmation Number', p.confirmationNumber);
-    items.push({date:'', time:'', heading:themeParkEntries.length>1?'Theme Park '+(i+1)+' Details':'Theme Park Details', rows:rows, logo:''});
+    items.push({date:'', time:'', heading:'Theme Park Details', rows:rows, logo:''});
   });
 
   var trainEntries = opts.trainEntries || [];
@@ -8760,7 +8801,7 @@ function buildItinerarySections(opts){
     // canvas-based SVG rasterization, so an arbitrary remote Logo URL (the
     // manually pasted t.logoUrl field) must never be fed into it; that's the
     // exact cross-origin canvas-taint bug that once made this PDF blank.
-    items.push({date:t.departureDateRaw||'', time:t.departureTime||'', heading:trainEntries.length>1?'Train '+(i+1)+' Details':'Train Details', rows:rows, logo:TRAIN_LOGOS[t.carrier]||''});
+    items.push({date:t.departureDateRaw||'', time:t.departureTime||'', heading:'Train Details', rows:rows, logo:TRAIN_LOGOS[t.carrier]||''});
   });
 
   var busEntries = opts.busEntries || [];
@@ -8770,31 +8811,27 @@ function buildItinerarySections(opts){
       itineraryDetailRowText('Return Date', x.returnDate) +
       itineraryDetailRowText('Class of Service', x.classOfService) +
       itineraryDetailRowText('Confirmation Number', x.confirmationNumber);
-    items.push({date:x.departureDateRaw||'', time:'', heading:busEntries.length>1?'Bus '+(i+1)+' Details':'Bus Details', rows:rows, logo:''});
+    items.push({date:x.departureDateRaw||'', time:'', heading:'Bus Details', rows:rows, logo:''});
   });
 
   return items.filter(function(it){ return it.rows; });
 }
-function tripItineraryPlainText(opts){
-  var datesLine = (opts.departDate?fmtDate(opts.departDate):'') + (opts.departDate&&opts.returnDate?' – ':'') + (opts.returnDate?fmtDate(opts.returnDate):'');
-  var out = 'Trip Itinerary'+((opts.tripName||opts.destination)?' — '+(opts.tripName||opts.destination):'')+'\n';
-  out += itineraryDetailRowText('Destination', opts.destination);
-  out += itineraryDetailRowText('Travel Dates', datesLine);
-  out += itineraryDetailRowText('Passengers', opts.passengers);
-
-  // "category" (default) keeps the fixed Flight/Hotel/Cruise/… section
-  // order; "chronological" sorts every dated item by date (then time) and
-  // groups them under a per-day heading (e.g. "Monday, November 3, 2026"),
-  // with anything that has no date to sort by (Theme Park, and the rare
-  // item in a dated category missing its date) trailing underneath in its
-  // own "no specific date" section — same rule itineraryEmailBodyHtml()
-  // applies to the HTML version, which this previously didn't honor at
-  // all (opts.layout was read into opts but tripItineraryPlainText() never
-  // checked it, so the PDF/Planner-task text always came out in category
-  // order regardless of which radio was selected). Within a day, the hotel
-  // stay always sorts last — see itineraryEmailBodyHtml()'s matching
-  // comment on why.
+// Applies opts.layout to buildItinerarySections()'s raw list: "category"
+// (default) keeps the fixed Flight/Hotel/Cruise/… section order;
+// "chronological" sorts every dated item by date (then time, with the
+// hotel stay always last for its day — see itineraryEmailBodyHtml()'s
+// matching comment on why) and groups them under a per-day heading (e.g.
+// "Monday, November 3, 2026"), with anything that has no date to sort by
+// (Theme Park, and the rare item in a dated category missing its date)
+// trailing underneath its own "no specific date" bucket. Returns a flat
+// list of {type:'day', label} / {type:'section', heading, rows, logo}
+// entries — the exact sequence tripItineraryPlainText() and
+// generateItineraryPdfBlobFromOpts() both walk, so the two (one needs
+// plain text, the other needs each section paired with its own logo)
+// can't drift the way two independently-ordered passes eventually would.
+function orderedItinerarySections(opts){
   var items = buildItinerarySections(opts);
+  var out = [];
   if(opts.layout === 'chronological'){
     var dated = items.filter(function(it){ return it.date; }).sort(function(a,b){
       if(a.date !== b.date) return a.date<b.date ? -1 : 1;
@@ -8807,19 +8844,27 @@ function tripItineraryPlainText(opts){
     var lastDay = null;
     dated.forEach(function(it){
       if(it.date !== lastDay){
-        out += '\n'+fmtWeekdayDate(it.date)+'\n';
+        out.push({type:'day', label:fmtWeekdayDate(it.date)});
         lastDay = it.date;
       }
-      out += itineraryPlainTextSection(it.heading, it.rows);
+      out.push({type:'section', heading:it.heading, rows:it.rows, logo:it.logo});
     });
     if(undated.length){
-      out += '\nOther Bookings (No Specific Date)\n';
-      undated.forEach(function(it){ out += itineraryPlainTextSection(it.heading, it.rows); });
+      out.push({type:'day', label:'Other Bookings (No Specific Date)'});
+      undated.forEach(function(it){ out.push({type:'section', heading:it.heading, rows:it.rows, logo:it.logo}); });
     }
   } else {
-    items.forEach(function(it){ out += itineraryPlainTextSection(it.heading, it.rows); });
+    items.forEach(function(it){ out.push({type:'section', heading:it.heading, rows:it.rows, logo:it.logo}); });
   }
-
+  return out;
+}
+// Insurance + Booking Details + the per-send Additional Note + the
+// standing closing note — the trailing, never-logo-bearing portion of the
+// itinerary, identical for every opts.layout. Shared by
+// tripItineraryPlainText() and generateItineraryPdfBlobFromOpts() so the
+// two can't drift.
+function itineraryTailText(opts){
+  var out = '';
   var insuranceLineItems = [
     ['Airline', opts.airlineInsurance], ['Hotel', opts.hotelInsurance], ['Cruise', opts.cruiseInsurance],
     ['Car Rental', opts.carInsurance], ['Transfers', opts.transfersInsurance], ['Tours', opts.toursInsurance], ['Theme Park', opts.themeParkInsurance],
@@ -8854,19 +8899,21 @@ function tripItineraryPlainText(opts){
 
   return out;
 }
-// Maps each section heading tripItineraryPlainText() can emit (e.g. "Hotel
-// Details", "Hotel 2 Details") to the matching brand logo data URI, mirroring
-// itineraryEmailBodyHtml()'s own AIRLINE_LOGOS/HOTEL_LOGOS/CRUISE_LOGOS/
-// CAR_RENTAL_LOGOS lookups — used only by the PDF generator (see
-// generateItineraryPdfBlobFromOpts()), since the plain-text output itself
-// also doubles as a human-readable Planner task description and shouldn't
-// carry embedded image data.
-function itineraryHeadingLogos(opts){
-  var map = {};
-  buildItinerarySections(opts).forEach(function(it){
-    if(it.logo) map[it.heading] = it.logo;
+function tripItineraryPlainText(opts){
+  var datesLine = (opts.departDate?fmtDate(opts.departDate):'') + (opts.departDate&&opts.returnDate?' – ':'') + (opts.returnDate?fmtDate(opts.returnDate):'');
+  var out = 'Trip Itinerary'+((opts.tripName||opts.destination)?' — '+(opts.tripName||opts.destination):'')+'\n';
+  out += itineraryDetailRowText('Destination', opts.destination);
+  out += itineraryDetailRowText('Travel Dates', datesLine);
+  out += itineraryDetailRowText('Passengers', opts.passengers);
+
+  orderedItinerarySections(opts).forEach(function(entry){
+    if(entry.type === 'day') out += '\n'+entry.label+'\n';
+    else out += itineraryPlainTextSection(entry.heading, entry.rows);
   });
-  return map;
+
+  out += itineraryTailText(opts);
+
+  return out;
 }
 function tripToItineraryOpts(trip, client, extraNotes){
   var sup = trip.supplierId ? db.vendors.find(function(v){return v.id===trip.supplierId;}) : null;
