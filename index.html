@@ -154,6 +154,7 @@ nav{padding:10px 8px}
 .vendor-stat{display:inline-flex;align-items:center;gap:4px;font-size:12px;color:#555;background:#f3f4f6;border-radius:6px;padding:3px 10px;margin-right:6px;margin-top:6px}
 .cal-trip-end{background:#d1fae5;color:#065f46;border-left:3px solid #059669}
 .cal-trip-span{background:#f3f4f6;color:#374151;border-left:3px solid #9ca3af}
+.cal-trip-payment{background:#fef3c7;color:#92400e;border-left:3px solid #d97706}
 .cal-nav{display:flex;align-items:center;gap:12px}
 .cal-nav-btn{padding:6px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;cursor:pointer;font-size:13px;font-family:inherit;color:#374151}
 .cal-nav-btn:hover{background:#f3f4f6}
@@ -17354,6 +17355,17 @@ function renderCalendar(){
     }
   });
 
+  // Cruise deposit/final-payment due dates also show up as their own
+  // calendar entries, so they're never missed even when they fall well
+  // before the sailing date itself.
+  db.trips.forEach(function(t){
+    if(t.status==='Cancelled') return;
+    var cru = (t.booked && t.booked.cruise) || {};
+    if(cru.depositDueDate) addToMap(cru.depositDueDate, t, 'deposit-due');
+    if(cru.secondDepositDueDate) addToMap(cru.secondDepositDueDate, t, 'second-deposit-due');
+    if(cru.finalPaymentDueDate) addToMap(cru.finalPaymentDueDate, t, 'final-payment-due');
+  });
+
   // Build calendar grid HTML
   var days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   var headerCells = days.map(function(d){return '<div class="cal-header-cell">'+d+'</div>';}).join('');
@@ -17372,8 +17384,13 @@ function renderCalendar(){
     var dayNumHtml = isToday
       ? '<div class="cal-day-num today-num">'+d+'</div>'
       : '<div class="cal-day-num">'+d+'</div>';
+    var paymentLabels = {'deposit-due':'Deposit Due','second-deposit-due':'2nd Deposit Due','final-payment-due':'Final Payment Due'};
     var tripHtml = trips.slice(0,3).map(function(entry){
       var t=entry.trip, tp=entry.type;
+      if(paymentLabels[tp]){
+        var pLabel = paymentLabels[tp];
+        return '<div class="cal-trip cal-trip-payment" data-trip-id="'+t.id+'" title="'+pLabel+' — '+t.clientName+(t.destination?': '+t.destination:'')+'">&#36; '+pLabel+': '+t.clientName+'</div>';
+      }
       var cls='cal-trip cal-trip-'+(tp==='start'?'start':tp==='end'?'end':'span');
       var label=(tp==='start'?'▶ ':tp==='end'?'■ ':'  ')+t.clientName+(t.destination?' → '+t.destination.split(',')[0]:'');
       return '<div class="'+cls+'" data-trip-id="'+t.id+'" title="'+t.clientName+': '+t.destination+(tp==='start'?' (departs)':tp==='end'?' (returns)':'')+'">'+label+'</div>';
@@ -21476,6 +21493,10 @@ function bookedTripDetailsHtml(bd){
       fld('Currency',sel('tb-cruise-currency',FOREIGN_CURRENCIES,cru.currency))+
       fld('Price (Other Currency)',inp('tb-cruise-price-foreign','number',cru.priceForeign))+
       fld('Price ($)',inp('tb-cruise-price','number',cru.price))+
+      fld('Deposit Amount ($)',inp('tb-cruise-deposit-amount','number',cru.depositAmount))+
+      fld('Deposit Due Date',inp('tb-cruise-deposit-due','date',cru.depositDueDate))+
+      fld('Second Deposit Due Date',inp('tb-cruise-second-deposit-due','date',cru.secondDepositDueDate))+
+      fld('Final Payment Due Date',inp('tb-cruise-final-payment-due','date',cru.finalPaymentDueDate))+
       fld('Miles Man Booking Fee ($)',inp('tb-cruise-fee','number',cru.milesManFee,'Service fee charged for booking this sailing'))+
       fld('Insurance Premium ($)',inp('tb-cruise-insurance','number',cru.insurancePremium,'If purchased for this sailing, through the cruise line or a separate insurer'))+
       fld('Coverage Amount ($)',inp('tb-cruise-coverage','number',cru.insuranceCoverage,'Total coverage provided by the policy above'))+
@@ -21969,7 +21990,9 @@ function readBookedTripDetails(){
       confirmationNumber: gv('tb-cruise-conf'), cruiseLine: gv('tb-cruise-line'), shipName: gv('tb-cruise-ship'),
       sailingDate: gv('tb-cruise-sailing'), returnDate: gv('tb-cruise-return'), nights: gn('tb-cruise-nights'),
       departurePort: gv('tb-cruise-port'), returnPort: gv('tb-cruise-return-port'),
-      loyaltyNumber: gv('tb-cruise-loyalty'), currency: gv('tb-cruise-currency'), priceForeign: gn('tb-cruise-price-foreign'), price: gn('tb-cruise-price'), milesManFee: gn('tb-cruise-fee'), insurancePremium: gn('tb-cruise-insurance'), insuranceCoverage: gn('tb-cruise-coverage'), notes: gv('tb-cruise-notes'), cabins: readCabinEntries(),
+      loyaltyNumber: gv('tb-cruise-loyalty'), currency: gv('tb-cruise-currency'), priceForeign: gn('tb-cruise-price-foreign'), price: gn('tb-cruise-price'),
+      depositAmount: gn('tb-cruise-deposit-amount'), depositDueDate: gv('tb-cruise-deposit-due'), secondDepositDueDate: gv('tb-cruise-second-deposit-due'), finalPaymentDueDate: gv('tb-cruise-final-payment-due'),
+      milesManFee: gn('tb-cruise-fee'), insurancePremium: gn('tb-cruise-insurance'), insuranceCoverage: gn('tb-cruise-coverage'), notes: gv('tb-cruise-notes'), cabins: readCabinEntries(),
       pts: readPointsEntriesFrom(document.getElementById('tb-cruise-pts-entries'))
     },
     carRental: readCarEntries(),
