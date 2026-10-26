@@ -30,6 +30,8 @@ A single-file CRM for a travel agency built around points/miles-based bookings, 
 
 `db` has four top-level arrays, each with a human-readable ID prefix (`newId('C', db.clients)` etc.):
 
+**ID format:** `newId()` returns the next sequence number plus a random 4-character suffix (`C106-ys96`). The sequence number alone is only unique within one device's copy of the data, so two devices creating a record before syncing used to hand out the same ID and one record would overwrite the other, leaving tasks/trips pointing at the wrong one. Older suffix-less IDs (`C001`) are still valid; `parseInt` stops at the `-`, so they still feed the max+1 calculation.
+
 ### `db.clients` (`C001`, `C002`, ...)
 Core identity: `name` (stored "Last, First"), `email`, `phone`, `streetAddress`, `city`, `state`, `zip`, `birthdate`, `countryOfCitizenship`, `countryOfBirth`.
 

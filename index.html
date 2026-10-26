@@ -2157,9 +2157,18 @@ function tsNow(){
   const n=new Date();
   return n.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})+' '+n.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
 }
+// The sequence number alone is only unique within ONE device's copy of the
+// data — two devices (or tabs) that each create a record before syncing both
+// get the same "next" number, and when their data later merges one record
+// silently replaces the other while everything that pointed at the old one
+// (planner tasks, trips, notes) is left pointing at the wrong record. A
+// short random suffix makes each new id unique across devices. parseInt()
+// stops at the "-", so the sequence part still reads back as the old number
+// for the max+1 calculation, and existing suffix-less ids keep working.
 function newId(p,list){
   const ns=list.map(x=>parseInt((x.id||'0').replace(p,''),10)).filter(n=>!isNaN(n)&&n>0);
-  return p+String((ns.length?Math.max(...ns):0)+1).padStart(3,'0');
+  const suffix=Math.random().toString(36).slice(2,6).padEnd(4,'0');
+  return p+String((ns.length?Math.max(...ns):0)+1).padStart(3,'0')+'-'+suffix;
 }
 
 // ── Storage ───────────────────────────────────────────────────────────────
