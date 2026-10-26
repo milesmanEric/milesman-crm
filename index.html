@@ -154,6 +154,7 @@ nav{padding:10px 8px}
 .vendor-stat{display:inline-flex;align-items:center;gap:4px;font-size:12px;color:#555;background:#f3f4f6;border-radius:6px;padding:3px 10px;margin-right:6px;margin-top:6px}
 .cal-trip-end{background:#d1fae5;color:#065f46;border-left:3px solid #059669}
 .cal-trip-span{background:#f3f4f6;color:#374151;border-left:3px solid #9ca3af}
+.cal-trip-payment{background:#fef3c7;color:#92400e;border-left:3px solid #d97706}
 .cal-nav{display:flex;align-items:center;gap:12px}
 .cal-nav-btn{padding:6px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;cursor:pointer;font-size:13px;font-family:inherit;color:#374151}
 .cal-nav-btn:hover{background:#f3f4f6}
@@ -8495,12 +8496,23 @@ function itineraryEmailBodyHtml(opts){
     return {date: x.pickupDateRaw||'', time: x.pickupTime||'', html: itineraryDetailBox('Transfer Details', rows)};
   });
   var transfersBoxesHtml = transferItems.map(function(it){return it.html;}).join('');
+  var tourEntries = opts.tourEntries || [];
+  var tourItems = tourEntries.map(function(t, i){
+    var rows = itineraryDetailRow('Vendor', t.vendor) +
+      itineraryDetailRow('Description', t.description) +
+      itineraryDetailRow('Date', t.date) +
+      itineraryDetailRow('Time', t.time?fmtTime(t.time):'') +
+      itineraryDetailRow('Length', t.length) +
+      itineraryDetailRow('Confirmation Number', t.confirmationNumber);
+    return {date: t.dateRaw||'', time: t.time||'', html: itineraryDetailBox('Tour Details', rows, TOUR_LOGOS[t.vendor])};
+  });
+  var tourBoxesHtml = tourItems.map(function(it){return it.html;}).join('');
   var themeParkEntries = opts.themeParkEntries || [];
   var themeParkItems = themeParkEntries.map(function(p, i){
     var rows = itineraryDetailRow('Park', p.park) +
       itineraryDetailRow('Ticket Type', p.ticketType) +
       itineraryDetailRow('Confirmation Number', p.confirmationNumber);
-    // Same "no date field at all" situation as tours above.
+    // Theme Park has no date field at all, unlike Tours above.
     return {date:'', time:'', html: itineraryDetailBox('Theme Park Details', rows)};
   });
   var themeParkBoxesHtml = themeParkItems.map(function(it){return it.html;}).join('');
@@ -8565,19 +8577,20 @@ function itineraryEmailBodyHtml(opts){
     (insuranceLineItems.length>1 ? itineraryDetailRow('Total', '$'+money(totalInsurance)) : '');
   // "category" (default) keeps the original fixed Flight/Hotel/Cruise/…
   // section order; "chronological" merges every dated item (flight legs,
-  // hotel stays, the cruise, car rentals, transfers, trains, buses) into one
-  // timeline sorted by date (then time), grouped under a per-day heading
-  // (e.g. "Monday, November 3, 2026"), with anything that has no date to
-  // sort by — Tours and Theme Park have no date field at all, and the rare
-  // item in a dated category that's missing its date — trailing underneath
-  // in its own "no specific date" section rather than silently dropped.
+  // hotel stays, the cruise, car rentals, transfers, tours, trains, buses)
+  // into one timeline sorted by date (then time), grouped under a per-day
+  // heading (e.g. "Monday, November 3, 2026"), with anything that has no
+  // date to sort by — Theme Park has no date field at all, a Tour entry's
+  // date is optional, and the rare item in a dated category that's missing
+  // its date — trailing underneath in its own "no specific date" section
+  // rather than silently dropped.
   // Within a day, the hotel stay always sorts last regardless of its
   // (always-blank) time — it reads as "where you're sleeping that night"
   // rather than a scheduled event competing with the day's actual
   // flights/transfers/tours for position.
   var bodySectionsHtml;
   if(opts.layout === 'chronological'){
-    var timelineItems = [].concat(flightChronoItems, hotelItems, cruiseItems, carItems, transferItems, trainItems, busItems)
+    var timelineItems = [].concat(flightChronoItems, hotelItems, cruiseItems, carItems, transferItems, tourItems, trainItems, busItems)
       .filter(function(it){ return it.html; });
     var datedItems = timelineItems.filter(function(it){ return it.date; }).sort(function(a,b){
       if(a.date !== b.date) return a.date<b.date ? -1 : 1;
@@ -8608,6 +8621,7 @@ function itineraryEmailBodyHtml(opts){
       cruiseBoxHtml+
       carRentalBoxesHtml+
       transfersBoxesHtml+
+      tourBoxesHtml+
       themeParkBoxesHtml+
       trainBoxesHtml+
       busBoxesHtml;
@@ -8787,6 +8801,17 @@ function buildItinerarySections(opts){
     items.push({date:x.pickupDateRaw||'', time:x.pickupTime||'', heading:'Transfer Details', rows:rows, logo:''});
   });
 
+  var tourEntries = opts.tourEntries || [];
+  tourEntries.forEach(function(t,i){
+    var rows = itineraryDetailRowText('Vendor', t.vendor) +
+      itineraryDetailRowText('Description', t.description) +
+      itineraryDetailRowText('Date', t.date) +
+      itineraryDetailRowText('Time', t.time?fmtTime(t.time):'') +
+      itineraryDetailRowText('Length', t.length) +
+      itineraryDetailRowText('Confirmation Number', t.confirmationNumber);
+    items.push({date:t.dateRaw||'', time:t.time||'', heading:'Tour Details', rows:rows, logo:TOUR_LOGOS[t.vendor]||''});
+  });
+
   var themeParkEntries = opts.themeParkEntries || [];
   themeParkEntries.forEach(function(p,i){
     var rows = itineraryDetailRowText('Park', p.park) +
@@ -8939,6 +8964,7 @@ function tripToItineraryOpts(trip, client, extraNotes){
   // bd.cruise.price, with no further null-guard) — air/cru above already are.
   var tripSummary = computeBookedTripSummary(Object.assign({}, b, {airline:air, cruise:cru}));
   var themeParkEntries = Array.isArray(b.themePark) ? b.themePark : (b.themePark && Object.keys(b.themePark).length ? [b.themePark] : []);
+  var tourEntries = Array.isArray(b.tours) ? b.tours : [];
   var transferEntries = Array.isArray(b.transfers) ? b.transfers : [];
   var carEntries = Array.isArray(b.carRental) ? b.carRental : (b.carRental && Object.keys(b.carRental).length ? [b.carRental] : []);
   var trainEntries = Array.isArray(b.train) ? b.train : (b.train && Object.keys(b.train).length ? [b.train] : []);
@@ -9022,6 +9048,18 @@ function tripToItineraryOpts(trip, client, extraNotes){
       };
     }),
     themeParkEntries: themeParkEntries,
+    tourEntries: tourEntries.map(function(t){
+      return {
+        vendor: t.vendor||'',
+        description: t.description||'',
+        date: t.date?fmtDate(t.date):'',
+        // See cruiseSailingDateRaw above — unformatted ISO sort key.
+        dateRaw: t.date||'',
+        time: t.time||'',
+        length: t.length||'',
+        confirmationNumber: t.confirmationNumber||''
+      };
+    }),
     trainEntries: trainEntries.map(function(t){
       return {
         carrier: t.carrier||'',
@@ -17354,6 +17392,17 @@ function renderCalendar(){
     }
   });
 
+  // Cruise deposit/final-payment due dates also show up as their own
+  // calendar entries, so they're never missed even when they fall well
+  // before the sailing date itself.
+  db.trips.forEach(function(t){
+    if(t.status==='Cancelled') return;
+    var cru = (t.booked && t.booked.cruise) || {};
+    if(cru.depositDueDate) addToMap(cru.depositDueDate, t, 'deposit-due');
+    if(cru.secondDepositDueDate) addToMap(cru.secondDepositDueDate, t, 'second-deposit-due');
+    if(cru.finalPaymentDueDate) addToMap(cru.finalPaymentDueDate, t, 'final-payment-due');
+  });
+
   // Build calendar grid HTML
   var days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   var headerCells = days.map(function(d){return '<div class="cal-header-cell">'+d+'</div>';}).join('');
@@ -17372,8 +17421,13 @@ function renderCalendar(){
     var dayNumHtml = isToday
       ? '<div class="cal-day-num today-num">'+d+'</div>'
       : '<div class="cal-day-num">'+d+'</div>';
+    var paymentLabels = {'deposit-due':'Deposit Due','second-deposit-due':'2nd Deposit Due','final-payment-due':'Final Payment Due'};
     var tripHtml = trips.slice(0,3).map(function(entry){
       var t=entry.trip, tp=entry.type;
+      if(paymentLabels[tp]){
+        var pLabel = paymentLabels[tp];
+        return '<div class="cal-trip cal-trip-payment" data-trip-id="'+t.id+'" title="'+pLabel+' — '+t.clientName+(t.destination?': '+t.destination:'')+'">&#36; '+pLabel+': '+t.clientName+'</div>';
+      }
       var cls='cal-trip cal-trip-'+(tp==='start'?'start':tp==='end'?'end':'span');
       var label=(tp==='start'?'▶ ':tp==='end'?'■ ':'  ')+t.clientName+(t.destination?' → '+t.destination.split(',')[0]:'');
       return '<div class="'+cls+'" data-trip-id="'+t.id+'" title="'+t.clientName+': '+t.destination+(tp==='start'?' (departs)':tp==='end'?' (returns)':'')+'">'+label+'</div>';
@@ -20785,6 +20839,9 @@ function tourEntryRowInnerHtml(entry){
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
       '<div class="field"><label>Confirmation Number</label><input class="tour-entry-conf" type="text" value="'+(entry.confirmationNumber||'').toString().replace(/"/g,'&quot;')+'" placeholder="e.g. T-112233"></div>'+
       '<div class="field"><label>Tour Vendor</label><select class="tour-entry-vendor"><option value="">-- Select --</option>'+selOpts(TOUR_VENDORS,entry.vendor)+'</select></div>'+
+      '<div class="field"><label>Date</label><input class="tour-entry-date" type="date" value="'+(entry.date||'')+'"></div>'+
+      '<div class="field"><label>Time</label><input class="tour-entry-time" type="time" value="'+(entry.time||'')+'"></div>'+
+      '<div class="field"><label>Length</label><input class="tour-entry-length" type="text" value="'+(entry.length||'').toString().replace(/"/g,'&quot;')+'" placeholder="e.g. 3 hours, Half Day, Full Day"></div>'+
       foreignPriceFieldsHtml('tour-entry-currency','tour-entry-price-foreign',entry.currency,entry.priceForeign)+
       '<div class="field"><label>Price ($)</label><input class="tour-entry-price" type="number" value="'+(entry.price||'')+'"></div>'+
       '<div class="field"><label>Miles Man Booking Fee ($)</label><input class="tour-entry-fee" type="number" value="'+(entry.milesManFee||'')+'"></div>'+
@@ -20802,6 +20859,9 @@ function readTourEntries(){
     return {
       confirmationNumber: (row.querySelector('.tour-entry-conf')||{}).value||'',
       vendor: (row.querySelector('.tour-entry-vendor')||{}).value||'',
+      date: (row.querySelector('.tour-entry-date')||{}).value||'',
+      time: (row.querySelector('.tour-entry-time')||{}).value||'',
+      length: (row.querySelector('.tour-entry-length')||{}).value||'',
       currency: (row.querySelector('.tour-entry-currency')||{}).value||'',
       priceForeign: Number((row.querySelector('.tour-entry-price-foreign')||{}).value)||0,
       price: Number((row.querySelector('.tour-entry-price')||{}).value)||0,
@@ -21467,6 +21527,7 @@ function bookedTripDetailsHtml(bd){
       fld('Confirmation Number',inp('tb-cruise-conf','text',cru.confirmationNumber,'e.g. C-445566'))+
       fld('Cruise Line',sel('tb-cruise-line',CRUISE_LINES,cru.cruiseLine))+
       fld('Ship Name','<select id="tb-cruise-ship">'+shipOptionsHtml(cru.cruiseLine,cru.shipName)+'</select>')+
+      '<div id="tb-cruise-vv-wrap" style="display:'+(cru.cruiseLine==='Virgin Voyages'?'contents':'none')+'">'+fld('MNVV Expiration Date',inp('tb-cruise-vv-exp','date',cru.mnvvExpirationDate))+'</div>'+
       fld('Sailing Date',inp('tb-cruise-sailing','date',cru.sailingDate))+
       fld('Return Date',inp('tb-cruise-return','date',cru.returnDate))+
       fld('Nights',inp('tb-cruise-nights','number',cru.nights||''))+
@@ -21476,6 +21537,10 @@ function bookedTripDetailsHtml(bd){
       fld('Currency',sel('tb-cruise-currency',FOREIGN_CURRENCIES,cru.currency))+
       fld('Price (Other Currency)',inp('tb-cruise-price-foreign','number',cru.priceForeign))+
       fld('Price ($)',inp('tb-cruise-price','number',cru.price))+
+      fld('Deposit Amount ($)',inp('tb-cruise-deposit-amount','number',cru.depositAmount))+
+      fld('Deposit Due Date',inp('tb-cruise-deposit-due','date',cru.depositDueDate))+
+      fld('Second Deposit Due Date',inp('tb-cruise-second-deposit-due','date',cru.secondDepositDueDate))+
+      fld('Final Payment Due Date',inp('tb-cruise-final-payment-due','date',cru.finalPaymentDueDate))+
       fld('Miles Man Booking Fee ($)',inp('tb-cruise-fee','number',cru.milesManFee,'Service fee charged for booking this sailing'))+
       fld('Insurance Premium ($)',inp('tb-cruise-insurance','number',cru.insurancePremium,'If purchased for this sailing, through the cruise line or a separate insurer'))+
       fld('Coverage Amount ($)',inp('tb-cruise-coverage','number',cru.insuranceCoverage,'Total coverage provided by the policy above'))+
@@ -21558,6 +21623,8 @@ function bindBookedTripDetailsListeners(){
         var current = sel.value;
         sel.innerHTML = '<option value="">-- Select --</option>'+selOpts(cabinTypes,current);
       });
+      var vvWrap = document.getElementById('tb-cruise-vv-wrap');
+      if(vvWrap) vvWrap.style.display = this.value==='Virgin Voyages' ? 'contents' : 'none';
     });
   }
   var cabinEntriesEl = document.getElementById('tb-cabin-entries');
@@ -21966,10 +22033,12 @@ function readBookedTripDetails(){
     hotelInsurancePremium: gn('tb-hotel-insurance'),
     hotelInsuranceCoverage: gn('tb-hotel-coverage'),
     cruise: {
-      confirmationNumber: gv('tb-cruise-conf'), cruiseLine: gv('tb-cruise-line'), shipName: gv('tb-cruise-ship'),
+      confirmationNumber: gv('tb-cruise-conf'), cruiseLine: gv('tb-cruise-line'), shipName: gv('tb-cruise-ship'), mnvvExpirationDate: gv('tb-cruise-vv-exp'),
       sailingDate: gv('tb-cruise-sailing'), returnDate: gv('tb-cruise-return'), nights: gn('tb-cruise-nights'),
       departurePort: gv('tb-cruise-port'), returnPort: gv('tb-cruise-return-port'),
-      loyaltyNumber: gv('tb-cruise-loyalty'), currency: gv('tb-cruise-currency'), priceForeign: gn('tb-cruise-price-foreign'), price: gn('tb-cruise-price'), milesManFee: gn('tb-cruise-fee'), insurancePremium: gn('tb-cruise-insurance'), insuranceCoverage: gn('tb-cruise-coverage'), notes: gv('tb-cruise-notes'), cabins: readCabinEntries(),
+      loyaltyNumber: gv('tb-cruise-loyalty'), currency: gv('tb-cruise-currency'), priceForeign: gn('tb-cruise-price-foreign'), price: gn('tb-cruise-price'),
+      depositAmount: gn('tb-cruise-deposit-amount'), depositDueDate: gv('tb-cruise-deposit-due'), secondDepositDueDate: gv('tb-cruise-second-deposit-due'), finalPaymentDueDate: gv('tb-cruise-final-payment-due'),
+      milesManFee: gn('tb-cruise-fee'), insurancePremium: gn('tb-cruise-insurance'), insuranceCoverage: gn('tb-cruise-coverage'), notes: gv('tb-cruise-notes'), cabins: readCabinEntries(),
       pts: readPointsEntriesFrom(document.getElementById('tb-cruise-pts-entries'))
     },
     carRental: readCarEntries(),
