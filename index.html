@@ -8496,12 +8496,23 @@ function itineraryEmailBodyHtml(opts){
     return {date: x.pickupDateRaw||'', time: x.pickupTime||'', html: itineraryDetailBox('Transfer Details', rows)};
   });
   var transfersBoxesHtml = transferItems.map(function(it){return it.html;}).join('');
+  var tourEntries = opts.tourEntries || [];
+  var tourItems = tourEntries.map(function(t, i){
+    var rows = itineraryDetailRow('Vendor', t.vendor) +
+      itineraryDetailRow('Description', t.description) +
+      itineraryDetailRow('Date', t.date) +
+      itineraryDetailRow('Time', t.time?fmtTime(t.time):'') +
+      itineraryDetailRow('Length', t.length) +
+      itineraryDetailRow('Confirmation Number', t.confirmationNumber);
+    return {date: t.dateRaw||'', time: t.time||'', html: itineraryDetailBox('Tour Details', rows, TOUR_LOGOS[t.vendor])};
+  });
+  var tourBoxesHtml = tourItems.map(function(it){return it.html;}).join('');
   var themeParkEntries = opts.themeParkEntries || [];
   var themeParkItems = themeParkEntries.map(function(p, i){
     var rows = itineraryDetailRow('Park', p.park) +
       itineraryDetailRow('Ticket Type', p.ticketType) +
       itineraryDetailRow('Confirmation Number', p.confirmationNumber);
-    // Same "no date field at all" situation as tours above.
+    // Theme Park has no date field at all, unlike Tours above.
     return {date:'', time:'', html: itineraryDetailBox('Theme Park Details', rows)};
   });
   var themeParkBoxesHtml = themeParkItems.map(function(it){return it.html;}).join('');
@@ -8566,19 +8577,20 @@ function itineraryEmailBodyHtml(opts){
     (insuranceLineItems.length>1 ? itineraryDetailRow('Total', '$'+money(totalInsurance)) : '');
   // "category" (default) keeps the original fixed Flight/Hotel/Cruise/…
   // section order; "chronological" merges every dated item (flight legs,
-  // hotel stays, the cruise, car rentals, transfers, trains, buses) into one
-  // timeline sorted by date (then time), grouped under a per-day heading
-  // (e.g. "Monday, November 3, 2026"), with anything that has no date to
-  // sort by — Tours and Theme Park have no date field at all, and the rare
-  // item in a dated category that's missing its date — trailing underneath
-  // in its own "no specific date" section rather than silently dropped.
+  // hotel stays, the cruise, car rentals, transfers, tours, trains, buses)
+  // into one timeline sorted by date (then time), grouped under a per-day
+  // heading (e.g. "Monday, November 3, 2026"), with anything that has no
+  // date to sort by — Theme Park has no date field at all, a Tour entry's
+  // date is optional, and the rare item in a dated category that's missing
+  // its date — trailing underneath in its own "no specific date" section
+  // rather than silently dropped.
   // Within a day, the hotel stay always sorts last regardless of its
   // (always-blank) time — it reads as "where you're sleeping that night"
   // rather than a scheduled event competing with the day's actual
   // flights/transfers/tours for position.
   var bodySectionsHtml;
   if(opts.layout === 'chronological'){
-    var timelineItems = [].concat(flightChronoItems, hotelItems, cruiseItems, carItems, transferItems, trainItems, busItems)
+    var timelineItems = [].concat(flightChronoItems, hotelItems, cruiseItems, carItems, transferItems, tourItems, trainItems, busItems)
       .filter(function(it){ return it.html; });
     var datedItems = timelineItems.filter(function(it){ return it.date; }).sort(function(a,b){
       if(a.date !== b.date) return a.date<b.date ? -1 : 1;
@@ -8609,6 +8621,7 @@ function itineraryEmailBodyHtml(opts){
       cruiseBoxHtml+
       carRentalBoxesHtml+
       transfersBoxesHtml+
+      tourBoxesHtml+
       themeParkBoxesHtml+
       trainBoxesHtml+
       busBoxesHtml;
@@ -8788,6 +8801,17 @@ function buildItinerarySections(opts){
     items.push({date:x.pickupDateRaw||'', time:x.pickupTime||'', heading:'Transfer Details', rows:rows, logo:''});
   });
 
+  var tourEntries = opts.tourEntries || [];
+  tourEntries.forEach(function(t,i){
+    var rows = itineraryDetailRowText('Vendor', t.vendor) +
+      itineraryDetailRowText('Description', t.description) +
+      itineraryDetailRowText('Date', t.date) +
+      itineraryDetailRowText('Time', t.time?fmtTime(t.time):'') +
+      itineraryDetailRowText('Length', t.length) +
+      itineraryDetailRowText('Confirmation Number', t.confirmationNumber);
+    items.push({date:t.dateRaw||'', time:t.time||'', heading:'Tour Details', rows:rows, logo:TOUR_LOGOS[t.vendor]||''});
+  });
+
   var themeParkEntries = opts.themeParkEntries || [];
   themeParkEntries.forEach(function(p,i){
     var rows = itineraryDetailRowText('Park', p.park) +
@@ -8940,6 +8964,7 @@ function tripToItineraryOpts(trip, client, extraNotes){
   // bd.cruise.price, with no further null-guard) — air/cru above already are.
   var tripSummary = computeBookedTripSummary(Object.assign({}, b, {airline:air, cruise:cru}));
   var themeParkEntries = Array.isArray(b.themePark) ? b.themePark : (b.themePark && Object.keys(b.themePark).length ? [b.themePark] : []);
+  var tourEntries = Array.isArray(b.tours) ? b.tours : [];
   var transferEntries = Array.isArray(b.transfers) ? b.transfers : [];
   var carEntries = Array.isArray(b.carRental) ? b.carRental : (b.carRental && Object.keys(b.carRental).length ? [b.carRental] : []);
   var trainEntries = Array.isArray(b.train) ? b.train : (b.train && Object.keys(b.train).length ? [b.train] : []);
@@ -9023,6 +9048,18 @@ function tripToItineraryOpts(trip, client, extraNotes){
       };
     }),
     themeParkEntries: themeParkEntries,
+    tourEntries: tourEntries.map(function(t){
+      return {
+        vendor: t.vendor||'',
+        description: t.description||'',
+        date: t.date?fmtDate(t.date):'',
+        // See cruiseSailingDateRaw above — unformatted ISO sort key.
+        dateRaw: t.date||'',
+        time: t.time||'',
+        length: t.length||'',
+        confirmationNumber: t.confirmationNumber||''
+      };
+    }),
     trainEntries: trainEntries.map(function(t){
       return {
         carrier: t.carrier||'',
@@ -20802,6 +20839,9 @@ function tourEntryRowInnerHtml(entry){
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
       '<div class="field"><label>Confirmation Number</label><input class="tour-entry-conf" type="text" value="'+(entry.confirmationNumber||'').toString().replace(/"/g,'&quot;')+'" placeholder="e.g. T-112233"></div>'+
       '<div class="field"><label>Tour Vendor</label><select class="tour-entry-vendor"><option value="">-- Select --</option>'+selOpts(TOUR_VENDORS,entry.vendor)+'</select></div>'+
+      '<div class="field"><label>Date</label><input class="tour-entry-date" type="date" value="'+(entry.date||'')+'"></div>'+
+      '<div class="field"><label>Time</label><input class="tour-entry-time" type="time" value="'+(entry.time||'')+'"></div>'+
+      '<div class="field"><label>Length</label><input class="tour-entry-length" type="text" value="'+(entry.length||'').toString().replace(/"/g,'&quot;')+'" placeholder="e.g. 3 hours, Half Day, Full Day"></div>'+
       foreignPriceFieldsHtml('tour-entry-currency','tour-entry-price-foreign',entry.currency,entry.priceForeign)+
       '<div class="field"><label>Price ($)</label><input class="tour-entry-price" type="number" value="'+(entry.price||'')+'"></div>'+
       '<div class="field"><label>Miles Man Booking Fee ($)</label><input class="tour-entry-fee" type="number" value="'+(entry.milesManFee||'')+'"></div>'+
@@ -20819,6 +20859,9 @@ function readTourEntries(){
     return {
       confirmationNumber: (row.querySelector('.tour-entry-conf')||{}).value||'',
       vendor: (row.querySelector('.tour-entry-vendor')||{}).value||'',
+      date: (row.querySelector('.tour-entry-date')||{}).value||'',
+      time: (row.querySelector('.tour-entry-time')||{}).value||'',
+      length: (row.querySelector('.tour-entry-length')||{}).value||'',
       currency: (row.querySelector('.tour-entry-currency')||{}).value||'',
       priceForeign: Number((row.querySelector('.tour-entry-price-foreign')||{}).value)||0,
       price: Number((row.querySelector('.tour-entry-price')||{}).value)||0,
