@@ -11363,7 +11363,7 @@ function parseContactFormEmailText(flatText){
   }
   return row;
 }
-function processContactFormRow(row, counters){
+function processContactFormRow(row, counters, msgId){
   var firstName = (row.first_name||'').trim();
   var lastName = (row.last_name||'').trim();
   var name = (firstName+' '+lastName).trim();
@@ -11387,6 +11387,23 @@ function processContactFormRow(row, counters){
     var cFirst=getFirstName(c.name).toLowerCase(), cLast=getLastName(c.name).toLowerCase();
     return nameFirst && nameLast && nameFirst!==nameLast && cFirst===nameFirst && cLast===nameLast;
   });
+
+  // The processed-ids list that stops a re-run lives in THIS browser's
+  // localStorage only, but the CRM data itself syncs between devices/tabs —
+  // so a second browser (or a cleared localStorage) re-imports the same
+  // email and stacks another identical task + note on the same client. The
+  // email's Graph id (and, for tasks without one, an identical still-open
+  // task) is checked against the synced db itself, so it works everywhere.
+  var leadTitle = 'New contact form lead: '+(client?client.name:toLastFirst(name));
+  var leadDesc = message || 'New contact form submission — no message provided.';
+  var alreadyImported = db.planner.some(function(t){
+    if(msgId && t.sourceEmailId===msgId) return true;
+    return !t.done && client && t.clientId===client.id && t.title===leadTitle && t.desc===leadDesc;
+  });
+  if(alreadyImported){
+    debugLog('Contact form email check: skipped a duplicate submission for '+name+' — a lead task for this email already exists');
+    counters.skipped++; return;
+  }
 
   var leadNoteText = 'Contact form inquiry'+(message?': '+message:'');
   var ts = new Date().toLocaleString();
@@ -11413,8 +11430,9 @@ function processContactFormRow(row, counters){
     title:'New contact form lead: '+client.name,
     dueDate:today(), done:false, clientId:client.id, vendorId:'', tripId:'',
     completionNoteType:'Lead',
-    desc: message || 'New contact form submission — no message provided.',
-    createdAt: today()
+    desc: leadDesc,
+    createdAt: today(),
+    sourceEmailId: msgId||''
   });
   counters.tasksCreated++;
 }
@@ -11460,7 +11478,7 @@ async function checkForNewContactFormEmails(silent){
     messages.forEach(function(msg){
       var flatText = stripHtml(msg.body && msg.body.content || '');
       var row = parseContactFormEmailText(flatText);
-      processContactFormRow(row, counters);
+      processContactFormRow(row, counters, msg.id);
       processedIds.push(msg.id);
     });
     if(processedIds.length > 500) processedIds = processedIds.slice(processedIds.length-500);
