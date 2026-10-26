@@ -2500,6 +2500,7 @@ async function loadDB(){
       saveDB();
       console.log('[CRM] Normalized '+migrated+' client names to Last, First format');
     }
+    if(syncLeadTaskTitles()>0) saveDB();
     // "Text Message" was replaced by directional "Text Message Sent"/"Text
     // Message Received" types; existing notes logged under the old generic
     // type default to Received (safe to run repeatedly — nothing left to
@@ -11362,6 +11363,23 @@ function parseContactFormEmailText(flatText){
     row[matches[i].label] = flatText.slice(start, end).trim();
   }
   return row;
+}
+// A lead task's title embeds the client's name as it was when the email was
+// imported, so a later rename (or a test submission's throwaway name that
+// was then corrected) left the Planner showing the old name next to the
+// right client. Re-derives the name part from the linked client; runs on
+// load and after a client is saved. Returns how many titles changed.
+var LEAD_TASK_TITLE_PREFIX = 'New contact form lead: ';
+function syncLeadTaskTitles(){
+  var changed = 0;
+  (db.planner||[]).forEach(function(t){
+    if(!t.clientId || (t.title||'').indexOf(LEAD_TASK_TITLE_PREFIX)!==0) return;
+    var c = db.clients.find(function(x){return x.id===t.clientId;});
+    if(!c || !c.name) return;
+    var title = LEAD_TASK_TITLE_PREFIX+c.name;
+    if(t.title!==title){ t.title = title; changed++; }
+  });
+  return changed;
 }
 function processContactFormRow(row, counters, msgId){
   var firstName = (row.first_name||'').trim();
@@ -22187,6 +22205,7 @@ function saveClient(id){
   var resultId = id;
   if(id){
     db.clients=db.clients.map(function(c){return c.id===id?Object.assign({},c,data):c;});
+    syncLeadTaskTitles();
     // trip.clientName is a denormalized copy of the primary client's name,
     // read directly (no db.clients lookup) by the Dashboard, Trips page,
     // reports, and more — without this, renaming a client here left every
