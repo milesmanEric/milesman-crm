@@ -21484,6 +21484,7 @@ function bookedTripDetailsHtml(bd){
       fld('Confirmation Number',inp('tb-cruise-conf','text',cru.confirmationNumber,'e.g. C-445566'))+
       fld('Cruise Line',sel('tb-cruise-line',CRUISE_LINES,cru.cruiseLine))+
       fld('Ship Name','<select id="tb-cruise-ship">'+shipOptionsHtml(cru.cruiseLine,cru.shipName)+'</select>')+
+      '<div id="tb-cruise-vv-wrap" style="display:'+(cru.cruiseLine==='Virgin Voyages'?'contents':'none')+'">'+fld('MNVV Expiration Date',inp('tb-cruise-vv-exp','date',cru.mnvvExpirationDate))+'</div>'+
       fld('Sailing Date',inp('tb-cruise-sailing','date',cru.sailingDate))+
       fld('Return Date',inp('tb-cruise-return','date',cru.returnDate))+
       fld('Nights',inp('tb-cruise-nights','number',cru.nights||''))+
@@ -21579,6 +21580,8 @@ function bindBookedTripDetailsListeners(){
         var current = sel.value;
         sel.innerHTML = '<option value="">-- Select --</option>'+selOpts(cabinTypes,current);
       });
+      var vvWrap = document.getElementById('tb-cruise-vv-wrap');
+      if(vvWrap) vvWrap.style.display = this.value==='Virgin Voyages' ? 'contents' : 'none';
     });
   }
   var cabinEntriesEl = document.getElementById('tb-cabin-entries');
@@ -21987,7 +21990,7 @@ function readBookedTripDetails(){
     hotelInsurancePremium: gn('tb-hotel-insurance'),
     hotelInsuranceCoverage: gn('tb-hotel-coverage'),
     cruise: {
-      confirmationNumber: gv('tb-cruise-conf'), cruiseLine: gv('tb-cruise-line'), shipName: gv('tb-cruise-ship'),
+      confirmationNumber: gv('tb-cruise-conf'), cruiseLine: gv('tb-cruise-line'), shipName: gv('tb-cruise-ship'), mnvvExpirationDate: gv('tb-cruise-vv-exp'),
       sailingDate: gv('tb-cruise-sailing'), returnDate: gv('tb-cruise-return'), nights: gn('tb-cruise-nights'),
       departurePort: gv('tb-cruise-port'), returnPort: gv('tb-cruise-return-port'),
       loyaltyNumber: gv('tb-cruise-loyalty'), currency: gv('tb-cruise-currency'), priceForeign: gn('tb-cruise-price-foreign'), price: gn('tb-cruise-price'),
