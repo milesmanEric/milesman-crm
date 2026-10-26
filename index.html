@@ -8389,35 +8389,30 @@ function itineraryEmailBodyHtml(opts){
   var flightBoxesHtml;
   var flightChronoItems = [];
   if(airlineRecords.length){
-    // One box per Airline Record — Passengers up top (since a trip can
-    // have more than one record, each covering different passengers/fare
-    // types), then that record's own flight segment(s) below, each with
-    // its own Record Number (a connecting or round-trip record can carry
-    // a different record locator per leg), rows prefixed "Flight N:" only
-    // when the record actually has more than one segment.
-    flightBoxesHtml = airlineRecords.map(function(rec, ri){
-      var boxTitle = 'Airline Record';
-      var headRows = itineraryDetailRow('Passengers', rec.passengers);
-      var segs = rec.segments||[];
-      var segRows = segs.map(function(f, i){
-        var p = segs.length>1 ? ('Flight '+(i+1)+': ') : '';
-        var segRowsHtml = itineraryDetailRow(p+'Record Number', f.recordNumber) +
-          itineraryDetailRow(p+'Airline', f.airline) +
-          itineraryDetailRow(p+'Flight Number', f.flightNumber) +
-          itineraryDetailRow(p+'Route', f.origin&&f.destination ? (f.origin+' → '+f.destination) : '') +
-          itineraryDetailRow(p+'Depart Date', f.departDate?fmtDate(f.departDate):'') +
-          itineraryDetailRow(p+'Depart Time', f.departTime?fmtTime(f.departTime):'') +
-          itineraryDetailRow(p+'Arrival Time', f.arrivalTime?fmtTime(f.arrivalTime):'') +
-          itineraryDetailRow(p+'Class of Service', f.classOfService);
-        flightChronoItems.push({
-          date: f.departDate||'', time: f.departTime||'',
-          html: itineraryDetailBox('Flight'+(f.origin&&f.destination?' — '+f.origin+' → '+f.destination:''), itineraryDetailRow('Passengers', rec.passengers)+segRowsHtml, AIRLINE_LOGOS[f.airline])
-        });
-        return segRowsHtml;
-      }).join('');
-      var primaryAirline = segs[0] && segs[0].airline;
-      return itineraryDetailBox(boxTitle, headRows+segRows, AIRLINE_LOGOS[primaryAirline]);
-    }).join('');
+    // One box per individual flight segment — matches the itinerary PDF/
+    // plain-text builder (buildItinerarySections) exactly: "Flight —
+    // route" heading (just "Flight Details" when there's only ever one
+    // segment total), no "Flight N:" row prefixes, and each segment's own
+    // AIRLINE_LOGOS[f.airline] logo rather than one shared logo per
+    // Airline Record.
+    var totalSegs = airlineRecords.reduce(function(a,r){return a+((r.segments||[]).length);},0);
+    airlineRecords.forEach(function(rec){
+      (rec.segments||[]).forEach(function(f){
+        var route = f.origin&&f.destination ? (f.origin+' → '+f.destination) : '';
+        var heading = totalSegs>1 ? ('Flight'+(route?' — '+route:'')) : 'Flight Details';
+        var rows = itineraryDetailRow('Passengers', rec.passengers) +
+          itineraryDetailRow('Record Number', f.recordNumber) +
+          itineraryDetailRow('Airline', f.airline) +
+          itineraryDetailRow('Flight Number', f.flightNumber) +
+          itineraryDetailRow('Route', route) +
+          itineraryDetailRow('Depart Date', f.departDate?fmtDate(f.departDate):'') +
+          itineraryDetailRow('Depart Time', f.departTime?fmtTime(f.departTime):'') +
+          itineraryDetailRow('Arrival Time', f.arrivalTime?fmtTime(f.arrivalTime):'') +
+          itineraryDetailRow('Class of Service', f.classOfService);
+        flightChronoItems.push({date: f.departDate||'', time: f.departTime||'', html: itineraryDetailBox(heading, rows, AIRLINE_LOGOS[f.airline])});
+      });
+    });
+    flightBoxesHtml = flightChronoItems.map(function(it){return it.html;}).join('');
   } else {
     // flightClass defaults to 'Economy' at save time even when a trip has
     // no flight info at all (see saveTrip()), so it alone can't be treated
