@@ -8368,7 +8368,49 @@ titleHtml+
 // PDF/plain-text) — appended after any per-send Additional Note, right
 // before the "Best, Eric" signoff.
 var ITINERARY_CLOSING_NOTE = 'If you have any questions or issues while traveling, I can be reached via text or WhatsApp at 908-419-7700.  Have a wonderful trip!';
-function itineraryEmailBodyHtml(opts){
+// Most brand logos (AIRLINE_LOGOS/HOTEL_LOGOS/CRUISE_LOGOS/CAR_RENTAL_LOGOS/
+// TRAIN_LOGOS/TOUR_LOGOS) are SVG data URIs — fine in a real browser (this
+// app's own Preview included), but many real-world email clients (Outlook
+// desktop most notably, which uses Word's rendering engine) don't render
+// SVG <img> tags in HTML email at all, so those logos silently vanish once
+// the itinerary is actually sent/received — reported specifically for
+// Airline because every entry in that table happens to still be SVG, while
+// some Hotel/Cruise/Train/Tour brands have since been replaced with real
+// PNGs and so already worked. Rasterizes each SVG entry through the same
+// offscreen-canvas approach loadLogoAsPngDataUri() already uses for the
+// PDF (safe for the same reason: always a same-origin data: URI, nothing
+// to canvas-taint), once per table, cached for the rest of the session —
+// these tables are static, so there's nothing to invalidate the cache for.
+var _emailLogoPngTablesCache = null;
+async function getEmailLogoPngTables(){
+  if(_emailLogoPngTablesCache) return _emailLogoPngTablesCache;
+  async function rasterizeTable(table){
+    var out = {};
+    for(var key in table){
+      var uri = table[key];
+      if(!uri || uri.indexOf('data:image/svg') !== 0){ out[key] = uri; continue; }
+      try{
+        var r = await loadLogoAsPngDataUri(uri, 160);
+        out[key] = r.dataUri;
+      }catch(e){
+        debugLog('Itinerary email: could not rasterize logo for "'+key+'", using the original SVG (may not render in some email clients): '+e.message);
+        out[key] = uri;
+      }
+    }
+    return out;
+  }
+  _emailLogoPngTablesCache = {
+    AIRLINE: await rasterizeTable(AIRLINE_LOGOS),
+    HOTEL: await rasterizeTable(HOTEL_LOGOS),
+    CRUISE: await rasterizeTable(CRUISE_LOGOS),
+    CAR_RENTAL: await rasterizeTable(CAR_RENTAL_LOGOS),
+    TRAIN: await rasterizeTable(TRAIN_LOGOS),
+    TOUR: await rasterizeTable(TOUR_LOGOS)
+  };
+  return _emailLogoPngTablesCache;
+}
+async function itineraryEmailBodyHtml(opts){
+  var logoTables = await getEmailLogoPngTables();
   var datesLine = (opts.departDate?fmtDate(opts.departDate):'') + (opts.departDate&&opts.returnDate?' – ':'') + (opts.returnDate?fmtDate(opts.returnDate):'');
   var overviewRows = itineraryDetailRow('Destination', opts.destination) +
     itineraryDetailRow('Travel Dates', datesLine) +
@@ -8409,7 +8451,7 @@ function itineraryEmailBodyHtml(opts){
           itineraryDetailRow('Depart Time', f.departTime?fmtTime(f.departTime):'') +
           itineraryDetailRow('Arrival Time', f.arrivalTime?fmtTime(f.arrivalTime):'') +
           itineraryDetailRow('Class of Service', f.classOfService);
-        flightChronoItems.push({date: f.departDate||'', time: f.departTime||'', html: itineraryDetailBox(heading, rows, AIRLINE_LOGOS[f.airline])});
+        flightChronoItems.push({date: f.departDate||'', time: f.departTime||'', html: itineraryDetailBox(heading, rows, logoTables.AIRLINE[f.airline])});
       });
     });
     flightBoxesHtml = flightChronoItems.map(function(it){return it.html;}).join('');
@@ -8424,7 +8466,7 @@ function itineraryEmailBodyHtml(opts){
       itineraryDetailRow('Route', opts.origin&&opts.destination ? (opts.origin+' → '+opts.destination) : '') +
       itineraryDetailRow('Class of Service', opts.flightClass)
     ) : '';
-    flightBoxesHtml = itineraryDetailBox('Flight Details', flightRows, AIRLINE_LOGOS[opts.airline]);
+    flightBoxesHtml = itineraryDetailBox('Flight Details', flightRows, logoTables.AIRLINE[opts.airline]);
     // No per-segment dates to sort by here (this is the legacy single-field
     // fallback, not real Booked Trip Details segments) — goes in
     // chronological mode's "no specific date" bucket, same as tours/parks.
@@ -8441,12 +8483,12 @@ function itineraryEmailBodyHtml(opts){
         itineraryDetailRow('Check-in Date', h.checkInDate?fmtDate(h.checkInDate):'') +
         itineraryDetailRow('Nights', h.nights?(h.nights+(h.nights===1?' night':' nights')):'') +
         itineraryDetailRow('Confirmation Number', h.confirmationNumber);
-      return {date: h.checkInDate||'', time:'', isHotel:true, html: itineraryDetailBox('Hotel Details', rows, HOTEL_LOGOS[h.hotelBrand])};
+      return {date: h.checkInDate||'', time:'', isHotel:true, html: itineraryDetailBox('Hotel Details', rows, logoTables.HOTEL[h.hotelBrand])};
     });
   } else {
     var hotelRows = itineraryDetailRow('Hotel', opts.hotel) +
       itineraryDetailRow('Nights', opts.hotelNights);
-    hotelItems = hotelRows ? [{date:'', time:'', isHotel:true, html: itineraryDetailBox('Hotel Details', hotelRows, HOTEL_LOGOS[opts.hotel])}] : [];
+    hotelItems = hotelRows ? [{date:'', time:'', isHotel:true, html: itineraryDetailBox('Hotel Details', hotelRows, logoTables.HOTEL[opts.hotel])}] : [];
   }
   var hotelBoxesHtml = hotelItems.map(function(it){return it.html;}).join('');
   var cruiseCabins = opts.cruiseCabins || [];
@@ -8465,7 +8507,7 @@ function itineraryEmailBodyHtml(opts){
     cruiseCabinRows +
     itineraryDetailRow('Confirmation Number', opts.cruiseConfirmationNumber) +
     itineraryDetailRow('Loyalty Number', opts.cruiseLoyaltyNumber);
-  var cruiseBoxHtml = itineraryDetailBox('Cruise Details', cruiseRows, CRUISE_LOGOS[opts.cruiseLine]);
+  var cruiseBoxHtml = itineraryDetailBox('Cruise Details', cruiseRows, logoTables.CRUISE[opts.cruiseLine]);
   var cruiseItems = cruiseRows ? [{date: opts.cruiseSailingDateRaw||'', time:'', html: cruiseBoxHtml}] : [];
   var carEntries = opts.carEntries || [];
   var carItems = carEntries.map(function(c, i){
@@ -8474,7 +8516,7 @@ function itineraryEmailBodyHtml(opts){
       itineraryDetailRow('Pickup', [c.pickupLocation,c.pickupDate].filter(Boolean).join(' — ')) +
       itineraryDetailRow('Dropoff', [c.dropoffLocation,c.dropoffDate].filter(Boolean).join(' — ')) +
       itineraryDetailRow('Confirmation Number', c.confirmationNumber);
-    return {date: c.pickupDateRaw||'', time:'', html: itineraryDetailBox('Car Rental Details', rows, CAR_RENTAL_LOGOS[c.company])};
+    return {date: c.pickupDateRaw||'', time:'', html: itineraryDetailBox('Car Rental Details', rows, logoTables.CAR_RENTAL[c.company])};
   });
   var carRentalBoxesHtml = carItems.map(function(it){return it.html;}).join('');
   var transferEntries = opts.transferEntries || [];
@@ -8496,7 +8538,7 @@ function itineraryEmailBodyHtml(opts){
       itineraryDetailRow('Time', t.time?fmtTime(t.time):'') +
       itineraryDetailRow('Length', t.length) +
       itineraryDetailRow('Confirmation Number', t.confirmationNumber);
-    return {date: t.dateRaw||'', time: t.time||'', html: itineraryDetailBox('Tour Details', rows, TOUR_LOGOS[t.vendor])};
+    return {date: t.dateRaw||'', time: t.time||'', html: itineraryDetailBox('Tour Details', rows, logoTables.TOUR[t.vendor])};
   });
   var tourBoxesHtml = tourItems.map(function(it){return it.html;}).join('');
   var themeParkEntries = opts.themeParkEntries || [];
@@ -8523,7 +8565,7 @@ function itineraryEmailBodyHtml(opts){
     // CAR_RENTAL_LOGOS) takes priority over the manually pasted Logo URL —
     // both are safe here since this is a plain <img src>, not the PDF's
     // canvas-based rasterization pipeline.
-    return {date: t.departureDateRaw||'', time: t.departureTime||'', html: itineraryDetailBox('Train Details', rows, TRAIN_LOGOS[t.carrier]||t.logoUrl)};
+    return {date: t.departureDateRaw||'', time: t.departureTime||'', html: itineraryDetailBox('Train Details', rows, logoTables.TRAIN[t.carrier]||t.logoUrl)};
   });
   var trainBoxesHtml = trainItems.map(function(it){return it.html;}).join('');
   var busEntries = opts.busEntries || [];
@@ -8672,7 +8714,8 @@ itineraryDetailBox('Booking Details', bookingRows)+
 '</tr>'+
 '</table>';
 }
-function itineraryEmailShellHtml(opts){
+async function itineraryEmailShellHtml(opts){
+  var bodyHtml = await itineraryEmailBodyHtml(opts);
   return '<!DOCTYPE html>'+
 '<html lang="en">'+
 '<head>'+
@@ -8680,7 +8723,7 @@ function itineraryEmailShellHtml(opts){
 '<title>Itinerary'+(opts.destination?' - '+escHtml(opts.destination):'')+'</title>'+
 '</head>'+
 '<body style="margin:0; padding:0; background-color:#f4f5f7; font-family:\'Times New Roman\',Times,serif; font-size:14px;">'+
-itineraryEmailBodyHtml(opts)+
+bodyHtml+
 '</body>'+
 '</html>';
 }
@@ -9180,10 +9223,10 @@ function openEmailItineraryModal(){
     return {client:client, trip:trip, opts:opts};
   }
 
-  document.getElementById('ei-preview').addEventListener('click', function(){
+  document.getElementById('ei-preview').addEventListener('click', async function(){
     var d = collectItineraryData();
     if(!d) return;
-    var html = itineraryEmailShellHtml(d.opts);
+    var html = await itineraryEmailShellHtml(d.opts);
     var wrap = document.getElementById('ei-preview-wrap');
     wrap.style.display = 'block';
     document.getElementById('ei-preview-frame').srcdoc = html;
@@ -9196,11 +9239,11 @@ function openEmailItineraryModal(){
     downloadItineraryPdf(d.client, d.trip, d.opts);
   });
 
-  document.getElementById('ei-send').addEventListener('click', function(){
+  document.getElementById('ei-send').addEventListener('click', async function(){
     var d = collectItineraryData();
     if(!d) return;
     var subject = 'Your Itinerary'+(d.trip.destination?' — '+d.trip.destination:'');
-    var bodyHtml = itineraryEmailBodyHtml(d.opts);
+    var bodyHtml = await itineraryEmailBodyHtml(d.opts);
     var copied = copyHtmlToClipboard(bodyHtml);
     var mailto = 'mailto:'+(d.client.email?mailtoAddr(d.client.email):'')+'?subject='+encodeURIComponent(subject);
     window.location.href = mailto;
