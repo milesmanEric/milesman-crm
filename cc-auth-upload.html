@@ -28,7 +28,9 @@
   .card-type-opt span{display:block;text-align:center;padding:10px 6px;border:1px solid #d1d5db;border-radius:9px;font-size:13px;font-weight:600;color:#555;background:#fafafa}
   .card-type-opt input:checked + span{border-color:#2563eb;background:#eff6ff;color:#1d4ed8}
   .auth-text{font-size:13px;color:#444;line-height:1.6;background:#fafafa;border:1px solid #eee;border-radius:10px;padding:14px 16px;margin-bottom:20px}
-  .auth-text .name-fill{font-weight:700;color:#111;border-bottom:1px solid #999;padding:0 2px}
+  .auth-text .name-fill-input{font:inherit;font-weight:700;color:#111;background:#fff;border:none;border-bottom:1.5px solid #2563eb;padding:1px 4px;width:200px;max-width:100%}
+  .auth-text .name-fill-input:focus{outline:none;border-bottom-color:#1d4ed8}
+  .auth-text .name-fill-input::placeholder{font-weight:400;color:#999}
   .drop-zone{border:2px dashed #d1d5db;border-radius:10px;padding:28px 16px;text-align:center;cursor:pointer;background:#fafafa;transition:border-color .15s,background .15s}
   .drop-zone.drag{border-color:#2563eb;background:#eff6ff}
   .drop-zone .dz-icon{font-size:28px;margin-bottom:8px}
@@ -91,7 +93,7 @@
         <br><br>
         By signing this form, you authorize Miles Man to charge your credit card for fee amounts as indicated on www.themilesman.com and/or for any booking deposits or payments for airlines, hotels, tour operators, transfers, etc.
         <br><br>
-        I <span class="name-fill" id="auth-name-preview">(your name)</span> authorize Miles Man to charge my credit card indicated below for amounts as indicated on the Miles Man pricing schedule as shown on www.themilesman.com based upon specific services provided, as well as for any booking deposits or payments required by third party travel suppliers. No charges will be made for Miles Man service fees until a reservation(s) or change(s) are completed.
+        I <input type="text" class="name-fill-input" id="cc-cardholder-name" placeholder="your name" autocomplete="name"> authorize Miles Man to charge my credit card indicated below for amounts as indicated on the Miles Man pricing schedule as shown on www.themilesman.com based upon specific services provided, as well as for any booking deposits or payments required by third party travel suppliers. No charges will be made for Miles Man service fees until a reservation(s) or change(s) are completed.
       </div>
 
       <div class="field">
@@ -110,10 +112,6 @@
           <label class="card-type-opt"><input type="radio" name="cc-card-type" value="Mastercard"><span>Mastercard</span></label>
           <label class="card-type-opt"><input type="radio" name="cc-card-type" value="American Express"><span>Amex</span></label>
         </div>
-      </div>
-      <div class="field">
-        <label>Cardholder's Name *</label>
-        <input type="text" id="cc-cardholder-name" placeholder="As it appears on the card">
       </div>
       <div class="field">
         <label>Credit Card Number *</label>
@@ -358,12 +356,10 @@
     sigEmptyNote.textContent = 'Nothing signed yet';
   });
 
-  // ── Live name preview in the authorization paragraph ───────────────
+  // The cardholder-name input now lives inline inside the authorization
+  // paragraph itself ("I [input] authorize...") — one field, not a separate
+  // one synced to a placeholder preview.
   var cardholderNameInput = document.getElementById('cc-cardholder-name');
-  var authNamePreview = document.getElementById('auth-name-preview');
-  cardholderNameInput.addEventListener('input', function(){
-    authNamePreview.textContent = this.value.trim() || '(your name)';
-  });
 
   // ── Generate the completed, signed PDF client-side and submit it ──
   var fillForm = document.getElementById('fill-form');
