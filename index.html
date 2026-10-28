@@ -19877,11 +19877,11 @@ function openClientForm(id){
         '<button type="button" id="btn-add-attachment" style="padding:5px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit">+ Add Attachment Link</button>'+
         '<button type="button" id="btn-browse-drive" style="padding:5px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit;margin-left:8px">&#128193; Browse Google Drive...</button>'+
       '</div>'+
-      (id ? '<div class="field full"><label>Credit Card Authorization Form <span class="hint" style="text-transform:none;font-weight:400">(secure upload link for this client)</span></label>'+
+      (id ? '<div class="field full"><label>Credit Card Authorization Form <span class="hint" style="text-transform:none;font-weight:400">(secure fill-and-sign link for this client)</span></label>'+
         '<div style="border:1px solid #e5e7eb;border-radius:8px;padding:10px;background:#fafafa;font-size:12px;color:#555">'+
-          'Sends the client to a page where they upload their completed, signed authorization PDF directly to a private Google Drive folder — it never passes through this app or gets stored in the browser. Once uploaded, attach it here the normal way (&#128193; Browse Google Drive above) once you\'ve reviewed it.'+
+          'Sends the client to a page where they can fill out and sign the authorization form right in their browser (a draw-your-signature pad — no printing or scanning needed), or upload an already-completed PDF instead if they prefer. Either way it goes straight to a private Google Drive folder — it never passes through this app or gets stored in the browser. Once submitted, attach it here the normal way (&#128193; Browse Google Drive above) once you\'ve reviewed it.'+
         '</div>'+
-        '<button type="button" id="btn-copy-cc-auth-link" data-cid="'+id+'" style="padding:5px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit;margin-top:8px">&#128274; Copy Upload Link</button>'+
+        '<button type="button" id="btn-copy-cc-auth-link" data-cid="'+id+'" style="padding:5px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit;margin-top:8px">&#128274; Copy Fill-and-Sign Link</button>'+
       '</div>' : '')+
       '<div class="field full"><label>Referral Credits</label>'+
         '<div id="ref-credits-log" style="border:1px solid #e5e7eb;border-radius:8px;padding:10px;background:#fafafa;margin-bottom:8px">'+
@@ -20121,7 +20121,7 @@ function openClientForm(id){
       var cid = this.dataset.cid;
       var link = CC_AUTH_UPLOAD_URL+'?cid='+encodeURIComponent(cid)+'&name='+encodeURIComponent(d.name||'');
       navigator.clipboard.writeText(link).then(function(){
-        toast('Upload link copied — send it to the client by email or text','ok');
+        toast('Fill-and-sign link copied — send it to the client by email or text','ok');
       }).catch(function(){
         toast('Could not copy automatically — link: '+link,'err');
       });
