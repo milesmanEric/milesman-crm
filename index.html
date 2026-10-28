@@ -12108,35 +12108,58 @@ function checkForUpcomingBirthdays(){
 // departing, this creates one Planner task (due today, so it surfaces right
 // away in Today & Overdue) whose description holds the filled
 // 'pretripwellwishes' TEMPLATES entry, ready to copy into an email to
-// whichever client(s) are on that trip. `mm_pretrip_notified` (a trip-id
-// Set in localStorage) is the dedupe guard — without it this would re-fire
-// every 5 minutes for the entire day the trip departs tomorrow.
+// whichever client(s) are on that trip. `mm_pretrip_notified` (a Set in
+// localStorage) is the dedupe guard — without it this would re-fire every
+// 5 minutes for the entire day the trip departs tomorrow.
+//
+// Some trips are entered as several separate trip records sharing the same
+// client(s) and Departure Date — e.g. each flight leg as its own record
+// instead of multiple segments on one — rather than through the formal
+// Group/Linked Trips features, so grouped here by client(s)+Departure Date
+// to still produce exactly one task per real trip, not one per record. The
+// dedupe guard is keyed on that same group key (not individual trip ids),
+// so a trip record added later into an already-notified group doesn't spawn
+// a second task either.
 function checkForUpcomingTripDepartures(){
   var notified;
   try{ notified = JSON.parse(localStorage.getItem('mm_pretrip_notified')||'[]'); }catch(e){ notified = []; }
   var notifiedSet = new Set(notified);
   var tomorrow = addDaysToDateStr(today(), 1);
   var tpl = TEMPLATES.find(function(t){return t.id==='pretripwellwishes';});
-  var created = 0;
+  var groups = {};
   db.trips.forEach(function(t){
     if(!t.departDate || t.status==='Cancelled' || isNonTravelIncomeTrip(t)) return;
     if(t.departDate!==tomorrow) return;
-    if(notifiedSet.has(t.id)) return;
-    var clients = [t.clientId].concat(t.clientIds||[]).filter(Boolean).map(function(cid){
+    var clientIds = [t.clientId].concat(t.clientIds||[]).filter(Boolean);
+    if(!clientIds.length) return;
+    var key = clientIds.slice().sort().join(',')+'|'+t.departDate;
+    (groups[key] = groups[key]||[]).push(t);
+  });
+  var created = 0;
+  Object.keys(groups).forEach(function(key){
+    if(notifiedSet.has(key)) return;
+    var trips = groups[key];
+    var primary = trips[0];
+    var clientIds = [primary.clientId].concat(primary.clientIds||[]).filter(Boolean);
+    var clients = clientIds.map(function(cid){
       return db.clients.find(function(c){return c.id===cid;});
     }).filter(Boolean);
     if(!clients.length) return;
     var filledBody = tpl ? fillTemplate(tpl.body, clients) : '';
-    var itineraryText = tripItineraryPlainText(tripToItineraryOpts(t, clients[0], ''));
+    var itineraryText = tripItineraryPlainText(tripToItineraryOpts(primary, clients[0], ''));
+    // When the same client+date is split across more than one trip record,
+    // the itinerary above only reflects the first (primary) one — flagged
+    // here so this doesn't silently look complete when it isn't.
+    var multiNote = trips.length>1 ? ('\n\n(Note: '+trips.length+' separate trip records share this client and departure date — '+trips.map(function(x){return x.id;}).join(', ')+'. Review all of them before sending; only '+primary.id+'\'s details are included above.)') : '';
     db.planner.push({
       id:newId('PL',db.planner),
-      title:'Pre-trip well-wishes — '+(t.clientName||clients.map(function(c){return c.name;}).join(', ')),
-      dueDate:today(), done:false, clientId:t.clientId, clientIds:(t.clientIds||[]), vendorId:'', tripId:t.id,
+      title:'Pre-trip well-wishes — '+(primary.clientName||clients.map(function(c){return c.name;}).join(', ')),
+      dueDate:today(), done:false, clientId:primary.clientId, clientIds:(primary.clientIds||[]), vendorId:'', tripId:primary.id,
       completionNoteType:'General',
-      desc:'Trip departs tomorrow ('+fmtDate(t.departDate)+'). Suggested email:\n\nSubject: '+(tpl?tpl.subject:'')+'\n\n'+filledBody+'\n\n'+itineraryText,
+      desc:'Trip departs tomorrow ('+fmtDate(primary.departDate)+'). Suggested email:\n\nSubject: '+(tpl?tpl.subject:'')+'\n\n'+filledBody+'\n\n'+itineraryText+multiNote,
       createdAt: today()
     });
-    notifiedSet.add(t.id);
+    notifiedSet.add(key);
     created++;
   });
   if(created){
@@ -12151,33 +12174,47 @@ function checkForUpcomingTripDepartures(){
 // surfaces right away in Today & Overdue) whose description holds the
 // filled 'posttripsurvey' TEMPLATES entry (including that client's
 // prefilled {{surveyLink}}), ready to copy into an email. `mm_posttrip_notified`
-// (a trip-id Set in localStorage) is the dedupe guard — without it this
-// would re-fire every 5 minutes for the entire day after the trip returns.
+// (a Set in localStorage) is the dedupe guard — without it this would
+// re-fire every 5 minutes for the entire day after the trip returns.
+//
+// Same client(s)+Return Date grouping as checkForUpcomingTripDepartures()
+// above, for the same reason — several trip records can represent one real
+// trip, and should still only produce one survey task between them.
 function checkForTripReturns(){
   var notified;
   try{ notified = JSON.parse(localStorage.getItem('mm_posttrip_notified')||'[]'); }catch(e){ notified = []; }
   var notifiedSet = new Set(notified);
   var yesterday = addDaysToDateStr(today(), -1);
   var tpl = TEMPLATES.find(function(t){return t.id==='posttripsurvey';});
-  var created = 0;
+  var groups = {};
   db.trips.forEach(function(t){
     if(!t.returnDate || t.status==='Cancelled' || isNonTravelIncomeTrip(t)) return;
     if(t.returnDate!==yesterday) return;
-    if(notifiedSet.has(t.id)) return;
-    var clients = [t.clientId].concat(t.clientIds||[]).filter(Boolean).map(function(cid){
+    var clientIds = [t.clientId].concat(t.clientIds||[]).filter(Boolean);
+    if(!clientIds.length) return;
+    var key = clientIds.slice().sort().join(',')+'|'+t.returnDate;
+    (groups[key] = groups[key]||[]).push(t);
+  });
+  var created = 0;
+  Object.keys(groups).forEach(function(key){
+    if(notifiedSet.has(key)) return;
+    var trips = groups[key];
+    var primary = trips[0];
+    var clientIds = [primary.clientId].concat(primary.clientIds||[]).filter(Boolean);
+    var clients = clientIds.map(function(cid){
       return db.clients.find(function(c){return c.id===cid;});
     }).filter(Boolean);
     if(!clients.length) return;
     var filledBody = tpl ? fillTemplate(tpl.body, clients) : '';
     db.planner.push({
       id:newId('PL',db.planner),
-      title:'Post-trip survey — '+(t.clientName||clients.map(function(c){return c.name;}).join(', ')),
-      dueDate:today(), done:false, clientId:t.clientId, clientIds:(t.clientIds||[]), vendorId:'', tripId:t.id,
+      title:'Post-trip survey — '+(primary.clientName||clients.map(function(c){return c.name;}).join(', ')),
+      dueDate:today(), done:false, clientId:primary.clientId, clientIds:(primary.clientIds||[]), vendorId:'', tripId:primary.id,
       completionNoteType:'Post-Trip Follow-up',
-      desc:'Trip returned yesterday ('+fmtDate(t.returnDate)+'). Suggested email:\n\nSubject: '+(tpl?tpl.subject:'')+'\n\n'+filledBody,
+      desc:'Trip returned yesterday ('+fmtDate(primary.returnDate)+'). Suggested email:\n\nSubject: '+(tpl?tpl.subject:'')+'\n\n'+filledBody,
       createdAt: today()
     });
-    notifiedSet.add(t.id);
+    notifiedSet.add(key);
     created++;
   });
   if(created){
