@@ -20380,10 +20380,25 @@ function pointsEntriesSectionHtml(entries, containerId, addBtnId){
 // live off the current form state (see refreshBookedTripSummary()), not a
 // static snapshot, so it stays accurate while the form is being filled in.
 function computeBookedTripSummary(bd){
+  // bd (trip.booked, or an Object.assign'd variant of it) is passed in
+  // straight from storage, not pre-normalized — a trip saved before
+  // hotel/carRental/transfers/tours/themePark/train/bus were each migrated
+  // to a multi-entry array can still have one of these as a single flat
+  // object instead, same old-shape gap tripToItineraryOpts() already
+  // guards against elsewhere in this file. Without this, (bd.carRental||[])
+  // below evaluates to that truthy object (not []), and .reduce() on a
+  // plain object throws — which doesn't just break this one trip's summary,
+  // it aborts whatever loop called this function for every trip after it
+  // too (e.g. checkForUpcomingTripDepartures(), silently skipping the
+  // pre-trip well-wishes reminder for every trip, every time, until fixed).
+  function asArrEntries(v){ return Array.isArray(v) ? v : (v && Object.keys(v).length ? [v] : []); }
+  var hotelArr = asArrEntries(bd.hotel), carRentalArr = asArrEntries(bd.carRental),
+    transfersArr = asArrEntries(bd.transfers), toursArr = asArrEntries(bd.tours),
+    themeParkArr = asArrEntries(bd.themePark), trainArr = asArrEntries(bd.train), busArr = asArrEntries(bd.bus);
   var airlineRecords = (bd.airline && bd.airline.records) || [];
   var allPts = []
     .concat([].concat.apply([], airlineRecords.map(function(r){return [].concat.apply([], (r.segments||[]).map(function(seg){return seg.pts||[];}));})))
-    .concat([].concat.apply([], (bd.hotel||[]).map(function(h){return h.pts||[];})))
+    .concat([].concat.apply([], hotelArr.map(function(h){return h.pts||[];})))
     .concat(bd.cruise.pts||[])
     .concat(bd.carRentalPts||[])
     .concat(bd.transfersPts||[])
@@ -20427,7 +20442,7 @@ function computeBookedTripSummary(bd){
       transfersByProgram[prog].push(transfer);
     });
   }
-  (bd.hotel||[]).forEach(function(h){
+  hotelArr.forEach(function(h){
     if(!h.transferredFrom && !h.transferredAmount) return;
     var anchors = h.transferredTo ? [h.transferredTo] : (h.pts||[]).map(function(p){return p.program||'(no program selected)';}).filter(function(v,i,a){return a.indexOf(v)===i;});
     attachTransfer(anchors, {program: h.transferredFrom || '(no program selected)', amount: Number(h.transferredAmount)||0, to: h.transferredTo||''});
@@ -20446,14 +20461,14 @@ function computeBookedTripSummary(bd){
   // same distinction as Cost($) vs. this.
   var totalPtsValue = allPts.reduce(function(a,p){return a+(Number(p.cashValue)||0);},0);
   var totalPrice = airlineRecords.reduce(function(a,r){return a+(r.price||0);},0)
-    + (bd.hotel||[]).reduce(function(a,h){return a+(h.price||0);},0)
+    + hotelArr.reduce(function(a,h){return a+(h.price||0);},0)
     + (bd.cruise.price||0)
-    + (bd.carRental||[]).reduce(function(a,c){return a+(c.price||0);},0)
-    + (bd.transfers||[]).reduce(function(a,t){return a+(t.price||0);},0)
-    + (bd.tours||[]).reduce(function(a,t){return a+(t.price||0);},0)
-    + (bd.themePark||[]).reduce(function(a,t){return a+(t.price||0);},0)
-    + (bd.train||[]).reduce(function(a,t){return a+(t.price||0);},0)
-    + (bd.bus||[]).reduce(function(a,t){return a+(t.price||0);},0);
+    + carRentalArr.reduce(function(a,c){return a+(c.price||0);},0)
+    + transfersArr.reduce(function(a,t){return a+(t.price||0);},0)
+    + toursArr.reduce(function(a,t){return a+(t.price||0);},0)
+    + themeParkArr.reduce(function(a,t){return a+(t.price||0);},0)
+    + trainArr.reduce(function(a,t){return a+(t.price||0);},0)
+    + busArr.reduce(function(a,t){return a+(t.price||0);},0);
   // Insurance premiums are real cash cost too — same reasoning as
   // tripBookedPriceTotal(), kept in sync with it.
   var totalInsurance = (bd.airline.insurancePremium||0)
@@ -20471,24 +20486,24 @@ function computeBookedTripSummary(bd){
   // which is exactly why this folds into totalCash but never into
   // totalBudget.
   var totalMilesManFee = airlineRecords.reduce(function(a,r){return a+(r.segments||[]).reduce(function(a2,seg){return a2+(seg.milesManFee||0);},0);},0)
-    + (bd.hotel||[]).reduce(function(a,h){return a+(h.milesManFee||0);},0)
+    + hotelArr.reduce(function(a,h){return a+(h.milesManFee||0);},0)
     + (bd.cruise.milesManFee||0)
-    + (bd.carRental||[]).reduce(function(a,c){return a+(c.milesManFee||0);},0)
-    + (bd.transfers||[]).reduce(function(a,t){return a+(t.milesManFee||0);},0)
-    + (bd.tours||[]).reduce(function(a,t){return a+(t.milesManFee||0);},0)
-    + (bd.themePark||[]).reduce(function(a,t){return a+(t.milesManFee||0);},0)
-    + (bd.train||[]).reduce(function(a,t){return a+(t.milesManFee||0);},0)
-    + (bd.bus||[]).reduce(function(a,t){return a+(t.milesManFee||0);},0);
+    + carRentalArr.reduce(function(a,c){return a+(c.milesManFee||0);},0)
+    + transfersArr.reduce(function(a,t){return a+(t.milesManFee||0);},0)
+    + toursArr.reduce(function(a,t){return a+(t.milesManFee||0);},0)
+    + themeParkArr.reduce(function(a,t){return a+(t.milesManFee||0);},0)
+    + trainArr.reduce(function(a,t){return a+(t.milesManFee||0);},0)
+    + busArr.reduce(function(a,t){return a+(t.milesManFee||0);},0);
   // Credits to be Received (e.g. a future-stay credit owed back on a hotel
   // booking) reduce real cash paid, same as totalCash below — unlike
   // totalPtsValue above, this isn't an estimate, so it comes straight off
   // the top rather than being tracked separately.
-  var totalCreditsReceived = (bd.hotel||[]).reduce(function(a,h){return a+(h.creditsReceived||0);},0);
+  var totalCreditsReceived = hotelArr.reduce(function(a,h){return a+(h.creditsReceived||0);},0);
   // Resort/Food & Beverage Credit is an amenity value included with the
   // stay, not cash owed back — shown as its own total (never folded into
   // totalCash, which is real money out the door) but added into
   // totalTripValue below, like totalPtsValue.
-  var totalResortCredit = (bd.hotel||[]).reduce(function(a,h){return a+(h.resortCredit||0);},0);
+  var totalResortCredit = hotelArr.reduce(function(a,h){return a+(h.resortCredit||0);},0);
   var totalCash = totalPrice + totalPtsCost + totalInsurance + totalMilesManFee - totalCreditsReceived;
   // Total Trip Value is what the whole booking is actually worth — real
   // cash paid plus the estimated cash value of whatever was redeemed with
