@@ -358,7 +358,9 @@
           // "cname", not "name" — "name" is a reserved WordPress query var
           // that collides with WP's own URL routing on this pretty-permalink
           // page (misread as a post-slug lookup, 404ing the whole page).
-          var ccUploadUrl = 'https://themilesman.com/credit-card-authorization/'+
+          // Lands on the "choose your method" page, not directly on the
+          // online form — see the matching comment in intake-form.html.
+          var ccUploadUrl = 'https://themilesman.com/credit-card-authorization-upload/'+
             '?cname='+encodeURIComponent(primaryName)+'&email='+encodeURIComponent(primaryEmail);
           okMsg.innerHTML +=
             '<div style="margin-top:16px;padding-top:16px;border-top:1px solid #6ee7b7;text-align:left;font-weight:400">'+
@@ -367,7 +369,7 @@
             '</div>';
           // Navigates window.top, not just this frame — see the matching
           // comment in intake-form.html's own final-step branch for why.
-          setTimeout(function(){ (window.top || window).location.href = ccUploadUrl; }, 1200);
+          setTimeout(function(){ (window.top || window).location.href = ccUploadUrl; }, 3000);
         }
         okMsg.style.display = 'block';
         window.scrollTo({top:0, behavior:'smooth'});

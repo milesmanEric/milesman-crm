@@ -1371,7 +1371,11 @@
           // "cname", not "name" — "name" is a reserved WordPress query var
           // that collides with WP's own URL routing on this pretty-permalink
           // page (misread as a post-slug lookup, 404ing the whole page).
-          var ccUploadUrl = 'https://themilesman.com/credit-card-authorization/'+
+          // Lands on the "choose your method" page, not directly on the
+          // online form, so the client can pick fill-online vs. upload-a-PDF
+          // — that page forwards these same params onward to whichever
+          // option they click.
+          var ccUploadUrl = 'https://themilesman.com/credit-card-authorization-upload/'+
             '?cname='+encodeURIComponent(ccName)+'&email='+encodeURIComponent(ccEmail);
           okMsg.innerHTML +=
             '<div style="margin-top:16px;padding-top:16px;border-top:1px solid #6ee7b7;text-align:left;font-weight:400">'+
@@ -1386,7 +1390,7 @@
           // writing most of a cross-origin parent's other properties. The
           // short delay lets the "Thanks!" confirmation actually be seen
           // before the page moves on, rather than vanishing instantly.
-          setTimeout(function(){ (window.top || window).location.href = ccUploadUrl; }, 1200);
+          setTimeout(function(){ (window.top || window).location.href = ccUploadUrl; }, 3000);
         }
         okMsg.style.display = 'block';
         // Submit is way down at the bottom of a long form — without this,
