@@ -1368,8 +1368,11 @@
           var ccNameField = form.querySelector('input[name="Full Name"]');
           var ccName = ccNameField ? ccNameField.value : '';
           var ccEmail = document.getElementById('email-field').value || '';
+          // "cname", not "name" — "name" is a reserved WordPress query var
+          // that collides with WP's own URL routing on this pretty-permalink
+          // page (misread as a post-slug lookup, 404ing the whole page).
           var ccUploadUrl = 'https://themilesman.com/credit-card-authorization/'+
-            '?name='+encodeURIComponent(ccName)+'&email='+encodeURIComponent(ccEmail);
+            '?cname='+encodeURIComponent(ccName)+'&email='+encodeURIComponent(ccEmail);
           okMsg.innerHTML +=
             '<div style="margin-top:16px;padding-top:16px;border-top:1px solid #6ee7b7;text-align:left;font-weight:400">'+
               'Next, taking you to the credit card authorization form — nothing is charged until your booking is complete. '+

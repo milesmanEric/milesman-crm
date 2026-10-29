@@ -20119,7 +20119,12 @@ function openClientForm(id){
   if(copyCcAuthBtn){
     copyCcAuthBtn.addEventListener('click', function(){
       var cid = this.dataset.cid;
-      var link = CC_AUTH_UPLOAD_URL+'?cid='+encodeURIComponent(cid)+'&name='+encodeURIComponent(d.name||'');
+      // "cname", not "name" — "name" is a reserved WordPress query var that
+      // collides with WP's own URL routing on a pretty-permalink page (it
+      // gets misread as a post-slug lookup, 404ing the whole page) now that
+      // this link points at themilesman.com instead of a static GitHub Pages
+      // file, which had no such routing to collide with.
+      var link = CC_AUTH_UPLOAD_URL+'?cid='+encodeURIComponent(cid)+'&cname='+encodeURIComponent(d.name||'');
       navigator.clipboard.writeText(link).then(function(){
         toast('Fill-and-sign link copied — send it to the client by email or text','ok');
       }).catch(function(){
