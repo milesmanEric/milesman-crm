@@ -355,8 +355,11 @@
           // form at all), using the primary contact's name/email so
           // cc-auth-upload.html pre-fills its identify fields (see
           // DOCUMENTATION.md 4.12).
+          // "cname", not "name" — "name" is a reserved WordPress query var
+          // that collides with WP's own URL routing on this pretty-permalink
+          // page (misread as a post-slug lookup, 404ing the whole page).
           var ccUploadUrl = 'https://themilesman.com/credit-card-authorization/'+
-            '?name='+encodeURIComponent(primaryName)+'&email='+encodeURIComponent(primaryEmail);
+            '?cname='+encodeURIComponent(primaryName)+'&email='+encodeURIComponent(primaryEmail);
           okMsg.innerHTML +=
             '<div style="margin-top:16px;padding-top:16px;border-top:1px solid #6ee7b7;text-align:left;font-weight:400">'+
               'Next, taking you to the credit card authorization form — nothing is charged until your booking is complete. '+

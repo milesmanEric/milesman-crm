@@ -215,7 +215,10 @@
   //     on the website — identify fields show empty for the client to fill.
   var params = new URLSearchParams(window.location.search);
   var clientId = (params.get('cid')||'').trim();
-  var clientName = (params.get('name')||'').trim();
+  // "cname", not "name" — "name" is a reserved WordPress query var that
+  // 404s the embedding themilesman.com page's own URL routing before this
+  // iframe's src (built from that page's query string) is ever reached.
+  var clientName = (params.get('cname')||'').trim();
   var clientEmail = (params.get('email')||'').trim();
   if(clientName){
     document.getElementById('greeting').textContent = 'Hi '+clientName+' — to book flights, hotels, or cruises for you we need a signed credit card authorization form. Nothing is charged until your booking is complete.';
