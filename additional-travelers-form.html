@@ -352,16 +352,9 @@
           // Final batch — every traveler is now in. Same auto-redirect to
           // the credit card authorization page as intake-form.html's
           // thank-you screen (for groups small enough to need no follow-up
-          // form at all), using the primary contact's name/email so
-          // cc-auth-upload.html pre-fills its identify fields (see
-          // DOCUMENTATION.md 4.12).
-          // "cname", not "name" — "name" is a reserved WordPress query var
-          // that collides with WP's own URL routing on this pretty-permalink
-          // page (misread as a post-slug lookup, 404ing the whole page).
-          // Lands on the "choose your method" page, not directly on the
-          // online form — see the matching comment in intake-form.html.
-          var ccUploadUrl = 'https://themilesman.com/credit-card-authorization-upload/'+
-            '?cname='+encodeURIComponent(primaryName)+'&email='+encodeURIComponent(primaryEmail);
+          // form at all). Bare URL, no name/email in the query string — see
+          // the matching comment in intake-form.html.
+          var ccUploadUrl = 'https://themilesman.com/credit-card-authorization-upload/';
           okMsg.innerHTML +=
             '<div style="margin-top:16px;padding-top:16px;border-top:1px solid #6ee7b7;text-align:left;font-weight:400">'+
               'Next, taking you to the credit card authorization form — nothing is charged until your booking is complete. '+
