@@ -1365,18 +1365,10 @@
         // unconditionally) was misleading — it asked for payment
         // authorization before the rest of the group's info even existed.
         if(totalTravelers <= MAX_TRAVELERS_PER_SUBMISSION){
-          var ccNameField = form.querySelector('input[name="Full Name"]');
-          var ccName = ccNameField ? ccNameField.value : '';
-          var ccEmail = document.getElementById('email-field').value || '';
-          // "cname", not "name" — "name" is a reserved WordPress query var
-          // that collides with WP's own URL routing on this pretty-permalink
-          // page (misread as a post-slug lookup, 404ing the whole page).
-          // Lands on the "choose your method" page, not directly on the
-          // online form, so the client can pick fill-online vs. upload-a-PDF
-          // — that page forwards these same params onward to whichever
-          // option they click.
-          var ccUploadUrl = 'https://themilesman.com/credit-card-authorization-upload/'+
-            '?cname='+encodeURIComponent(ccName)+'&email='+encodeURIComponent(ccEmail);
+          // Bare URL, no name/email in the query string — the client types
+          // that themselves on whichever option (online form or upload-a-PDF)
+          // they end up choosing, rather than it appearing in the address bar.
+          var ccUploadUrl = 'https://themilesman.com/credit-card-authorization-upload/';
           okMsg.innerHTML +=
             '<div style="margin-top:16px;padding-top:16px;border-top:1px solid #6ee7b7;text-align:left;font-weight:400">'+
               'Next, taking you to the credit card authorization form — nothing is charged until your booking is complete. '+
