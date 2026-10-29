@@ -276,6 +276,12 @@
       document.getElementById('fill-mode').style.display = 'none';
       document.getElementById('upload-mode').style.display = 'none';
       document.getElementById('ok-msg').style.display = 'block';
+      // Same embedded-iframe scroll-to-top handoff intake-form.html uses —
+      // see DOCUMENTATION.md's Auto-resizing iframe snippet.
+      window.scrollTo({top:0, behavior:'smooth'});
+      if(window.parent !== window){
+        window.parent.postMessage({type:'milesman-ccauth-scroll-top'}, '*');
+      }
       if(onDone) onDone();
     }).catch(function(err){
       errorEl.textContent = err.message || 'Something went wrong submitting the form. Please try again, or contact us directly.';
@@ -592,6 +598,28 @@
       showUploadError(err.message || 'Something went wrong uploading the file. Please try again, or contact us directly.');
     });
   });
+
+  // When embedded via <iframe> (e.g. the WordPress page), a fixed iframe
+  // height goes stale the moment the mode switches or the content reflows —
+  // the signature pad or submit button can silently become unreachable.
+  // Same pattern as intake-form.html's own auto-resize reporting; see
+  // DOCUMENTATION.md's Auto-resizing iframe snippet for the matching
+  // listener needed on the embedding page.
+  if(window.parent !== window){
+    var lastReportedHeight = 0;
+    function reportHeight(){
+      var h = document.documentElement.scrollHeight;
+      if(h !== lastReportedHeight){
+        lastReportedHeight = h;
+        window.parent.postMessage({type:'milesman-ccauth-height', height:h}, '*');
+      }
+    }
+    if(window.ResizeObserver) new ResizeObserver(reportHeight).observe(document.documentElement);
+    new MutationObserver(reportHeight).observe(document.body, {childList:true, subtree:true, attributes:true});
+    window.addEventListener('resize', reportHeight);
+    setInterval(reportHeight, 1000);
+    reportHeight();
+  }
 </script>
 </body>
 </html>
