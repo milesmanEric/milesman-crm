@@ -305,6 +305,14 @@
     uploadModeEl.style.display = 'none';
     fillModeEl.style.display = 'block';
   });
+  // ?mode=upload lets a link (e.g. the "Upload Completed Form" button on
+  // the credit-card-authorization-upload WordPress page) deep-link straight
+  // into the upload-an-existing-PDF flow instead of the fill-and-sign
+  // default — same two modes, just skipping the extra click.
+  if(params.get('mode') === 'upload'){
+    fillModeEl.style.display = 'none';
+    uploadModeEl.style.display = 'block';
+  }
 
   // ── Signature pad — hand-rolled on a <canvas>, pointer events cover
   // mouse/touch/pen uniformly with no extra library. Backing store is sized
