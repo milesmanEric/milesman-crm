@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Miles Man — Sign Client Services Agreement</title>
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:#f7f8fa;color:#111;padding:16px 12px 40px}
+  .wrap{max-width:560px;margin:0 auto}
+  .card{background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:26px 22px;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+  .card h1{font-size:19px;margin:0 0 4px}
+  .ver{font-size:12px;color:#888;margin:0 0 18px}
+  .field{display:flex;flex-direction:column;gap:6px;margin-bottom:16px}
+  .field label{font-size:13px;font-weight:600;color:#333}
+  .field .hint{font-size:12px;color:#888;font-weight:400}
+  .field input[type="text"],.field input[type="email"],.field input[type="tel"],.field textarea{padding:11px 12px;border:1px solid #d1d5db;border-radius:9px;font-size:15px;font-family:inherit;width:100%}
+  .field textarea{min-height:60px;resize:vertical}
+  .field input:focus,.field textarea:focus{outline:none;border-color:#2563eb;box-shadow:0 0 0 3px rgba(37,99,235,.12)}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .check{display:flex;gap:10px;align-items:flex-start;font-size:13px;line-height:1.5;color:#333;margin-bottom:12px}
+  .check input{margin-top:3px;width:17px;height:17px;flex:none}
+  .check a{color:#2563eb}
+  .sig-label{font-size:13px;font-weight:600;color:#333;margin:6px 0}
+  .sig-pad-wrap{border:1px solid #d1d5db;border-radius:10px;background:#fff;overflow:hidden}
+  .sig-pad-wrap canvas{display:block;width:100%;height:150px;touch-action:none;cursor:crosshair}
+  .sig-row{display:flex;justify-content:space-between;align-items:center;margin:6px 0 18px}
+  .sig-clear-btn{background:none;border:none;color:#2563eb;font-size:12px;font-weight:600;cursor:pointer;padding:4px 0}
+  .sig-note{font-size:11px;color:#999}
+  #error-msg{display:none;background:#fef2f2;color:#991b1b;border:1px solid #fecaca;border-radius:10px;padding:12px 14px;font-size:13px;margin-bottom:14px}
+  #ok-box{display:none;background:#d1fae5;color:#065f46;border:1px solid #6ee7b7;border-radius:10px;padding:20px;text-align:center}
+  #ok-box h2{margin:0 0 6px;font-size:17px}
+  #ok-box p{margin:0 0 12px;font-size:14px}
+  button.primary{width:100%;padding:13px;border-radius:9px;border:none;background:#2563eb;color:#fff;font-size:15px;font-weight:600;font-family:inherit;cursor:pointer}
+  button.primary:hover{background:#1d4ed8}
+  button.primary:disabled{background:#93c5fd;cursor:not-allowed}
+  #dl-btn{display:inline-block;width:auto;padding:11px 22px}
+  .hp{position:absolute;left:-9999px;height:0;overflow:hidden}
+  .footnote{text-align:center;font-size:12px;color:#999;margin-top:14px}
+  @media(max-width:480px){.row2{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card" id="form-card">
+    <h1>Sign Your Client Services Agreement</h1>
+    <p class="ver">Miles Man LLC (Miles Man Travel Agency) &middot; Version <span id="ver-label">2026-10-30</span></p>
+    <div id="error-msg"></div>
+    <form id="agr-form" novalidate>
+      <div class="hp" aria-hidden="true"><label>Leave blank <input type="text" id="hp" name="website" tabindex="-1" autocomplete="off"></label></div>
+      <div class="field">
+        <label for="full-name">Full legal name <span class="hint">(this is your signature of record)</span></label>
+        <input type="text" id="full-name" autocomplete="name" required>
+      </div>
+      <div class="row2">
+        <div class="field">
+          <label for="email">Email</label>
+          <input type="email" id="email" autocomplete="email" required>
+        </div>
+        <div class="field">
+          <label for="phone">Phone <span class="hint">(optional)</span></label>
+          <input type="tel" id="phone" autocomplete="tel">
+        </div>
+      </div>
+      <div class="field">
+        <label for="travelers">Other travelers you are signing for <span class="hint">(optional)</span></label>
+        <textarea id="travelers" placeholder="Names of family members or companions, if any"></textarea>
+      </div>
+
+      <div class="check"><input type="checkbox" id="agree"><label for="agree" style="font-weight:400">I have read the full <a href="https://themilesman.com/client-agreement/" target="_blank" rel="noopener">Client Services Agreement</a> and agree to it, for all services Miles Man provides to me. I am at least 18 and may sign for everyone in my travel party.</label></div>
+      <div class="check"><input type="checkbox" id="esign"><label for="esign" style="font-weight:400">I consent to use electronic records and signatures. My drawn signature below has the same effect as a handwritten one.</label></div>
+
+      <div class="sig-label">Draw your signature</div>
+      <div class="sig-pad-wrap"><canvas id="sig-pad"></canvas></div>
+      <div class="sig-row"><span class="sig-note" id="sig-note">Nothing signed yet</span><button type="button" class="sig-clear-btn" id="sig-clear">Clear</button></div>
+
+      <button type="submit" class="primary" id="submit-btn">Sign Agreement</button>
+    </form>
+    <div class="footnote">We record the date, time, and your device details with your signature. Questions? Call (908) 419-7700.</div>
+  </div>
+
+  <div id="ok-box">
+    <h2>Thank you &mdash; your agreement is signed.</h2>
+    <p>A copy has been saved with Miles Man. Please download your own copy now.</p>
+    <button type="button" class="primary" id="dl-btn">Download my signed copy (PDF)</button>
+  </div>
+  <div class="footnote">&copy; <span class="copy-yr"></span> Miles Man LLC. All rights reserved.</div>
+</div>
+
+<script>
+(function(){
+  var ENDPOINT = 'https://milesman-auth.vercel.app/api/client-agreement';
+  var VERSION = '2026-10-30';
+
+  var params = new URLSearchParams(window.location.search);
+  var clientId = (params.get('cid') || '').trim();
+  var nameParam = (params.get('cname') || '').trim();
+  var emailParam = (params.get('email') || '').trim();
+  var fullName = document.getElementById('full-name');
+  var emailEl = document.getElementById('email');
+  if(nameParam) fullName.value = nameParam;
+  if(emailParam) emailEl.value = emailParam;
+
+  document.querySelectorAll('.copy-yr').forEach(function(e){ e.textContent = new Date().getFullYear(); });
+
+  // ── Signature pad (same approach as cc-auth-upload.html) ──
+  var cv = document.getElementById('sig-pad');
+  var ctx = cv.getContext('2d');
+  var note = document.getElementById('sig-note');
+  var hasStroke = false, drawing = false, lx = 0, ly = 0;
+  function sizeCanvas(){
+    var r = cv.getBoundingClientRect();
+    var dpr = window.devicePixelRatio || 1;
+    var prev = hasStroke ? cv.toDataURL() : null;
+    cv.width = Math.max(1, Math.round(r.width * dpr));
+    cv.height = Math.max(1, Math.round(r.height * dpr));
+    ctx.scale(dpr, dpr);
+    ctx.lineWidth = 2.2; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#111';
+    if(prev){ var im = new Image(); im.onload = function(){ ctx.drawImage(im, 0, 0, r.width, r.height); }; im.src = prev; }
+  }
+  sizeCanvas();
+  window.addEventListener('resize', sizeCanvas);
+  function pos(e){ var r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
+  cv.addEventListener('pointerdown', function(e){ e.preventDefault(); drawing = true; cv.setPointerCapture(e.pointerId); var p = pos(e); lx = p.x; ly = p.y; });
+  cv.addEventListener('pointermove', function(e){
+    if(!drawing) return; e.preventDefault();
+    var p = pos(e);
+    ctx.beginPath(); ctx.moveTo(lx, ly); ctx.lineTo(p.x, p.y); ctx.stroke();
+    lx = p.x; ly = p.y;
+    if(!hasStroke){ hasStroke = true; note.textContent = 'Signed'; }
+  });
+  ['pointerup','pointerleave','pointercancel'].forEach(function(t){ cv.addEventListener(t, function(){ drawing = false; }); });
+  document.getElementById('sig-clear').addEventListener('click', function(){
+    var r = cv.getBoundingClientRect();
+    ctx.clearRect(0, 0, r.width, r.height);
+    hasStroke = false; note.textContent = 'Nothing signed yet';
+  });
+
+  // ── Submit ──
+  var form = document.getElementById('agr-form');
+  var errEl = document.getElementById('error-msg');
+  var btn = document.getElementById('submit-btn');
+  var signedPdf = null;
+  function showErr(msg){ errEl.textContent = msg; errEl.style.display = 'block'; scrollTop(); }
+  function scrollTop(){ if(window.parent !== window){ window.parent.postMessage({type:'milesman-agr-scroll-top'}, '*'); } }
+
+  form.addEventListener('submit', function(ev){
+    ev.preventDefault();
+    errEl.style.display = 'none';
+    var name = fullName.value.trim();
+    var email = emailEl.value.trim();
+    if(name.length < 3 || name.indexOf(' ') < 0) return showErr('Please type your full legal name (first and last).');
+    if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return showErr('Please enter a valid email address.');
+    if(!document.getElementById('agree').checked) return showErr('Please confirm that you have read and agree to the Client Services Agreement.');
+    if(!document.getElementById('esign').checked) return showErr('Please consent to electronic records and signatures to continue.');
+    if(!hasStroke) return showErr('Please draw your signature in the box.');
+
+    btn.disabled = true; btn.textContent = 'Signing...';
+    fetch(ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        version: VERSION,
+        fullName: name,
+        email: email,
+        phone: document.getElementById('phone').value.trim(),
+        travelers: document.getElementById('travelers').value.trim(),
+        clientId: clientId,
+        website: document.getElementById('hp').value,
+        consentAgree: true,
+        consentEsign: true,
+        signaturePng: cv.toDataURL('image/png')
+      })
+    }).then(function(r){ return r.json().then(function(j){ return { ok: r.ok, j: j }; }); })
+      .then(function(res){
+        if(!res.ok || !res.j.ok){
+          throw new Error(res.j.error_description || 'Something went wrong. Please try again, or call (908) 419-7700.');
+        }
+        signedPdf = res.j;
+        document.getElementById('form-card').style.display = 'none';
+        document.getElementById('ok-box').style.display = 'block';
+        scrollTop();
+      })
+      .catch(function(e){
+        btn.disabled = false; btn.textContent = 'Sign Agreement';
+        showErr(e.message || 'Could not reach the server. Please try again.');
+      });
+  });
+
+  document.getElementById('dl-btn').addEventListener('click', function(){
+    if(!signedPdf) return;
+    var bin = atob(signedPdf.pdfBase64);
+    var bytes = new Uint8Array(bin.length);
+    for(var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    var blob = new Blob([bytes], { type: 'application/pdf' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = signedPdf.fileName || 'Miles Man Client Agreement.pdf';
+    document.body.appendChild(a); a.click(); a.remove();
+  });
+
+  // Auto-resize when embedded in the WordPress page.
+  if(window.parent !== window){
+    var lastH = 0;
+    function reportHeight(){
+      var h = document.documentElement.scrollHeight;
+      if(h !== lastH){ lastH = h; window.parent.postMessage({type:'milesman-agr-height', height:h}, '*'); }
+    }
+    if(window.ResizeObserver) new ResizeObserver(reportHeight).observe(document.documentElement);
+    new MutationObserver(reportHeight).observe(document.body, {childList:true, subtree:true, attributes:true});
+    window.addEventListener('resize', reportHeight);
+    setInterval(reportHeight, 1000);
+    reportHeight();
+  }
+})();
+</script>
+</body>
+</html>
