@@ -266,7 +266,7 @@ function sanitizeForFilename(str) {
   return (str || '').toString().trim().replace(/[^\w \-().]/g, '').slice(0, 80);
 }
 
-module.exports = async (req, res) => {
+async function ccAuthUploadHandler(req, res) {
   // Same origin every other proxy endpoint in this app allows — the public
   // upload page is served from GitHub Pages alongside the CRM itself.
   res.setHeader('Access-Control-Allow-Origin', 'https://milesmaneric.github.io');
@@ -368,4 +368,14 @@ module.exports = async (req, res) => {
   } catch (e) {
     res.status(500).json({ error: 'upload_error', error_description: e.message });
   }
+}
+
+// One function, two jobs (Hobby plan 12-function cap): /api/client-agreement is a
+// vercel.json rewrite to this file with ?service=agreement - see
+// lib/client-agreement.js (Client Services Agreement e-signature).
+module.exports = async (req, res) => {
+  if (req.query && req.query.service === 'agreement') {
+    return require('../lib/client-agreement.js')(req, res);
+  }
+  return ccAuthUploadHandler(req, res);
 };
