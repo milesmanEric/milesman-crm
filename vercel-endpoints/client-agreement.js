@@ -271,6 +271,53 @@ function formatNy(d) {
   return new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', dateStyle: 'long', timeStyle: 'long' }).format(d);
 }
 
+const INDEX_FILE_NAME = 'terms-signed-index.json';
+function sha256Hex(v) { return crypto.createHash('sha256').update(String(v)).digest('hex'); }
+function driveQuoted(v) { return String(v).replace(/\\/g, '\\\\').replace(/'/g, "\\'"); }
+
+// Answers "has this client signed the Terms and Conditions?" for the credit card
+// form, which sends the client on to sign only if the answer is no. Two sources:
+//  1. the signed PDFs themselves (tagged with clientId / email in Drive), and
+//  2. terms-signed-index.json, a list of hashed ids and emails the CRM writes into
+//     the same folder for every client whose "Terms and Conditions signed" box is
+//     ticked (this covers a box ticked by hand, e.g. for a paper signature).
+// Only a yes/no goes back to the browser. Any failure answers "unknown" and the
+// caller treats that as not signed, since signing twice is harmless.
+async function handleStatus(b, res) {
+  const clientId = clean(b.clientId, 64);
+  const email = clean(b.email, 120).toLowerCase();
+  if (!clientId && !email) { res.status(200).json({ ok: true, signed: false }); return; }
+  try {
+    const token = await getServerDriveAccessToken();
+    const base = "appProperties has { key='mmType' and value='terms' } and trashed=false and ";
+    if (clientId) {
+      const f = await driveList(token, base + "appProperties has { key='clientId' and value='" + driveQuoted(clientId) + "' }", 'files(id)');
+      if (f.length) { res.status(200).json({ ok: true, signed: true, via: 'signature' }); return; }
+    }
+    if (email) {
+      const f = await driveList(token, base + "appProperties has { key='email' and value='" + driveQuoted(email) + "' }", 'files(id)');
+      if (f.length) { res.status(200).json({ ok: true, signed: true, via: 'signature' }); return; }
+    }
+    const folderId = await getAgreementFolderId(token);
+    const idx = await driveList(token, "name='" + INDEX_FILE_NAME + "' and '" + folderId + "' in parents and trashed=false", 'files(id)');
+    if (idx.length) {
+      const r = await fetch(DRIVE_FILES_URL + '/' + idx[0].id + '?alt=media', { headers: { Authorization: 'Bearer ' + token } });
+      if (r.ok) {
+        const data = await r.json();
+        const ids = Array.isArray(data.ids) ? data.ids : [];
+        const emails = Array.isArray(data.emails) ? data.emails : [];
+        if ((clientId && ids.indexOf(sha256Hex(clientId)) >= 0) || (email && emails.indexOf(sha256Hex(email)) >= 0)) {
+          res.status(200).json({ ok: true, signed: true, via: 'crm' }); return;
+        }
+      }
+    }
+    res.status(200).json({ ok: true, signed: false });
+  } catch (e) {
+    console.error('client-agreement status error:', e.message);
+    res.status(200).json({ ok: true, signed: false, unknown: true });
+  }
+}
+
 module.exports = async (req, res) => {
   const origin = req.headers.origin || '';
   if (ALLOWED_ORIGINS.indexOf(origin) >= 0) res.setHeader('Access-Control-Allow-Origin', origin);
@@ -284,6 +331,7 @@ module.exports = async (req, res) => {
 
   const b = req.body || {};
   if (b.website) { res.status(200).json({ ok: true, honeypot: true }); return; }
+  if (b.action === 'status') { await handleStatus(b, res); return; }
 
   const fullName = clean(b.fullName, 100);
   const email = clean(b.email, 120);
@@ -327,7 +375,7 @@ module.exports = async (req, res) => {
     // matching client (see syncSignedTerms in index.html).
     const appProperties = { mmType: 'terms', version: AGREEMENT.VERSION, signedAt: now.toISOString() };
     if (clientId) appProperties.clientId = clean(clientId, 60);
-    if (email) appProperties.email = clean(email, 80);
+    if (email) appProperties.email = clean(email, 80).toLowerCase();
     if (fullName) appProperties.name = clean(fullName, 70);
     form.append('metadata', new Blob([JSON.stringify({ name: driveFilename, parents: [folderId], appProperties: appProperties })], { type: 'application/json' }));
     form.append('file', new Blob([pdfBuffer], { type: 'application/pdf' }), driveFilename);

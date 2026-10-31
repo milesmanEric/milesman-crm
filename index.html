@@ -22408,6 +22408,8 @@ function saveClient(id){
     };
   }).filter(function(rc){return rc.referredName;});
   const data={name:name,email:email,phone:gv('fp'),streetAddress:gv('fst'),city:gv('fcty'),state:gv('fstate'),zip:gv('fzip'),birthdate:gv('fbd'),countryOfCitizenship:gv('fcoc'),countryOfBirth:gv('fcob'),passportExpiration:gv('fped'),referredBy:referredBy,referredByDetail:referredByDetail,discounts:discountData.discounts,discountOther:discountData.discountOther,interests:interestData.interests,interestOther:interestData.interestOther,preferredAirline:gv('fpa'),preferredHotel:gv('fph'),preferredCruiseLine:gv('fpc'),mileageBalances:mileageBalances,hotelBalances:hotelBalances,cruiseBalances:cruiseBalances,carRentalBalances:carRentalBalances,trainBalance:trainBalance,creditCardBalances:creditCardBalances,airlineCreditCards:airlineCreditCards,hotelCreditCards:hotelCreditCards,notesLog:notesLog,isPayingClient:document.getElementById('f-paying')?document.getElementById('f-paying').checked:false,isSubscriber:document.getElementById('f-subscriber')?document.getElementById('f-subscriber').checked:false,termsSigned:document.getElementById('f-terms-signed')?document.getElementById('f-terms-signed').checked:false,okToText:document.getElementById('f-oktotext')?document.getElementById('f-oktotext').checked:false,attachments:window._currentClientAttachments||[],referralCredits:referralCredits};
+  // Terms box may have changed: let the credit card form's check see it (see publishTermsIndex).
+  setTimeout(publishTermsIndex, 1500);
   var resultId = id;
   if(id){
     db.clients=db.clients.map(function(c){return c.id===id?Object.assign({},c,data):c;});
@@ -27698,6 +27700,59 @@ function startAutosave(){
 // client by id, then email, then an unambiguous name, and ticks the box. It only ever
 // ticks, never un-ticks; each file is applied once (termsFileId), so un-ticking by hand
 // sticks. Uses the normal saveDB path, only when something actually changed.
+// The credit card form (public page) sends a client on to sign the Terms and
+// Conditions only if they have not signed yet. It asks the server, and the server
+// cannot read this app's data, so this writes a small list of who has the "Terms
+// and Conditions signed" box ticked into the Client Agreements Drive folder as
+// terms-signed-index.json. Ids and emails are stored as SHA-256 hashes, never in
+// the clear. Rewritten only when the list changes (hash kept in localStorage), so
+// there is no periodic write; a box ticked by hand is covered as well as signatures.
+let _termsIndexInFlight = false;
+async function publishTermsIndex(){
+  if(_termsIndexInFlight) return;
+  const signed = db.clients.filter(function(c){ return c.termsSigned; }).map(function(c){ return {id:c.id, email:String(c.email||'').trim().toLowerCase()}; });
+  _termsIndexInFlight = true;
+  try{
+    const sha = async function(v){
+      const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(String(v)));
+      return Array.from(new Uint8Array(buf)).map(function(b){ return ('0'+b.toString(16)).slice(-2); }).join('');
+    };
+    const ids = [], emails = [];
+    for(const c of signed){ ids.push(await sha(c.id)); if(c.email) emails.push(await sha(c.email)); }
+    ids.sort(); emails.sort();
+    const body = JSON.stringify({ids:ids, emails:emails});
+    let last = '';
+    try{ last = localStorage.getItem('mm_terms_index_hash') || ''; }catch(e){}
+    const bodyHash = await sha(body);
+    if(bodyHash === last) return;
+    const token = await getDriveTokenSilent();
+    if(!token) return;
+    const auth = {Authorization:'Bearer '+token};
+    const list = async function(q, fields){
+      const r = await fetch('https://www.googleapis.com/drive/v3/files?q='+encodeURIComponent(q)+'&fields='+encodeURIComponent(fields),{headers:auth});
+      if(!r.ok) throw new Error('Drive list returned '+r.status);
+      return (await r.json()).files || [];
+    };
+    // The folder is created by the first signature; until it exists there is nothing to publish to.
+    const folders = await list("mimeType='application/vnd.google-apps.folder' and name='Client Agreements' and trashed=false", 'files(id)');
+    if(!folders.length) return;
+    const existing = await list("name='terms-signed-index.json' and '"+folders[0].id+"' in parents and trashed=false", 'files(id)');
+    let r;
+    if(existing.length){
+      r = await fetch('https://www.googleapis.com/upload/drive/v3/files/'+existing[0].id+'?uploadType=media',{method:'PATCH',headers:Object.assign({'Content-Type':'application/json'},auth),body:body});
+    }else{
+      const fd = new FormData();
+      fd.append('metadata', new Blob([JSON.stringify({name:'terms-signed-index.json', parents:[folders[0].id]})],{type:'application/json'}));
+      fd.append('file', new Blob([body],{type:'application/json'}));
+      r = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id',{method:'POST',headers:auth,body:fd});
+    }
+    if(!r.ok) throw new Error('Drive write returned '+r.status);
+    try{ localStorage.setItem('mm_terms_index_hash', bodyHash); }catch(e){}
+    debugLog('Published Terms-signed list ('+ids.length+' client(s))');
+  }catch(e){
+    debugLog('Publishing Terms-signed list failed: '+e.message);
+  }finally{ _termsIndexInFlight = false; }
+}
 let _termsSyncInFlight = false;
 let _termsSyncLast = 0;
 async function syncSignedTerms(manual){
@@ -27748,6 +27803,7 @@ async function syncSignedTerms(manual){
     if(manual && unmatched.length){
       toast(unmatched.length+' signed but not matched to a client: '+unmatched.join('; ')+'. Open that client and tick the box.','err');
     }
+    await publishTermsIndex();
   }catch(e){
     debugLog('Signed Terms check failed: '+e.message);
     if(manual) toast('Could not check signed Terms and Conditions: '+e.message,'err');
