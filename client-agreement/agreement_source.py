@@ -11,14 +11,14 @@
 
 VERSION = "2026-10-30"
 TITLE = "Terms and Conditions"
-COMPANY = "Miles Man LLC, doing business as Miles Man Travel Agency"
+COMPANY = "Miles Man LLC, doing business as Miles Man"
 SHORT = "Miles Man"
 
 FEE_URLS = "themilesman.com/book-a-trip/ and themilesman.com/award-booking-service/"
 
 SECTIONS = [
     ("1. Who These Terms Are Between, and What They Cover", [
-        'These Terms and Conditions (the "Terms") are between Miles Man LLC, doing business as Miles Man Travel Agency, located in Westfield, New Jersey ("Miles Man," "we," "us"), and the person who signs below ("Client," "you"). Contact: eric@themilesman.com, (908) 419-7700.',
+        'These Terms and Conditions (the "Terms") are between Miles Man LLC, doing business as Miles Man, located at 622 Arlington Avenue, Westfield, New Jersey 07090 ("Miles Man," "we," "us"), and the person who signs below ("Client," "you"). Contact: eric@themilesman.com, (908) 419-7700.',
         'These Terms are a one-time, master agreement. Once you sign them, they govern every service we provide to you, now and in the future, until they are ended under Section 18. You do not need to sign again for each trip. The details of each individual trip or service (dates, suppliers, travelers, prices, and fees) are set out in the quotes, itineraries, invoices, and booking confirmations we send you (each a "Booking Confirmation"), which are part of these Terms.',
         'These Terms cover two kinds of services, together the "Services": (a) Travel Agency Services - researching, recommending, booking, changing, and supporting travel such as cruises, flights, hotels, car rentals, trains, tours, transfers, and theme park vacations; and (b) Points and Miles Services - award booking (redeeming your airline miles, hotel points, and transferable credit card points for travel) and consulting on earning and using miles, points, and credit card rewards.',
         'You confirm that you are at least 18 years old and that you have authority to sign for, and to make bookings on behalf of, every traveler in your party. You are responsible for sharing these Terms and each Supplier\'s terms with those travelers.',
