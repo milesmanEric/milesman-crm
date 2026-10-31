@@ -790,6 +790,7 @@ const DRIVE_AUTH_SERVER = 'https://milesman-auth.vercel.app';
 // card authorization PDF to — cid/name in the query string are how the
 // upload gets labeled/foldered without the client ever logging in.
 const CC_AUTH_UPLOAD_URL = 'https://themilesman.com/credit-card-authorization/';
+const TERMS_SIGN_URL = 'https://themilesman.com/terms-and-conditions/';
 // Public, standalone page a client fills out after their trip — name/email/
 // destination in the query string prefill it the same way CC_AUTH_UPLOAD_URL
 // does above, so the client doesn't have to retype who they are.
@@ -18165,6 +18166,7 @@ function renderClients(){
       '<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#555;white-space:nowrap;cursor:pointer"><input type="checkbox" id="client-hide-sub-only" '+(fHideSubOnly?'checked':'')+' style="width:14px;height:14px;cursor:pointer">Hide subscribers & non-paying clients</label>'+
       '<button id="btn-select-all-clients" style="padding:7px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#555;cursor:pointer;font-size:12px;font-family:inherit">Select All</button>'+
       '<button id="btn-delete-checked-clients" style="display:none;padding:7px 14px;border-radius:7px;border:none;background:#dc2626;color:#fff;cursor:pointer;font-size:12px;font-family:inherit">&#128465; Delete Selected</button>'+
+      '<button id="btn-check-terms" style="padding:7px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#555;cursor:pointer;font-size:12px;font-family:inherit" title="Look for newly signed Terms and Conditions and tick the Terms box on each matching client">&#9989; Check Signed Terms</button>'+
       '<button id="btn-sync-subscribers" style="padding:7px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#555;cursor:pointer;font-size:12px;font-family:inherit" title="Compare the Sub column against Mailchimp and Jetpack/WordPress and review any mismatches">&#128260; Sync Subscribers'+(db.jetpackRemovalQueue.length?' <span style="background:#dc2626;color:#fff;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px">'+db.jetpackRemovalQueue.length+'</span>':'')+'</button>'+
     '</div>'+
     '<div class="tbl-wrap"><table><thead><tr>'+
@@ -18177,6 +18179,7 @@ function renderClients(){
       '<th class="sort-th-c" data-sort="joined" style="cursor:pointer">Joined'+clientSortArrow('joined')+'</th>'+
       '<th style="text-align:center">Paying</th>'+
       '<th style="text-align:center">Sub</th>'+
+      '<th style="text-align:center" title="Terms and Conditions signed">Terms</th>'+
       '<th></th>'+
     '</tr></thead><tbody>'+
     (list.length?list.map(function(c){return '<tr>'+
@@ -18189,8 +18192,9 @@ function renderClients(){
       '<td>'+(c.joined||'')+'</td>'+
       '<td style="text-align:center"><input type="checkbox" class="client-paying-cb" data-id="'+c.id+'" '+(c.isPayingClient?'checked':'')+' style="width:15px;height:15px;cursor:pointer"></td>'+
       '<td style="text-align:center"><input type="checkbox" class="client-sub-cb" data-id="'+c.id+'" '+(c.isSubscriber?'checked':'')+' style="width:15px;height:15px;cursor:pointer"></td>'+
+      '<td style="text-align:center">'+(c.termsSigned?'<span title="Terms and Conditions signed'+(c.termsSignedAt?' '+escHtml(String(c.termsSignedAt).slice(0,10)):'')+'" style="color:#16a34a;font-size:16px;font-weight:700">&#10003;</span>':'<span style="color:#d1d5db">&mdash;</span>')+'</td>'+
       '<td style="white-space:nowrap"><button class="icon-btn edit-client" data-id="'+c.id+'" style="color:#2563eb">&#9999;&#65039;</button><button class="icon-btn del-client" data-id="'+c.id+'" style="color:#dc2626">&#128465;&#65039;</button></td>'+
-    '</tr>';}).join(''):'<tr><td colspan="9"><div class="empty">No clients found</div></td></tr>')+
+    '</tr>';}).join(''):'<tr><td colspan="10"><div class="empty">No clients found</div></td></tr>')+
     '</tbody></table></div>';
 
   $('btn-add-client').addEventListener('click',function(){openClientForm();});
@@ -18289,6 +18293,8 @@ function renderClients(){
   });
   var syncSubsBtn = document.getElementById('btn-sync-subscribers');
   if(syncSubsBtn) syncSubsBtn.addEventListener('click', reconcileSubscribers);
+  var checkTermsBtn = document.getElementById('btn-check-terms');
+  if(checkTermsBtn) checkTermsBtn.addEventListener('click', function(){ syncSignedTerms(true); });
 
   // Checkbox bulk select / delete
   var checkAllC = document.getElementById('client-check-all');
@@ -19874,7 +19880,9 @@ function openClientForm(id){
       '<div class="field full" style="flex-direction:row;align-items:center;gap:24px;padding-top:6px">'+
         '<label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#374151;text-transform:none;font-weight:500;cursor:pointer"><input type="checkbox" id="f-paying" '+(d.isPayingClient?'checked':'')+' style="width:15px;height:15px"> Paying Client</label>'+
         '<label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#374151;text-transform:none;font-weight:500;cursor:pointer"><input type="checkbox" id="f-subscriber" '+(d.isSubscriber?'checked':'')+' style="width:15px;height:15px"> Subscriber</label>'+
+        '<label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#374151;text-transform:none;font-weight:500;cursor:pointer"><input type="checkbox" id="f-terms-signed" '+(d.termsSigned?'checked':'')+' style="width:15px;height:15px"> Terms and Conditions signed</label>'+
       '</div>'+
+      (d.termsSigned&&(d.termsSignedAt||d.termsFileUrl)?'<div class="field full" style="font-size:12px;color:#555;margin-top:-6px">Terms and Conditions signed '+(d.termsSignedAt?escHtml(String(d.termsSignedAt).slice(0,10)):'')+(d.termsVersion?' (version '+escHtml(String(d.termsVersion))+')':'')+(d.termsFileUrl?' &middot; <a href="'+escHtml(d.termsFileUrl)+'" target="_blank" rel="noopener" style="color:#2563eb">View signed copy</a>':'')+'</div>':'')+
       '<div class="field full"><label>Attachments (Google Drive Links)</label>'+
         '<div id="client-attachments-list" style="border:1px solid #e5e7eb;border-radius:8px;padding:10px;background:#fafafa;margin-bottom:8px">'+
           ((d.attachments&&d.attachments.length) ? d.attachments.map(function(a,ai){
@@ -19892,6 +19900,12 @@ function openClientForm(id){
           'Sends the client to a page where they can fill out and sign the authorization form right in their browser (a draw-your-signature pad — no printing or scanning needed), or upload an already-completed PDF instead if they prefer. Either way it goes straight to a private Google Drive folder — it never passes through this app or gets stored in the browser. Once submitted, attach it here the normal way (&#128193; Browse Google Drive above) once you\'ve reviewed it.'+
         '</div>'+
         '<button type="button" id="btn-copy-cc-auth-link" data-cid="'+id+'" style="padding:5px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit;margin-top:8px">&#128274; Copy Fill-and-Sign Link</button>'+
+      '</div>' : '')+
+      (id ? '<div class="field full"><label>Terms and Conditions <span class="hint" style="text-transform:none;font-weight:400">(online signing link for this client)</span></label>'+
+        '<div style="border:1px solid #e5e7eb;border-radius:8px;padding:10px;background:#fafafa;font-size:12px;color:#555">'+
+          'Sends the client to our Terms and Conditions page to read and sign online. A client who submits the online credit card form is sent there automatically. When they sign, the box above is ticked for you (use Check Signed Terms on the Clients page, or it happens on its own the next time this app opens).'+
+        '</div>'+
+        '<button type="button" id="btn-copy-terms-link" data-cid="'+id+'" style="padding:5px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit;margin-top:8px">&#128221; Copy Terms and Conditions Link</button>'+
       '</div>' : '')+
       '<div class="field full"><label>Referral Credits</label>'+
         '<div id="ref-credits-log" style="border:1px solid #e5e7eb;border-radius:8px;padding:10px;background:#fafafa;margin-bottom:8px">'+
@@ -20137,6 +20151,18 @@ function openClientForm(id){
       var link = CC_AUTH_UPLOAD_URL+'?cid='+encodeURIComponent(cid)+'&cname='+encodeURIComponent(d.name||'');
       navigator.clipboard.writeText(link).then(function(){
         toast('Fill-and-sign link copied — send it to the client by email or text','ok');
+      }).catch(function(){
+        toast('Could not copy automatically — link: '+link,'err');
+      });
+    });
+  }
+
+  var copyTermsBtn = document.getElementById('btn-copy-terms-link');
+  if(copyTermsBtn){
+    copyTermsBtn.addEventListener('click', function(){
+      var link = TERMS_SIGN_URL+'?cid='+encodeURIComponent(this.dataset.cid)+'&cname='+encodeURIComponent(d.name||'')+(d.email?'&email='+encodeURIComponent(d.email):'');
+      navigator.clipboard.writeText(link).then(function(){
+        toast('Terms and Conditions link copied — send it to the client by email or text','ok');
       }).catch(function(){
         toast('Could not copy automatically — link: '+link,'err');
       });
@@ -22381,7 +22407,7 @@ function saveClient(id){
       certNumber:certRaw?Number(certRaw):undefined
     };
   }).filter(function(rc){return rc.referredName;});
-  const data={name:name,email:email,phone:gv('fp'),streetAddress:gv('fst'),city:gv('fcty'),state:gv('fstate'),zip:gv('fzip'),birthdate:gv('fbd'),countryOfCitizenship:gv('fcoc'),countryOfBirth:gv('fcob'),passportExpiration:gv('fped'),referredBy:referredBy,referredByDetail:referredByDetail,discounts:discountData.discounts,discountOther:discountData.discountOther,interests:interestData.interests,interestOther:interestData.interestOther,preferredAirline:gv('fpa'),preferredHotel:gv('fph'),preferredCruiseLine:gv('fpc'),mileageBalances:mileageBalances,hotelBalances:hotelBalances,cruiseBalances:cruiseBalances,carRentalBalances:carRentalBalances,trainBalance:trainBalance,creditCardBalances:creditCardBalances,airlineCreditCards:airlineCreditCards,hotelCreditCards:hotelCreditCards,notesLog:notesLog,isPayingClient:document.getElementById('f-paying')?document.getElementById('f-paying').checked:false,isSubscriber:document.getElementById('f-subscriber')?document.getElementById('f-subscriber').checked:false,okToText:document.getElementById('f-oktotext')?document.getElementById('f-oktotext').checked:false,attachments:window._currentClientAttachments||[],referralCredits:referralCredits};
+  const data={name:name,email:email,phone:gv('fp'),streetAddress:gv('fst'),city:gv('fcty'),state:gv('fstate'),zip:gv('fzip'),birthdate:gv('fbd'),countryOfCitizenship:gv('fcoc'),countryOfBirth:gv('fcob'),passportExpiration:gv('fped'),referredBy:referredBy,referredByDetail:referredByDetail,discounts:discountData.discounts,discountOther:discountData.discountOther,interests:interestData.interests,interestOther:interestData.interestOther,preferredAirline:gv('fpa'),preferredHotel:gv('fph'),preferredCruiseLine:gv('fpc'),mileageBalances:mileageBalances,hotelBalances:hotelBalances,cruiseBalances:cruiseBalances,carRentalBalances:carRentalBalances,trainBalance:trainBalance,creditCardBalances:creditCardBalances,airlineCreditCards:airlineCreditCards,hotelCreditCards:hotelCreditCards,notesLog:notesLog,isPayingClient:document.getElementById('f-paying')?document.getElementById('f-paying').checked:false,isSubscriber:document.getElementById('f-subscriber')?document.getElementById('f-subscriber').checked:false,termsSigned:document.getElementById('f-terms-signed')?document.getElementById('f-terms-signed').checked:false,okToText:document.getElementById('f-oktotext')?document.getElementById('f-oktotext').checked:false,attachments:window._currentClientAttachments||[],referralCredits:referralCredits};
   var resultId = id;
   if(id){
     db.clients=db.clients.map(function(c){return c.id===id?Object.assign({},c,data):c;});
@@ -27663,6 +27689,76 @@ function startAutosave(){
     }
   });
 }
+
+// Signed Terms and Conditions -> "Terms and Conditions signed" box on the client.
+// The public signing page (vercel-endpoints/client-agreement.js) files each signed
+// PDF in the "Client Agreements" Drive folder tagged with appProperties (mmType=terms,
+// clientId, email, name, version). This lists those files with the Drive login this
+// app already holds (same OAuth client, so drive.file can see them), matches each to a
+// client by id, then email, then an unambiguous name, and ticks the box. It only ever
+// ticks, never un-ticks; each file is applied once (termsFileId), so un-ticking by hand
+// sticks. Uses the normal saveDB path, only when something actually changed.
+let _termsSyncInFlight = false;
+let _termsSyncLast = 0;
+async function syncSignedTerms(manual){
+  if(_termsSyncInFlight) return;
+  const token = await getDriveTokenSilent();
+  if(!token){
+    if(manual) toast('Connect Google Drive first (Backup / Restore) so signed Terms and Conditions can be checked','err');
+    return;
+  }
+  _termsSyncInFlight = true;
+  _termsSyncLast = Date.now();
+  try{
+    const q = encodeURIComponent("appProperties has { key='mmType' and value='terms' } and trashed=false");
+    const r = await fetch('https://www.googleapis.com/drive/v3/files?q='+q+'&pageSize=200&orderBy=createdTime&fields=files(id,name,createdTime,webViewLink,appProperties)',{headers:{Authorization:'Bearer '+token}});
+    if(!r.ok) throw new Error('Drive returned '+r.status);
+    const files = (await r.json()).files || [];
+    const norm = function(s){ return String(s||'').trim().toLowerCase().replace(/\s+/g,' '); };
+    let matched = 0; const unmatched = [];
+    files.forEach(function(f){
+      const ap = f.appProperties || {};
+      if(db.clients.some(function(c){ return c.termsFileId === f.id; })) return;
+      let c = ap.clientId ? db.clients.find(function(x){ return x.id === ap.clientId; }) : null;
+      if(!c && ap.email){
+        const byEmail = db.clients.filter(function(x){ return norm(x.email) === norm(ap.email); });
+        if(byEmail.length === 1) c = byEmail[0];
+      }
+      if(!c && ap.name){
+        const byName = db.clients.filter(function(x){ return norm(x.name) === norm(ap.name); });
+        if(byName.length === 1) c = byName[0];
+      }
+      if(!c){ unmatched.push((ap.name||f.name)+(ap.email?' ('+ap.email+')':'')); return; }
+      // Files arrive oldest first, so the newest signature for a client ends up recorded.
+      c.termsSigned = true;
+      c.termsSignedAt = f.createdTime || '';
+      c.termsVersion = ap.version || '';
+      c.termsFileId = f.id;
+      c.termsFileUrl = f.webViewLink || '';
+      matched++;
+    });
+    if(matched){
+      saveDB();
+      debugLog('Signed Terms and Conditions applied to '+matched+' client record(s)');
+      toast(matched+' signed Terms and Conditions recorded on client records','ok');
+      if(document.getElementById('btn-check-terms')) renderClients();
+    }else if(manual){
+      toast(unmatched.length ? 'No new matches' : 'No new signed Terms and Conditions','ok');
+    }
+    if(manual && unmatched.length){
+      toast(unmatched.length+' signed but not matched to a client: '+unmatched.join('; ')+'. Open that client and tick the box.','err');
+    }
+  }catch(e){
+    debugLog('Signed Terms check failed: '+e.message);
+    if(manual) toast('Could not check signed Terms and Conditions: '+e.message,'err');
+  }finally{ _termsSyncInFlight = false; }
+}
+// Once shortly after the app loads, then whenever the tab comes back into view
+// (at most every 5 minutes) - no timer, no extra writes unless a signature was found.
+setTimeout(function(){ syncSignedTerms(false); }, 8000);
+document.addEventListener('visibilitychange', function(){
+  if(document.visibilityState === 'visible' && Date.now() - _termsSyncLast > 5*60*1000) syncSignedTerms(false);
+});
 
 let _autoBackupInFlight = false;
 async function runAutoDriveBackup(){

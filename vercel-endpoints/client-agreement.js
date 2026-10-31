@@ -323,7 +323,13 @@ module.exports = async (req, res) => {
     const accessToken = await getServerDriveAccessToken();
     const folderId = await getAgreementFolderId(accessToken);
     const form = new FormData();
-    form.append('metadata', new Blob([JSON.stringify({ name: driveFilename, parents: [folderId] })], { type: 'application/json' }));
+    // appProperties tag the file so the CRM can find signed terms and tick the
+    // matching client (see syncSignedTerms in index.html).
+    const appProperties = { mmType: 'terms', version: AGREEMENT.VERSION, signedAt: now.toISOString() };
+    if (clientId) appProperties.clientId = clean(clientId, 60);
+    if (email) appProperties.email = clean(email, 80);
+    if (fullName) appProperties.name = clean(fullName, 70);
+    form.append('metadata', new Blob([JSON.stringify({ name: driveFilename, parents: [folderId], appProperties: appProperties })], { type: 'application/json' }));
     form.append('file', new Blob([pdfBuffer], { type: 'application/pdf' }), driveFilename);
     const up = await fetch(DRIVE_UPLOAD_URL + '?uploadType=multipart&fields=id,name,webViewLink', {
       method: 'POST', headers: { Authorization: 'Bearer ' + accessToken }, body: form
