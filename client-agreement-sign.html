@@ -44,7 +44,7 @@
 <div class="wrap">
   <div class="card" id="form-card">
     <h1>Sign Our Terms and Conditions</h1>
-    <p class="ver">Miles Man LLC (dba Miles Man) &middot; Version <span id="ver-label">2026-10-30</span></p>
+    <p class="ver">Miles Man LLC (dba Miles Man) &middot; Version <span id="ver-label">2026-10-31</span></p>
     <div id="error-msg"></div>
     <form id="agr-form" novalidate>
       <div class="hp" aria-hidden="true"><label>Leave blank <input type="text" id="hp" name="website" tabindex="-1" autocomplete="off"></label></div>
@@ -90,7 +90,7 @@
 <script>
 (function(){
   var ENDPOINT = 'https://milesman-auth.vercel.app/api/client-agreement';
-  var VERSION = '2026-10-30';
+  var VERSION = '2026-10-31';
 
   var params = new URLSearchParams(window.location.search);
   var clientId = (params.get('cid') || '').trim();
