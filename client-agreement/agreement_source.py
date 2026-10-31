@@ -1,4 +1,4 @@
-# Single source of truth for the Miles Man Client Services Agreement.
+# Single source of truth for the Miles Man Terms and Conditions.
 #
 # build.py renders this into (1) the HTML for the themilesman.com page and
 # (2) vercel-endpoints/agreement-text.js, which api/client-agreement.js stamps
@@ -10,19 +10,19 @@
 # "(a)", "(b)", ... is rendered indented as a sub-clause.
 
 VERSION = "2026-10-30"
-TITLE = "Client Services Agreement"
+TITLE = "Terms and Conditions"
 COMPANY = "Miles Man LLC, doing business as Miles Man Travel Agency"
 SHORT = "Miles Man"
 
 FEE_URLS = "themilesman.com/book-a-trip/ and themilesman.com/award-booking-service/"
 
 SECTIONS = [
-    ("1. Who This Agreement Is Between, and What It Covers", [
-        'This Client Services Agreement (the "Agreement") is between Miles Man LLC, doing business as Miles Man Travel Agency, located in Westfield, New Jersey ("Miles Man," "we," "us"), and the person who signs below ("Client," "you"). Contact: eric@themilesman.com, (908) 419-7700.',
-        'This is a one-time, master agreement. Once you sign it, it governs every service we provide to you, now and in the future, until it is ended under Section 18. You do not need to sign again for each trip. The details of each individual trip or service (dates, suppliers, travelers, prices, and fees) are set out in the quotes, itineraries, invoices, and booking confirmations we send you (each a "Booking Confirmation"), which are part of this Agreement.',
-        'This Agreement covers two kinds of services, together the "Services": (a) Travel Agency Services - researching, recommending, booking, changing, and supporting travel such as cruises, flights, hotels, car rentals, trains, tours, transfers, and theme park vacations; and (b) Points and Miles Services - award booking (redeeming your airline miles, hotel points, and transferable credit card points for travel) and consulting on earning and using miles, points, and credit card rewards.',
-        'You confirm that you are at least 18 years old and that you have authority to sign for, and to make bookings on behalf of, every traveler in your party. You are responsible for sharing the terms of this Agreement and of each supplier with those travelers.',
-        'Acceptance. You accept this Agreement by signing it, by checking the acceptance box online, or, if you have not yet signed, by paying a deposit or fee or proceeding with a booking after we have given you a copy of it or a link to it.',
+    ("1. Who These Terms Are Between, and What They Cover", [
+        'These Terms and Conditions (the "Terms") are between Miles Man LLC, doing business as Miles Man Travel Agency, located in Westfield, New Jersey ("Miles Man," "we," "us"), and the person who signs below ("Client," "you"). Contact: eric@themilesman.com, (908) 419-7700.',
+        'These Terms are a one-time, master agreement. Once you sign them, they govern every service we provide to you, now and in the future, until they are ended under Section 18. You do not need to sign again for each trip. The details of each individual trip or service (dates, suppliers, travelers, prices, and fees) are set out in the quotes, itineraries, invoices, and booking confirmations we send you (each a "Booking Confirmation"), which are part of these Terms.',
+        'These Terms cover two kinds of services, together the "Services": (a) Travel Agency Services - researching, recommending, booking, changing, and supporting travel such as cruises, flights, hotels, car rentals, trains, tours, transfers, and theme park vacations; and (b) Points and Miles Services - award booking (redeeming your airline miles, hotel points, and transferable credit card points for travel) and consulting on earning and using miles, points, and credit card rewards.',
+        'You confirm that you are at least 18 years old and that you have authority to sign for, and to make bookings on behalf of, every traveler in your party. You are responsible for sharing these Terms and each Supplier\'s terms with those travelers.',
+        'Acceptance. You accept these Terms by signing them, by checking the acceptance box online, or, if you have not yet signed, by paying a deposit or fee or proceeding with a booking after we have given you a copy of them or a link to them.',
     ]),
     ("2. Our Role: Travel Agent Only", [
         'We act solely as your travel agent and as a sales agent and intermediary between you and the independent companies that actually provide your travel, such as airlines, cruise lines, hotels, resorts, car rental companies, railways, tour operators, transfer companies, theme parks, insurers, and booking platforms ("Suppliers"). We do not own, operate, or control any Supplier. We are not responsible for any act, omission, breach of contract, or insolvency or bankruptcy of any Supplier.',
@@ -54,7 +54,7 @@ SECTIONS = [
     ("5. Payment and Card Authorization", [
         'All payments to us and to Suppliers are made by credit card unless we agree otherwise in writing. You authorize us to charge the card you give us on our Credit Card Authorization Form for (a) our fees, and (b) amounts owed to Suppliers for the Services you approve, including deposits, final payments, award taxes and fees, and Supplier change or cancellation charges.',
         'This authorization applies both to bookings made with miles and points and to bookings paid for with cash (non-miles and points bookings). For cash bookings it covers payment for the travel itself, such as fares, rates, cruise and package prices, and tickets, together with the related taxes, fees, surcharges, and other charges.',
-        'You confirm that you are the cardholder or are authorized to use the card, and that the card information you give us is accurate. Card details are collected on the separate Credit Card Authorization Form and are not stored in this Agreement.',
+        'You confirm that you are the cardholder or are authorized to use the card, and that the card information you give us is accurate. Card details are collected on the separate Credit Card Authorization Form and are not stored in these Terms.',
         'You agree to meet every deposit and final payment deadline strictly. A Supplier may automatically cancel a booking, apply penalties, and keep the payments you have already made if a deposit or final payment is missed or declined. If you dispute a charge, please contact us first so we can resolve it. If you cancel or dispute a charge for services we have already provided or paid for on your behalf, you remain responsible for those amounts, and we may recover them along with the reasonable costs of collecting them to the extent the law permits.',
         'Chargebacks. You are responsible for all charges you authorize. To the fullest extent the law allows, you agree not to start a credit card chargeback or payment dispute against us because of a Supplier\'s cancellation, delay, default, or bankruptcy, or because of an event described in Section 12, since those matters are between you and the Supplier. If you start a chargeback in breach of this paragraph, you agree to pay us the full amount of the chargeback plus the reasonable legal and administrative costs we incur to dispute it. This paragraph does not limit any right you have under the law to dispute an unauthorized charge or a billing error.',
         'Prices, itineraries, and availability are subject to change by the Supplier until a deposit or payment is received and confirmed. Prices are quoted in the currency stated, and Suppliers may add surcharges, taxes, or exchange-rate adjustments.',
@@ -83,13 +83,13 @@ SECTIONS = [
     ("10. Limits on Our Responsibility", [
         'To the fullest extent the law allows: (a) we are not responsible for the acts, errors, omissions, breaches of contract, delays, insolvency, bankruptcy, or failures of any Supplier or other third party, or for any loss, injury, illness, death, damage, expense, or inconvenience arising from them; (b) we are not responsible for changes to or devaluations of loyalty programs, points, miles, or credit card benefits, or for award space that is unavailable or withdrawn; (c) we are not responsible for losses caused by events outside our reasonable control, as described in Section 12; and (d) our total responsibility to you for any claim arising from the Services is limited to the service fees you actually paid to us for the specific service that gave rise to the claim.',
         'We are also not liable for indirect, incidental, special, consequential, or punitive damages, or for lost enjoyment, lost time, or lost profits.',
-        'Nothing in this Agreement limits responsibility that cannot be limited by law, such as for our own fraud or willful misconduct. If a claim relates to a Supplier, your remedy is generally against that Supplier, and we will reasonably help you present the claim.',
+        'Nothing in these Terms limits responsibility that cannot be limited by law, such as for our own fraud or willful misconduct. If a claim relates to a Supplier, your remedy is generally against that Supplier, and we will reasonably help you present the claim.',
     ]),
     ("11. Your Indemnity", [
         'You agree to be responsible for, and to reimburse us for, losses, claims, and reasonable costs we incur because of information you gave us that was false or incomplete, your violation of the law or of a Supplier\'s rules, the actions of the travelers you booked, or your misuse of the Services, to the extent permitted by law.',
     ]),
     ("12. Events Beyond Our Control", [
-        'Neither of us is in breach of this Agreement for a delay or failure caused by events beyond reasonable control, such as acts of God, natural disasters, severe weather, fire, epidemics or public health emergencies, war, terrorism, civil unrest, strikes, government action or travel restrictions, Supplier insolvency, or failures of the internet, power, or communications. Fees already earned and amounts already paid to Suppliers stay payable, and any refund is subject to the Supplier\'s rules.',
+        'Neither of us is in breach of these Terms for a delay or failure caused by events beyond reasonable control, such as acts of God, natural disasters, severe weather, fire, epidemics or public health emergencies, war, terrorism, civil unrest, strikes, government action or travel restrictions, Supplier insolvency, or failures of the internet, power, or communications. Fees already earned and amounts already paid to Suppliers stay payable, and any refund is subject to the Supplier\'s rules.',
     ]),
     ("13. Privacy and Your Information", [
         'To provide the Services we collect and use personal information that you give us, which can include names, contact details, dates of birth, passport and ID details, loyalty program numbers, travel preferences, health or accessibility needs, and payment details. We use it to research and make bookings, to communicate with you, to take payments, to keep required records, and to improve our services.',
@@ -104,28 +104,28 @@ SECTIONS = [
         'Our guides, strategies, spreadsheets, and recommendations are provided for your personal use. You may not resell or republish them or use them to compete with us.',
     ]),
     ("16. Disputes and Governing Law", [
-        'This Agreement is governed by the laws of the State of New Jersey, without regard to its conflict-of-law rules. If a dispute arises, please contact us first. We will both try in good faith to resolve it informally for at least 30 days. If that does not work, either of us may bring the claim in the state or federal courts located in New Jersey, and you and we consent to the jurisdiction and venue of those courts, except where the law requires a different forum.',
+        'These Terms are governed by the laws of the State of New Jersey, without regard to its conflict-of-law rules. If a dispute arises, please contact us first. We will both try in good faith to resolve it informally for at least 30 days. If that does not work, either of us may bring the claim in the state or federal courts located in New Jersey, and you and we consent to the jurisdiction and venue of those courts, except where the law requires a different forum.',
     ]),
-    ("17. Changes to This Agreement and to Our Fees", [
-        'We may update this Agreement from time to time by posting the new version at themilesman.com/client-agreement/ and, when the change is material, notifying you by email. A new version applies to bookings and services you request after it is posted and does not change bookings already confirmed. If you request new services after a new version is posted, you accept it. If you do not accept a new version, tell us before requesting new services.',
+    ("17. Changes to These Terms and to Our Fees", [
+        'We may update these Terms from time to time by posting the new version at themilesman.com/terms-and-conditions/ and, when the change is material, notifying you by email. A new version applies to bookings and services you request after it is posted and does not change bookings already confirmed. If you request new services after a new version is posted, you accept it. If you do not accept a new version, tell us before requesting new services.',
     ]),
-    ("18. Term and Ending This Agreement", [
-        'This Agreement starts when you sign it and continues until either of us ends it by written notice (email is fine). We may also decline or stop providing Services, for example for non-payment, abusive conduct, or suspected fraud. Ending this Agreement does not affect bookings already made, fees already earned, amounts you owe, or any section that by its nature should continue (including Sections 4, 5, 9, 10, 11, 13, 16, and 19).',
+    ("18. Term and Ending These Terms", [
+        'These Terms start when you sign them and continue until either of us ends it by written notice (email is fine). We may also decline or stop providing Services, for example for non-payment, abusive conduct, or suspected fraud. Ending these Terms does not affect bookings already made, fees already earned, amounts you owe, or any section that by its nature should continue (including Sections 4, 5, 9, 10, 11, 13, 16, and 19).',
     ]),
-    ("19. General Terms", [
-        'Entire agreement. This Agreement, together with each Booking Confirmation, your Credit Card Authorization Form, and the Fee Schedule as described in Section 4, is our entire agreement about the Services and replaces earlier discussions about them. A Booking Confirmation controls for that trip if it conflicts with this Agreement on a specific item such as price or dates.',
-        'If a provision is unenforceable, the rest stays in effect. A failure to enforce a right is not a waiver of it. You may not transfer this Agreement without our written consent. We may use subcontractors and affiliates to perform the Services. Notices may be sent by email to the address on file for you and to eric@themilesman.com for us.',
-        'Some provisions of this Agreement, such as limits on responsibility or on a remedy, may not apply to you if they are not permitted by the law of the state where you live, including New Jersey. In that case, they apply to the fullest extent the law allows, and nothing here takes away rights you cannot waive under applicable law.',
+    ("19. General Provisions", [
+        'Entire agreement. These Terms, together with each Booking Confirmation, your Credit Card Authorization Form, and the Fee Schedule as described in Section 4, are our entire agreement about the Services and replaces earlier discussions about them. A Booking Confirmation controls for that trip if it conflicts with these Terms on a specific item such as price or dates.',
+        'If a provision is unenforceable, the rest stays in effect. A failure to enforce a right is not a waiver of it. You may not transfer these Terms without our written consent. We may use subcontractors and affiliates to perform the Services. Notices may be sent by email to the address on file for you and to eric@themilesman.com for us.',
+        'Some provisions of these Terms, such as limits on responsibility or on a remedy, may not apply to you if they are not permitted by the law of the state where you live, including New Jersey. In that case, they apply to the fullest extent the law allows, and nothing here takes away rights you cannot waive under applicable law.',
     ]),
     ("20. Electronic Signature and Electronic Records Consent", [
-        'You agree to do business with us electronically. You agree that your electronic signature on this Agreement, whether drawn on screen or typed, has the same legal effect as a handwritten signature, and that this Agreement, Booking Confirmations, receipts, and other notices and documents may be delivered and signed electronically under the federal E-SIGN Act and the Uniform Electronic Transactions Act.',
-        'To access electronic records you need an internet-connected device, a current web browser, an email address, and software that can open PDF files. You may ask us for a paper copy of this Agreement or any record at no charge, and you may withdraw your consent to electronic records at any time by emailing eric@themilesman.com, but withdrawing may mean we can no longer provide some Services.',
-        'When you sign, we record the date and time, your name and email address, the version of the Agreement you accepted, your network address, and your browser type. We keep a signed copy as a PDF, and you may download your copy when you sign.',
+        'You agree to do business with us electronically. You agree that your electronic signature on these Terms, whether drawn on screen or typed, has the same legal effect as a handwritten signature, and that these Terms, Booking Confirmations, receipts, and other notices and documents may be delivered and signed electronically under the federal E-SIGN Act and the Uniform Electronic Transactions Act.',
+        'To access electronic records you need an internet-connected device, a current web browser, an email address, and software that can open PDF files. You may ask us for a paper copy of these Terms or any record at no charge, and you may withdraw your consent to electronic records at any time by emailing eric@themilesman.com, but withdrawing may mean we can no longer provide some Services.',
+        'When you sign, we record the date and time, your name and email address, the version of the Terms you accepted, your network address, and your browser type. We keep a signed copy as a PDF, and you may download your copy when you sign.',
     ]),
 ]
 
 ACKNOWLEDGMENT = (
-    'By signing below, I confirm that I have read and understood this Client Services Agreement '
-    '(version ' + VERSION + '), that I agree to be bound by it for all Services that Miles Man LLC '
+    'By signing below, I confirm that I have read and understood these Terms and Conditions '
+    '(version ' + VERSION + '), that I agree to be bound by them for all Services that Miles Man LLC '
     'provides to me, and that I am authorized to sign for everyone in my travel party.'
 )

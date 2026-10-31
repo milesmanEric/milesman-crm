@@ -1,4 +1,4 @@
-// Miles Man CRM - public Client Services Agreement e-signature.
+// Miles Man CRM - public Terms and Conditions e-signature.
 //
 // WHERE THIS GOES: copy to lib/client-agreement.js in the milesman-auth Vercel
 // project (C:\Users\ericl\milesman-auth-fix), together with
@@ -119,21 +119,21 @@ async function getServerMsAccessToken() {
 
 async function sendSignedEmail(msToken, info, pdfBuffer) {
   const lines = [
-    'A Client Services Agreement was just signed online.',
+    'The Terms and Conditions were just signed online.',
     '',
     'Name: ' + info.fullName,
     'Email: ' + info.email,
     'Phone: ' + (info.phone || '(not given)'),
     'Other travelers: ' + (info.travelers || '(none listed)'),
     'Client ID: ' + (info.clientId || '(none - signed from the general website link)'),
-    'Agreement version: ' + info.version,
+    'Terms version: ' + info.version,
     'Signed (New York time): ' + info.signedNy,
     'Drive link: ' + (info.webViewLink || '(unavailable)'),
     '',
     'The signed PDF is attached. To send the client their copy, forward this message to them.'
   ];
   const message = {
-    subject: 'Client Agreement signed - ' + info.fullName,
+    subject: 'Terms and Conditions signed - ' + info.fullName,
     body: { contentType: 'Text', content: lines.join('\n') },
     toRecipients: [{ emailAddress: { address: NOTIFY_EMAIL } }],
     attachments: [{
@@ -243,8 +243,8 @@ async function buildSignedPdf(s) {
   y -= 6;
   line('Audit record', bold, FS, 0);
   const audit = [
-    'Agreement version: ' + AGREEMENT.VERSION,
-    'Agreement SHA-256: ' + s.hash,
+    'Terms version: ' + AGREEMENT.VERSION,
+    'Terms SHA-256: ' + s.hash,
     'IP address: ' + s.ip,
     'Browser: ' + s.userAgent,
     'Consent to electronic records and signature: yes (E-SIGN Act / UETA)',
@@ -295,7 +295,7 @@ module.exports = async (req, res) => {
   if (fullName.length < 3 || fullName.indexOf(' ') < 0) return fail('bad_name', 'Please type your full legal name (first and last).');
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return fail('bad_email', 'Please enter a valid email address.');
   if (b.consentAgree !== true || b.consentEsign !== true) return fail('no_consent', 'Both confirmations are required to sign.');
-  if (b.version !== AGREEMENT.VERSION) return fail('version_mismatch', 'The agreement was updated while this page was open. Please reload the page and review the latest version before signing.', 409);
+  if (b.version !== AGREEMENT.VERSION) return fail('version_mismatch', 'The Terms and Conditions were updated while this page was open. Please reload the page and review the latest version before signing.', 409);
 
   const m = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(String(b.signaturePng || ''));
   if (!m) return fail('bad_signature', 'Please draw your signature in the box.');
@@ -318,7 +318,7 @@ module.exports = async (req, res) => {
   try {
     const pdfBuffer = await buildSignedPdf(signer);
     const stamp = now.toISOString().replace(/[:.]/g, '-');
-    const driveFilename = 'Client Agreement - ' + (sanitizeForFilename(fullName) || 'Unknown') + ' - ' + stamp + '.pdf';
+    const driveFilename = 'Terms and Conditions - ' + (sanitizeForFilename(fullName) || 'Unknown') + ' - ' + stamp + '.pdf';
 
     const accessToken = await getServerDriveAccessToken();
     const folderId = await getAgreementFolderId(accessToken);
@@ -347,6 +347,6 @@ module.exports = async (req, res) => {
     res.status(200).json({ ok: true, fileId: upData.id, fileName: driveFilename, pdfBase64: pdfBuffer.toString('base64'), emailSent: emailSent, emailError: emailError });
   } catch (e) {
     console.error('client-agreement error:', e.message);
-    res.status(500).json({ error: 'sign_error', error_description: 'We could not save your signed agreement. Please try again, or call (908) 419-7700.' });
+    res.status(500).json({ error: 'sign_error', error_description: 'We could not save your signed Terms and Conditions. Please try again, or call (908) 419-7700.' });
   }
 };

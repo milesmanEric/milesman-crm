@@ -43,7 +43,7 @@ def build_wp():
 .mm-agr .mm-sign{margin-top:2.4em;padding-top:1.2em;border-top:2px solid #d6e0ee}
 </style>''')
     parts.append('<div class="mm-agr">')
-    parts.append('<div class="mm-meta"><strong>%s</strong><br>%s<br>Version %s. Please read this agreement, then sign it online at the bottom of this page. You only need to sign once; it covers every trip and service we provide.</div>'
+    parts.append('<div class="mm-meta"><strong>%s</strong><br>%s<br>Version %s. Please read these terms, then sign them online at the bottom of this page. You only need to sign once; they cover every trip and service we provide.</div>'
                  % (esc(A.TITLE), esc(A.COMPANY), esc(A.VERSION)))
     for heading, paras in A.SECTIONS:
         parts.append('<h2>%s</h2>' % esc(heading))
@@ -52,7 +52,7 @@ def build_wp():
     parts.append('<div class="mm-sign" id="sign-online">')
     parts.append('<h2>Sign Online</h2>')
     parts.append('<p>%s</p>' % esc(A.ACKNOWLEDGMENT))
-    parts.append('''<div id="milesman-agr-wrap"><iframe id="milesman-agr-frame" title="Sign the Miles Man Client Services Agreement" src="%s" style="width:100%%;height:1100px;border:none;"></iframe><script>
+    parts.append('''<div id="milesman-agr-wrap"><iframe id="milesman-agr-frame" title="Sign the Miles Man Terms and Conditions" src="%s" style="width:100%%;height:1100px;border:none;"></iframe><script>
 (function(){
   var f = document.getElementById('milesman-agr-frame');
   var qs = window.location.search;

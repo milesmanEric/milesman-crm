@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Miles Man — Sign Client Services Agreement</title>
+<title>Miles Man — Sign Terms and Conditions</title>
 <style>
   *{box-sizing:border-box}
   body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:#f7f8fa;color:#111;padding:16px 12px 40px}
@@ -43,7 +43,7 @@
 <body>
 <div class="wrap">
   <div class="card" id="form-card">
-    <h1>Sign Your Client Services Agreement</h1>
+    <h1>Sign Our Terms and Conditions</h1>
     <p class="ver">Miles Man LLC (Miles Man Travel Agency) &middot; Version <span id="ver-label">2026-10-30</span></p>
     <div id="error-msg"></div>
     <form id="agr-form" novalidate>
@@ -67,20 +67,20 @@
         <textarea id="travelers" placeholder="Names of family members or companions, if any"></textarea>
       </div>
 
-      <div class="check"><input type="checkbox" id="agree"><label for="agree" style="font-weight:400">I have read the full <a href="https://themilesman.com/client-agreement/" target="_blank" rel="noopener">Client Services Agreement</a> and agree to it, for all services Miles Man provides to me. I am at least 18 and may sign for everyone in my travel party.</label></div>
+      <div class="check"><input type="checkbox" id="agree"><label for="agree" style="font-weight:400">I have read the full <a href="https://themilesman.com/terms-and-conditions/" target="_blank" rel="noopener">Terms and Conditions</a> and agree to them, for all services Miles Man provides to me. I am at least 18 and may sign for everyone in my travel party.</label></div>
       <div class="check"><input type="checkbox" id="esign"><label for="esign" style="font-weight:400">I consent to use electronic records and signatures. My drawn signature below has the same effect as a handwritten one.</label></div>
 
       <div class="sig-label">Draw your signature</div>
       <div class="sig-pad-wrap"><canvas id="sig-pad"></canvas></div>
       <div class="sig-row"><span class="sig-note" id="sig-note">Nothing signed yet</span><button type="button" class="sig-clear-btn" id="sig-clear">Clear</button></div>
 
-      <button type="submit" class="primary" id="submit-btn">Sign Agreement</button>
+      <button type="submit" class="primary" id="submit-btn">Sign Terms and Conditions</button>
     </form>
     <div class="footnote">We record the date, time, and your device details with your signature. Questions? Call (908) 419-7700.</div>
   </div>
 
   <div id="ok-box">
-    <h2>Thank you &mdash; your agreement is signed.</h2>
+    <h2>Thank you &mdash; the Terms and Conditions are signed.</h2>
     <p>A copy has been saved with Miles Man. Please download your own copy now.</p>
     <button type="button" class="primary" id="dl-btn">Download my signed copy (PDF)</button>
   </div>
@@ -151,7 +151,7 @@
     var email = emailEl.value.trim();
     if(name.length < 3 || name.indexOf(' ') < 0) return showErr('Please type your full legal name (first and last).');
     if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return showErr('Please enter a valid email address.');
-    if(!document.getElementById('agree').checked) return showErr('Please confirm that you have read and agree to the Client Services Agreement.');
+    if(!document.getElementById('agree').checked) return showErr('Please confirm that you have read and agree to the Terms and Conditions.');
     if(!document.getElementById('esign').checked) return showErr('Please consent to electronic records and signatures to continue.');
     if(!hasStroke) return showErr('Please draw your signature in the box.');
 
@@ -182,7 +182,7 @@
         scrollTop();
       })
       .catch(function(e){
-        btn.disabled = false; btn.textContent = 'Sign Agreement';
+        btn.disabled = false; btn.textContent = 'Sign Terms and Conditions';
         showErr(e.message || 'Could not reach the server. Please try again.');
       });
   });
@@ -195,7 +195,7 @@
     var blob = new Blob([bytes], { type: 'application/pdf' });
     var a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = signedPdf.fileName || 'Miles Man Client Agreement.pdf';
+    a.download = signedPdf.fileName || 'Miles Man Terms and Conditions.pdf';
     document.body.appendChild(a); a.click(); a.remove();
   });
 
