@@ -69,8 +69,11 @@
 
   <div id="ok-msg">
     <div>Thanks! Your form has been submitted securely.</div>
-    <div class="next-step"><strong>One last step:</strong> please review and sign our Terms and Conditions. It only takes a minute, and one signature covers every trip. Taking you there now&hellip;</div>
-    <a id="terms-btn" class="terms-btn" href="https://themilesman.com/terms-and-conditions/" target="_top">Continue to Terms and Conditions</a>
+    <div id="terms-next" style="display:none">
+      <div class="next-step"><strong>One last step:</strong> please review and sign our Terms and Conditions. It only takes a minute, and one signature covers every trip. Taking you there now&hellip;</div>
+      <a id="terms-btn" class="terms-btn" href="https://themilesman.com/terms-and-conditions/" target="_top">Continue to Terms and Conditions</a>
+    </div>
+    <div id="terms-done" class="next-step" style="display:none">We'll take it from here &mdash; no further action needed.</div>
   </div>
 
   <!-- ── Fill & Sign Online (default) ──────────────────────────────────── -->
@@ -301,26 +304,45 @@
     });
   }
 
-  // After the card authorization is submitted, send the client on to sign the
-  // Terms and Conditions. The page embeds this form in an iframe, so the
-  // hand-off is a postMessage to the parent page (a cross-origin iframe is not
-  // allowed to navigate the top window on its own); the button covers the
-  // case where that message is blocked or this page is opened directly.
+  // After the card authorization is submitted, check whether this client has
+  // already signed the Terms and Conditions. Signed: this is the thank-you
+  // screen and nothing more. Not signed (or the check fails): send them on to
+  // sign. The check is the server's (/api/client-agreement, action 'status'):
+  // it looks at the signed copies and at the list of clients the CRM has
+  // marked "Terms and Conditions signed". The page embeds this form in an
+  // iframe, so the hand-off is a postMessage to the parent page (a
+  // cross-origin iframe is not allowed to navigate the top window on its
+  // own); the button covers the case where that message is blocked.
   var TERMS_URL = 'https://themilesman.com/terms-and-conditions/';
+  var TERMS_STATUS_ENDPOINT = 'https://milesman-auth.vercel.app/api/client-agreement';
   function goToTerms(name, email){
     var q = [];
     if(clientId) q.push('cid='+encodeURIComponent(clientId));
     if(name) q.push('cname='+encodeURIComponent(name));
     if(email) q.push('email='+encodeURIComponent(email));
     var url = TERMS_URL + (q.length ? '?'+q.join('&') : '');
-    document.getElementById('terms-btn').href = url;
-    setTimeout(function(){
-      if(window.parent !== window){
-        window.parent.postMessage({type:'milesman-ccauth-next', url:url}, '*');
-      } else {
-        window.location.href = url;
-      }
-    }, 3000);
+    var showNext = function(){
+      document.getElementById('terms-btn').href = url;
+      document.getElementById('terms-next').style.display = 'block';
+      setTimeout(function(){
+        if(window.parent !== window){
+          window.parent.postMessage({type:'milesman-ccauth-next', url:url}, '*');
+        } else {
+          window.location.href = url;
+        }
+      }, 3000);
+    };
+    var showDone = function(){ document.getElementById('terms-done').style.display = 'block'; };
+    var ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    var timer = setTimeout(function(){ if(ctrl) ctrl.abort(); }, 8000);
+    fetch(TERMS_STATUS_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'status', clientId: clientId, email: email || '' }),
+      signal: ctrl ? ctrl.signal : undefined
+    }).then(function(r){ return r.json(); })
+    .then(function(d){ clearTimeout(timer); if(d && d.signed === true) showDone(); else showNext(); })
+    .catch(function(){ clearTimeout(timer); showNext(); });
   }
 
   // ── Mode switch ─────────────────────────────────────────────────────
