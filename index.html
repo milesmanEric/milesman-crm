@@ -959,6 +959,37 @@ const CANVA_SCOPE      = 'design:meta:read design:content:read';
 const CANVA_REDIRECT   = 'https://milesmaneric.github.io/milesman-crm/';
 const CANVA_AUTH_SERVER = 'https://milesman-auth.vercel.app';
 const BACKUP_FILENAME  = 'milesman-crm-backup.json';
+// ── Legal Compliance Tracker data (compliance-tracker.html) ────────────────
+// The tracker is a separate page with its own unencrypted localStorage key,
+// so it is NOT part of `db`. These helpers fold it into every outbound backup
+// (Drive, nightly, Secure Sync, JSON export) as `complianceTracker`, and put
+// it back on restore. It contains requirement status/dates only — no client
+// data beyond per-state customer counts.
+const COMPLIANCE_LS_KEY = 'mm_compliance_v1';
+function complianceSnapshot(){
+  try{
+    var o = JSON.parse(localStorage.getItem(COMPLIANCE_LS_KEY)||'null');
+    return (o && Array.isArray(o.items)) ? o : null;
+  }catch(e){ return null; }
+}
+function backupPayload(space){
+  var c = complianceSnapshot();
+  return JSON.stringify(c ? Object.assign({}, db, {complianceTracker:c}) : db, null, space);
+}
+// Returns true if tracker data was found in the backup and applied. Keeps the
+// previous local copy under a _prev key so a restore can never destroy it.
+function applyComplianceFromBackup(d){
+  try{
+    var c = d && d.complianceTracker;
+    if(!c || !Array.isArray(c.items)) return false;
+    var cur = localStorage.getItem(COMPLIANCE_LS_KEY);
+    if(cur) localStorage.setItem(COMPLIANCE_LS_KEY+'_prev_restore', cur);
+    localStorage.setItem(COMPLIANCE_LS_KEY, JSON.stringify(c));
+    if(db && db.complianceTracker) delete db.complianceTracker;
+    debugLog('Restore: compliance tracker data restored ('+c.items.length+' requirements)');
+    return true;
+  }catch(e){ debugLog('Compliance tracker restore failed: '+e.message); return false; }
+}
 
 const AIRLINES = ['American','United','Delta','Southwest','JetBlue','Qatar Airways','ANA','Emirates','Lufthansa','British Airways','Air France','Virgin Atlantic','Qantas','Etihad','JAL','Air Canada','Frontier','Alaska/Hawaiian Air'];
 const HOTELS   = ['Marriott','Disney','Hilton','Hyatt','Accor','IHG','Wyndham','Four Seasons','Ritz-Carlton','W Hotels','Kimpton','Conrad','Universal','Riu','Eden Roc'];
@@ -4842,7 +4873,7 @@ async function driveBackupInner(silent){
       btn.textContent='Backup to Google Drive';if(!silent)btn.disabled=false;return 'skipped — no Drive token available';
     }
     if(!silent) debugLog('Token OK, uploading backup...');
-    const content=JSON.stringify(db,null,2);
+    const content=backupPayload(2);
     const existing=await findBackupFile(driveToken);
     if(driveConflictDetected(existing)){
       debugLog('Backup BLOCKED — Drive has a newer backup ('+existing.modifiedTime+') than this device last saw ('+localStorage.getItem('mm_last_known_remote_modified')+'). Likely uploaded from another device (or, on this same device, an overlapping manual + auto backup — see driveBackup()\'s lock comment). Restore first to avoid overwriting it.');
@@ -4957,7 +4988,7 @@ async function checkNightlyPermanentBackup(){
     return;
   }
   try{
-    var content = JSON.stringify(db, null, 2);
+    var content = backupPayload(2);
     var filename = nightlyBackupFilename(todayStr);
     var folderId = await getOrCreateDriveBackupsFolder(token);
     var meta = new Blob([JSON.stringify({name:filename, mimeType:'application/json', parents:[folderId]})], {type:'application/json'});
@@ -5043,6 +5074,7 @@ async function driveRestore(){
         payments:Array.isArray(d.payments)?d.payments:[]
       };
       instrumentDbWipeTracing();
+      var _compRestored = applyComplianceFromBackup(d);
       db.clients.forEach(function(c){ if(c.name && !c.name.includes(',')) c.name=toLastFirst(c.name); });
       _dbDecryptFailed = false; // a real recovery just happened — safe to save again
       // Awaited — see importJSON()'s matching comment. A restore is exactly
@@ -5119,7 +5151,7 @@ async function secureSyncBackup(){
     const r = await fetch(DRIVE_AUTH_SERVER+'/api/secure-sync',{
       method:'POST',
       headers:{'Content-Type':'application/json','Authorization':'Bearer '+idToken},
-      body: JSON.stringify(db)
+      body: backupPayload()
     });
     const d = await r.json();
     if(!r.ok){
@@ -5183,6 +5215,7 @@ async function secureSyncRestore(){
         payments:Array.isArray(d.payments)?d.payments:[]
       };
       instrumentDbWipeTracing();
+      var _compRestored = applyComplianceFromBackup(d);
       db.clients.forEach(function(c){ if(c.name && !c.name.includes(',')) c.name=toLastFirst(c.name); });
       _dbDecryptFailed = false; // a real recovery just happened — safe to save again
       // Awaited — see importJSON()/driveRestore()'s matching comment. The
@@ -6298,7 +6331,7 @@ function cleanAndImportRevenue(){
 
 // ── Export / Import ───────────────────────────────────────────────────────
 function exportJSON(){
-  const b=new Blob([JSON.stringify(db,null,2)],{type:'application/json'});
+  const b=new Blob([backupPayload(2)],{type:'application/json'});
   const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='milesman-crm-backup.json';a.click();
   toast('Backup downloaded');
 }
@@ -6312,7 +6345,7 @@ function importJSON(){
         const d=JSON.parse(ev.target.result);
         if(Array.isArray(d.clients)&&Array.isArray(d.trips)){
           debugLog('Local restore: parsed backup file — '+d.clients.length+' clients, '+d.trips.length+' trips');
-          db=d;instrumentDbWipeTracing();if(!Array.isArray(db.vendors))db.vendors=[];if(!Array.isArray(db.bizVendors))db.bizVendors=[];if(!Array.isArray(db.communities))db.communities=[];if(!Array.isArray(db.corporateClients))db.corporateClients=[];if(!Array.isArray(db.planner))db.planner=[];if(!Array.isArray(db.bookmarks))db.bookmarks=[];if(!Array.isArray(db.savedReports))db.savedReports=[];if(!Array.isArray(db.groups))db.groups=[];if(!Array.isArray(db.marketingPlan))db.marketingPlan=[];if(!Array.isArray(db.pendingImportMatches))db.pendingImportMatches=[];if(!Array.isArray(db.jetpackRemovalQueue))db.jetpackRemovalQueue=[];if(!Array.isArray(db.payments))db.payments=[];(db.clients||[]).forEach(function(c){ if(c.name && !c.name.includes(',')) c.name=toLastFirst(c.name); });_dbDecryptFailed=false;
+          db=d;instrumentDbWipeTracing();if(applyComplianceFromBackup(d)) debugLog('Local restore: compliance tracker data restored');if(!Array.isArray(db.vendors))db.vendors=[];if(!Array.isArray(db.bizVendors))db.bizVendors=[];if(!Array.isArray(db.communities))db.communities=[];if(!Array.isArray(db.corporateClients))db.corporateClients=[];if(!Array.isArray(db.planner))db.planner=[];if(!Array.isArray(db.bookmarks))db.bookmarks=[];if(!Array.isArray(db.savedReports))db.savedReports=[];if(!Array.isArray(db.groups))db.groups=[];if(!Array.isArray(db.marketingPlan))db.marketingPlan=[];if(!Array.isArray(db.pendingImportMatches))db.pendingImportMatches=[];if(!Array.isArray(db.jetpackRemovalQueue))db.jetpackRemovalQueue=[];if(!Array.isArray(db.payments))db.payments=[];(db.clients||[]).forEach(function(c){ if(c.name && !c.name.includes(',')) c.name=toLastFirst(c.name); });_dbDecryptFailed=false;
           // Awaited specifically because this is a restore: the natural next
           // move after seeing "Data imported" is to reload to confirm it
           // stuck, and saveDB()'s encrypted write is otherwise fire-and-

@@ -314,7 +314,7 @@ function vData(){
   view.innerHTML='<div class="card"><h2>Agency settings</h2><div class="toolbar"><label for="home">Home (domicile) state</label><select id="home">'+opts(STATES.map(function(s){return [s[0],s[1]];}),home,'— choose —')+'</select>'+
     '<span class="mut">Re-labels the business-registration item for your home state (resets that item’s title, applicability and cadence).</span></div></div>'+
     '<div class="card"><h2>Customers by state</h2><p class="mut" style="margin-top:0">Import a CSV export of your clients. The file needs a column named <em>state</em> (or <em>State</em>/<em>Province</em>); two-letter codes or full state names both work. Counts replace the current numbers. Only counts are stored — no customer names or data.</p><div class="toolbar"><input type="file" id="csv" accept=".csv,text/csv"><button class="btn dng" id="clr">Clear counts</button></div><div id="csvmsg" class="mut"></div></div>'+
-    '<div class="card"><h2>Backup &amp; restore</h2><div class="toolbar"><button class="btn pri" id="exj">Export JSON backup</button><button class="btn" id="exc">Export CSV</button><label class="btn">Import JSON<input type="file" id="imj" accept="application/json,.json" hidden></label><button class="btn" id="seed">Add missing starter items</button><button class="btn dng" id="reset">Erase everything</button></div><p class="mut">Everything lives in this browser’s local storage. Clearing site data erases it, so export a backup after meaningful changes. Evidence fields should hold links or file references — avoid storing sensitive personal data here.</p></div>';
+    '<div class="card"><h2>Backup &amp; restore</h2><div class="toolbar"><button class="btn pri" id="exj">Export JSON backup</button><button class="btn" id="exc">Export CSV</button><label class="btn">Import JSON<input type="file" id="imj" accept="application/json,.json" hidden></label><button class="btn" id="seed">Add missing starter items</button><button class="btn dng" id="reset">Erase everything</button></div><p class="mut">Everything lives in this browser’s local storage. When this page is opened from the CRM’s domain, the CRM includes it in its Google Drive backups (manual, 5-minute auto, nightly), Secure Sync and JSON export, and restores it with them. You can still export a standalone backup here. Evidence fields should hold links or file references — avoid storing sensitive personal data here.</p></div>';
   document.getElementById('home').onchange=function(e){
     var old=db.settings.homeState,nw=e.target.value;db.settings.homeState=nw;
     // re-derive the business-registration item for the old and new home state from the starter definitions
@@ -446,6 +446,10 @@ view.addEventListener('click',function(e){
     save();render();}
 });
 dlg.addEventListener('click',function(e){if(e.target===dlg)dlg.close();});
+
+// If another tab (e.g. a CRM restore from Drive) rewrites our data, pick it up
+// instead of overwriting it with this tab's stale copy on the next save.
+window.addEventListener('storage',function(e){if(e.key===KEY&&!dlg.open){db=load();render();}});
 
 render();
 })();
