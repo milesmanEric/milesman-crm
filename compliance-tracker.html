@@ -61,6 +61,17 @@
   .row{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
   a{color:var(--pri)}
   .mut{color:var(--mut)}
+  details.steps{margin-top:6px;max-width:640px}
+  details.steps summary{cursor:pointer;color:var(--pri);font-weight:600;font-size:12px}
+  details.steps ol{margin:6px 0 4px 18px;padding:0;font-size:13px;line-height:1.45}
+  details.steps li{margin-bottom:4px}
+  .conf{display:inline-block;padding:1px 7px;border-radius:99px;font-size:11px;font-weight:600}
+  .c-secondary{background:#fef3c7;color:#92400e}.c-unverified{background:#fee2e2;color:#991b1b}.c-confirmed{background:#d1fae5;color:#065f46}
+  .pri{display:inline-block;padding:1px 7px;border-radius:6px;font-size:11px;font-weight:700;background:#111;color:#fff;margin-right:6px}
+  .pri.p2{background:#6b7280}.pri.p3{background:#d1d5db;color:#333}
+  .plan-card{border:1px solid var(--bd);border-radius:12px;padding:14px;margin-bottom:12px;background:#fff}
+  .plan-card h3{margin:0 0 4px;font-size:15px}
+  .finds li{margin-bottom:6px}
   @media(max-width:700px){.grid2,.fg{grid-template-columns:1fr}.tile{font-size:10px}.tile small{display:none}}
   @media print{header nav,.toolbar,.btn{display:none}}
 </style>
@@ -70,6 +81,7 @@
   <div><div class="tag">Miles Man</div><h1>Legal Compliance Tracker</h1></div>
   <nav role="tablist" id="tabs">
     <button role="tab" data-tab="dash">Dashboard</button>
+    <button role="tab" data-tab="plan">Action Plan</button>
     <button role="tab" data-tab="reg">Requirements</button>
     <button role="tab" data-tab="states">By State</button>
     <button role="tab" data-tab="dead">Deadlines</button>
@@ -106,14 +118,16 @@ var SEV={overdue:5,soon:4,open:3,progress:2,review:1,compliant:0};
 
 /* ---------- state ---------- */
 var KEY='mm_compliance_v1';
-var db=load();
+var SEED_VERSION=2;
+var db=null; // loaded below, after the seed/audit definitions exist
 var ui={tab:'dash',state:'CA',q:'',scope:'',cat:'',st:'',showNA:false};
 
 function load(){
   var d=null;
   try{d=JSON.parse(localStorage.getItem(KEY)||'null');}catch(e){}
-  if(!d||!Array.isArray(d.items)){d={settings:{homeState:'',customers:{}},items:[]};mergeSeeds(d);}
-  d.settings=d.settings||{homeState:'',customers:{}};d.settings.customers=d.settings.customers||{};
+  if(!d||!Array.isArray(d.items)){d={settings:{homeState:'NJ',customers:{}},items:[]};mergeSeeds(d);d.seedVersion=SEED_VERSION;}
+  d.settings=d.settings||{homeState:'NJ',customers:{}};d.settings.customers=d.settings.customers||{};
+  refreshSeeds(d);
   return d;
 }
 var saveWarned=false;
@@ -123,7 +137,7 @@ function save(){
 }
 
 /* ---------- seed requirements ---------- */
-function mk(o){return Object.assign({applicability:'review',status:'open',owner:'',due:'',cadence:'none',lastReviewed:'',evidence:'',notes:'',source:'',verify:true,details:''},o);}
+function mk(o){return Object.assign({applicability:'review',status:'open',owner:'',due:'',cadence:'none',lastReviewed:'',evidence:'',notes:'',source:'',verify:true,details:'',steps:[],links:[],asOf:'',conf:'unverified',pri:2},o);}
 function seedItems(home){
   var L=[];
   // Federal / all-state
@@ -158,7 +172,124 @@ function seedItems(home){
     if(PRIV.indexOf(c)>=0)L.push(mk({id:c+'-privacy',scope:c,category:'Data privacy & security',title:n+' comprehensive consumer privacy law — applicability',details:'Applies only above state-specific thresholds (consumer volume, revenue, data-sale share) and varies on sensitive data and small-business carve-outs. If covered: privacy notice, consumer rights requests, data-protection practices.',source:n+' consumer data privacy act (check effective date & thresholds)',applicability:'review',cadence:'annual'}));
     if(TELE[c])L.push(mk({id:c+'-tele',scope:c,category:'Marketing & telemarketing',title:TELE[c],details:'State telemarketing / telephone-solicitation rules that go beyond the federal TCPA (consent, registration, time limits, private right of action). Confirm before calling or texting '+n+' residents.',source:n+' telephone solicitation statute',applicability:'review'}));
   });
+  return enrich(L,home);
+}
+
+/* ---------- audit content: steps, sources, confidence, priority ----------
+   conf: 'secondary' = taken from web summaries of the law (primary text not yet read);
+         'unverified' = process steps / general knowledge, no source checked.
+   NOTHING here is marked 'confirmed' because the primary sources (state AG/regulator sites,
+   statute text) could not be fetched when this audit was run. asOf = date researched. */
+var ASOF='2026-11-01';
+var CONTENT=['title','details','source','steps','links','asOf','conf','pri','verify','category'];
+var RETIRE={'IA-sot':1,'NE-promoter':1};
+var THR={NJ:'100,000 consumers, or 25,000 plus revenue from selling data',IN:'100,000 consumers, or 25,000 plus 50% of revenue from data sales',KY:'100,000 consumers, or 25,000 plus 50% of revenue from data sales',RI:'35,000 consumers, or 10,000 plus 20% of revenue from data sales',MD:'35,000 consumers, or 10,000 plus 20% of revenue from data sales',MN:'100,000 consumers, or 25,000 plus 25% of revenue from data sales',TN:'100,000 consumers or 25,000 plus 50% of revenue from data sales, AND over $25M revenue'};
+function L1(label,url){return {label:label,url:url};}
+function overlay(it,o){Object.keys(o).forEach(function(k){it[k]=o[k];});}
+function enrich(L,home){
+  var by={};L.forEach(function(i){by[i.id]=i;});
+  // retired / corrected starter items
+  if(by['IA-sot'])overlay(by['IA-sot'],{title:'Iowa travel agency registration — REPEALED (monitor only)',applicability:'na',pri:3,conf:'secondary',asOf:ASOF,verify:true,
+    details:'Iowa Code chapter 9D (Travel Agencies and Agents) is shown as repealed by 2020 Acts, ch. 1103, in the 2025 Iowa Code. The earlier starter entry (Attorney General registration) was wrong: the old regime was Secretary of State registration, and it no longer exists.',
+    source:'Iowa Code ch. 9D — "Repealed by 2020 Acts, ch 1103, §44, 51"',
+    steps:['Open Iowa Code chapter 9D on legis.iowa.gov and confirm it still shows "Repealed".','Check the Iowa Secretary of State and Attorney General sites for any replacement travel-seller registration.','If both are clear, leave this item as Not applicable and note the date you checked in Notes.','Re-check once a year (Iowa legislative session ends in spring).'],
+    links:[L1('Iowa Code ch. 9D (2025)','https://law.justia.com/codes/iowa/title-i/chapter-9d/')]});
+  if(by['NE-promoter'])overlay(by['NE-promoter'],{title:'Nebraska travel-promoter registration — NOT CONFIRMED to exist (monitor only)',applicability:'na',pri:3,conf:'unverified',asOf:ASOF,verify:true,
+    details:'Searches found no Nebraska travel-promoter registration statute; the earlier starter entry could not be substantiated and has been downgraded. Keep only as a monitoring reminder.',source:'Searched Nebraska Legislature / AG — nothing found',
+    steps:['Search nebraskalegislature.gov statutes for "travel" and "promoter"; also check the Nebraska Attorney General consumer-protection pages.','If nothing exists, leave Not applicable and note the date.','Ask your attorney to confirm once, then re-check annually.'],links:[]});
+  if(by['IL-promoter'])overlay(by['IL-promoter'],{title:'Illinois Travel Promotion Consumer Protection Act — applicability check',pri:2,conf:'secondary',asOf:ASOF,
+    details:'The Illinois act is 815 ILCS 420 (the earlier starter cite, 815 ILCS 635, was wrong). Violations are unlawful practices under the Consumer Fraud Act, enforced by the Attorney General. Whether it imposes a registration duty on a seller like Miles Man was NOT confirmed.',
+    source:'815 ILCS 420 (Travel Promotion Consumer Protection Act); 815 ILCS 505/2Z',
+    steps:['Read 815 ILCS 420 on ilga.gov (sections 1-7), focusing on the definition of "travel promoter" and any registration, bonding or disclosure duties.','Decide whether your business model (booking trips for clients, not selling "travel promotions"/prize offers) falls inside the definition; write the reasoning in Notes.','If covered, file whatever the Act requires with the Illinois Attorney General and add the filing as a dated item.','If not covered, mark Not applicable; still follow Illinois consumer-fraud rules in ads and contracts.'],
+    links:[L1('815 ILCS 420','https://www.ilga.gov/ftp/ILCS/Ch%200815/Act%200420/081504200F.html')]});
+  // new: reported-by-one-source states
+  L.push(mk({id:'MD-sot',scope:'MD',category:'Seller of travel',title:'Maryland seller-of-travel registration — reported by one source, verify',applicability:'review',pri:2,conf:'unverified',asOf:ASOF,
+    details:'One 2026 industry guide lists Maryland among states needing seller-of-travel registration; other guides and older lists do not. Treat as unconfirmed until the Maryland regulator confirms.',source:'Industry guide (Fora, 2026) — conflicts with other lists',
+    steps:['Search the Maryland Attorney General Consumer Protection Division and Maryland Secretary of State sites for "seller of travel" / "travel agency".','Email or call the Consumer Protection Division and ask in writing whether an out-of-state agency selling to Maryland residents must register.','Save the answer in Evidence. If registration is required, add the filing steps and renewal date to this item; if not, mark Not applicable.'],cadence:'annual'}));
+
+  // seller of travel — the four confirmed-in-force states
+  overlay(by['CA-sot'],{pri:1,conf:'secondary',asOf:ASOF,title:'California Seller of Travel (CST) registration',
+    details:'California requires sellers who solicit or sell travel to California residents to register with the Attorney General\'s Seller of Travel Program (reported: at least 10 days before offering services). Out-of-state sellers register with the CST program only and cannot join the Travel Consumer Restitution Fund, so they must give the "not a participant in the Fund" disclosure. Exemptions exist (B&P §17550.20) — the exemption list and current fee were not verified.',
+    source:'Cal. Bus. & Prof. Code §17550 et seq.; CA Attorney General Seller of Travel Program',
+    steps:['Confirm you have California customers (check CRM clients with state = CA). If yes, you "solicit/sell to Californians" and must register unless exempt.','Read B&P Code §17550.20 (exemptions) on leginfo.legislature.ca.gov and record in Notes whether any exemption applies to Miles Man. Do not assume one does.','Go to oag.ca.gov/travel, open the Seller of Travel registration page, and complete the registration for an OUT-OF-STATE seller (CST program only).','Pay the fee shown on that page (older sources say $100 per location per year — use the current amount the AG shows).','When you receive your CST number, add "CST #xxxxxxx-40" (as issued) to ads, website footer, quotes, invoices and the client agreement.','Add the AG\'s required disclosure that you do not participate in the California Travel Consumer Restitution Fund to California-facing contracts and ads (sample wording is in the AG\'s disclosure guide).','Save the registration certificate under Evidence, set the Next due date to your renewal date, and set Repeats = Annual.'],
+    links:[L1('CA AG Seller of Travel','https://oag.ca.gov/travel'),L1('AG disclosure guide (PDF)','https://oag.ca.gov/sites/all/files/agweb/pdfs/travel/disclosure.pdf')]});
+  overlay(by['FL-sot'],{pri:1,conf:'secondary',asOf:ASOF,title:'Florida Sellers of Travel registration (FDACS)',
+    details:'Florida requires sellers of travel who solicit Florida residents to register with FDACS (Fla. Stat. 559.926-559.939; Rule 5J-9.002). Reported: $300 non-refundable registration fee (+$100 if you sell vacation certificates) and a surety bond of $25,000 ($50,000 if vacation certificates) on form FDACS-10200 with the ORIGINAL bond. Independent-agent and other exemptions are in 559.935. No out-of-state exemption was found. All figures need checking against the current FDACS guide.',
+    source:'Fla. Stat. 559.926-559.939; Fla. Admin. Code 5J-9.002; FDACS Travel Registration Package Guide',
+    steps:['Confirm you have Florida customers (CRM clients with state = FL).','Download the current FDACS "Travel Registration Package Guide" and read Fla. Stat. 559.935 (exemptions). Record in Notes whether any exemption applies (e.g., a bona fide independent agent of a registered seller files FDACS-10211 instead).','Get the surety bond: buy the amount the guide requires ($25,000 or $50,000 if you sell vacation certificates) from a surety; it must be the ORIGINAL on form FDACS-10200.','Complete the registration application with the fee shown in the guide (reported $300, +$100 for vacation certificates).','Mail/submit the full package to FDACS per the guide. Keep a copy and the tracking number.','When registered, put your Florida registration number in ads, contracts and website per the statute\'s disclosure rules (confirm exact placement in 559.9xx).','Save the certificate and bond under Evidence. Set Next due to the renewal date on your registration; Repeats = Annual.'],
+    links:[L1('FDACS Travel Registration Guide (PDF)','https://ccmedia.fdacs.gov/content/download/116022/file/Travel-Registration-Package-Guide.pdf'),L1('Fla. Stat. 559.928','https://www.flsenate.gov/Laws/Statutes/2025/559.928')]});
+  overlay(by['WA-sot'],{pri:1,conf:'secondary',asOf:ASOF,title:'Washington seller of travel registration (DOL)',
+    details:'Washington regulates sellers of travel under ch. 19.138 RCW and ch. 308-129 WAC through the Department of Licensing (master license). The definition reaches sellers inside and outside Washington who transact business with Washington consumers (including WA-directed advertising). A surety bond (RCW 19.138.140) is required; a separate out-of-state-seller bond exists. Renewal period (annual vs. longer) and current fees were conflicting/unverified (an older rule showed $145 + $20 service of process).',
+    source:'RCW 19.138; WAC 308-129; WA Department of Licensing Sellers of Travel program',
+    steps:['Confirm you have Washington customers (CRM clients with state = WA).','Read RCW 19.138.021 (definitions/exemptions) and record in Notes whether Miles Man is covered or exempt.','On the DOL Sellers of Travel page, find the current application, fee schedule and bond requirements for an OUT-OF-STATE seller.','Buy the required surety bond (or approved alternative under RCW 19.138.140) and complete the application through DOL Business Licensing Service.','Name any employees the statute requires you to report and calendar the 45-day change-reporting duty (verify it is still in the current text).','Display your registration number as required and keep records the WAC requires.','Save the registration under Evidence; set Next due to the renewal date DOL assigns (confirm whether annual or longer); set Repeats accordingly.'],
+    links:[L1('RCW 19.138','https://app.leg.wa.gov/RCW/default.aspx?cite=19.138'),L1('DOL Sellers of Travel','https://dol.wa.gov/node/1072')]});
+  overlay(by['HI-sot'],{pri:1,conf:'secondary',asOf:ASOF,title:'Hawaii travel agency registration (DCCA)',
+    details:'HRS ch. 468L requires a travel agency to register with the DCCA director before selling or advertising travel services; applicants must show a client trust account; branch offices register separately; registrations renew on or before December 31 of each ODD-numbered year (next: Dec 31, 2027). Whether an out-of-state agency selling to Hawaii residents must register, and current fees, were NOT confirmed (an old $20 application + $40 registration schedule is likely outdated).',
+    source:'HRS ch. 468L; HAR ch. 16-116; DCCA Professional & Vocational Licensing Travel Agency Program',
+    steps:['Confirm you have Hawaii customers (CRM clients with state = HI).','Email DCCA PVL (travel agency program) and ask in writing: does an out-of-state agency that sells travel to Hawaii residents/Hawaii trips have to register? Save the reply in Evidence.','If yes: download the current "Application for Travel Agency" and instructions from cca.hawaii.gov/pvl and open a client trust account (required evidence).','Submit the application, non-refundable fee and trust-account evidence; register any branch separately.','Set Next due to 2027-12-31 and Repeats = every 2 years; confirm the odd-year cycle on the DCCA page.','If DCCA says you are not covered, save that email and mark Not applicable.'],
+    links:[L1('DCCA Travel Agency Program','https://www.cca.hawaii.gov/?p=4618'),L1('Application instructions (PDF)','https://cca.hawaii.gov/pvl/files/2024/05/Info-Instruct-App-for-Travel-Agency_05.24R.pdf')]});
+
+  // federal / all-state
+  function F(id,o){if(by[id])overlay(by[id],Object.assign({asOf:ASOF},o));}
+  F('fed-pci',{pri:1,verify:true,conf:'unverified',title:'PCI DSS — card-authorization form stores full card data incl. security code',
+    details:'AUDIT FINDING: the Credit Card Authorization Form requires the full card number, expiration and security code (CVV), and the privacy policy says completed forms go to private Drive storage. PCI DSS prohibits keeping the security code after authorization even if encrypted, and storing the full card number requires strong protection and a heavier self-assessment. This is a contractual/card-brand obligation, not a statute, but breaches create state-law breach-notice duties.',
+    source:'PCI DSS (SAQ type depends on your processor); merchant agreement',
+    steps:['Ask your merchant processor which SAQ you must complete and whether storing card data in Google Drive PDFs is permitted. Get the answer in writing.','Stop retaining the security code: change the workflow so the CVV is used once to charge the card and then redacted/destroyed from the form and the stored PDF.','Search the Drive folder for existing completed forms; redact or delete CVVs on all stored forms, and delete card numbers once the charge/booking is complete and no longer needed.','Preferred fix: replace the form with a processor-hosted payment link/virtual terminal (e.g., your processor\'s or a PCI-validated vendor\'s hosted page) so card numbers never touch your site or Drive.','Restrict Drive folder access to named people, turn on 2-step verification, and review sharing settings monthly.','Complete the SAQ your processor assigns, sign the attestation, and file it under Evidence.','Update the privacy policy and form text to match what you actually do with card data.'],
+    links:[L1('PCI SSC document library','https://www.pcisecuritystandards.org/document_library/')]});
+  F('fed-dnc',{pri:1,conf:'unverified',steps:['Decide whether you make "telemarketing" calls (calls to induce a sale). Calls only about an existing client\'s booking generally are not telemarketing; sales/marketing calls are.','If you do telemarketing: register at telemarketing.donotcall.gov and download the area codes you call (a few area codes are free; fees are set annually).','Scrub every call list against the registry at least every 31 days and keep the scrub date.','Keep an internal do-not-call list; add anyone who asks and honor it promptly.','Know the exemptions: an established business relationship (purchase within the last 18 months, or an inquiry within the last 3 months) and prior express written consent.','Record the scrub dates under Evidence and set Next due 31 days out (Repeats = Monthly).'],links:[L1('National DNC Registry (telemarketers)','https://telemarketing.donotcall.gov/')]});
+  F('fed-tcpa',{pri:1,conf:'unverified',steps:['List every way you send texts (CRM, phone app, Mailchimp SMS) and every way you collect text permission.','For marketing texts, get clear written consent that names Miles Man, says messages are marketing, that frequency varies, and how to stop ("Reply STOP"). Do not make consent a condition of buying.','Store proof of consent (who, when, how, exact wording) for at least 4 years.','Honor STOP/unsubscribe immediately and add the number to your suppression list.','Send marketing texts/calls only between 8am and 9pm in the recipient\'s time zone.','Your privacy policy says you text only people who agreed — audit your contact list to make sure that is true.'],links:[L1('FCC TCPA overview','https://www.fcc.gov/general/telemarketing-and-robocalls')]});
+  F('fed-canspam',{pri:1,conf:'unverified',steps:['Open your Mailchimp account and confirm each campaign footer has your physical postal address (Miles Man LLC, 622 Arlington Avenue, Westfield, NJ 07090 per your privacy policy) and a working unsubscribe link.','Make sure "From", reply-to and subject lines are accurate and not misleading.','Honor unsubscribe requests within 10 business days (Mailchimp does this automatically; check any lists you email outside Mailchimp, e.g., from Outlook).','Do not buy or rent email lists; only email people who opted in or have a booking relationship.','Save a sample compliant campaign under Evidence; review each year.']});
+  F('fed-ftc-fees',{pri:2,conf:'secondary',steps:['Review every quote, ad and web page: show the total price including mandatory fees wherever you advertise a price for lodging (FTC fee rule), and do not use "free" or "save" claims you cannot back up.','Disclose your service/refund-processing fee in the quote and agreement (your agreement lists a $10 refund processing fee).','Keep substantiation for savings and "best price" claims in a file.','Only publish testimonials from real clients with permission; disclose any compensation.','Review annually and when you change pricing.']});
+  F('fed-dot',{pri:2,conf:'unverified',steps:['List whether you sell airline tickets (as opposed to only referring clients to airlines).','If you sell air: advertise the full price a passenger will pay; disclose your own fees; and follow DOT refund rules when a flight is cancelled or significantly changed (read 14 CFR Part 399 and the DOT refund rule for ticket agents).','Add a refund-handling step to your booking procedure and train anyone who processes air tickets.','Save the procedure under Evidence; review annually.']});
+  F('fed-ofac',{pri:2,conf:'secondary',steps:['Screen every traveler and supplier name against the OFAC Sanctions List Search (ofac.treasury.gov) at booking and keep a dated screenshot.','Cuba: do not book Cuba travel unless the traveler certifies in writing which OFAC-authorized travel category applies (31 CFR Part 515). Keep the signed certification and traveler name/address.','Retention: sources conflict — older OFAC text says 5 years, and OFAC\'s 2024 rule extended recordkeeping to 10 years. Keep these records 10 years until your attorney confirms otherwise.','Add a "Cuba / sanctioned destinations" question to your intake form and agreement.','Review OFAC updates quarterly; save the screening procedure under Evidence.'],links:[L1('OFAC Sanctions List Search','https://sanctionssearch.ofac.treas.gov/')]});
+  F('all-insurance',{pri:1,conf:'secondary',steps:['Decide, in writing, whether Miles Man SELLS travel insurance or only REFERS clients to a licensed seller. Selling includes quoting, recommending a plan, or taking the premium.','If you only refer: use a script that gives contact info/links without describing coverage or comparing plans, and take no commission tied to a sale unless your attorney confirms that is allowed.','If you sell: for each state where clients live, check the state insurance department\'s rules. Many states require a limited-lines travel insurance producer license (some let a travel retailer operate under a licensed producer\'s registration with training; some exempt coverage sold inside a package).','Apply through NIPR for the license(s) or arrange a retailer registration with your insurance supplier; calendar renewals and any continuing education.','Keep the licenses/registrations under Evidence; revisit whenever you add a new insurance product.'],links:[L1('NIPR (producer licensing)','https://nipr.com/')]});
+  F('all-eo',{pri:1,conf:'unverified',steps:['Pull your current E&O/GL policy; note the renewal date and limits.','Check each supplier/consortium agreement and any seller-of-travel registration for minimum coverage or proof-of-insurance requirements.','Set Next due to the policy renewal date (30 days before to shop quotes); Repeats = Annual.','Save the certificate under Evidence.']});
+  F('all-retention',{pri:2,conf:'unverified',steps:['Write a one-page schedule: client files, signed agreements/consents, payment records, OFAC records (10 years), tax records.','Add a "destroy by" date field to your offboarding process and a yearly destruction run for expired files (cross-shred or secure-delete).','Delete card data as soon as a charge is complete (see PCI item); passports/ID copies only as long as needed for the booking.','Save the policy under Evidence; review annually.']});
+  F('fed-policies',{pri:2,conf:'unverified',steps:['Read your published privacy policy and client agreement side by side with actual practice (card handling, texting, cookies/analytics, data sharing).','Fix any mismatch — the practice or the document — and bump the version date.','Have a New Jersey attorney review the client agreement for compliance with the NJ Truth-in-Consumer Contract, Warranty and Notice Act (TCCWNA) and the Consumer Fraud Act.','Save the dated versions under Evidence; review every year.']});
+  F('fed-ada',{pri:3,conf:'unverified',steps:['Run a free automated accessibility scan (e.g., WAVE) on your home page, request form and card/terms forms.','Fix alt text, color contrast, form labels and keyboard access.','Add an accessibility contact line to the site footer.','Save scan results under Evidence; repeat annually.']});
+
+  // New Jersey (home state) — Miles Man LLC, Westfield NJ
+  if(by['NJ-qual'])overlay(by['NJ-qual'],{pri:1,conf:'unverified',asOf:ASOF,title:'New Jersey LLC annual report & registered agent (home state)',
+    details:'Miles Man LLC is a New Jersey LLC. NJ requires an annual report filed with the Division of Revenue and Enterprise Services (understood to be due by the end of the month of the LLC\'s formation anniversary — verify the exact date and fee), plus a registered agent/office.',
+    source:'NJ Division of Revenue & Enterprise Services (NJ Business Gateway)',
+    steps:['Log in to the NJ Business Gateway (njportal.com) and find the annual-report due date shown for Miles Man LLC.','File the annual report and pay the fee before that date; confirm the registered agent and address are current.','Download the filed copy and put it under Evidence.','Set Next due to next year\'s due date; Repeats = Annual.','Also confirm NJ business registration/tax account status (Division of Taxation) and any Westfield local license requirement.'],links:[L1('NJ Business Gateway','https://www.njportal.com/')]});
+  if(by['NJ-breach'])overlay(by['NJ-breach'],{pri:1,conf:'unverified',asOf:ASOF,
+    details:'Home state. NJ law (N.J.S.A. 56:8-161 to -166) requires disclosure to affected NJ customers and, before notifying customers, a report to the Division of State Police. You hold passports/ID numbers, DOBs and card data, which count as personal information in most states.',
+    steps:['Write (or update) an Incident Response Plan: who is in charge, how to contain, how to preserve evidence, who to call (attorney, cyber insurer, processor).','Add the NJ rule: notify the NJ Division of State Police BEFORE notifying affected NJ customers, then notify customers without unreasonable delay (confirm the current text of N.J.S.A. 56:8-163).','Add a state-by-state notice matrix (see each state\'s breach item) with deadline, regulator contact and content requirements.','Run a 30-minute tabletop exercise once a year; save the plan and exercise notes under Evidence.']});
+  // NJ privacy act as an item for home state if missing
+  if(by['NJ-privacy'])overlay(by['NJ-privacy'],({title:'New Jersey Data Privacy Act — threshold check',applicability:'review',cadence:'annual',pri:1,conf:'secondary',asOf:ASOF,
+    details:'NJDPA (effective Jan 15, 2025) applies when you control/process personal data of 100,000+ NJ consumers (or 25,000+ and you earn revenue from selling data). It has no separate small-business carve-out; coverage turns on those counts. A small agency is typically below the threshold — but count rather than assume.',
+    source:'N.J.S.A. 56:8-166.4 et seq. (NJ Data Privacy Act); NJ Division of Consumer Affairs',
+    steps:['Count NJ-resident clients and contacts (CRM clients with state = NJ plus newsletter subscribers with NJ addresses) over the last 12 months.','Compare with the thresholds (100,000; or 25,000 + sale of data).','Record the count and date in Notes. If below, mark Not applicable and re-count every January.','If above, publish the required privacy notice, set up consumer-rights requests (access, correct, delete, opt out) and a data-protection assessment, and appeal process.'],
+    links:[L1('NJ Division of Consumer Affairs','https://www.njconsumeraffairs.gov/')]}));
+
+  // generic per-state templates (process steps only)
+  STATES.forEach(function(st){var c=st[0],n=st[1];
+    var b=by[c+'-breach'];if(b&&!b.steps.length)overlay(b,{pri:2,conf:'unverified',asOf:ASOF,steps:['Find '+n+'\'s breach-notification law (search "'+n+' data breach notification law" on the state Attorney General site) and write down: what counts as personal information, the notice deadline, whether the regulator must be told (and the portal/contact), and what the notice must say.','Add a row for '+n+' to the state matrix in your Incident Response Plan with those four items and the source link.','Mark Compliant once the row exists; review each January.']});
+    var q=by[c+'-qual'];if(q&&c!==home&&c!=='NJ'&&!q.steps.length)overlay(q,{pri:3,conf:'unverified',asOf:ASOF,steps:['Answer: does Miles Man have an office, employee, contractor-employee or stored inventory in '+n+'? (For a remote agency the answer is usually no.)','If NO: set Not applicable and write the date and reason in Notes.','If YES: register to do business with the '+n+' Secretary of State and the state tax agency (ask your CPA) and add the annual-report date here.']});
+    var t=by[c+'-tax'];if(t&&!t.steps.length)overlay(t,{pri:2,conf:'unverified',asOf:ASOF,steps:['Pull trailing-12-month sales and transaction count for '+n+' clients (CRM Reports by client state).','Look up '+n+'\'s economic-nexus threshold and whether travel-agent services/commissions are taxable (state Dept. of Revenue site, or ask your CPA).','If you exceed the threshold AND the service is taxable: register and file. Otherwise mark Not applicable with the numbers and date in Notes.','Repeat every January with new totals.']});
+    var v=by[c+'-privacy'];if(v&&c!=='NJ')overlay(v,{pri:c==='NJ'?1:2,conf:'secondary',asOf:ASOF,steps:['Count '+n+' consumers whose personal data you hold (CRM clients + newsletter subscribers in '+n+') over the last 12 months.','Compare with '+n+'\'s threshold'+(THR[c]?' (reported: '+THR[c]+')':' (look up in the statute)')+'.','If below: mark Not applicable and record the count/date in Notes; recount every January.','If above: publish the required privacy notice, set up consumer-request handling (access, delete, correct, opt-out, appeal), and data-protection assessments where required.']});
+    var te=by[c+'-tele'];if(te)overlay(te,{pri:3,conf:'unverified',asOf:ASOF,steps:['Decide whether you call or text '+n+' numbers for marketing.','If yes: obtain prior express written consent with the state\'s required wording, follow calling-hour limits, and check whether the state requires a telemarketing license or registration (confirm on the state consumer-protection agency site).','If no: mark Not applicable and note the policy "no marketing calls/texts to '+n+'".']});
+  });
   return L;
+}
+
+// Brings stored data up to the current audit content without touching the user's own fields
+// (applicability, progress, owner, due date, cadence, evidence, notes).
+function refreshSeeds(d){
+  if((d.seedVersion||1)>=SEED_VERSION)return;
+  var homeWasEmpty=!d.settings.homeState;if(homeWasEmpty)d.settings.homeState='NJ';
+  mergeSeeds(d);
+  var fresh={};seedItems(d.settings.homeState).forEach(function(i){fresh[i.id]=i;});
+  d.items.forEach(function(it){
+    var sd=fresh[it.id];
+    if(sd){CONTENT.forEach(function(k){it[k]=sd[k];});
+      if(RETIRE[it.id]&&it.applicability==='review')it.applicability='na';
+      if(homeWasEmpty&&it.id==='NJ-qual'&&it.applicability==='review'){it.applicability='applies';it.cadence='annual';}}
+    ['steps','links'].forEach(function(k){if(!Array.isArray(it[k]))it[k]=[];});
+    if(!it.conf)it.conf='unverified';if(!it.pri)it.pri=2;if(it.asOf==null)it.asOf='';
+  });
+  d.seedVersion=SEED_VERSION;
 }
 function mergeSeeds(d){
   var have={};d.items.forEach(function(i){have[i.id]=1;});
@@ -208,20 +339,27 @@ function find(id){return db.items.filter(function(i){return i.id===id;})[0];}
 var view=document.getElementById('view');
 function render(){
   Array.prototype.forEach.call(document.querySelectorAll('#tabs button'),function(b){b.setAttribute('aria-selected',b.dataset.tab===ui.tab);});
-  ({dash:vDash,reg:vReg,states:vStates,dead:vDead,data:vData})[ui.tab]();
+  ({dash:vDash,plan:vPlan,reg:vReg,states:vStates,dead:vDead,data:vData})[ui.tab]();
 }
 function go(tab,patch){ui.tab=tab;if(patch)Object.assign(ui,patch);render();window.scrollTo(0,0);}
 
 function badge(it){var e=eff(it);return '<span class="badge b-'+e+'">'+STATUS_LBL[e]+'</span>';}
 function rowHtml(it,showScope){
   var e=eff(it);
-  return '<tr><td>'+badge(it)+'</td><td><strong>'+h(it.title)+'</strong>'+(it.verify?'<span class="vf" title="Confirm with counsel or the regulator">verify</span>':'')+
-    '<div class="sub">'+h(it.details)+'</div>'+(it.source?'<div class="sub">Source: '+h(it.source)+'</div>':'')+
+  return '<tr><td>'+badge(it)+'</td><td><span class="pri p'+(it.pri||2)+'" title="Priority for Miles Man (1 = do first)">P'+(it.pri||2)+'</span><strong>'+h(it.title)+'</strong>'+(it.verify?'<span class="vf" title="Confirm with counsel or the regulator">verify</span>':'')+
+    '<div class="sub">'+h(it.details)+'</div>'+stepsHtml(it)+(it.source?'<div class="sub">Source: '+h(it.source)+'</div>':'')+
     (it.evidence?'<div class="sub">Evidence: '+linkify(it.evidence)+'</div>':'')+(it.notes?'<div class="sub">Notes: '+h(it.notes)+'</div>':'')+'</td>'+
     (showScope?'<td>'+h(scopeLabel(it.scope))+'</td>':'')+
     '<td>'+h(it.category)+'</td><td>'+h(it.owner||'—')+'</td><td>'+relDue(it.due)+'<div class="sub">'+h(CADENCE[it.cadence][0])+(it.lastReviewed?' · last '+h(it.lastReviewed):'')+'</div></td>'+
     '<td style="white-space:nowrap"><button class="btn sm" data-act="edit" data-id="'+h(it.id)+'">Edit</button> '+
     (it.applicability==='applies'?'<button class="btn sm" data-act="done" data-id="'+h(it.id)+'" title="Mark complete'+(it.cadence!=='none'?' and set next due date':'')+'">Done</button>':'')+'</td></tr>';
+}
+var CONF_LBL={confirmed:'Primary source read',secondary:'From web summaries — verify',unverified:'Process/general knowledge — verify'};
+function stepsHtml(it){
+  var st=Array.isArray(it.steps)?it.steps:[];if(!st.length)return '';
+  var links=(it.links||[]).map(function(l){return '<a href="'+h(l.url)+'" target="_blank" rel="noopener noreferrer">'+h(l.label)+'</a>';}).join(' · ');
+  return '<details class="steps"><summary>Step-by-step ('+st.length+')</summary><ol>'+st.map(function(x){return '<li>'+h(x)+'</li>';}).join('')+'</ol>'+
+    (links?'<div class="sub">Links: '+links+'</div>':'')+'<div class="sub"><span class="conf c-'+h(it.conf||'unverified')+'">'+h(CONF_LBL[it.conf]||CONF_LBL.unverified)+'</span>'+(it.asOf?' · researched '+h(it.asOf):'')+'</div></details>';
 }
 function linkify(s){var m=/^https?:\/\/\S+$/.exec(s.trim());return m?'<a href="'+h(s.trim())+'" target="_blank" rel="noopener noreferrer">'+h(s.trim())+'</a>':h(s);}
 function tableHtml(items,showScope){
@@ -234,7 +372,7 @@ function vDash(){
   var cust=db.settings.customers,tot=0;Object.keys(cust).forEach(function(k){tot+=cust[k]||0;});
   var k=function(cls,n,label,patch){return '<button class="kpi '+cls+'" data-go="reg" data-patch=\''+JSON.stringify(patch)+'\'><b>'+n+'</b><span>'+label+'</span></button>';};
   var h1='<div class="kpis">'+k('red',c.overdue,'Overdue',{st:'overdue'})+k('amb',c.soon,'Due in 30 days',{st:'soon'})+k('vio',c.review,'Need applicability review',{st:'review'})+
-    k('',c.open+c.progress,'Open (applies)',{st:'open'})+k('grn',pct+'%','Compliant of '+total+' tracked',{st:'compliant'})+k('amb',c.nodate,'Recurring, no date set',{st:''})+'</div>';
+    k('',c.open+c.progress,'Open (applies)',{st:'open'})+k('grn',pct+'%','Compliant of '+total+' tracked',{st:'compliant'})+k('amb',c.nodate,'Recurring, no date set',{st:''})+'<button class="kpi red" data-go="plan"><b>'+p1open()+'</b><span>Priority-1 actions open</span></button></div>';
   var map='<div class="map">';
   TILEROWS.forEach(function(row,r){for(var col=0;col<11;col++){
     var code=null;Object.keys(row).forEach(function(k2){if(row[k2]===col)code=k2;});
@@ -254,6 +392,38 @@ function vDash(){
   view.innerHTML=h1+'<div class="card"><h2>Compliance by state'+(tot?' <span class="mut">· '+tot.toLocaleString()+' customers tracked</span>':'')+'</h2>'+map+'</div><div class="grid2"><div class="card">'+pri+'</div><div class="card">'+nx+'</div></div>';
 }
 
+
+function p1open(){return db.items.filter(function(i){var e=eff(i);return (i.pri||2)===1&&e!=='na'&&e!=='compliant';}).length;}
+function planCard(it){
+  return '<div class="plan-card"><h3><span class="pri p'+(it.pri||2)+'">P'+(it.pri||2)+'</span>'+h(it.title)+' '+badge(it)+'</h3><div class="sub mut">'+h(scopeLabel(it.scope))+' · '+h(it.category)+(it.due?' · due '+h(it.due):'')+'</div>'+
+    '<div class="sub" style="max-width:none;margin:6px 0">'+h(it.details)+'</div>'+
+    (it.steps&&it.steps.length?'<ol style="margin:6px 0 6px 18px;padding:0;line-height:1.5">'+it.steps.map(function(x){return '<li>'+h(x)+'</li>';}).join('')+'</ol>':'')+
+    (it.links&&it.links.length?'<div class="sub" style="max-width:none">Links: '+it.links.map(function(l){return '<a href="'+h(l.url)+'" target="_blank" rel="noopener noreferrer">'+h(l.label)+'</a>';}).join(' · ')+'</div>':'')+
+    '<div class="sub" style="max-width:none"><span class="conf c-'+h(it.conf||'unverified')+'">'+h(CONF_LBL[it.conf]||CONF_LBL.unverified)+'</span>'+(it.asOf?' · researched '+h(it.asOf):'')+(it.source?' · Source: '+h(it.source):'')+'</div>'+
+    '<div style="margin-top:8px"><button class="btn sm" data-act="edit" data-id="'+h(it.id)+'">Edit / set owner &amp; date</button> '+(it.applicability==='applies'?'<button class="btn sm" data-act="done" data-id="'+h(it.id)+'">Done</button>':'')+'</div></div>';
+}
+function vPlan(){
+  var open=db.items.filter(function(i){var e=eff(i);return e!=='na'&&e!=='compliant';});
+  var g={1:[],2:[],3:[]};open.forEach(function(i){(g[i.pri||2]||g[2]).push(i);});
+  [1,2,3].forEach(function(k){g[k].sort(function(a,b){return (SEV[eff(b)]||0)-(SEV[eff(a)]||0)||(a.scope+a.title<b.scope+b.title?-1:1);});});
+  var finds='<div class="card"><h2>Audit findings for Miles Man LLC <span class="mut">· researched '+ASOF+'</span></h2><ol class="finds">'+
+   '<li><strong>Card data (urgent).</strong> The credit-card authorization form collects the full card number, expiration and security code, and completed forms are kept in Drive. Retaining the security code after authorization violates PCI DSS. Fix this first (see the PCI item).</li>'+
+   '<li><strong>Seller-of-travel registration.</strong> California, Florida, Washington and Hawaii have active seller-of-travel laws that can reach a remote agency with customers there. Each needs an exemption check or a registration (bond, fee, disclosures). Iowa’s law was repealed in 2020; Illinois and Nebraska could not be confirmed; one source also lists Maryland.</li>'+
+   '<li><strong>New Jersey (home state).</strong> LLC annual report, breach-notice rule (State Police first), and the NJ Data Privacy Act threshold check. Review the client agreement under NJ consumer-contract law.</li>'+
+   '<li><strong>Marketing.</strong> Newsletter and texting need CAN-SPAM, TCPA consent records and Do-Not-Call handling, plus FL/OK/MD state calling rules if you market there.</li>'+
+   '<li><strong>Insurance sales.</strong> Decide whether you sell or only refer travel insurance; selling usually needs a license or retailer registration that varies by state.</li>'+
+   '<li><strong>Per-state items</strong> (breach notice, nexus/tax, privacy-law thresholds, foreign qualification) are process checklists — most small agencies will mark many “Not applicable” after a quick count.</li></ol>'+
+   '<p class="mut" style="margin:8px 0 0"><strong>How reliable is this?</strong> Facts labeled “From web summaries” come from search results summarizing the law; nothing here has been checked against the primary statute or agency page, because those sites were blocked when the audit ran. Fees, bond amounts, deadlines and exemptions must be confirmed on the agency page named in each step (or with your attorney) before you pay or file. Not legal advice.</p></div>';
+  var html=finds;
+  [[1,'Priority 1 — do first'],[2,'Priority 2 — check and decide'],[3,'Priority 3 — low risk / monitor']].forEach(function(r){
+    var list=g[r[0]];html+='<div class="card"><h2>'+r[1]+' <span class="mut">('+list.length+')</span></h2>';
+    if(!list.length)html+='<div class="empty">Nothing open.</div>';
+    else if(r[0]===1)html+=list.map(planCard).join('');
+    else html+='<details><summary style="cursor:pointer;color:var(--pri);font-weight:600">Show '+list.length+' items</summary><div style="margin-top:12px">'+list.map(planCard).join('')+'</div></details>';
+    html+='</div>';
+  });
+  view.innerHTML=html;
+}
 function filtered(){
   var q=ui.q.toLowerCase();
   return db.items.filter(function(i){
@@ -312,7 +482,7 @@ function vDead(){
 function vData(){
   var home=db.settings.homeState;
   view.innerHTML='<div class="card"><h2>Agency settings</h2><div class="toolbar"><label for="home">Home (domicile) state</label><select id="home">'+opts(STATES.map(function(s){return [s[0],s[1]];}),home,'— choose —')+'</select>'+
-    '<span class="mut">Re-labels the business-registration item for your home state (resets that item’s title, applicability and cadence).</span></div></div>'+
+    '<span class="mut">Defaults to NJ (Miles Man LLC is a New Jersey LLC). Re-labels the business-registration item for your home state (resets that item’s title, applicability and cadence).</span></div></div>'+
     '<div class="card"><h2>Customers by state</h2><p class="mut" style="margin-top:0">Import a CSV export of your clients. The file needs a column named <em>state</em> (or <em>State</em>/<em>Province</em>); two-letter codes or full state names both work. Counts replace the current numbers. Only counts are stored — no customer names or data.</p><div class="toolbar"><input type="file" id="csv" accept=".csv,text/csv"><button class="btn dng" id="clr">Clear counts</button></div><div id="csvmsg" class="mut"></div></div>'+
     '<div class="card"><h2>Backup &amp; restore</h2><div class="toolbar"><button class="btn pri" id="exj">Export JSON backup</button><button class="btn" id="exc">Export CSV</button><label class="btn">Import JSON<input type="file" id="imj" accept="application/json,.json" hidden></label><button class="btn" id="seed">Add missing starter items</button><button class="btn dng" id="reset">Erase everything</button></div><p class="mut">Everything lives in this browser’s local storage. When this page is opened from the CRM’s domain, the CRM includes it in its Google Drive backups (manual, 5-minute auto, nightly), Secure Sync and JSON export, and restores it with them. You can still export a standalone backup here. Evidence fields should hold links or file references — avoid storing sensitive personal data here.</p></div>';
   document.getElementById('home').onchange=function(e){
@@ -367,8 +537,8 @@ function importCustomerCsv(text){
 }
 function csvCell(v){v=String(v==null?'':v);if(/^[=+\-@\t\r]/.test(v))v="'"+v;return /[",\n\r]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;}
 function exportCsv(){
-  var head=['id','jurisdiction','category','title','applicability','status_effective','owner','due','cadence','last_reviewed','evidence','source','notes'];
-  var lines=[head.join(',')].concat(db.items.map(function(i){return [i.id,scopeLabel(i.scope),i.category,i.title,i.applicability,eff(i),i.owner,i.due,i.cadence,i.lastReviewed,i.evidence,i.source,i.notes].map(csvCell).join(',');}));
+  var head=['id','jurisdiction','priority','category','title','applicability','status_effective','owner','due','cadence','last_reviewed','steps','confidence','researched','evidence','source','notes'];
+  var lines=[head.join(',')].concat(db.items.map(function(i){return [i.id,scopeLabel(i.scope),i.pri||2,i.category,i.title,i.applicability,eff(i),i.owner,i.due,i.cadence,i.lastReviewed,(i.steps||[]).map(function(x,n){return (n+1)+') '+x;}).join(' '),i.conf,i.asOf,i.evidence,i.source,i.notes].map(csvCell).join(',');}));
   download('milesman-compliance-'+today()+'.csv',lines.join('\r\n'),'text/csv');
 }
 function icsEsc(s){return String(s).replace(/\\/g,'\\\\').replace(/;/g,'\\;').replace(/,/g,'\\,').replace(/\r?\n/g,'\\n');}
@@ -401,7 +571,9 @@ function editDlg(id,scope){
     fld('What it requires','e-det','<textarea id="e-det" rows="3">'+h(it.details)+'</textarea>',1)+
     fld('Source / citation','e-src','<input id="e-src" value="'+h(it.source)+'">',1)+
     fld('Evidence (link or file location)','e-ev','<input id="e-ev" placeholder="e.g. https://drive.google.com/… or “Drive/Compliance/CA-CST-2026.pdf”" value="'+h(it.evidence)+'">',1)+
+    fld('Steps (one per line)','e-steps','<textarea id="e-steps" rows="5">'+h((it.steps||[]).join('\n'))+'</textarea>',1)+
     fld('Notes','e-notes','<textarea id="e-notes" rows="2">'+h(it.notes)+'</textarea>',1)+
+    fld('Priority','e-pri','<select id="e-pri">'+opts([['1','P1 — do first'],['2','P2'],['3','P3 — monitor']],String(it.pri||2))+'</select>')+
     '<div class="field full"><label><input type="checkbox" id="e-ver"'+(it.verify?' checked':'')+'> Flag “verify” (not yet confirmed with counsel/regulator)</label></div></div>'+
     '<div class="row">'+(id?'<button type="button" class="btn dng" id="e-del" style="margin-right:auto">Delete</button>':'')+'<button type="button" class="btn" id="e-cancel">Cancel</button><button class="btn pri" type="submit">Save</button></div></form>';
   dlg.showModal();
@@ -409,7 +581,7 @@ function editDlg(id,scope){
   if(id)document.getElementById('e-del').onclick=function(){if(confirm('Delete this requirement? (Starter items can be re-added from Settings & Data.)')){db.items=db.items.filter(function(i){return i.id!==id;});save();dlg.close();render();}};
   document.getElementById('ef').onsubmit=function(){
     var v=function(k){return document.getElementById(k).value;};
-    var o={id:it.id,title:v('e-title').trim(),scope:v('e-scope'),category:v('e-cat'),applicability:v('e-app'),status:v('e-status'),owner:v('e-owner').trim(),cadence:v('e-cad'),due:v('e-due'),lastReviewed:v('e-last'),details:v('e-det'),source:v('e-src'),evidence:v('e-ev'),notes:v('e-notes'),verify:document.getElementById('e-ver').checked};
+    var o={id:it.id,title:v('e-title').trim(),scope:v('e-scope'),category:v('e-cat'),applicability:v('e-app'),status:v('e-status'),owner:v('e-owner').trim(),cadence:v('e-cad'),due:v('e-due'),lastReviewed:v('e-last'),details:v('e-det'),source:v('e-src'),evidence:v('e-ev'),notes:v('e-notes'),verify:document.getElementById('e-ver').checked,steps:v('e-steps').split('\n').map(function(x){return x.trim();}).filter(Boolean),pri:parseInt(v('e-pri'),10)||2};
     if(!o.title)return;
     if(id)Object.assign(it,o);else db.items.push(mk(o));
     save();render();
@@ -449,6 +621,7 @@ dlg.addEventListener('click',function(e){if(e.target===dlg)dlg.close();});
 
 // If another tab (e.g. a CRM restore from Drive) rewrites our data, pick it up
 // instead of overwriting it with this tab's stale copy on the next save.
+db=load();save();
 window.addEventListener('storage',function(e){if(e.key===KEY&&!dlg.open){db=load();render();}});
 
 render();
