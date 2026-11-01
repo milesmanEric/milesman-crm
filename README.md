@@ -13,3 +13,5 @@ Sync is incremental after the first run.
 Book a Trip form submissions import via CSV, or automatically from the connected Outlook inbox every 5 minutes.
 
 See [USER_GUIDE.md](USER_GUIDE.md) for how to actually use the CRM day to day, or [DOCUMENTATION.md](DOCUMENTATION.md) for the full architecture, data model, feature list, and integration details.
+
+Legal compliance tracker: open [compliance-tracker.html](compliance-tracker.html) — federal + 50-state (and DC) requirements register with deadlines, owners, evidence links, a state map, CSV/JSON/.ics export. Stored locally in the browser and included in the CRM's Drive backups (manual, auto, nightly), Secure Sync and JSON export/restore; starter items are a checklist, not legal advice.
