@@ -337,6 +337,7 @@ tr:last-child td{border-bottom:none}
 
       <button class="menu-toggle-btn" data-menu="menu-more">&#9881;&#65039; Help &amp; Settings <span class="menu-caret">&#9656;</span></button>
       <div class="menu-group" id="menu-more" style="display:none">
+        <button class="sync-btn" id="btn-compliance-tracker" style="color:#2563eb;border-color:#93c5fd" title="Federal + 50-state legal compliance requirements, deadlines and owners (opens in a new tab)">&#9878;&#65039; Legal Compliance Tracker</button>
         <button class="sync-btn" id="btn-user-guide" style="color:#888;border-color:#ddd;font-size:11px">&#128214; User Guide</button>
         <button class="sync-btn" id="btn-documentation" style="color:#888;border-color:#ddd;font-size:11px">&#128220; Documentation</button>
         <button class="sync-btn" id="btn-debug-toggle" style="color:#888;border-color:#ddd;font-size:11px">&#128030; Debug Panel</button>
@@ -27572,6 +27573,7 @@ function bindClick(id, handler){
   bindClick('btn-reimport-tripform-emails', openReimportTripFormEmailsModal);
   bindClick('btn-pending-import-matches', openPendingImportMatchesModal);
   bindClick('btn-pending-traveler-matches', openPendingTravelerMatchesModal);
+  bindClick('btn-compliance-tracker', function(){ window.open('compliance-tracker.html', '_blank', 'noopener,noreferrer'); });
   bindClick('btn-user-guide', function(){ window.open('user-guide.html', '_blank', 'noopener,noreferrer'); });
   bindClick('btn-documentation', function(){ window.open('documentation.html', '_blank', 'noopener,noreferrer'); });
   bindClick('btn-debug-toggle', function(){
