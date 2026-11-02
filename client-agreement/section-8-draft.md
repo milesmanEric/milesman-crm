@@ -1,4 +1,4 @@
-# DRAFT for counsel review. Not live. Not yet in agreement_source.py.
+# Section 8 is now in the Terms (version 2026-11-03). Counsel questions below are still open.
 
 Items in [brackets] are open questions for counsel or facts to confirm.
 
