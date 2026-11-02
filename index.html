@@ -1430,6 +1430,11 @@ const DEFAULT_MARKETING_PLAN = [
 const THEME_PARKS = ['Disney World','Disneyland California','Universal Studios Hollywood','Universal Studios Orlando'];
 const TRAIN_CLASSES = ['Coach','Business Class','First Class','Sleeper Car'];
 const TRAIN_CARRIERS = ['Amtrak','Frecciarossa','Eurostar'];
+// Trip-wide travel insurance policy (Booked Trip Details' own Insurance
+// category) — distinct from the per-category "Insurance Premium"/"Coverage
+// Amount" add-on fields already on Hotel/Car/Transfers/Tours/Theme Park/
+// Train/Bus, which cover just that one booking rather than the whole trip.
+const INSURANCE_CARRIERS = ['BHTP'];
 const CAR_SIZES = ['Economy','Compact','Midsize','Full-size','SUV','Minivan','Luxury','Convertible'];
 // Vehicle-class preference for a private transfer / car service ride —
 // deliberately coarser than CAR_SIZES (which is for self-drive rentals).
@@ -17512,6 +17517,19 @@ function renderCalendar(){
     if(cru.finalPaymentDueDate) addToMap(cru.finalPaymentDueDate, t, 'final-payment-due');
   });
 
+  // Same idea for theme park tickets — each entry (a trip can have several
+  // park tickets) can carry its own payment due date, same legacy
+  // single-object-vs-array guard tripToItineraryOpts() already uses for
+  // booked.themePark.
+  db.trips.forEach(function(t){
+    if(t.status==='Cancelled') return;
+    var bd = t.booked || {};
+    var themeParkEntries = Array.isArray(bd.themePark) ? bd.themePark : (bd.themePark && Object.keys(bd.themePark).length ? [bd.themePark] : []);
+    themeParkEntries.forEach(function(p){
+      if(p.paymentDueDate) addToMap(p.paymentDueDate, t, 'themepark-payment-due');
+    });
+  });
+
   // Build calendar grid HTML
   var days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   var headerCells = days.map(function(d){return '<div class="cal-header-cell">'+d+'</div>';}).join('');
@@ -17530,7 +17548,7 @@ function renderCalendar(){
     var dayNumHtml = isToday
       ? '<div class="cal-day-num today-num">'+d+'</div>'
       : '<div class="cal-day-num">'+d+'</div>';
-    var paymentLabels = {'deposit-due':'Deposit Due','second-deposit-due':'2nd Deposit Due','final-payment-due':'Final Payment Due'};
+    var paymentLabels = {'deposit-due':'Deposit Due','second-deposit-due':'2nd Deposit Due','final-payment-due':'Final Payment Due','themepark-payment-due':'Theme Park Payment Due'};
     var tripHtml = trips.slice(0,3).map(function(entry){
       var t=entry.trip, tp=entry.type;
       if(paymentLabels[tp]){
@@ -21056,6 +21074,8 @@ function themeParkEntryRowInnerHtml(entry){
       foreignPriceFieldsHtml('themepark-entry-currency','themepark-entry-price-foreign',entry.currency,entry.priceForeign)+
       '<div class="field"><label>Price ($)</label><input class="themepark-entry-price" type="number" value="'+(entry.price||'')+'"></div>'+
       '<div class="field"><label>Miles Man Booking Fee ($)</label><input class="themepark-entry-fee" type="number" value="'+(entry.milesManFee||'')+'"></div>'+
+      '<div class="field"><label>Payment Due Date</label><input class="themepark-entry-payment-due" type="date" value="'+(entry.paymentDueDate||'')+'"></div>'+
+      '<div class="field"><label>Payment Amount ($)</label><input class="themepark-entry-payment-amount" type="number" value="'+(entry.paymentAmount||'')+'"></div>'+
       '<div class="field full"><label>Notes</label><textarea class="themepark-entry-notes">'+(entry.notes||'')+'</textarea></div>'+
     '</div>';
 }
@@ -21075,10 +21095,12 @@ function readThemeParkEntries(){
       priceForeign: Number((row.querySelector('.themepark-entry-price-foreign')||{}).value)||0,
       price: Number((row.querySelector('.themepark-entry-price')||{}).value)||0,
       milesManFee: Number((row.querySelector('.themepark-entry-fee')||{}).value)||0,
+      paymentDueDate: (row.querySelector('.themepark-entry-payment-due')||{}).value||'',
+      paymentAmount: Number((row.querySelector('.themepark-entry-payment-amount')||{}).value)||0,
       notes: (row.querySelector('.themepark-entry-notes')||{}).value||''
     };
   }).filter(function(e){
-    return e.park||e.confirmationNumber||e.ticketType||e.currency||e.priceForeign||e.price||e.milesManFee||e.notes;
+    return e.park||e.confirmationNumber||e.ticketType||e.currency||e.priceForeign||e.price||e.milesManFee||e.paymentDueDate||e.paymentAmount||e.notes;
   });
 }
 // Transfer / car-service entries are the same dynamic add/remove pattern
@@ -21552,7 +21574,7 @@ function backfillSharedMilesManFee(entries, legacyFee){
 }
 function bookedTripDetailsHtml(bd){
   bd = bd || {};
-  var air = bd.airline||{}, cru = bd.cruise||{};
+  var air = bd.airline||{}, cru = bd.cruise||{}, ins = bd.insurance||{};
   // bd.hotel/bd.tours/bd.themePark used to each be a single object (one
   // hotel, one tour, one park per trip); now they're lists, so an old
   // single-object shape gets wrapped into a one-entry list rather than
@@ -21760,6 +21782,10 @@ function bookedTripDetailsHtml(bd){
       fld('Insurance Premium ($)',inp('tb-bus-insurance','number',busInsurancePremium,'If purchased for this trip, through the bus line or a separate insurer'))+
       fld('Coverage Amount ($)',inp('tb-bus-coverage','number',busInsuranceCoverage,'Total coverage provided by the policy above'))+
       pointsEntriesSectionHtml(busPts, 'tb-bus-pts-entries', 'tb-bus-pts-add-btn'))+
+    bookedCatSectionHtml('insurance','Insurance',
+      fld('Carrier',sel('tb-ins-carrier',INSURANCE_CARRIERS,ins.carrier))+
+      fld('Policy Type',inp('tb-ins-policy-type','text',ins.policyType,'e.g. Luxury'))+
+      fld('Premium ($)',inp('tb-ins-premium','number',ins.premium)))+
     '<div class="modal-section-title">Summary</div>'+
     '<div id="tb-booked-summary"></div>';
 }
@@ -22227,6 +22253,9 @@ function readBookedTripDetails(){
     busPts: readPointsEntriesFrom(document.getElementById('tb-bus-pts-entries')),
     busInsurancePremium: gn('tb-bus-insurance'),
     busInsuranceCoverage: gn('tb-bus-coverage'),
+    insurance: {
+      carrier: gv('tb-ins-carrier'), policyType: gv('tb-ins-policy-type'), premium: gn('tb-ins-premium')
+    },
     totalBudget: gn('tb-budget-total')
   };
 }
