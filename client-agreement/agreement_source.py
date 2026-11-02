@@ -9,7 +9,7 @@
 # Plain ASCII only (the PDF uses standard fonts). A paragraph that starts with
 # "(a)", "(b)", ... is rendered indented as a sub-clause.
 
-VERSION = "2026-10-31"
+VERSION = "2026-11-02"
 TITLE = "Terms and Conditions"
 COMPANY = "Miles Man LLC, doing business as Miles Man"
 SHORT = "Miles Man"
@@ -67,12 +67,13 @@ SECTIONS = [
     ]),
     ("7. Your Responsibilities", [
         'You agree to:',
-        '(a) give us complete, accurate information, including each traveler\'s name exactly as it appears on the government-issued ID or passport they will travel with, date of birth, contact details, and any health, mobility, dietary, or accessibility needs. Errors can cause fees, denied boarding, or lost bookings, and name corrections can be costly or impossible;',
+        '(a) give us complete, accurate information, including each traveler\'s name exactly as it appears on the government-issued ID or passport they will travel with, date of birth, and contact details. Errors can cause fees, denied boarding, or lost bookings, and name corrections can be costly or impossible;',
         '(b) read every quote, itinerary, invoice, and confirmation as soon as you receive it and tell us right away, and in any case within 48 hours, about anything that is wrong;',
         '(c) obtain and carry valid travel documents and meet all entry requirements, including passports (many countries require validity of six months beyond your trip), visas, electronic travel authorizations, REAL ID or other ID, vaccinations, testing requirements, health documents, and consents for minors. We may mention requirements as a courtesy, but you are solely responsible for them, and requirements can change;',
         '(d) check government travel advisories and health notices for your destinations;',
         '(e) follow Supplier rules and the law while you travel, and arrive on time for every departure, check-in, and transfer; and',
         '(f) keep your loyalty program, card issuer, and Supplier accounts in good standing and tell us about anything that could affect a booking.',
+        '(g) arrange directly with each Supplier any assistance or accommodation that you or a traveler needs because of a health, medical, mobility, dietary, or accessibility need. We do not collect health information, so please do not send it to us;',
         'We are not responsible if you or any traveler is denied boarding or entry for any reason, including missing or invalid documents or unmet health requirements.',
     ]),
     ("8. Travel Insurance", [
@@ -93,7 +94,7 @@ SECTIONS = [
         'Neither of us is in breach of these Terms for a delay or failure caused by events beyond reasonable control, such as acts of God, natural disasters, severe weather, fire, epidemics or public health emergencies, war, terrorism, civil unrest, strikes, government action or travel restrictions, Supplier insolvency, or failures of the internet, power, or communications. Fees already earned and amounts already paid to Suppliers stay payable, and any refund is subject to the Supplier\'s rules.',
     ]),
     ("13. Privacy and Your Information", [
-        'To provide the Services we collect and use personal information that you give us, which can include names, contact details, dates of birth, passport and ID details, loyalty program numbers, travel preferences, health or accessibility needs, and payment details. We use it to research and make bookings, to communicate with you, to take payments, to keep required records, and to improve our services.',
+        'To provide the Services we collect and use personal information that you give us, which can include names, contact details, dates of birth, passport and ID details, loyalty program numbers, travel preferences, and payment details. We do not ask for or collect health, medical, mobility, dietary, or accessibility information, and we ask that you not send it to us. If you send it anyway, we will not use it to make your bookings and may delete it. We use it to research and make bookings, to communicate with you, to take payments, to keep required records, and to improve our services.',
         'You authorize us to share this information with the Suppliers and service providers needed to carry out your bookings, including those located outside the United States, who have their own privacy practices. We do not sell your personal information. We use reasonable safeguards to protect it, but no system is perfectly secure. Our Privacy Policy, available on our website, explains in more detail how we collect and use information, including through our website.',
         'We do not ask for or store your loyalty program or card issuer passwords. If you choose to share any login details with us, you do so at your own risk, and we will use them only for the specific task you request.',
         'We keep records for as long as needed to provide the Services and meet legal, tax, accounting, and dispute-resolution needs. You may ask to see, correct, or (where the law allows) delete your information by contacting us.',

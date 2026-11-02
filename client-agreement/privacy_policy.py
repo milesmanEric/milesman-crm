@@ -8,7 +8,7 @@ import os
 import re
 
 TITLE = "Privacy Policy"
-EFFECTIVE = "October 31, 2026"
+EFFECTIVE = "November 2, 2026"
 COMPANY = "Miles Man LLC, a New Jersey limited liability company doing business as Miles Man"
 
 SECTIONS = [
@@ -17,10 +17,10 @@ SECTIONS = [
         'It applies to our website, our online forms (trip request, additional travelers, credit card authorization, Terms and Conditions, and post-trip survey), our newsletter, and our communications with you. It should be read together with our Terms and Conditions.',
     ]),
     ("2. Information We Collect", [
-        'Information you give us. This can include your name, email address, phone number, home address, date of birth, passport and ID details (name as shown on the ID, number, expiration date, and country of citizenship), loyalty program and frequent traveler numbers, travel preferences and trip details, health, mobility, dietary, or accessibility needs that you tell us about, information about your travel companions, payment card details on the Credit Card Authorization Form, your signature, survey responses, and anything you write to us in a message or form.',
+        'Information you give us. This can include your name, email address, phone number, home address, date of birth, passport and ID details (name as shown on the passport or ID, expiration date, and country of citizenship), loyalty program and frequent traveler numbers, travel preferences and trip details, information about your travel companions, payment card details on the Credit Card Authorization Form, your signature, survey responses, and anything you write to us in a message or form.',
         'Information collected automatically. When you visit our website we and our service providers receive technical information such as your IP address, browser and device type, the pages you view, the page that referred you, and the date and time of your visit, using cookies and similar technologies (see Section 6).',
         'Information from others. We receive information from the airlines, cruise lines, hotels, and other suppliers we book with (for example booking confirmations), from people who refer you to us, and from advertising platforms if you respond to one of our ads.',
-        'What we do not collect. We do not ask for or store your loyalty program or card issuer passwords. We make award bookings together with you on a live screen share.',
+        'What we do not collect. We do not ask for or store your loyalty program or card issuer passwords. We make award bookings together with you on a live screen share. We also do not ask for or collect health, medical, mobility, dietary, or accessibility information, so please do not send it to us; if you or a traveler needs assistance, arrange it directly with the airline, cruise line, hotel, or other supplier.',
     ]),
     ("3. How We Use Information", [
         'We use personal information to research, price, and make bookings for you; to provide award booking and consulting services; to take payments you authorize; to communicate with you about your trips and our services; to send our newsletter and offers if you have asked for them; to keep records for legal, tax, and accounting purposes; to prevent fraud and keep our systems secure; to understand how our website is used and improve it; and to comply with the law and enforce our Terms and Conditions.',
