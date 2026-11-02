@@ -15,7 +15,7 @@
 // SERVER-SIDE (the browser only sends the typed name, email, and a drawn
 // signature image - it never supplies the agreement text, so a visitor cannot
 // alter what was "signed"), saves it to the private Google Drive folder
-// "Client Agreements" (a sibling of "Credit Card Authorization Forms"), emails
+// "Terms and Conditions" (a sibling of "Credit Card Authorization Forms"), emails
 // eric@themilesman.com with the PDF attached, and returns the PDF to the
 // browser so the client can download their own copy.
 //
@@ -48,7 +48,11 @@ const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const DRIVE_FILES_URL = 'https://www.googleapis.com/drive/v3/files';
 const DRIVE_UPLOAD_URL = 'https://www.googleapis.com/upload/drive/v3/files';
 const SIBLING_FOLDER_NAME = 'Credit Card Authorization Forms';
-const FOLDER_NAME = 'Client Agreements';
+const FOLDER_NAME = 'Terms and Conditions';
+// The folder was first called "Client Agreements". If that folder still exists and the new one
+// does not (the Drive rename has not been done yet), it is used instead, so no second folder is
+// created and existing signatures and the signed-client list stay in one place.
+const LEGACY_FOLDER_NAME = 'Client Agreements';
 const MAX_SIG_BYTES = 600 * 1024;
 
 const MS_TENANT_ID = 'a9346e69-975d-4abb-861a-dea6e2464642';
@@ -80,13 +84,15 @@ async function driveList(accessToken, q, fields) {
   return r.ok && d.files ? d.files : [];
 }
 
-// Finds (or creates once) the "Client Agreements" folder next to the existing
+// Finds (or creates once) the "Terms and Conditions" folder next to the existing
 // "Credit Card Authorization Forms" folder so it lands in the same real
 // "Miles Man" folder instead of spawning a duplicate (see cc-auth-upload.js
 // getUploadFolderId() for why drive.file scope makes this necessary).
 async function getAgreementFolderId(accessToken) {
   const existing = await driveList(accessToken, "mimeType='application/vnd.google-apps.folder' and name='" + FOLDER_NAME + "' and trashed=false", 'files(id)');
   if (existing.length) return existing[0].id;
+  const legacy = await driveList(accessToken, "mimeType='application/vnd.google-apps.folder' and name='" + LEGACY_FOLDER_NAME + "' and trashed=false", 'files(id)');
+  if (legacy.length) return legacy[0].id;
 
   let parents = ['root'];
   const sibling = await driveList(accessToken, "mimeType='application/vnd.google-apps.folder' and name='" + SIBLING_FOLDER_NAME + "' and trashed=false", 'files(id,parents)');

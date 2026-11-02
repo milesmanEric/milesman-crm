@@ -27729,7 +27729,7 @@ function startAutosave(){
 
 // Signed Terms and Conditions -> "Terms and Conditions signed" box on the client.
 // The public signing page (vercel-endpoints/client-agreement.js) files each signed
-// PDF in the "Client Agreements" Drive folder tagged with appProperties (mmType=terms,
+// PDF in the "Terms and Conditions" Drive folder (formerly "Client Agreements") tagged with appProperties (mmType=terms,
 // clientId, email, name, version). This lists those files with the Drive login this
 // app already holds (same OAuth client, so drive.file can see them), matches each to a
 // client by id, then email, then an unambiguous name, and ticks the box. It only ever
@@ -27738,7 +27738,7 @@ function startAutosave(){
 // The credit card form (public page) sends a client on to sign the Terms and
 // Conditions only if they have not signed yet. It asks the server, and the server
 // cannot read this app's data, so this writes a small list of who has the "Terms
-// and Conditions signed" box ticked into the Client Agreements Drive folder as
+// and Conditions signed" box ticked into the Terms and Conditions Drive folder as
 // terms-signed-index.json. Ids and emails are stored as SHA-256 hashes, never in
 // the clear. Rewritten only when the list changes (hash kept in localStorage), so
 // there is no periodic write; a box ticked by hand is covered as well as signatures.
@@ -27769,7 +27769,9 @@ async function publishTermsIndex(){
       return (await r.json()).files || [];
     };
     // The folder is created by the first signature; until it exists there is nothing to publish to.
-    const folders = await list("mimeType='application/vnd.google-apps.folder' and name='Client Agreements' and trashed=false", 'files(id)');
+    let folders = await list("mimeType='application/vnd.google-apps.folder' and name='Terms and Conditions' and trashed=false", 'files(id)');
+    // Older installs: the folder was first called "Client Agreements" until it is renamed in Drive.
+    if(!folders.length) folders = await list("mimeType='application/vnd.google-apps.folder' and name='Client Agreements' and trashed=false", 'files(id)');
     if(!folders.length) return;
     const existing = await list("name='terms-signed-index.json' and '"+folders[0].id+"' in parents and trashed=false", 'files(id)');
     let r;
