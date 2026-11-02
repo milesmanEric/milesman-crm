@@ -9,7 +9,7 @@
 # Plain ASCII only (the PDF uses standard fonts). A paragraph that starts with
 # "(a)", "(b)", ... is rendered indented as a sub-clause.
 
-VERSION = "2026-11-02"
+VERSION = "2026-11-03"
 TITLE = "Terms and Conditions"
 COMPANY = "Miles Man LLC, doing business as Miles Man"
 SHORT = "Miles Man"
@@ -71,9 +71,9 @@ SECTIONS = [
         '(b) read every quote, itinerary, invoice, and confirmation as soon as you receive it and tell us right away, and in any case within 48 hours, about anything that is wrong;',
         '(c) obtain and carry valid travel documents and meet all entry requirements, including passports (many countries require validity of six months beyond your trip), visas, electronic travel authorizations, REAL ID or other ID, vaccinations, testing requirements, health documents, and consents for minors. We may mention requirements as a courtesy, but you are solely responsible for them, and requirements can change;',
         '(d) check government travel advisories and health notices for your destinations;',
-        '(e) follow Supplier rules and the law while you travel, and arrive on time for every departure, check-in, and transfer; and',
-        '(f) keep your loyalty program, card issuer, and Supplier accounts in good standing and tell us about anything that could affect a booking.',
-        '(g) arrange directly with each Supplier any assistance or accommodation that you or a traveler needs because of a health, medical, mobility, dietary, or accessibility need. We do not collect health information, so please do not send it to us;',
+        '(e) follow Supplier rules and the law while you travel, and arrive on time for every departure, check-in, and transfer;',
+        '(f) keep your loyalty program, card issuer, and Supplier accounts in good standing and tell us about anything that could affect a booking; and',
+        '(g) arrange directly with each Supplier any assistance or accommodation that you or a traveler needs because of a health, medical, mobility, dietary, or accessibility need. We do not collect health information, so please do not send it to us.',
         'We are not responsible if you or any traveler is denied boarding or entry for any reason, including missing or invalid documents or unmet health requirements.',
     ]),
     ("8. Travel Insurance", [
