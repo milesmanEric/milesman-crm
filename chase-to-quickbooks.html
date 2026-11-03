@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chase to QuickBooks Converter</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--text:#1c2430;--muted:#657084;--line:#dde1e8;--accent:#1d5fd1;--ok:#17803d;--bad:#b42318}
+@media (prefers-color-scheme:dark){:root{--bg:#12161c;--card:#1b212a;--text:#e6e9ee;--muted:#98a2b3;--line:#2c3441;--accent:#5b9bff;--ok:#4cc27a;--bad:#ff7a6e}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 60px}
+h1{font-size:1.5rem;margin:0 0 4px}
+p.sub{color:var(--muted);margin:0 0 20px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px;margin-bottom:16px}
+.card h2{font-size:1rem;margin:0 0 10px}
+#drop{border:2px dashed var(--line);border-radius:10px;padding:28px;text-align:center;color:var(--muted);cursor:pointer}
+#drop.over{border-color:var(--accent);color:var(--accent)}
+.row{display:flex;flex-wrap:wrap;gap:14px}
+.row label{display:flex;flex-direction:column;font-size:.85rem;color:var(--muted);gap:4px;flex:1 1 180px}
+input,select{font:inherit;padding:8px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--text)}
+button{font:inherit;background:var(--accent);color:#fff;border:0;border-radius:6px;padding:10px 18px;cursor:pointer}
+button:disabled{opacity:.4;cursor:default}
+table{width:100%;border-collapse:collapse;font-size:.85rem}
+th,td{text-align:left;padding:5px 8px;border-bottom:1px solid var(--line)}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+.msg{margin:10px 0 0;font-size:.9rem}
+.ok{color:var(--ok)}.bad{color:var(--bad)}
+ol{padding-left:20px;margin:6px 0}
+small{color:var(--muted)}
+.hide{display:none}
+</style>
+</head>
+<body>
+<main>
+<h1>Chase to QuickBooks Converter</h1>
+<p class="sub">Turns a Chase CSV (or a Chase .QFX/.OFX file QuickBooks rejects) into a Web Connect <b>.QBO</b> file that QuickBooks Desktop 2021 can import. Everything runs in your browser; nothing is uploaded.</p>
+
+<div class="card">
+<h2>1. Choose your Chase file</h2>
+<div id="drop">Drop a Chase <b>.csv</b>, <b>.qfx</b> or <b>.ofx</b> file here, or click to browse</div>
+<input id="file" type="file" accept=".csv,.qfx,.ofx,.qbo,.txt" class="hide">
+<div id="msg" class="msg"></div>
+</div>
+
+<div class="card">
+<h2>2. Account details</h2>
+<div class="row">
+<label>Account type
+<select id="acctType"><option value="CHECKING">Checking</option><option value="SAVINGS">Savings</option><option value="CREDITCARD">Credit card</option></select></label>
+<label>Account number (last 4 is fine)
+<input id="acctId" value="0000" maxlength="22"></label>
+<label>Routing number (bank accounts)
+<input id="routing" value="021000021" maxlength="9"></label>
+<label>Ending balance (optional)
+<input id="balance" placeholder="auto from CSV if present"></label>
+</div>
+<small>Use the same account number every time so QuickBooks keeps linking to the same register.</small>
+</div>
+
+<div class="card">
+<h2>3. Preview and download</h2>
+<div id="summary" class="msg">No file loaded yet.</div>
+<div style="overflow-x:auto"><table id="preview" class="hide"><thead><tr><th>Date</th><th>Description</th><th class="n">Amount</th></tr></thead><tbody></tbody></table></div>
+<p><button id="dl" disabled>Download .QBO file</button></p>
+</div>
+
+<div class="card">
+<h2>Importing into QuickBooks Desktop 2021</h2>
+<ol>
+<li>Open your company file, then choose <b>File &gt; Utilities &gt; Import &gt; Web Connect Files</b>.</li>
+<li>Select the downloaded .QBO file.</li>
+<li>When asked, choose <b>Use an existing QuickBooks account</b> and pick your Chase bank or card account. (First time only; QuickBooks remembers it.)</li>
+<li>Open <b>Banking &gt; Bank Feeds &gt; Bank Feeds Center</b> to review, match and add the transactions.</li>
+</ol>
+<small>Each transaction gets a stable ID, so importing overlapping date ranges will not create duplicates.</small>
+</div>
+</main>
+
+<script>
+var CHASE_FID = '10898', CHASE_ORG = 'B1';
+
+function parseCSV(text) {
+  var rows = [], row = [], f = '', q = false, i, c;
+  text = text.replace(/^﻿/, '');
+  for (i = 0; i < text.length; i++) {
+    c = text[i];
+    if (q) {
+      if (c === '"') { if (text[i + 1] === '"') { f += '"'; i++; } else q = false; }
+      else f += c;
+    } else if (c === '"') q = true;
+    else if (c === ',') { row.push(f); f = ''; }
+    else if (c === '\n' || c === '\r') {
+      if (c === '\r' && text[i + 1] === '\n') i++;
+      row.push(f); f = '';
+      if (row.length > 1 || row[0] !== '') rows.push(row);
+      row = [];
+    } else f += c;
+  }
+  if (f !== '' || row.length) { row.push(f); rows.push(row); }
+  return rows;
+}
+
+function toDate(s) { // MM/DD/YYYY or YYYY-MM-DD -> YYYYMMDD
+  s = (s || '').trim();
+  var m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (m) return m[3] + ('0' + m[1]).slice(-2) + ('0' + m[2]).slice(-2);
+  m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m ? m[1] + m[2] + m[3] : null;
+}
+
+function toAmount(s) {
+  s = (s || '').trim();
+  var neg = /^\(.*\)$/.test(s);
+  var n = parseFloat(s.replace(/[$,()\s]/g, ''));
+  if (isNaN(n)) return null;
+  return neg ? -Math.abs(n) : n;
+}
+
+// Returns {kind:'CHECKING'|'CREDITCARD', txns:[{date,amount,name,memo,checkNum}], balance}
+function parseChaseCSV(text) {
+  var rows = parseCSV(text);
+  if (!rows.length) throw new Error('The file is empty.');
+  var hdr = rows[0].map(function (h) { return h.trim().toLowerCase(); });
+  function col() {
+    for (var a = 0; a < arguments.length; a++) { var k = hdr.indexOf(arguments[a]); if (k >= 0) return k; }
+    return -1;
+  }
+  var cDate = col('posting date', 'post date', 'transaction date', 'date');
+  var cDesc = col('description');
+  var cAmt = col('amount');
+  var cMemo = col('memo');
+  var cChk = col('check or slip #');
+  var cBal = col('balance');
+  if (cDate < 0 || cDesc < 0 || cAmt < 0) throw new Error('This does not look like a Chase CSV (need Date, Description and Amount columns).');
+  var kind = hdr.indexOf('transaction date') >= 0 ? 'CREDITCARD' : 'CHECKING';
+  var txns = [], balance = null;
+  for (var r = 1; r < rows.length; r++) {
+    var x = rows[r];
+    var d = toDate(x[cDate]), a = toAmount(x[cAmt]);
+    if (!d || a === null) continue;
+    if (cBal >= 0 && balance === null) { var b = toAmount(x[cBal]); if (b !== null) balance = b; }
+    txns.push({
+      date: d, amount: a,
+      name: (x[cDesc] || '').replace(/\s+/g, ' ').trim(),
+      memo: cMemo >= 0 ? (x[cMemo] || '').trim() : '',
+      checkNum: cChk >= 0 ? (x[cChk] || '').trim() : ''
+    });
+  }
+  if (!txns.length) throw new Error('No transactions found in this file.');
+  return { kind: kind, txns: txns, balance: balance };
+}
+
+function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+function hash(s) {
+  var h = 5381, i;
+  for (i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0;
+  return h.toString(16);
+}
+
+function addFitids(txns) {
+  var seen = {};
+  txns.forEach(function (t) {
+    var key = t.date + '|' + t.amount.toFixed(2) + '|' + t.name;
+    seen[key] = (seen[key] || 0) + 1;
+    t.fitid = t.date + '0' + hash(key) + '-' + seen[key];
+  });
+}
+
+function nowStamp() {
+  var d = new Date(), p = function (n) { return ('0' + n).slice(-2); };
+  return d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds());
+}
+
+var OFX_HEADER = ['OFXHEADER:100', 'DATA:OFXSGML', 'VERSION:102', 'SECURITY:NONE', 'ENCODING:USASCII',
+  'CHARSET:1252', 'COMPRESSION:NONE', 'OLDFILEUID:NONE', 'NEWFILEUID:NONE', '', ''].join('\r\n');
+
+function signon() {
+  return '<SIGNONMSGSRSV1><SONRS><STATUS><CODE>0<SEVERITY>INFO</STATUS><DTSERVER>' + nowStamp() +
+    '<LANGUAGE>ENG<FI><ORG>' + CHASE_ORG + '<FID>' + CHASE_FID + '</FI><INTU.BID>' + CHASE_FID +
+    '</SONRS></SIGNONMSGSRSV1>';
+}
+
+// opts: {kind:'CHECKING'|'SAVINGS'|'CREDITCARD', acctId, routing, balance}
+function buildQBO(txns, opts) {
+  txns = txns.slice();
+  addFitids(txns);
+  var dates = txns.map(function (t) { return t.date; }).sort();
+  var dtStart = dates[0] + '120000', dtEnd = dates[dates.length - 1] + '120000';
+  var cc = opts.kind === 'CREDITCARD';
+  var bal = (opts.balance === null || opts.balance === undefined || isNaN(opts.balance)) ? 0 : opts.balance;
+  var out = [];
+  txns.forEach(function (t) {
+    var type = t.checkNum ? 'CHECK' : (t.amount < 0 ? 'DEBIT' : 'CREDIT');
+    var s = '<STMTTRN><TRNTYPE>' + type + '<DTPOSTED>' + t.date + '120000<TRNAMT>' + t.amount.toFixed(2) +
+      '<FITID>' + t.fitid;
+    if (t.checkNum) s += '<CHECKNUM>' + esc(t.checkNum);
+    s += '<NAME>' + esc(t.name.slice(0, 32));
+    var memo = t.memo || (t.name.length > 32 ? t.name : '');
+    if (memo) s += '<MEMO>' + esc(memo.slice(0, 255));
+    out.push(s + '</STMTTRN>');
+  });
+  var list = '<BANKTRANLIST><DTSTART>' + dtStart + '<DTEND>' + dtEnd + out.join('') + '</BANKTRANLIST>';
+  var ledger = '<LEDGERBAL><BALAMT>' + bal.toFixed(2) + '<DTASOF>' + dtEnd + '</LEDGERBAL>';
+  var body;
+  if (cc) {
+    body = '<CREDITCARDMSGSRSV1><CCSTMTTRNRS><TRNUID>1<STATUS><CODE>0<SEVERITY>INFO</STATUS><CCSTMTRS><CURDEF>USD' +
+      '<CCACCTFROM><ACCTID>' + esc(opts.acctId) + '</CCACCTFROM>' + list + ledger +
+      '</CCSTMTRS></CCSTMTTRNRS></CREDITCARDMSGSRSV1>';
+  } else {
+    body = '<BANKMSGSRSV1><STMTTRNRS><TRNUID>1<STATUS><CODE>0<SEVERITY>INFO</STATUS><STMTRS><CURDEF>USD' +
+      '<BANKACCTFROM><BANKID>' + esc(opts.routing) + '<ACCTID>' + esc(opts.acctId) + '<ACCTTYPE>' + opts.kind +
+      '</BANKACCTFROM>' + list + ledger + '</STMTRS></STMTTRNRS></BANKMSGSRSV1>';
+  }
+  return OFX_HEADER + '<OFX>' + signon() + body + '</OFX>\r\n';
+}
+
+// Repair a Chase .QFX/.OFX so QuickBooks Desktop accepts it as Web Connect.
+function repairOFX(text) {
+  var i = text.search(/<OFX>/i);
+  if (i < 0) throw new Error('This is not an OFX/QFX file.');
+  var body = text.slice(i);
+  body = body.replace(/<FI>[\s\S]*?<\/FI>/i, '').replace(/<INTU\.BID>[^<\r\n]*/gi, '').replace(/<INTU\.USERID>[^<\r\n]*/gi, '');
+  var fi = '<FI><ORG>' + CHASE_ORG + '<FID>' + CHASE_FID + '</FI><INTU.BID>' + CHASE_FID;
+  if (/<LANGUAGE>[^<\r\n]*/i.test(body)) body = body.replace(/(<LANGUAGE>[^<\r\n]*)/i, '$1' + fi);
+  else body = body.replace(/<\/SONRS>/i, fi + '</SONRS>');
+  return OFX_HEADER + body.replace(/\r?\n/g, '\r\n').replace(/\s+$/, '') + '\r\n';
+}
+
+function countOFX(text) {
+  var m = text.match(/<STMTTRN>/gi);
+  return m ? m.length : 0;
+}
+
+if (typeof document !== 'undefined') (function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var state = null; // {mode:'csv', parsed} | {mode:'ofx', text, count}
+
+  function say(t, cls) { var m = $('msg'); m.textContent = t; m.className = 'msg ' + (cls || ''); }
+
+  function fmt(n) { return (n < 0 ? '-' : '') + '$' + Math.abs(n).toFixed(2); }
+
+  function showPreview(rows) {
+    var tb = $('preview').querySelector('tbody');
+    tb.innerHTML = '';
+    rows.slice(0, 8).forEach(function (t) {
+      var tr = document.createElement('tr');
+      [t.date.replace(/(\d{4})(\d{2})(\d{2})/, '$2/$3/$1'), t.name, fmt(t.amount)].forEach(function (v, k) {
+        var td = document.createElement('td'); td.textContent = v; if (k === 2) td.className = 'n'; tr.appendChild(td);
+      });
+      tb.appendChild(tr);
+    });
+    $('preview').className = rows.length ? '' : 'hide';
+  }
+
+  function load(file) {
+    var rd = new FileReader();
+    rd.onload = function () {
+      var text = String(rd.result);
+      try {
+        if (/<OFX>/i.test(text)) {
+          var n = countOFX(text);
+          if (!n) throw new Error('No transactions found in this file.');
+          state = { mode: 'ofx', text: text, count: n };
+          $('summary').textContent = n + ' transactions found in the Chase file. It will be repaired for QuickBooks (account details above are ignored).';
+          showPreview([]);
+        } else {
+          var p = parseChaseCSV(text);
+          state = { mode: 'csv', parsed: p };
+          $('acctType').value = p.kind === 'CREDITCARD' ? 'CREDITCARD' : ($('acctType').value === 'SAVINGS' ? 'SAVINGS' : 'CHECKING');
+          if (p.balance !== null && !$('balance').value) $('balance').placeholder = 'CSV says ' + p.balance.toFixed(2);
+          var tot = p.txns.reduce(function (a, t) { return a + t.amount; }, 0);
+          $('summary').textContent = p.txns.length + ' transactions detected (' + (p.kind === 'CREDITCARD' ? 'credit card' : 'bank account') + '), net ' + fmt(tot) + '.';
+          showPreview(p.txns);
+        }
+        $('dl').disabled = false;
+        say(file.name + ' loaded.', 'ok');
+      } catch (e) {
+        state = null; $('dl').disabled = true; showPreview([]);
+        $('summary').textContent = 'No file loaded yet.';
+        say(e.message, 'bad');
+      }
+    };
+    rd.readAsText(file);
+  }
+
+  $('drop').onclick = function () { $('file').click(); };
+  $('file').onchange = function () { if (this.files[0]) load(this.files[0]); };
+  ['dragover', 'dragenter'].forEach(function (ev) { $('drop').addEventListener(ev, function (e) { e.preventDefault(); $('drop').classList.add('over'); }); });
+  ['dragleave', 'drop'].forEach(function (ev) { $('drop').addEventListener(ev, function (e) { e.preventDefault(); $('drop').classList.remove('over'); }); });
+  $('drop').addEventListener('drop', function (e) { if (e.dataTransfer.files[0]) load(e.dataTransfer.files[0]); });
+
+  $('dl').onclick = function () {
+    if (!state) return;
+    var out;
+    if (state.mode === 'ofx') out = repairOFX(state.text);
+    else {
+      var bal = parseFloat($('balance').value.replace(/[$,]/g, ''));
+      if (isNaN(bal)) bal = state.parsed.balance;
+      var routing = $('routing').value.replace(/\D/g, '');
+      if ($('acctType').value !== 'CREDITCARD' && routing.length !== 9) { say('Routing number must be 9 digits.', 'bad'); return; }
+      out = buildQBO(state.parsed.txns, {
+        kind: $('acctType').value, acctId: $('acctId').value.trim() || '0000', routing: routing, balance: bal
+      });
+    }
+    var blob = new Blob([out], { type: 'application/vnd.intu.qbo' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'chase-' + nowStamp().slice(0, 8) + '.qbo';
+    document.body.appendChild(a); a.click(); a.remove();
+    say('Downloaded ' + a.download + '. Import it via File > Utilities > Import > Web Connect Files.', 'ok');
+  };
+})();
+</script>
+</body>
+</html>
