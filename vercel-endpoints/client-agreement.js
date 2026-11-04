@@ -128,6 +128,7 @@ async function sendSignedEmail(msToken, info, pdfBuffer) {
     'The Terms and Conditions were just signed online.',
     '',
     'Name: ' + info.fullName,
+    'Traveler name: ' + info.travelerName,
     'Email: ' + info.email,
     'Phone: ' + (info.phone || '(not given)'),
     'Other travelers: ' + (info.travelers || '(none listed)'),
@@ -243,6 +244,7 @@ async function buildSignedPdf(s) {
     y -= 12;
   }
   line('Signed by: ' + s.fullName, bold, FS, 0);
+  line('Traveler name: ' + s.travelerName, bold, FS, 0);
   line('Email: ' + s.email + (s.phone ? '    Phone: ' + s.phone : ''), font, FS, 0);
   if (s.travelers) para('Also signing for: ' + s.travelers, 0);
   line('Date and time: ' + s.signedNy + ' (New York)  /  ' + s.signedUtc + ' (UTC)', font, FS, 0);
@@ -340,6 +342,7 @@ module.exports = async (req, res) => {
   if (b.action === 'status') { await handleStatus(b, res); return; }
 
   const fullName = clean(b.fullName, 100);
+  const travelerName = clean(b.travelerName, 100);
   const email = clean(b.email, 120);
   const phone = clean(b.phone, 30);
   const travelers = clean(b.travelers, 500);
@@ -347,6 +350,7 @@ module.exports = async (req, res) => {
   const fail = (code, msg, status) => res.status(status || 400).json({ error: code, error_description: msg });
 
   if (fullName.length < 3 || fullName.indexOf(' ') < 0) return fail('bad_name', 'Please type your full legal name (first and last).');
+  if (travelerName.length < 3 || travelerName.indexOf(' ') < 0) return fail('bad_traveler', 'Please type the traveler name (first and last). If this page was already open, reload it and try again.');
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return fail('bad_email', 'Please enter a valid email address.');
   if (b.consentAgree !== true || b.consentEsign !== true) return fail('no_consent', 'Both confirmations are required to sign.');
   if (b.version !== AGREEMENT.VERSION) return fail('version_mismatch', 'The Terms and Conditions were updated while this page was open. Please reload the page and review the latest version before signing.', 409);
@@ -360,7 +364,7 @@ module.exports = async (req, res) => {
   const now = new Date();
   const xff = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
   const signer = {
-    fullName: fullName, email: email, phone: phone, travelers: travelers, clientId: clientId,
+    fullName: fullName, travelerName: travelerName, email: email, phone: phone, travelers: travelers, clientId: clientId,
     signatureBytes: signatureBytes,
     signedUtc: now.toISOString().replace('T', ' ').replace(/\.\d+Z$/, ' UTC').replace(' UTC', ''),
     signedNy: formatNy(now),
@@ -383,6 +387,7 @@ module.exports = async (req, res) => {
     if (clientId) appProperties.clientId = clean(clientId, 60);
     if (email) appProperties.email = clean(email, 80).toLowerCase();
     if (fullName) appProperties.name = clean(fullName, 70);
+    appProperties.travelerName = clean(travelerName, 70);
     form.append('metadata', new Blob([JSON.stringify({ name: driveFilename, parents: [folderId], appProperties: appProperties })], { type: 'application/json' }));
     form.append('file', new Blob([pdfBuffer], { type: 'application/pdf' }), driveFilename);
     const up = await fetch(DRIVE_UPLOAD_URL + '?uploadType=multipart&fields=id,name,webViewLink', {
@@ -395,7 +400,7 @@ module.exports = async (req, res) => {
     try {
       const msToken = await getServerMsAccessToken();
       await sendSignedEmail(msToken, {
-        fullName: fullName, email: email, phone: phone, travelers: travelers, clientId: clientId,
+        fullName: fullName, travelerName: travelerName, email: email, phone: phone, travelers: travelers, clientId: clientId,
         version: AGREEMENT.VERSION, signedNy: signer.signedNy, webViewLink: upData.webViewLink, driveFilename: driveFilename
       }, pdfBuffer);
       emailSent = true;

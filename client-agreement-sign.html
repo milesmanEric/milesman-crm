@@ -52,6 +52,10 @@
         <label for="full-name">Full legal name <span class="hint">(this is your signature of record)</span></label>
         <input type="text" id="full-name" autocomplete="name" required>
       </div>
+      <div class="field">
+        <label for="traveler-name">Traveler name <span class="hint">(required &mdash; the person traveling, as shown on their ID; may be the same as you)</span></label>
+        <input type="text" id="traveler-name" autocomplete="off" required>
+      </div>
       <div class="row2">
         <div class="field">
           <label for="email">Email</label>
@@ -149,7 +153,9 @@
     errEl.style.display = 'none';
     var name = fullName.value.trim();
     var email = emailEl.value.trim();
+    var travelerName = document.getElementById('traveler-name').value.trim();
     if(name.length < 3 || name.indexOf(' ') < 0) return showErr('Please type your full legal name (first and last).');
+    if(travelerName.length < 3 || travelerName.indexOf(' ') < 0) return showErr('Please type the traveler name (first and last).');
     if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return showErr('Please enter a valid email address.');
     if(!document.getElementById('agree').checked) return showErr('Please confirm that you have read and agree to the Terms and Conditions.');
     if(!document.getElementById('esign').checked) return showErr('Please consent to electronic records and signatures to continue.');
@@ -162,6 +168,7 @@
       body: JSON.stringify({
         version: VERSION,
         fullName: name,
+        travelerName: travelerName,
         email: email,
         phone: document.getElementById('phone').value.trim(),
         travelers: document.getElementById('travelers').value.trim(),
