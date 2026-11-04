@@ -21366,8 +21366,17 @@ function excursionEntryRowInnerHtml(entry){
       '<div class="field"><label>Date</label><input class="excursion-entry-date" type="date" value="'+(entry.date||'')+'"></div>'+
       '<div class="field"><label>Time</label><input class="excursion-entry-time" type="time" value="'+(entry.time||'')+'"></div>'+
       '<div class="field"><label>Number of People</label><input class="excursion-entry-people" type="number" value="'+(entry.people||'')+'"></div>'+
-      '<div class="field"><label>Price ($)</label><input class="excursion-entry-price" type="number" value="'+(entry.price||'')+'"></div>'+
+      '<div class="field"><label>Price Per Person ($)</label><input class="excursion-entry-price-per-person" type="number" value="'+(entry.pricePerPerson||entry.price||'')+'"></div>'+
+      '<div class="field"><label>Total Price ($)</label><input class="excursion-entry-total-price" type="number" readonly style="background:#f3f4f6;color:#555" value="'+(excursionTotalPrice(entry.pricePerPerson||entry.price,entry.people)||'')+'"></div>'+
     '</div>';
+}
+// Total Price is never typed in directly — it's always Price Per Person x
+// Number of People, kept in sync live as either of those changes (see the
+// 'input' listener in bindBookedTripDetailsListeners) and recomputed here
+// for the initial render/reload.
+function excursionTotalPrice(pricePerPerson,people){
+  var p=Number(pricePerPerson)||0, n=Number(people)||0;
+  return p&&n ? Math.round(p*n*100)/100 : '';
 }
 function excursionEntryRowHtml(entry){
   return '<div class="excursion-entry-row" style="border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin-bottom:10px;background:#fafafa">'+excursionEntryRowInnerHtml(entry)+'</div>';
@@ -21382,10 +21391,11 @@ function readExcursionEntries(){
       date: (row.querySelector('.excursion-entry-date')||{}).value||'',
       time: (row.querySelector('.excursion-entry-time')||{}).value||'',
       people: Number((row.querySelector('.excursion-entry-people')||{}).value)||0,
-      price: Number((row.querySelector('.excursion-entry-price')||{}).value)||0
+      pricePerPerson: Number((row.querySelector('.excursion-entry-price-per-person')||{}).value)||0,
+      totalPrice: Number((row.querySelector('.excursion-entry-total-price')||{}).value)||0
     };
   }).filter(function(e){
-    return e.name||e.date||e.time||e.people||e.price;
+    return e.name||e.date||e.time||e.people||e.pricePerPerson;
   });
 }
 // Flight segments are the same dynamic add/remove pattern as hotel/tour
@@ -21892,6 +21902,17 @@ function bindBookedTripDetailsListeners(){
       div.style.cssText = 'border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin-bottom:10px;background:#fafafa';
       div.innerHTML = excursionEntryRowInnerHtml({});
       excursionEntriesEl.appendChild(div);
+    });
+  }
+  if(excursionEntriesEl){
+    excursionEntriesEl.addEventListener('input', function(e){
+      if(!e.target.classList.contains('excursion-entry-price-per-person') && !e.target.classList.contains('excursion-entry-people')) return;
+      var row = e.target.closest('.excursion-entry-row');
+      if(!row) return;
+      var totalEl = row.querySelector('.excursion-entry-total-price');
+      var pricePerPerson = (row.querySelector('.excursion-entry-price-per-person')||{}).value;
+      var people = (row.querySelector('.excursion-entry-people')||{}).value;
+      if(totalEl) totalEl.value = excursionTotalPrice(pricePerPerson, people);
     });
   }
   if(excursionEntriesEl){
