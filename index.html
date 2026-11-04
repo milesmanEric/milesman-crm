@@ -11293,7 +11293,29 @@ async function fetchAllGraphMessagePages(token, url, label){
   if(next){
     debugLog(label+': stopped after '+MAX_PAGES+' pages ('+all.length+' messages) — there may be more');
   }
+  // Tagged (not just returned as a second value) so every existing caller
+  // that treats this as a plain array of messages keeps working unchanged —
+  // only the watermark-advancement logic below needs to look at it.
+  all.truncated = !!next;
   return all;
+}
+// The three periodic checks below (trip form, contact form, revenue report)
+// used to advance their watermark to "now" unconditionally, even when
+// fetchAllGraphMessagePages() above had to stop at MAX_PAGES with more mail
+// still unfetched (exactly the high-volume/long-gap scenario that safety
+// cap exists for — see its own comment). That silently and PERMANENTLY
+// skipped whatever matching submission sat in the unfetched remainder: the
+// watermark jumped straight past it to "now", and every future check only
+// ever looks forward from there. A real submission (reported missing) was
+// lost this way. When truncated, hold the watermark at the oldest message
+// actually fetched (fetched is newest-first, so that's the last element)
+// instead of "now" — not a full fix for the one gap this exact run already
+// can't see past, but it stops the loss from compounding: the next check
+// resumes right where this one left off and the backlog closes over
+// successive polls instead of the watermark perpetually outrunning it.
+function nextPollWatermark(fetched, checkedAt){
+  if(!fetched.truncated || !fetched.length) return checkedAt;
+  return fetched[fetched.length-1].receivedDateTime;
 }
 // Polls the connected Outlook inbox for new "Book a trip" submission
 // emails and imports each one through the same logic as the manual CSV
@@ -11349,7 +11371,9 @@ async function checkForNewTripFormEmails(silent){
     // to that wrong trip instead) — a real incident this fixed.
     messages.sort(function(a,b){ return new Date(a.receivedDateTime) - new Date(b.receivedDateTime); });
     debugLog('Trip form email check: '+messages.length+' new submission email(s)');
-    localStorage.setItem('mm_last_tripform_check', checkedAt);
+    var nextWatermark = nextPollWatermark(fetched, checkedAt);
+    if(nextWatermark!==checkedAt) debugLog('Trip form email check: more mail than this run could fetch — watermark held at '+nextWatermark+' instead of advancing to now, so the next check keeps closing the backlog instead of skipping past it');
+    localStorage.setItem('mm_last_tripform_check', nextWatermark);
     if(!messages.length) return;
 
     var counters = {added:0, enriched:0, tasksCreated:0, tripsCreated:0, skipped:0};
@@ -11626,7 +11650,9 @@ async function checkForNewContactFormEmails(silent){
       return CONTACT_FORM_EMAIL_SUBJECT_RE.test((m.subject||'').trim()) && processedIds.indexOf(m.id)===-1;
     });
     debugLog('Contact form email check: '+messages.length+' new submission email(s)');
-    localStorage.setItem('mm_last_contactform_check', checkedAt);
+    var nextWatermark = nextPollWatermark(fetched, checkedAt);
+    if(nextWatermark!==checkedAt) debugLog('Contact form email check: more mail than this run could fetch — watermark held at '+nextWatermark+' instead of advancing to now, so the next check keeps closing the backlog instead of skipping past it');
+    localStorage.setItem('mm_last_contactform_check', nextWatermark);
     if(!messages.length) return;
 
     var counters = {added:0, enriched:0, tasksCreated:0, skipped:0};
@@ -12001,7 +12027,9 @@ async function checkForNewRevenueReportEmails(silent){
       return REVENUE_REPORT_EMAIL_SUBJECTS.indexOf((m.subject||'').trim())!==-1 && m.hasAttachments && processedIds.indexOf(m.id)===-1;
     });
     debugLog('Revenue report email check: '+messages.length+' new report email(s)');
-    localStorage.setItem('mm_last_revenuereport_check', checkedAt);
+    var nextWatermark = nextPollWatermark(fetched, checkedAt);
+    if(nextWatermark!==checkedAt) debugLog('Revenue report email check: more mail than this run could fetch — watermark held at '+nextWatermark+' instead of advancing to now, so the next check keeps closing the backlog instead of skipping past it');
+    localStorage.setItem('mm_last_revenuereport_check', nextWatermark);
     if(!messages.length) return;
 
     for(var mi=0; mi<messages.length; mi++){
