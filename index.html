@@ -10570,7 +10570,10 @@ function processTripFormRow(getVal, counters){
       if(atResult.clientId){ addedClientIds.push(atResult.clientId); submissionClientIds.push(atResult.clientId); }
       addedLines.push(atResult.line);
     }
-    if(!addedClientIds.length && !newPendingMatches.length){ counters.skipped++; return; }
+    if(!addedClientIds.length && !newPendingMatches.length){
+      debugLog('Additional travelers hand-off: skipped — no Traveler 2+ blocks with a Full Name were found in this submission (nothing to add to the trip for "'+primaryName+'").');
+      counters.skipped++; return;
+    }
 
     if(!targetTrip.clientIds) targetTrip.clientIds=[];
     addedClientIds.forEach(function(cid){ if(targetTrip.clientIds.indexOf(cid)===-1) targetTrip.clientIds.push(cid); });
@@ -10588,7 +10591,17 @@ function processTripFormRow(getVal, counters){
   }
 
   var name = getVal('Full Name');
-  if(!name){ counters.skipped++; return; }
+  // Previously silent — no debugLog, no toast — so a submission whose body
+  // didn't parse into a "Full Name" just vanished with zero trace (the
+  // automatic check still marks the email as processed, so it's never
+  // retried either). Logging it at least makes the loss visible and gives
+  // something to go on (which email, by its other parsed fields) instead of
+  // it looking like the email was never received at all. Same reasoning as
+  // processContactFormRow's matching guard below.
+  if(!name){
+    debugLog('Trip form email check: skipped a submission — could not parse "Full Name" from it (email='+(getVal('Email')||'none')+', phone='+(getVal('Phone')||'none')+'). Not retried automatically — check the email body in Outlook for wording that doesn\'t match the expected form labels.');
+    counters.skipped++; return;
+  }
   var email = getVal('Email');
   var phone = getVal('Phone');
   var streetAddress = getVal('Street Address');
