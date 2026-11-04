@@ -21352,6 +21352,42 @@ function readCabinEntries(){
     return e.cabinType||e.peopleInCabin||e.cabinNumber;
   });
 }
+// A cruise can have several shore excursions booked (one per port, or
+// several at the same port), so these live as their own entries list —
+// same add/remove-row pattern as Cabins just above — rather than a single
+// flat set of fields.
+function excursionEntryRowInnerHtml(entry){
+  entry = entry || {};
+  return '<div style="display:flex;justify-content:flex-end;margin-bottom:4px">'+
+      '<button type="button" class="del-excursion-entry-btn" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:12px">&#128465;&#65039; Remove</button>'+
+    '</div>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
+      '<div class="field"><label>Excursion Name</label><input class="excursion-entry-name" type="text" value="'+(entry.name||'').toString().replace(/"/g,'&quot;')+'"></div>'+
+      '<div class="field"><label>Date</label><input class="excursion-entry-date" type="date" value="'+(entry.date||'')+'"></div>'+
+      '<div class="field"><label>Time</label><input class="excursion-entry-time" type="time" value="'+(entry.time||'')+'"></div>'+
+      '<div class="field"><label>Number of People</label><input class="excursion-entry-people" type="number" value="'+(entry.people||'')+'"></div>'+
+      '<div class="field"><label>Price ($)</label><input class="excursion-entry-price" type="number" value="'+(entry.price||'')+'"></div>'+
+    '</div>';
+}
+function excursionEntryRowHtml(entry){
+  return '<div class="excursion-entry-row" style="border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin-bottom:10px;background:#fafafa">'+excursionEntryRowInnerHtml(entry)+'</div>';
+}
+function excursionEntriesListHtml(entries){
+  return entries.length ? entries.map(excursionEntryRowHtml).join('') : '<div id="tb-excursion-entries-empty" style="color:#aaa;font-size:12px;padding:6px 0">No excursions added yet</div>';
+}
+function readExcursionEntries(){
+  return Array.from(document.querySelectorAll('#tb-excursion-entries .excursion-entry-row')).map(function(row){
+    return {
+      name: (row.querySelector('.excursion-entry-name')||{}).value||'',
+      date: (row.querySelector('.excursion-entry-date')||{}).value||'',
+      time: (row.querySelector('.excursion-entry-time')||{}).value||'',
+      people: Number((row.querySelector('.excursion-entry-people')||{}).value)||0,
+      price: Number((row.querySelector('.excursion-entry-price')||{}).value)||0
+    };
+  }).filter(function(e){
+    return e.name||e.date||e.time||e.people||e.price;
+  });
+}
 // Flight segments are the same dynamic add/remove pattern as hotel/tour
 // entries above (a connecting or round-trip itinerary is more than one
 // segment) — the points redemption blocks and Price stay at the
@@ -21638,6 +21674,8 @@ function bookedTripDetailsHtml(bd){
   // loads fine as a one-entry list.
   var cabinEntries = Array.isArray(cru.cabins) ? cru.cabins : ((cru.cabinType||cru.peopleInCabin) ? [{cabinType:cru.cabinType||'', peopleInCabin:cru.peopleInCabin||0}] : []);
   if(!cabinEntries.length) cabinEntries = [{}];
+  var excursionEntries = Array.isArray(cru.excursions) ? cru.excursions : [];
+  if(!excursionEntries.length) excursionEntries = [{}];
   // booked.airline used to be one flat record (single confirmationNumber/
   // numPassengers/passengerClientIds/segments/pts covering the whole
   // booking) — now a trip can have more than one Airline Record (see
@@ -21732,6 +21770,10 @@ function bookedTripDetailsHtml(bd){
       '<div class="field full"><label>Cabins <span class="hint" style="text-transform:none;font-weight:400">(add one entry per cabin booked on this sailing)</span></label>'+
         '<div id="tb-cabin-entries">'+cabinEntriesListHtml(cabinEntries,cru.cruiseLine)+'</div>'+
         '<button type="button" id="tb-cabin-add-btn" style="padding:5px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit">+ Add Cabin</button>'+
+      '</div>'+
+      '<div class="field full"><label>Excursions <span class="hint" style="text-transform:none;font-weight:400">(add one entry per shore excursion booked on this sailing)</span></label>'+
+        '<div id="tb-excursion-entries">'+excursionEntriesListHtml(excursionEntries)+'</div>'+
+        '<button type="button" id="tb-excursion-add-btn" style="padding:5px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit">+ Add Excursion</button>'+
       '</div>'+
       pointsEntriesSectionHtml(cru.pts||[], 'tb-cruise-pts-entries', 'tb-cruise-pts-add-btn'))+
     bookedCatSectionHtml('car','Car Rental',
@@ -21836,6 +21878,30 @@ function bindBookedTripDetailsListeners(){
       if(row) row.remove();
       if(!cabinEntriesEl.querySelector('.cabin-entry-row')){
         cabinEntriesEl.innerHTML = '<div id="tb-cabin-entries-empty" style="color:#aaa;font-size:12px;padding:6px 0">No cabins added yet</div>';
+      }
+    });
+  }
+  var excursionEntriesEl = document.getElementById('tb-excursion-entries');
+  var excursionAddBtn = document.getElementById('tb-excursion-add-btn');
+  if(excursionAddBtn && excursionEntriesEl){
+    excursionAddBtn.addEventListener('click', function(){
+      var empty = document.getElementById('tb-excursion-entries-empty');
+      if(empty) empty.remove();
+      var div = document.createElement('div');
+      div.className = 'excursion-entry-row';
+      div.style.cssText = 'border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin-bottom:10px;background:#fafafa';
+      div.innerHTML = excursionEntryRowInnerHtml({});
+      excursionEntriesEl.appendChild(div);
+    });
+  }
+  if(excursionEntriesEl){
+    excursionEntriesEl.addEventListener('click', function(e){
+      var btn = e.target.closest ? e.target.closest('.del-excursion-entry-btn') : null;
+      if(!btn) return;
+      var row = btn.closest('.excursion-entry-row');
+      if(row) row.remove();
+      if(!excursionEntriesEl.querySelector('.excursion-entry-row')){
+        excursionEntriesEl.innerHTML = '<div id="tb-excursion-entries-empty" style="color:#aaa;font-size:12px;padding:6px 0">No excursions added yet</div>';
       }
     });
   }
@@ -22227,6 +22293,7 @@ function readBookedTripDetails(){
       loyaltyNumber: gv('tb-cruise-loyalty'), currency: gv('tb-cruise-currency'), priceForeign: gn('tb-cruise-price-foreign'), price: gn('tb-cruise-price'),
       depositAmount: gn('tb-cruise-deposit-amount'), depositDueDate: gv('tb-cruise-deposit-due'), secondDepositDueDate: gv('tb-cruise-second-deposit-due'), finalPaymentDueDate: gv('tb-cruise-final-payment-due'),
       milesManFee: gn('tb-cruise-fee'), insurancePremium: gn('tb-cruise-insurance'), insuranceCoverage: gn('tb-cruise-coverage'), notes: gv('tb-cruise-notes'), cabins: readCabinEntries(),
+      excursions: readExcursionEntries(),
       pts: readPointsEntriesFrom(document.getElementById('tb-cruise-pts-entries'))
     },
     carRental: readCarEntries(),
