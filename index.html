@@ -17752,8 +17752,18 @@ function tripBookedPriceTotal(t){
   // computeBookedTripSummary() does, and only fall back to the old flat
   // field for a legacy trip that never got a records array.
   var airlineRecords = Array.isArray(b.airline && b.airline.records) ? b.airline.records : [];
+  // Price now lives only on each segment, not the record itself — sum
+  // those directly rather than trusting a record's own r.price, which
+  // used to be independently editable and could silently double-count
+  // against a segment's own price or Points Used Cost (same reasoning as
+  // computeBookedTripSummary()'s matching fix). Falls back to r.price only
+  // for a genuinely legacy record where no segment has its own price yet.
   total += airlineRecords.length ?
-    airlineRecords.reduce(function(a,r){return a+num(r&&r.price);},0) :
+    airlineRecords.reduce(function(a,r){
+      var segs = Array.isArray(r&&r.segments) ? r.segments : [];
+      var hasSegPrice = segs.some(function(s){return s&&s.price;});
+      return a + (hasSegPrice ? segs.reduce(function(a2,s){return a2+num(s&&s.price);},0) : num(r&&r.price));
+    },0) :
     num(b.airline && b.airline.price);
   total += num(b.cruise && b.cruise.price);
   // Each shore excursion's own Total Price is real cash cost too, same as
@@ -17802,19 +17812,9 @@ function tripBookedPriceTotal(t){
   total += num(b.themeParkInsurancePremium) + (Array.isArray(b.themePark) ? 0 : num(b.themePark && b.themePark.insurancePremium));
   total += num(b.trainInsurancePremium) + (Array.isArray(b.train) ? 0 : num(b.train && b.train.insurancePremium));
   total += num(b.busInsurancePremium) + (Array.isArray(b.bus) ? 0 : num(b.bus && b.bus.insurancePremium));
-  // Miles Man's own booking fee is real cash cost too, same reasoning as
-  // insurance above — lives per-entry/segment (see hotelEntryRowInnerHtml,
-  // flightEntryRowInnerHtml, etc.), same granularity as each category's own
-  // price field, rather than as one section-level amount.
-  total += airlineRecords.reduce(function(a,r){return a+(Array.isArray(r&&r.segments)?r.segments:[]).reduce(function(a2,seg){return a2+num(seg&&seg.milesManFee);},0);},0);
-  total += hotels.reduce(function(a,h){return a+num(h&&h.milesManFee);},0);
-  total += num(b.cruise && b.cruise.milesManFee);
-  total += carRentals.reduce(function(a,x){return a+num(x&&x.milesManFee);},0);
-  total += transfers.reduce(function(a,x){return a+num(x&&x.milesManFee);},0);
-  total += tours.reduce(function(a,x){return a+num(x&&x.milesManFee);},0);
-  total += themeParks.reduce(function(a,x){return a+num(x&&x.milesManFee);},0);
-  total += trains.reduce(function(a,x){return a+num(x&&x.milesManFee);},0);
-  total += buses.reduce(function(a,x){return a+num(x&&x.milesManFee);},0);
+  // Miles Man's own booking fee is the agency's own revenue, not part of
+  // what the trip cost or is worth — left out of this total entirely, same
+  // as computeBookedTripSummary()'s totalCash/totalTripValue.
   // A hotel's Resort/Food & Beverage Credit is value included with the stay,
   // counted toward Total Trip Value the same way computeBookedTripSummary()
   // does (it is never part of cash paid).
@@ -20641,7 +20641,21 @@ function computeBookedTripSummary(bd){
   // spent — kept separate from totalCash below (real money out the door),
   // same distinction as Cost($) vs. this.
   var totalPtsValue = allPts.reduce(function(a,p){return a+(Number(p.cashValue)||0);},0);
-  var totalPrice = airlineRecords.reduce(function(a,r){return a+(r.price||0);},0)
+  // A record's own Price used to be its own independently-editable field,
+  // separate from (and silently summed on top of) each segment's own
+  // Price — the same real cash amount could get entered on both, doubling
+  // Total Trip Value with no visible trace (a real, reported incident).
+  // Price now lives only on each segment; sum those directly here rather
+  // than trusting a record's own (possibly stale, pre-fix) r.price, except
+  // for a genuinely legacy record where no segment has its own price yet
+  // (readAirlineRecords() now derives r.price from its segments on every
+  // save, but a record not yet resaved since this fix still has its old,
+  // independently-entered r.price sitting there).
+  var totalPrice = airlineRecords.reduce(function(a,r){
+      var segs = r.segments||[];
+      var hasSegPrice = segs.some(function(s){return s.price;});
+      return a + (hasSegPrice ? segs.reduce(function(a2,s){return a2+(s.price||0);},0) : (r.price||0));
+    },0)
     + hotelArr.reduce(function(a,h){return a+(h.price||0);},0)
     + (bd.cruise.price||0)
     // Each shore excursion's own Total Price (Price Per Person x Number of
@@ -20689,7 +20703,12 @@ function computeBookedTripSummary(bd){
   // totalCash, which is real money out the door) but added into
   // totalTripValue below, like totalPtsValue.
   var totalResortCredit = hotelArr.reduce(function(a,h){return a+(h.resortCredit||0);},0);
-  var totalCash = totalPrice + totalPtsCost + totalInsurance + totalMilesManFee - totalCreditsReceived;
+  // Miles Man's own booking fee is the agency's own revenue, not part of
+  // what the trip itself cost or is worth — it's never folded into
+  // totalCash/totalTripValue, only ever shown as its own separate,
+  // informational figure (see bookedTripSummaryHtml, where it's moved
+  // below Total Trip Value for the same reason).
+  var totalCash = totalPrice + totalPtsCost + totalInsurance - totalCreditsReceived;
   // Total Trip Value is what the whole booking is actually worth — real
   // cash paid plus the estimated cash value of whatever was redeemed with
   // points/miles, the two halves tracked separately everywhere above —
@@ -20730,10 +20749,14 @@ function bookedTripSummaryHtml(summary, invoicedToClient, invoiceNumber){
     : '<div style="color:#aaa;font-size:12px;padding:6px 0">No points/miles redemptions added yet</div>')+
     '<div style="margin-top:10px;font-size:14px;font-weight:700;color:#111">Total Cash Paid: $'+money(summary.totalCash)+'</div>'+
     (summary.totalCreditsReceived ? '<div style="font-size:12px;color:#6b7280">(includes Credits to be Received: $'+money(summary.totalCreditsReceived)+')</div>' : '')+
-    (summary.totalMilesManFee ? '<div style="font-size:12px;color:#6b7280">Total Miles Man Fees: $'+money(summary.totalMilesManFee)+'</div>' : '')+
     (summary.totalPtsValue ? '<div style="font-size:12px;color:#6b7280">Total Points/Miles Cash Value: $'+money(summary.totalPtsValue)+'</div>' : '')+
     (summary.totalResortCredit ? '<div style="font-size:12px;color:#6b7280">Total Resort/Food &amp; Beverage Credits: $'+money(summary.totalResortCredit)+' (included in Total Trip Value)</div>' : '')+
-    '<div style="margin-top:4px;font-size:14px;font-weight:700;color:#111">Total Trip Value: $'+money(summary.totalTripValue)+'</div>';
+    '<div style="margin-top:4px;font-size:14px;font-weight:700;color:#111">Total Trip Value: $'+money(summary.totalTripValue)+'</div>'+
+    // Miles Man's own booking fee — the agency's own revenue, never part of
+    // Total Cash Paid or Total Trip Value (see computeBookedTripSummary's
+    // matching comment) — sits below Total Trip Value, clearly separated
+    // from the figures that actually add up to it.
+    (summary.totalMilesManFee ? '<div style="margin-top:6px;font-size:12px;color:#6b7280">Total Miles Man Fees: $'+money(summary.totalMilesManFee)+'</div>' : '');
 }
 // Bound to every input/change event inside the modal (see
 // bindBookedTripDetailsListeners) rather than to each individual field,
@@ -21563,17 +21586,32 @@ function readFlightEntriesFrom(containerEl){
 function airlineRecordRowInnerHtml(record){
   record = record || {};
   var flightEntries = Array.isArray(record.segments) && record.segments.length ? record.segments : [{}];
-  // Record Number and Third Party Agency/Booking Number used to live here,
-  // at the record level — backfill them onto any segment that doesn't
-  // already have its own, purely for display (the next save finishes the
-  // migration for good, since readFlightEntriesFrom now captures all of
-  // these per segment).
-  if(record.recordNumber || record.thirdPartyAgency || record.thirdPartyAgencyBookingNumber){
+  // Record Number, Third Party Agency/Booking Number, and Price used to
+  // live here, at the record level — backfill them onto any segment that
+  // doesn't already have its own, purely for display (the next save
+  // finishes the migration for good, since readFlightEntriesFrom now
+  // captures all of these per segment, and the record's own price is now
+  // derived from its segments' own prices rather than being its own
+  // separately-editable field).
+  // Price specifically: a record-level Price input used to coexist
+  // alongside each segment's own Price field, both independently editable
+  // and both silently summed into Total Trip Value (the record's once via
+  // computeBookedTripSummary's airline term, the segment's... nowhere,
+  // actually — it was never counted at all). That let the exact same cash
+  // amount get entered on the record AND on a segment's own Points Used
+  // Cost field, doubling Total Trip Value with no visible trace (a real,
+  // reported incident). The record-level Price input is now gone — this
+  // backfill only onto the FIRST segment (never every segment, or the
+  // price would look like it happened on each leg) carries an old record's
+  // already-saved price forward so it isn't silently lost.
+  if(record.recordNumber || record.thirdPartyAgency || record.thirdPartyAgencyBookingNumber || record.price){
+    var backfilledPrice = false;
     flightEntries = flightEntries.map(function(seg){
       var fill = {};
       if(record.recordNumber && !seg.recordNumber) fill.recordNumber = record.recordNumber;
       if(record.thirdPartyAgency && !seg.thirdPartyAgency) fill.thirdPartyAgency = record.thirdPartyAgency;
       if(record.thirdPartyAgencyBookingNumber && !seg.thirdPartyAgencyBookingNumber) fill.thirdPartyAgencyBookingNumber = record.thirdPartyAgencyBookingNumber;
+      if(record.price && !backfilledPrice && !flightEntries.some(function(s){return s.price;})){ fill.price = record.price; backfilledPrice = true; }
       return Object.keys(fill).length ? Object.assign({}, seg, fill) : seg;
     });
   }
@@ -21592,7 +21630,6 @@ function airlineRecordRowInnerHtml(record){
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
       '<div class="field"><label>Number of Passengers</label><select class="airline-record-numpax">'+airPaxNumOptionsHtml(record.numPassengers)+'</select></div>'+
       '<div class="field"><label>Non-Stop Flights Only</label><select class="airline-record-nonstop"><option value="">-- Select --</option>'+selOpts(['Yes','No'],record.nonStop)+'</select></div>'+
-      '<div class="field"><label>Price ($)</label><input class="airline-record-price" type="number" value="'+(record.price||'')+'"></div>'+
     '</div>'+
     '<div class="field full"><label>Passengers <span class="hint" style="text-transform:none;font-weight:400">(select every client on this record — hold Ctrl/Cmd to select more than one, must match Number of Passengers)</span></label>'+
       '<select class="airline-record-passengers" multiple size="4" style="width:100%">'+airPaxClientOptionsHtml(record.passengerClientIds)+'</select>'+
@@ -21613,13 +21650,21 @@ function airlineRecordsListHtml(records){
 function readAirlineRecords(){
   return Array.from(document.querySelectorAll('#tb-airline-records .airline-record-row')).map(function(row){
     var paxSel = row.querySelector('.airline-record-passengers');
+    var segments = readFlightEntriesFrom(row.querySelector('.record-flight-entries'));
     return {
       numPassengers: Number((row.querySelector('.airline-record-numpax')||{}).value)||0,
       nonStop: (row.querySelector('.airline-record-nonstop')||{}).value||'',
-      price: Number((row.querySelector('.airline-record-price')||{}).value)||0,
+      // No longer its own editable field — Price now lives only on each
+      // segment (see airlineRecordRowInnerHtml's backfill comment for why);
+      // this is a derived convenience sum for the few places that still
+      // want "this record's total price" (e.g. the Trip Confirmation email
+      // builder), always consistent with the segments themselves rather
+      // than a second, independently-editable number that could drift from
+      // (or double-count against) them.
+      price: segments.reduce(function(a,s){return a+(s.price||0);},0),
       passengerClientIds: paxSel ? Array.from(paxSel.selectedOptions).map(function(o){return o.value;}) : [],
       notes: (row.querySelector('.airline-record-notes')||{}).value||'',
-      segments: readFlightEntriesFrom(row.querySelector('.record-flight-entries'))
+      segments: segments
     };
   }).filter(function(r){
     return r.numPassengers||r.nonStop||r.price||r.passengerClientIds.length||r.notes||r.segments.length;
