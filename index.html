@@ -17756,6 +17756,10 @@ function tripBookedPriceTotal(t){
     airlineRecords.reduce(function(a,r){return a+num(r&&r.price);},0) :
     num(b.airline && b.airline.price);
   total += num(b.cruise && b.cruise.price);
+  // Each shore excursion's own Total Price is real cash cost too, same as
+  // the cruise's own price field just above — kept in sync with
+  // computeBookedTripSummary()'s matching addition.
+  total += (Array.isArray(b.cruise && b.cruise.excursions) ? b.cruise.excursions : []).reduce(function(a,ex){return a+num(ex&&ex.totalPrice);},0);
   // booked.carRental/train/bus each moved from one flat price field to a
   // list, same shape change as booked.themePark above — sum the list for
   // current trips, only falling back to the old flat field for a legacy
@@ -20457,10 +20461,16 @@ function bindTripBalanceListeners(){
 // Calendar, exports) so nothing else has to change to support this.
 function pointsProgramOptionsHtml(selected){
   function opts(list){ return list.map(function(o){return '<option value="'+o+'"'+(o===selected?' selected':'')+'>'+o+'</option>';}).join(''); }
+  // A redemption's Program is the points CURRENCY actually spent — a credit
+  // card itself doesn't have its own separate points balance, it earns into
+  // one of these bank programs (e.g. Chase Sapphire Reserve earns Chase
+  // Ultimate Rewards), so this groups by BANK_POINTS_PROGRAMS, same list
+  // transferredFromOptionsHtml's own "Banks" group already uses, rather
+  // than by the specific card product name.
   return '<option value="">Select...</option>'+
     '<optgroup label="Airlines">'+opts(AIRLINES)+'</optgroup>'+
     '<optgroup label="Hotels">'+opts(hotelBrandList())+'</optgroup>'+
-    '<optgroup label="Credit Cards">'+opts(CREDIT_CARDS)+'</optgroup>';
+    '<optgroup label="Banks">'+opts(BANK_POINTS_PROGRAMS)+'</optgroup>';
 }
 // Same grouped-picklist idea as pointsProgramOptionsHtml above, but for the
 // "Points Transferred From"/"Points Transferred To" fields on a Hotel
@@ -20634,6 +20644,10 @@ function computeBookedTripSummary(bd){
   var totalPrice = airlineRecords.reduce(function(a,r){return a+(r.price||0);},0)
     + hotelArr.reduce(function(a,h){return a+(h.price||0);},0)
     + (bd.cruise.price||0)
+    // Each shore excursion's own Total Price (Price Per Person x Number of
+    // People) is real cash cost too, same as the cruise's own Price field
+    // just above — not yet counted toward Total Trip Value until now.
+    + (bd.cruise.excursions||[]).reduce(function(a,ex){return a+(ex.totalPrice||0);},0)
     + carRentalArr.reduce(function(a,c){return a+(c.price||0);},0)
     + transfersArr.reduce(function(a,t){return a+(t.price||0);},0)
     + toursArr.reduce(function(a,t){return a+(t.price||0);},0)
