@@ -1877,6 +1877,16 @@ const TOUR_VENDOR_LOGOS = {
 // standalone operators (Tauck/Viator/Get Your Guide) — so a Tour's logo
 // lookup needs both tables merged, not just one or the other.
 const TOUR_LOGOS = Object.assign({}, CRUISE_LOGOS, TOUR_VENDOR_LOGOS);
+// Insurance carrier logos (Trip Insurance's own Carrier field in Booked
+// Trip Details) for the Insurance box in Email Itinerary — same
+// free-license-only sourcing rule as every other *_LOGOS table above.
+// Blank for now (same as Eurostar above) until a real file can be
+// supplied — falls back to no logo in the itinerary, same as any carrier
+// without a sourced logo.
+const BHTP_LOGO_DATA_URI = '';
+const INSURANCE_LOGOS = {
+  'BHTP': BHTP_LOGO_DATA_URI
+};
 // fStatus: array of selected trip statuses for the Trips page filter — default
 // is everything except Cancelled, since a cancelled trip is rarely what
 // you're looking for when just browsing the list.
@@ -7530,10 +7540,10 @@ async function generateItineraryPdfBlobFromOpts(opts){
     });
   }
   // Draws a block of plain text (no logos) line by line — used for the
-  // header and the trailing Insurance/Booking Details/notes, neither of
+  // header and the trailing Insurance/Pricing Summary/notes, neither of
   // which ever carries a logo. itineraryDetailRowText() always emits
   // "Label: value" rows; a bare line with no ": " is a section title
-  // (e.g. "Trip Itinerary — …", "Booking Details") — styled bold to stand
+  // (e.g. "Trip Itinerary — …", "Pricing Summary") — styled bold to stand
   // out from the rows under it.
   function drawText(text){
     text.split('\n').forEach(function(rawLine){
@@ -8463,7 +8473,8 @@ async function getEmailLogoPngTables(){
     CRUISE: await rasterizeTable(CRUISE_LOGOS),
     CAR_RENTAL: await rasterizeTable(CAR_RENTAL_LOGOS),
     TRAIN: await rasterizeTable(TRAIN_LOGOS),
-    TOUR: await rasterizeTable(TOUR_LOGOS)
+    TOUR: await rasterizeTable(TOUR_LOGOS),
+    INSURANCE: await rasterizeTable(INSURANCE_LOGOS)
   };
   return _emailLogoPngTablesCache;
 }
@@ -8508,7 +8519,9 @@ async function itineraryEmailBodyHtml(opts){
           itineraryDetailRow('Depart Date', f.departDate?fmtDate(f.departDate):'') +
           itineraryDetailRow('Depart Time', f.departTime?fmtTime(f.departTime):'') +
           itineraryDetailRow('Arrival Time', f.arrivalTime?fmtTime(f.arrivalTime):'') +
-          itineraryDetailRow('Class of Service', f.classOfService);
+          itineraryDetailRow('Class of Service', f.classOfService) +
+          itineraryDetailRow('Third Party Agency', f.thirdPartyAgency) +
+          itineraryDetailRow('Third Party Booking Number', f.thirdPartyAgencyBookingNumber);
         flightChronoItems.push({date: f.departDate||'', time: f.departTime||'', html: itineraryDetailBox(heading, rows, logoTables.AIRLINE[f.airline])});
       });
     });
@@ -8540,7 +8553,9 @@ async function itineraryEmailBodyHtml(opts){
         itineraryDetailRow('Location', [h.city, h.country].filter(Boolean).join(', ')) +
         itineraryDetailRow('Check-in Date', h.checkInDate?fmtDate(h.checkInDate):'') +
         itineraryDetailRow('Nights', h.nights?(h.nights+(h.nights===1?' night':' nights')):'') +
-        itineraryDetailRow('Confirmation Number', h.confirmationNumber);
+        itineraryDetailRow('Confirmation Number', h.confirmationNumber) +
+        itineraryDetailRow('Third Party Agency', h.thirdPartyAgency) +
+        itineraryDetailRow('Third Party Booking Number', h.thirdPartyAgencyBookingNumber);
       return {date: h.checkInDate||'', time:'', isHotel:true, html: itineraryDetailBox('Hotel Details', rows, logoTables.HOTEL[h.hotelBrand])};
     });
   } else {
@@ -8618,7 +8633,9 @@ async function itineraryEmailBodyHtml(opts){
       itineraryDetailRow('Return Date', t.returnDate) +
       itineraryDetailRow('Class of Service', t.classOfService) +
       itineraryDetailRow('Passengers', t.numPassengers) +
-      itineraryDetailRow('Confirmation Number', t.confirmationNumber);
+      itineraryDetailRow('Confirmation Number', t.confirmationNumber) +
+      itineraryDetailRow('Third Party Agency', t.thirdPartyAgency) +
+      itineraryDetailRow('Third Party Booking Number', t.thirdPartyAgencyBookingNumber);
     // TRAIN_LOGOS (an embedded data: URI, same as AIRLINE_LOGOS/HOTEL_LOGOS/
     // CAR_RENTAL_LOGOS) takes priority over the manually pasted Logo URL —
     // both are safe here since this is a plain <img src>, not the PDF's
@@ -8665,7 +8682,18 @@ async function itineraryEmailBodyHtml(opts){
     ['Train', opts.trainInsurance], ['Bus', opts.busInsurance]
   ].filter(function(li){ return li[1]>0; });
   var totalInsurance = insuranceLineItems.reduce(function(a,li){return a+li[1];},0);
-  var insuranceRows = insuranceLineItems.map(function(li){ return itineraryDetailRow(li[0]+' Insurance', '$'+money(li[1])); }).join('') +
+  // Trip Insurance is the only category with its own Carrier/Coverage
+  // Amount fields (the other categories are just a generic add-on
+  // premium), so it gets its own fuller breakdown here instead of a
+  // single dollar line — company name, premium, and covered amount.
+  var insuranceRows = insuranceLineItems.map(function(li){
+      if(li[0]==='Trip'){
+        return itineraryDetailRow('Insurance Company', opts.tripInsuranceCarrier) +
+          itineraryDetailRow('Trip Insurance Premium', '$'+money(li[1])) +
+          itineraryDetailRow('Trip Insurance Covered Amount', opts.tripInsuranceCoverage ? '$'+money(opts.tripInsuranceCoverage) : '');
+      }
+      return itineraryDetailRow(li[0]+' Insurance', '$'+money(li[1]));
+    }).join('') +
     (insuranceLineItems.length>1 ? itineraryDetailRow('Total', '$'+money(totalInsurance)) : '');
   // "category" (default) keeps the original fixed Flight/Hotel/Cruise/…
   // section order; "chronological" merges every dated item (flight legs,
@@ -8746,17 +8774,17 @@ async function itineraryEmailBodyHtml(opts){
 '</td>'+
 '</tr>'+
 bodySectionsHtml+
-itineraryDetailBox('Insurance', insuranceRows)+
-itineraryDetailBox('Booking Details', bookingRows)+
+itineraryDetailBox('Insurance', insuranceRows, logoTables.INSURANCE[opts.tripInsuranceCarrier])+
+itineraryDetailBox('Pricing Summary', bookingRows)+
 (opts.extraNotes?(
 '<tr>'+
-'<td style="padding:0 32px;">'+
+'<td style="padding:16px 32px 0 32px;">'+
 '<p style="font-family:\'Times New Roman\',Times,serif; font-size:14px; color:#333333; line-height:1.5; margin:0 0 16px 0;">'+escHtml(opts.extraNotes).replace(/\n/g,'<br>')+'</p>'+
 '</td>'+
 '</tr>'
 ):'')+
 '<tr>'+
-'<td style="padding:0 32px;">'+
+'<td style="padding:'+(opts.extraNotes?'0':'16px')+' 32px 0 32px;">'+
 '<p style="font-family:\'Times New Roman\',Times,serif; font-size:14px; color:#333333; line-height:1.5; margin:0;">'+escHtml(ITINERARY_CLOSING_NOTE)+'</p>'+
 '</td>'+
 '</tr>'+
@@ -8829,7 +8857,9 @@ function buildItinerarySections(opts){
           itineraryDetailRowText('Depart Date', f.departDate?fmtDate(f.departDate):'') +
           itineraryDetailRowText('Depart Time', f.departTime?fmtTime(f.departTime):'') +
           itineraryDetailRowText('Arrival Time', f.arrivalTime?fmtTime(f.arrivalTime):'') +
-          itineraryDetailRowText('Class of Service', f.classOfService);
+          itineraryDetailRowText('Class of Service', f.classOfService) +
+          itineraryDetailRowText('Third Party Agency', f.thirdPartyAgency) +
+          itineraryDetailRowText('Third Party Booking Number', f.thirdPartyAgencyBookingNumber);
         items.push({date:f.departDate||'', time:f.departTime||'', heading:heading, rows:rows, logo:AIRLINE_LOGOS[f.airline]||''});
       });
     });
@@ -8848,7 +8878,9 @@ function buildItinerarySections(opts){
         itineraryDetailRowText('Location', [h.city, h.country].filter(Boolean).join(', ')) +
         itineraryDetailRowText('Check-in Date', h.checkInDate?fmtDate(h.checkInDate):'') +
         itineraryDetailRowText('Nights', h.nights?(h.nights+(h.nights===1?' night':' nights')):'') +
-        itineraryDetailRowText('Confirmation Number', h.confirmationNumber);
+        itineraryDetailRowText('Confirmation Number', h.confirmationNumber) +
+        itineraryDetailRowText('Third Party Agency', h.thirdPartyAgency) +
+        itineraryDetailRowText('Third Party Booking Number', h.thirdPartyAgencyBookingNumber);
       items.push({date:h.checkInDate||'', time:'', isHotel:true, heading:'Hotel Details', rows:rows, logo:HOTEL_LOGOS[h.hotelBrand]||''});
     });
   } else if(opts.hotel){
@@ -8923,7 +8955,9 @@ function buildItinerarySections(opts){
       itineraryDetailRowText('Return Date', t.returnDate) +
       itineraryDetailRowText('Class of Service', t.classOfService) +
       itineraryDetailRowText('Passengers', t.numPassengers) +
-      itineraryDetailRowText('Confirmation Number', t.confirmationNumber);
+      itineraryDetailRowText('Confirmation Number', t.confirmationNumber) +
+      itineraryDetailRowText('Third Party Agency', t.thirdPartyAgency) +
+      itineraryDetailRowText('Third Party Booking Number', t.thirdPartyAgencyBookingNumber);
     // Only the embedded TRAIN_LOGOS data: URI feeds the PDF's logo — unlike
     // the HTML email, this goes through generateItineraryPdfBlobFromOpts()'s
     // canvas-based SVG rasterization, so an arbitrary remote Logo URL (the
@@ -8986,7 +9020,7 @@ function orderedItinerarySections(opts){
   }
   return out;
 }
-// Insurance + Booking Details + the per-send Additional Note + the
+// Insurance + Pricing Summary + the per-send Additional Note + the
 // standing closing note — the trailing, never-logo-bearing portion of the
 // itinerary, identical for every opts.layout. Shared by
 // tripItineraryPlainText() and generateItineraryPdfBlobFromOpts() so the
@@ -8999,7 +9033,17 @@ function itineraryTailText(opts){
     ['Train', opts.trainInsurance], ['Bus', opts.busInsurance]
   ].filter(function(li){ return li[1]>0; });
   if(insuranceLineItems.length){
-    var insRows = insuranceLineItems.map(function(li){ return itineraryDetailRowText(li[0]+' Insurance', '$'+money(li[1])); }).join('');
+    // Same Trip-specific breakdown as the HTML version — company name,
+    // premium, and covered amount, since Trip Insurance is the only
+    // category with a Carrier/Coverage Amount of its own.
+    var insRows = insuranceLineItems.map(function(li){
+      if(li[0]==='Trip'){
+        return itineraryDetailRowText('Insurance Company', opts.tripInsuranceCarrier) +
+          itineraryDetailRowText('Trip Insurance Premium', '$'+money(li[1])) +
+          itineraryDetailRowText('Trip Insurance Covered Amount', opts.tripInsuranceCoverage ? '$'+money(opts.tripInsuranceCoverage) : '');
+      }
+      return itineraryDetailRowText(li[0]+' Insurance', '$'+money(li[1]));
+    }).join('');
     if(insuranceLineItems.length>1){
       var totalInsurance = insuranceLineItems.reduce(function(a,li){return a+li[1];},0);
       insRows += itineraryDetailRowText('Total', '$'+money(totalInsurance));
@@ -9016,7 +9060,7 @@ function itineraryTailText(opts){
     itineraryDetailRowText('Total Points/Miles Cash Value', opts.ptsCashValue) +
     itineraryDetailRowText('Total Resort/Food & Beverage Credits', opts.resortCreditTotal) +
     itineraryDetailRowText('Total Trip Value', opts.totalValue);
-  out += itineraryPlainTextSection('Booking Details', bookingRows);
+  out += itineraryPlainTextSection('Pricing Summary', bookingRows);
 
   // The per-send "Additional Note" (opts.extraNotes) still appends here,
   // same as the HTML version — unlike the trip's own stored Notes field
@@ -9160,7 +9204,8 @@ function tripToItineraryOpts(trip, client, extraNotes){
         departureDate: t.departureDate?fmtDate(t.departureDate):'', returnDate: t.returnDate?fmtDate(t.returnDate):'',
         departureDateRaw: t.departureDate||'',
         departureTime: t.departureTime||'', arrivalTime: t.arrivalTime||'',
-        classOfService: t.classOfService||'', numPassengers: t.numPassengers||'', confirmationNumber: t.confirmationNumber||'', logoUrl: t.logoUrl||''
+        classOfService: t.classOfService||'', numPassengers: t.numPassengers||'', confirmationNumber: t.confirmationNumber||'', logoUrl: t.logoUrl||'',
+        thirdPartyAgency: t.thirdPartyAgency||'', thirdPartyAgencyBookingNumber: t.thirdPartyAgencyBookingNumber||''
       };
     }),
     busEntries: busEntries.map(function(x){
@@ -9187,10 +9232,14 @@ function tripToItineraryOpts(trip, client, extraNotes){
     carInsurance: b.carRentalInsurancePremium || (!Array.isArray(b.carRental) && b.carRental ? (b.carRental.insurancePremium||0) : 0),
     trainInsurance: b.trainInsurancePremium || (!Array.isArray(b.train) && b.train ? (b.train.insurancePremium||0) : 0),
     busInsurance: b.busInsurancePremium || (!Array.isArray(b.bus) && b.bus ? (b.bus.insurancePremium||0) : 0),
-    // The trip-wide Insurance category's own Premium (Carrier/Policy Type/
-    // Premium) — the trip's primary travel policy, distinct from each
-    // category's own add-on premium just above.
+    // The trip-wide Insurance category's own Carrier/Policy Type/Premium/
+    // Coverage Amount — the trip's primary travel policy, distinct from
+    // each category's own add-on premium just above (those have no
+    // carrier/coverage fields of their own, so only this one is shown
+    // with the carrier name and coverage amount in the itinerary).
     tripInsurance: (b.insurance && b.insurance.premium) || 0,
+    tripInsuranceCarrier: (b.insurance && b.insurance.carrier) || '',
+    tripInsuranceCoverage: (b.insurance && b.insurance.coverageAmount) || 0,
     bookingRef: trip.bookingRef||'',
     supplierName: (sup?sup.name:trip.supplierName)||'',
     // Points Used is sourced from Booked Trip Details (tripBookedPoints),
@@ -21999,7 +22048,8 @@ function bookedTripDetailsHtml(bd){
     bookedCatSectionHtml('insurance','Insurance',
       fld('Carrier',sel('tb-ins-carrier',INSURANCE_CARRIERS,ins.carrier))+
       fld('Policy Type',inp('tb-ins-policy-type','text',ins.policyType,'e.g. Luxury'))+
-      fld('Premium ($)',inp('tb-ins-premium','number',ins.premium)))+
+      fld('Premium ($)',inp('tb-ins-premium','number',ins.premium))+
+      fld('Coverage Amount ($)',inp('tb-ins-coverage','number',ins.coverageAmount,'Total coverage provided by the policy')))+
     '<div class="modal-section-title">Summary</div>'+
     '<div id="tb-booked-summary"></div>';
 }
@@ -22504,7 +22554,7 @@ function readBookedTripDetails(){
     busInsurancePremium: gn('tb-bus-insurance'),
     busInsuranceCoverage: gn('tb-bus-coverage'),
     insurance: {
-      carrier: gv('tb-ins-carrier'), policyType: gv('tb-ins-policy-type'), premium: gn('tb-ins-premium')
+      carrier: gv('tb-ins-carrier'), policyType: gv('tb-ins-policy-type'), premium: gn('tb-ins-premium'), coverageAmount: gn('tb-ins-coverage')
     },
     totalBudget: gn('tb-budget-total')
   };
