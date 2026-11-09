@@ -10209,7 +10209,8 @@ function openPendingTravelerMatchesModal(){
         discounts:pm.discounts||[], interests:pm.interests||[],
         mileageBalances:pm.mileageBalances||{}, hotelBalances:pm.hotelBalances||{}, cruiseBalances:pm.cruiseBalances||{}, carRentalBalances:pm.carRentalBalances||{}, creditCardBalances:pm.creditCardBalances||{},
         airlineCreditCards:pm.airlineCreditCards||[], hotelCreditCards:pm.hotelCreditCards||[],
-        notes:'', joined:today(), totalTrips:0, notesLog:[]}, pm.fields||{}));
+        notes:'', joined:today(), totalTrips:0, notesLog:[],
+        isPayingClient:true, isSubscriber:true}, pm.fields||{}));
       resolvePendingTravelerMatch(btn.dataset.id, newCid, true);
     });
   });
@@ -10540,7 +10541,8 @@ function processTripFormRow(getVal, counters){
         tClient = Object.assign({id:newId('C',db.clients), name:toLastFirst(tName),
           discounts:tDiscounts, interests:tInterests,
           mileageBalances:tAirlineBal||{}, hotelBalances:tHotelBal||{}, cruiseBalances:tCruiseBal||{}, carRentalBalances:tCarRentalBal||{}, trainBalance:tTrainBal||null, creditCardBalances:tCcBal||{}, airlineCreditCards:tAirlineCc||[], hotelCreditCards:tHotelCc||[],
-          notes:'', joined:today(), totalTrips:0, notesLog:[]}, tFields);
+          notes:'', joined:today(), totalTrips:0, notesLog:[],
+          isPayingClient:true, isSubscriber:true}, tFields);
         db.clients.push(tClient);
         counters.added++;
         return {clientId: tClient.id, line: 'Traveling with: '+tClient.name+' (client '+tClient.id+')'};
@@ -10744,7 +10746,13 @@ function processTripFormRow(getVal, counters){
       discounts:discounts, discountOther:discountOther, interests:interests, interestOther:interestOther,
       preferredAirline:preferredAirline, preferredHotel:preferredHotel, preferredCruiseLine:preferredCruiseLine,
       mileageBalances:mileageBalances||{}, hotelBalances:hotelBalances||{}, cruiseBalances:cruiseBalances||{}, carRentalBalances:carRentalBalances||{}, trainBalance:trainBalance||null, creditCardBalances:creditCardBalances||{}, airlineCreditCards:airlineCreditCards||[], hotelCreditCards:hotelCreditCards||[],
-      notes:'', joined:today(), totalTrips:0, notesLog:[]};
+      notes:'', joined:today(), totalTrips:0, notesLog:[],
+      // A real person who just submitted the Book a Trip form is an active
+      // paying client by definition, and worth having on the subscriber
+      // list — same reasoning as the manual Add Client modal's own
+      // Paying/Subscriber checkboxes, just defaulted on here since there's
+      // no one present to check them.
+      isPayingClient:true, isSubscriber:true};
     db.clients.push(client);
     counters.added++;
   }
@@ -11631,7 +11639,8 @@ function processContactFormRow(row, counters, msgId){
       referredBy:'', referredByDetail:'', preferredAirline:'', preferredHotel:'', preferredCruiseLine:'',
       mileageBalances:{}, hotelBalances:{}, cruiseBalances:{}, carRentalBalances:{}, creditCardBalances:{}, airlineCreditCards:[], hotelCreditCards:[],
       notes:'', joined:today(), totalTrips:0,
-      notesLog:[{ts:ts, text:leadNoteText, noteType:'Lead', source:'contact-form'}]};
+      notesLog:[{ts:ts, text:leadNoteText, noteType:'Lead', source:'contact-form'}],
+      isPayingClient:true, isSubscriber:true};
     db.clients.push(client);
     counters.added++;
   }
