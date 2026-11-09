@@ -10409,7 +10409,17 @@ function processTripFormRow(getVal, counters){
   function processTravelerBlock(tn, pendingAccumulator, excludeClientIds){
     var tp='Traveler '+tn;
     var tName=getVal(tp+' - Full Name');
-    if(!tName) return null;
+    // Previously silent — not even counted in counters.skipped — so a
+    // companion traveler block whose "Full Name" didn't parse from the
+    // email just vanished with zero trace, same class of bug as the
+    // primary contact's own "no Full Name" guard above (and the
+    // additional-travelers hand-off's "nothing to add" guard). A real
+    // companion traveler (reported missing) was lost this way.
+    if(!tName){
+      debugLog('Trip form: skipped Traveler '+tn+' — could not parse "Traveler '+tn+' - Full Name" from this submission (email='+(getVal(tp+' - Email')||'none')+').');
+      counters.skipped++;
+      return null;
+    }
     var tEmail=getVal(tp+' - Email');
     var tPhone=getVal(tp+' - Phone');
     var tStreetAddress=getVal(tp+' - Street Address');
