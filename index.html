@@ -20641,7 +20641,13 @@ function computeBookedTripSummary(bd){
     var key = p.program || '(no program selected)';
     if(!byProgram[key]) byProgram[key] = {program:key, points:0, cashValue:0};
     byProgram[key].points += Number(p.amount)||0;
-    byProgram[key].cashValue += Number(p.cashValue)||0;
+    // Cash Value is the redemption's full value (e.g. the flight's whole
+    // airfare); what the points themselves are worth is that minus
+    // whatever cash was ALSO paid for it (this row's own Cost). Only
+    // subtracts when Cash Value was actually entered — a row with just a
+    // Cost and no Cash Value isn't a tracked redemption worth, so it
+    // shouldn't turn into a negative number here.
+    if(p.cashValue) byProgram[key].cashValue += (Number(p.cashValue)||0) - (Number(p.cost)||0);
   });
   var rows = Object.keys(byProgram).map(function(k){return byProgram[k];}).sort(function(a,b){return b.points-a.points;});
   // Points Transferred From/Amount live on each Hotel entry and each
@@ -20685,10 +20691,13 @@ function computeBookedTripSummary(bd){
   });
   rows.forEach(function(row){ row.transfers = transfersByProgram[row.program] || []; });
   var totalPtsCost = allPts.reduce(function(a,p){return a+(Number(p.cost)||0);},0);
-  // Cash Value is the estimated worth of a redemption, not cash actually
-  // spent — kept separate from totalCash below (real money out the door),
-  // same distinction as Cost($) vs. this.
-  var totalPtsValue = allPts.reduce(function(a,p){return a+(Number(p.cashValue)||0);},0);
+  // Cash Value is the redemption's full value, not just the points'
+  // portion of it — a row can mix points with real cash (its own Cost,
+  // already counted in totalCash below), so what the points alone are
+  // worth is Cash Value minus that same row's Cost — only when Cash Value
+  // was actually entered, same guard as the byProgram rows above, kept in
+  // sync with the total here.
+  var totalPtsValue = allPts.reduce(function(a,p){return a+(p.cashValue ? (Number(p.cashValue)||0)-(Number(p.cost)||0) : 0);},0);
   // A record's own Price used to be its own independently-editable field,
   // separate from (and silently summed on top of) each segment's own
   // Price — the same real cash amount could get entered on both, doubling
