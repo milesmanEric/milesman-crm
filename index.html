@@ -5387,11 +5387,14 @@ async function syncClientToMailchimp(client){
   var listId = localStorage.getItem(MAILCHIMP_LIST_KEY);
   if(!listId) throw new Error('No Mailchimp audience selected yet — use "Sync Mailchimp Activity" once first');
   var hash = md5hex(client.email.trim().toLowerCase());
-  var nameParts = (client.name||'').trim().split(/\s+/);
+  // client.name is stored "Last, First" (see toLastFirst) — splitting on
+  // whitespace instead of the comma put the last name in FNAME and the
+  // first name in LNAME. getFirstName/getLastName already handle both the
+  // comma format and a plain "First Last" fallback correctly.
   await mailchimpProxyPut('/lists/'+listId+'/members/'+hash, {
     email_address: client.email.trim(),
     status_if_new: 'subscribed',
-    merge_fields: { FNAME: nameParts[0]||'', LNAME: nameParts.slice(1).join(' ')||'' }
+    merge_fields: { FNAME: getFirstName(client.name)||'', LNAME: getLastName(client.name)||'' }
   });
 }
 // Auto-sync entry point: called whenever a client is newly marked as a
@@ -5424,12 +5427,13 @@ async function setMailchimpSubscriberStatus(client, status){
   var listId = localStorage.getItem(MAILCHIMP_LIST_KEY);
   if(!listId) throw new Error('No Mailchimp audience selected yet — use "Sync Mailchimp Activity" once first');
   var hash = md5hex(client.email.trim().toLowerCase());
-  var nameParts = (client.name||'').trim().split(/\s+/);
+  // See syncClientToMailchimp() above — client.name is "Last, First", not
+  // space-splittable into first/last without swapping them.
   await mailchimpProxyPut('/lists/'+listId+'/members/'+hash, {
     email_address: client.email.trim(),
     status: status,
     status_if_new: status,
-    merge_fields: { FNAME: nameParts[0]||'', LNAME: nameParts.slice(1).join(' ')||'' }
+    merge_fields: { FNAME: getFirstName(client.name)||'', LNAME: getLastName(client.name)||'' }
   });
 }
 // Shared push for deliberate, user-driven status changes (the manual Sub
