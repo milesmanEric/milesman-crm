@@ -8644,7 +8644,7 @@ async function itineraryEmailBodyHtml(opts){
   // Details. Only shows at all when at least one category has one, so a
   // trip with no insurance purchased doesn't get an empty box.
   var insuranceLineItems = [
-    ['Airline', opts.airlineInsurance], ['Hotel', opts.hotelInsurance], ['Cruise', opts.cruiseInsurance],
+    ['Trip', opts.tripInsurance], ['Airline', opts.airlineInsurance], ['Hotel', opts.hotelInsurance], ['Cruise', opts.cruiseInsurance],
     ['Car Rental', opts.carInsurance], ['Transfers', opts.transfersInsurance], ['Tours', opts.toursInsurance], ['Theme Park', opts.themeParkInsurance],
     ['Train', opts.trainInsurance], ['Bus', opts.busInsurance]
   ].filter(function(li){ return li[1]>0; });
@@ -8978,7 +8978,7 @@ function orderedItinerarySections(opts){
 function itineraryTailText(opts){
   var out = '';
   var insuranceLineItems = [
-    ['Airline', opts.airlineInsurance], ['Hotel', opts.hotelInsurance], ['Cruise', opts.cruiseInsurance],
+    ['Trip', opts.tripInsurance], ['Airline', opts.airlineInsurance], ['Hotel', opts.hotelInsurance], ['Cruise', opts.cruiseInsurance],
     ['Car Rental', opts.carInsurance], ['Transfers', opts.transfersInsurance], ['Tours', opts.toursInsurance], ['Theme Park', opts.themeParkInsurance],
     ['Train', opts.trainInsurance], ['Bus', opts.busInsurance]
   ].filter(function(li){ return li[1]>0; });
@@ -9171,6 +9171,10 @@ function tripToItineraryOpts(trip, client, extraNotes){
     carInsurance: b.carRentalInsurancePremium || (!Array.isArray(b.carRental) && b.carRental ? (b.carRental.insurancePremium||0) : 0),
     trainInsurance: b.trainInsurancePremium || (!Array.isArray(b.train) && b.train ? (b.train.insurancePremium||0) : 0),
     busInsurance: b.busInsurancePremium || (!Array.isArray(b.bus) && b.bus ? (b.bus.insurancePremium||0) : 0),
+    // The trip-wide Insurance category's own Premium (Carrier/Policy Type/
+    // Premium) — the trip's primary travel policy, distinct from each
+    // category's own add-on premium just above.
+    tripInsurance: (b.insurance && b.insurance.premium) || 0,
     bookingRef: trip.bookingRef||'',
     supplierName: (sup?sup.name:trip.supplierName)||'',
     // Points Used is sourced from Booked Trip Details (tripBookedPoints),
@@ -17812,6 +17816,9 @@ function tripBookedPriceTotal(t){
   total += num(b.themeParkInsurancePremium) + (Array.isArray(b.themePark) ? 0 : num(b.themePark && b.themePark.insurancePremium));
   total += num(b.trainInsurancePremium) + (Array.isArray(b.train) ? 0 : num(b.train && b.train.insurancePremium));
   total += num(b.busInsurancePremium) + (Array.isArray(b.bus) ? 0 : num(b.bus && b.bus.insurancePremium));
+  // The trip-wide Insurance category's own Premium — kept in sync with
+  // computeBookedTripSummary()'s matching addition.
+  total += num(b.insurance && b.insurance.premium);
   // Miles Man's own booking fee is the agency's own revenue, not part of
   // what the trip cost or is worth — left out of this total entirely, same
   // as computeBookedTripSummary()'s totalCash/totalTripValue.
@@ -20678,7 +20685,12 @@ function computeBookedTripSummary(bd){
     + (bd.toursInsurancePremium||0)
     + (bd.themeParkInsurancePremium||0)
     + (bd.trainInsurancePremium||0)
-    + (bd.busInsurancePremium||0);
+    + (bd.busInsurancePremium||0)
+    // The trip-wide Insurance category's own Premium (Carrier/Policy
+    // Type/Premium) — the trip's primary travel insurance policy, distinct
+    // from the per-category add-on premiums just above, but just as real a
+    // cash cost. Was never counted here at all until now.
+    + (bd.insurance && bd.insurance.premium || 0);
   // Miles Man's own booking fee, same "real cash cost" treatment as
   // insurance above — the Budget section's own hint already told users
   // "Any Miles Man fees will be in addition to this budgeted amount,"
