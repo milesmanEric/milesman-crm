@@ -1594,7 +1594,7 @@ const DEFAULT_BOOKMARKS = [
   {name:'AwardWallet', url:'https://www.awardwallet.com', category:'Award Tools', audience:'Travel Agent', notes:'tracks client mileage/points balances across programs'}
 ];
 
-let db = {clients:[],trips:[],vendors:[],bizVendors:[],communities:[],corporateClients:[],planner:[],bookmarks:[],savedReports:[],groups:[],marketingPlan:[],pendingImportMatches:[],pendingTravelerMatches:[],jetpackRemovalQueue:[],payments:[],reportTotals:{}};
+let db = {clients:[],trips:[],vendors:[],bizVendors:[],communities:[],corporateClients:[],planner:[],bookmarks:[],savedReports:[],groups:[],marketingPlan:[],pendingImportMatches:[],pendingTravelerMatches:[],jetpackRemovalQueue:[],payments:[],surveyResponses:[],reportTotals:{}};
 // Diagnostic tracer for the repeated data-wipe incidents (Sept 1/2/4) —
 // db.clients/db.trips have gone empty in memory mid-session for a reason
 // never caught in the act, only ever inferred afterward from Drive backup
@@ -2555,6 +2555,7 @@ async function loadDB(){
     // Admin — see the "Jetpack Manual-Removal Queue" comment near
     // flagJetpackManualRemoval() for why this can't be automated.
     db.jetpackRemovalQueue=Array.isArray(d.jetpackRemovalQueue)?d.jetpackRemovalQueue:[];
+    db.surveyResponses=Array.isArray(d.surveyResponses)?d.surveyResponses:[];
     // Always normalize client names to 'Last, First' format on every load
     // (safe to run repeatedly since it skips names that already have a comma)
     var migrated=0;
@@ -5097,7 +5098,8 @@ async function driveRestore(){
         pendingImportMatches:Array.isArray(d.pendingImportMatches)?d.pendingImportMatches:[],
         pendingTravelerMatches:Array.isArray(d.pendingTravelerMatches)?d.pendingTravelerMatches:[],
         jetpackRemovalQueue:Array.isArray(d.jetpackRemovalQueue)?d.jetpackRemovalQueue:[],
-        payments:Array.isArray(d.payments)?d.payments:[]
+        payments:Array.isArray(d.payments)?d.payments:[],
+        surveyResponses:Array.isArray(d.surveyResponses)?d.surveyResponses:[]
       };
       instrumentDbWipeTracing();
       var _compRestored = applyComplianceFromBackup(d);
@@ -5238,7 +5240,8 @@ async function secureSyncRestore(){
         pendingImportMatches:Array.isArray(d.pendingImportMatches)?d.pendingImportMatches:[],
         pendingTravelerMatches:Array.isArray(d.pendingTravelerMatches)?d.pendingTravelerMatches:[],
         jetpackRemovalQueue:Array.isArray(d.jetpackRemovalQueue)?d.jetpackRemovalQueue:[],
-        payments:Array.isArray(d.payments)?d.payments:[]
+        payments:Array.isArray(d.payments)?d.payments:[],
+        surveyResponses:Array.isArray(d.surveyResponses)?d.surveyResponses:[]
       };
       instrumentDbWipeTracing();
       var _compRestored = applyComplianceFromBackup(d);
@@ -6375,7 +6378,7 @@ function importJSON(){
         const d=JSON.parse(ev.target.result);
         if(Array.isArray(d.clients)&&Array.isArray(d.trips)){
           debugLog('Local restore: parsed backup file — '+d.clients.length+' clients, '+d.trips.length+' trips');
-          db=d;instrumentDbWipeTracing();if(applyComplianceFromBackup(d)) debugLog('Local restore: compliance tracker data restored');if(!Array.isArray(db.vendors))db.vendors=[];if(!Array.isArray(db.bizVendors))db.bizVendors=[];if(!Array.isArray(db.communities))db.communities=[];if(!Array.isArray(db.corporateClients))db.corporateClients=[];if(!Array.isArray(db.planner))db.planner=[];if(!Array.isArray(db.bookmarks))db.bookmarks=[];if(!Array.isArray(db.savedReports))db.savedReports=[];if(!Array.isArray(db.groups))db.groups=[];if(!Array.isArray(db.marketingPlan))db.marketingPlan=[];if(!Array.isArray(db.pendingImportMatches))db.pendingImportMatches=[];if(!Array.isArray(db.jetpackRemovalQueue))db.jetpackRemovalQueue=[];if(!Array.isArray(db.payments))db.payments=[];(db.clients||[]).forEach(function(c){ if(c.name && !c.name.includes(',')) c.name=toLastFirst(c.name); });_dbDecryptFailed=false;
+          db=d;instrumentDbWipeTracing();if(applyComplianceFromBackup(d)) debugLog('Local restore: compliance tracker data restored');if(!Array.isArray(db.vendors))db.vendors=[];if(!Array.isArray(db.bizVendors))db.bizVendors=[];if(!Array.isArray(db.communities))db.communities=[];if(!Array.isArray(db.corporateClients))db.corporateClients=[];if(!Array.isArray(db.planner))db.planner=[];if(!Array.isArray(db.bookmarks))db.bookmarks=[];if(!Array.isArray(db.savedReports))db.savedReports=[];if(!Array.isArray(db.groups))db.groups=[];if(!Array.isArray(db.marketingPlan))db.marketingPlan=[];if(!Array.isArray(db.pendingImportMatches))db.pendingImportMatches=[];if(!Array.isArray(db.jetpackRemovalQueue))db.jetpackRemovalQueue=[];if(!Array.isArray(db.payments))db.payments=[];if(!Array.isArray(db.surveyResponses))db.surveyResponses=[];(db.clients||[]).forEach(function(c){ if(c.name && !c.name.includes(',')) c.name=toLastFirst(c.name); });_dbDecryptFailed=false;
           // Awaited specifically because this is a restore: the natural next
           // move after seeing "Data imported" is to reload to confirm it
           // stuck, and saveDB()'s encrypted write is otherwise fire-and-
@@ -11321,6 +11324,129 @@ function parseTripFormEmailText(flatText){
   }
   return row;
 }
+// ── Post-Trip Survey responses ──────────────────────────────────────────
+// post-trip-survey.html posts to the exact SAME submit-form.com endpoint
+// as the Book a Trip form above (both action="https://submit-form.com/oFQ4LGF1w")
+// — so a survey response's notification email arrives with the same
+// subject pattern TRIPFORM_EMAIL_SUBJECT_RE matches, and subject alone
+// can't tell the two apart. The survey's own hidden "Post Trip Survey
+// Submission" field (always "Yes", present on every real submission,
+// never on a Book a Trip one) is what checkForNewTripFormEmails() actually
+// branches on instead — see its forEach below.
+var POST_TRIP_SURVEY_MARKER_RE = /Post Trip Survey Submission\s*:?\s*Yes/i;
+function buildPostTripSurveyFieldLabels(){
+  return ['Full Name','Email','Overall Trip Rating','Miles Man Service Rating','Recommend Likelihood (NPS)',
+    'Bookings Went As Planned','Booking Issues Details','Best Part Of Trip','What We Could Improve',
+    'Willing To Share Testimonial','Testimonial','OK To Feature Publicly','Additional Comments',
+    'Next Trip Destination','Trip Destination','Post Trip Survey Submission'];
+}
+var _postTripSurveyLabelRegex = null;
+function postTripSurveyLabelRegex(){
+  if(_postTripSurveyLabelRegex) return _postTripSurveyLabelRegex;
+  // Longest-first, same reason as tripFormLabelRegex(): "Trip Destination"
+  // is a suffix of "Next Trip Destination" and would otherwise match
+  // inside it.
+  var labels = buildPostTripSurveyFieldLabels().slice().sort(function(a,b){return b.length-a.length;});
+  var pattern = labels.map(function(l){return l.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');}).join('|');
+  _postTripSurveyLabelRegex = new RegExp('(?:'+pattern+')(?![A-Za-z])', 'g');
+  return _postTripSurveyLabelRegex;
+}
+function parsePostTripSurveyEmailText(flatText){
+  // Same notification service/template as the trip form (see the comment
+  // above), so the same footer marker applies.
+  var footerIdx = flatText.search(/Go to dashboard/i);
+  if(footerIdx !== -1) flatText = flatText.slice(0, footerIdx);
+  var regex = postTripSurveyLabelRegex();
+  regex.lastIndex = 0;
+  var matches = [];
+  var m;
+  while((m = regex.exec(flatText))){
+    matches.push({label:m[0], start:m.index, end:m.index+m[0].length});
+  }
+  var row = {};
+  for(var i=0; i<matches.length; i++){
+    if(matches[i].label in row) continue;
+    var start = matches[i].end;
+    var end = (i+1<matches.length) ? matches[i+1].start : flatText.length;
+    row[matches[i].label] = flatText.slice(start, end).replace(/^\s*:\s*/, '').trim();
+  }
+  return row;
+}
+// Matches a Post-Trip Survey response to an existing client the same
+// email-first/exact-name/first+last priority order processContactFormRow()
+// uses — never creates a new client, since a survey link is only ever sent
+// to someone already in the system; an unmatched response is still saved
+// (see Reports > Survey Results) rather than silently dropped, just with
+// clientId left blank. Also tries to attach the specific trip the response
+// is about, using the Trip Destination hidden field the survey link
+// pre-fills (see POST_TRIP_SURVEY_URL's ?destination= param) to narrow
+// down which of that client's trips it is, falling back to their most
+// recently-departed trip if no destination match is found.
+function processPostTripSurveyRow(row, counters, msgId){
+  var name = (row['Full Name']||'').trim();
+  var email = (row['Email']||'').trim();
+  if(!name && !email){
+    debugLog('Post-trip survey check: skipped a submission — could not parse a name or email from it.');
+    counters.skipped++;
+    return;
+  }
+  if(msgId && db.surveyResponses.some(function(r){ return r.sourceEmailId===msgId; })){
+    counters.skipped++;
+    return;
+  }
+  var emailLc = email.toLowerCase();
+  var nameFirst = getFirstName(name).toLowerCase(), nameLast = getLastName(name).toLowerCase();
+  var client = db.clients.find(function(c){
+    if(emailLc && c.email && c.email.toLowerCase()===emailLc) return true;
+    if(name && (c.name||'').toLowerCase().trim()===name.toLowerCase().trim()) return true;
+    var cFirst=getFirstName(c.name).toLowerCase(), cLast=getLastName(c.name).toLowerCase();
+    return nameFirst && nameLast && nameFirst!==nameLast && cFirst===nameFirst && cLast===nameLast;
+  });
+  if(!client){
+    debugLog('Post-trip survey check: no matching client found for "'+(name||email)+'" — saved unlinked rather than dropped (see Reports > Survey Results).');
+  }
+  var destination = (row['Trip Destination']||'').trim();
+  var trip = null;
+  if(client){
+    var clientTrips = db.trips.filter(function(t){ return t.clientId===client.id || (t.clientIds||[]).includes(client.id); });
+    var destMatches = destination ? clientTrips.filter(function(t){ return (t.destination||'').toLowerCase()===destination.toLowerCase(); }) : [];
+    var pool = destMatches.length ? destMatches : clientTrips;
+    trip = pool.slice().sort(function(a,b){ return depSortKey(b).localeCompare(depSortKey(a)); })[0] || null;
+  }
+  function num(v){ var n = parseInt(v,10); return isNaN(n) ? null : n; }
+  var overallRating = num(row['Overall Trip Rating']);
+  var serviceRating = num(row['Miles Man Service Rating']);
+  var nps = num(row['Recommend Likelihood (NPS)']);
+  db.surveyResponses.push({
+    id: newId('SV', db.surveyResponses),
+    clientId: client?client.id:'', clientName: client?client.name:(name||email),
+    tripId: trip?trip.id:'', tripDestination: destination||(trip?trip.destination:''),
+    submittedAt: today(),
+    overallRating: overallRating, serviceRating: serviceRating, nps: nps,
+    bookingsWentAsPlanned: row['Bookings Went As Planned']||'',
+    bookingIssuesDetails: row['Booking Issues Details']||'',
+    bestPart: row['Best Part Of Trip']||'',
+    improve: row['What We Could Improve']||'',
+    willingTestimonial: row['Willing To Share Testimonial']||'',
+    testimonial: row['Testimonial']||'',
+    okToFeaturePublicly: (row['OK To Feature Publicly']||'').trim().toLowerCase()==='yes',
+    additionalComments: row['Additional Comments']||'',
+    nextTripDestination: row['Next Trip Destination']||'',
+    sourceEmailId: msgId||''
+  });
+  counters.surveysImported = (counters.surveysImported||0)+1;
+  if(client){
+    if(!client.notesLog) client.notesLog=[];
+    client.notesLog.push({ts:new Date().toLocaleString(),
+      text:'Post-trip survey response received — Overall: '+(overallRating!=null?overallRating+'/5':'—')+', Service: '+(serviceRating!=null?serviceRating+'/5':'—')+', NPS: '+(nps!=null?nps+'/10':'—'),
+      noteType:'Post-Trip Follow-up', source:'post-trip-survey'});
+    // Auto-close the matching "Post-trip survey — <client>" reminder task
+    // checkForTripReturns() created, so it doesn't keep nagging for a
+    // response that's already in hand.
+    var openTask = db.planner.find(function(t){ return !t.done && t.clientId===client.id && /^Post-trip survey/.test(t.title||''); });
+    if(openTask) openTask.done = true;
+  }
+}
 // The watermark these polling checks advance to after every run — always a
 // few minutes BEHIND wall-clock "now", not "now" itself. Microsoft Graph's
 // search index can lag a few seconds to a couple minutes behind a message
@@ -11468,20 +11594,28 @@ async function checkForNewTripFormEmails(silent){
     localStorage.setItem('mm_last_tripform_check', nextWatermark);
     if(!messages.length) return;
 
-    var counters = {added:0, enriched:0, tasksCreated:0, tripsCreated:0, skipped:0};
+    var counters = {added:0, enriched:0, tasksCreated:0, tripsCreated:0, skipped:0, surveysImported:0};
     messages.forEach(function(msg){
       var flatText = stripHtml(msg.body && msg.body.content || '');
-      var row = parseTripFormEmailText(flatText);
-      processTripFormRow(function(name){ return row[name]||''; }, counters);
+      // Post-Trip Survey shares this exact same submit-form.com endpoint
+      // (see POST_TRIP_SURVEY_MARKER_RE's comment) — its own hidden marker
+      // field, not the subject, is what routes it to the survey importer
+      // instead of being misread as a bogus trip request.
+      if(POST_TRIP_SURVEY_MARKER_RE.test(flatText)){
+        processPostTripSurveyRow(parsePostTripSurveyEmailText(flatText), counters, msg.id);
+      } else {
+        var row = parseTripFormEmailText(flatText);
+        processTripFormRow(function(name){ return row[name]||''; }, counters);
+      }
       processedIds.push(msg.id);
     });
     if(processedIds.length > 500) processedIds = processedIds.slice(processedIds.length-500);
     localStorage.setItem('mm_tripform_processed_ids', JSON.stringify(processedIds));
 
-    if(counters.tripsCreated || counters.added || counters.enriched || counters.pendingReview || counters.travelersAdded){
+    if(counters.tripsCreated || counters.added || counters.enriched || counters.pendingReview || counters.travelersAdded || counters.surveysImported){
       snapshot('Auto-import trip form emails');
       saveDB(); render();
-      toast('Auto-imported '+counters.tripsCreated+' trip'+(counters.tripsCreated!==1?'s':'')+' from email ('+counters.added+' new client'+(counters.added!==1?'s':'')+')'+(counters.pendingReview?' — '+counters.pendingReview+' traveler'+(counters.pendingReview!==1?'s':'')+' need review, see Pending Traveler Matches':'')+(counters.travelersAdded?' — added '+counters.travelersAdded+' additional traveler'+(counters.travelersAdded!==1?'s':'')+' to an existing trip':''),'ok');
+      toast('Auto-imported '+counters.tripsCreated+' trip'+(counters.tripsCreated!==1?'s':'')+' from email ('+counters.added+' new client'+(counters.added!==1?'s':'')+')'+(counters.pendingReview?' — '+counters.pendingReview+' traveler'+(counters.pendingReview!==1?'s':'')+' need review, see Pending Traveler Matches':'')+(counters.travelersAdded?' — added '+counters.travelersAdded+' additional traveler'+(counters.travelersAdded!==1?'s':'')+' to an existing trip':'')+(counters.surveysImported?' — '+counters.surveysImported+' post-trip survey response'+(counters.surveysImported!==1?'s':''):''),'ok');
     }
   }catch(e){
     debugLog('Trip form email check failed: '+e.message);
@@ -12766,6 +12900,7 @@ function renderReports(){
       '<button class="rpt-tab-btn'+(activeTab==='points'?' active':'')+'" data-tab="points">Combined Points</button>'+
       '<button class="rpt-tab-btn'+(activeTab==='hotelcity'?' active':'')+'" data-tab="hotelcity">Hotels by City</button>'+
       '<button class="rpt-tab-btn'+(activeTab==='ai'?' active':'')+'" data-tab="ai">AI Report</button>'+
+      '<button class="rpt-tab-btn'+(activeTab==='survey'?' active':'')+'" data-tab="survey">Survey Results</button>'+
     '</div>'+
     (activeTab==='activity' ?
       ('<div class="report-filter">'+
@@ -12844,6 +12979,12 @@ function renderReports(){
         '</div>'+
       '</div>'+
       '<div id="rpt-city-results"><div class="empty" style="padding:40px">Enter a city (and/or country) above and click Run Report — searches every Hotel supplier\'s properties list</div></div>')
+    : activeTab==='survey' ?
+      ('<div style="display:flex;gap:8px;margin-bottom:16px">'+
+        '<button class="report-run-btn" id="rpt-survey-run">Run Report</button>'+
+        '<button class="report-export-btn" id="rpt-survey-export">Export CSV</button>'+
+      '</div>'+
+      '<div id="rpt-survey-results"><div class="empty" style="padding:40px">Click Run Report to summarize every Post-Trip Survey response on file</div></div>')
     :
       ('<div class="field full" style="margin-bottom:14px">'+
         '<label>Describe the report you want <span class="hint" style="text-transform:none;font-weight:400">(e.g. "Trips over $3,000 booked with Delta in the last year, sorted by value")</span></label>'+
@@ -12916,6 +13057,16 @@ function renderReports(){
     document.getElementById('rpt-city-country').addEventListener('keydown', function(e){ if(e.key==='Enter') document.getElementById('rpt-city-run').click(); });
     document.getElementById('rpt-city-export').addEventListener('click', exportHotelCityReport);
     document.getElementById('rpt-city-export-pdf').addEventListener('click', exportHotelCityReportPdf);
+  } else if(activeTab==='survey'){
+    document.getElementById('rpt-survey-run').addEventListener('click', function(){
+      runSurveyResultsReport();
+      setTimeout(function(){
+        document.querySelectorAll('.rpt-survey-row').forEach(function(row){
+          row.addEventListener('click', function(){ if(row.dataset.clientId) openClientForm(row.dataset.clientId); });
+        });
+      }, 50);
+    });
+    document.getElementById('rpt-survey-export').addEventListener('click', exportSurveyResultsReport);
   } else {
     document.getElementById('rpt-ai-generate').addEventListener('click', runAiReportGenerate);
     bindSavedReportButtons();
@@ -13491,6 +13642,90 @@ async function exportCertificatesReportPdf(){
   if(!rows.length){ toast('No data to export','err'); return; }
   var subtitle = rows.length+' unused certificate'+(rows.length!==1?'s':'');
   await downloadReportAsPdf('Unused Certificates Report', subtitle, certificatesReportPdfTable(rows), 'milesman-unused-certificates-report.pdf');
+}
+
+// ── Survey Results Report ────────────────────────────────────────────────
+// Summarizes every Post-Trip Survey response on file (see
+// processPostTripSurveyRow() — pulled in automatically from the survey's
+// own notification emails). No filters: response volume is naturally low
+// enough that the full list is always the useful view.
+function getSurveyResultsReportData(){
+  return db.surveyResponses.slice().sort(function(a,b){ return (b.submittedAt||'').localeCompare(a.submittedAt||''); });
+}
+// Average rating/NPS figures, rounded to 1 decimal; a field that's never
+// been answered on any response returns null rather than 0, so the UI can
+// show "—" instead of a misleading zero.
+function surveyResultsSummaryStats(rows){
+  function avg(nums){ return nums.length ? Math.round((nums.reduce(function(a,b){return a+b;},0)/nums.length)*10)/10 : null; }
+  var overallVals = rows.map(function(r){return r.overallRating;}).filter(function(v){return v!=null;});
+  var serviceVals = rows.map(function(r){return r.serviceRating;}).filter(function(v){return v!=null;});
+  var npsVals = rows.map(function(r){return r.nps;}).filter(function(v){return v!=null;});
+  // Standard NPS methodology: 9-10 is a promoter, 0-6 a detractor, 7-8
+  // passive (counted toward the response total but not the score itself).
+  var promoters = npsVals.filter(function(v){return v>=9;}).length;
+  var detractors = npsVals.filter(function(v){return v<=6;}).length;
+  var npsScore = npsVals.length ? Math.round((promoters-detractors)/npsVals.length*100) : null;
+  var plannedAnswered = rows.filter(function(r){return r.bookingsWentAsPlanned==='Yes'||r.bookingsWentAsPlanned==='No';});
+  var plannedYes = plannedAnswered.filter(function(r){return r.bookingsWentAsPlanned==='Yes';}).length;
+  var testimonialsCollected = rows.filter(function(r){return r.willingTestimonial==='Yes' && r.testimonial;}).length;
+  return {
+    count: rows.length,
+    avgOverall: avg(overallVals), avgService: avg(serviceVals),
+    npsScore: npsScore, npsResponses: npsVals.length, promoters: promoters, detractors: detractors,
+    plannedPct: plannedAnswered.length ? Math.round(plannedYes/plannedAnswered.length*100) : null,
+    testimonialsCollected: testimonialsCollected
+  };
+}
+function runSurveyResultsReport(){
+  var rows = getSurveyResultsReportData();
+  var container = document.getElementById('rpt-survey-results');
+  if(!container) return;
+  if(!rows.length){
+    container.innerHTML = '<div class="empty" style="padding:40px">No post-trip survey responses yet</div>';
+    return;
+  }
+  var s = surveyResultsSummaryStats(rows);
+  var statsHtml = '<div class="stats-grid" style="grid-template-columns:repeat(auto-fit,minmax(130px,1fr))">'+
+    '<div class="stat"><div class="stat-lbl">Responses</div><div class="stat-val">'+s.count+'</div></div>'+
+    '<div class="stat"><div class="stat-lbl">Avg Overall Rating</div><div class="stat-val">'+(s.avgOverall!=null?s.avgOverall+'/5':'—')+'</div></div>'+
+    '<div class="stat"><div class="stat-lbl">Avg Service Rating</div><div class="stat-val">'+(s.avgService!=null?s.avgService+'/5':'—')+'</div></div>'+
+    '<div class="stat"><div class="stat-lbl">NPS Score</div><div class="stat-val">'+(s.npsScore!=null?s.npsScore:'—')+'</div></div>'+
+    '<div class="stat"><div class="stat-lbl">Bookings As Planned</div><div class="stat-val">'+(s.plannedPct!=null?s.plannedPct+'%':'—')+'</div></div>'+
+    '<div class="stat"><div class="stat-lbl">Testimonials Collected</div><div class="stat-val">'+s.testimonialsCollected+'</div></div>'+
+  '</div>'+
+  (s.npsResponses ? '<div style="font-size:12px;color:#888;margin-bottom:16px">NPS based on '+s.npsResponses+' response'+(s.npsResponses!==1?'s':'')+' — '+s.promoters+' promoter'+(s.promoters!==1?'s':'')+', '+s.detractors+' detractor'+(s.detractors!==1?'s':'')+'</div>' : '');
+  var rowsHtml = rows.map(function(r){
+    return '<tr class="rpt-survey-row"'+(r.clientId?' style="cursor:pointer"':'')+' data-client-id="'+(r.clientId||'')+'">'+
+      '<td>'+escHtml(r.clientName||'(unmatched)')+'</td>'+
+      '<td>'+escHtml(r.tripDestination||'—')+'</td>'+
+      '<td style="white-space:nowrap">'+(r.submittedAt?fmtDate(r.submittedAt):'—')+'</td>'+
+      '<td style="text-align:center">'+(r.overallRating!=null?r.overallRating+'/5':'—')+'</td>'+
+      '<td style="text-align:center">'+(r.serviceRating!=null?r.serviceRating+'/5':'—')+'</td>'+
+      '<td style="text-align:center">'+(r.nps!=null?r.nps+'/10':'—')+'</td>'+
+      '<td style="text-align:center">'+(r.bookingsWentAsPlanned==='No'?'<span style="color:#dc2626;font-weight:600">No</span>':(escHtml(r.bookingsWentAsPlanned)||'—'))+'</td>'+
+      '<td style="max-width:260px">'+(r.testimonial?escHtml(r.testimonial.length>120?r.testimonial.slice(0,120)+'…':r.testimonial):'—')+'</td>'+
+    '</tr>';
+  }).join('');
+  container.innerHTML = statsHtml +
+    '<div class="tbl-wrap"><table class="report-table"><thead><tr>'+
+      '<th>Client</th><th>Trip</th><th>Submitted</th><th>Overall</th><th>Service</th><th>NPS</th><th>As Planned?</th><th>Testimonial</th>'+
+    '</tr></thead><tbody>'+rowsHtml+'</tbody></table></div>';
+}
+function exportSurveyResultsReport(){
+  var rows = getSurveyResultsReportData();
+  if(!rows.length){ toast('No data to export','err'); return; }
+  var esc = function(v){ var s=String(v==null?'':v); return s.includes(',')||s.includes('"')||s.includes('\n')?'"'+s.replace(/"/g,'""')+'"':s; };
+  var headers = ['Client','Trip Destination','Submitted','Overall Rating','Service Rating','NPS','Bookings As Planned','Booking Issues Details',
+    'Best Part Of Trip','What We Could Improve','Willing To Share Testimonial','Testimonial','OK To Feature Publicly','Additional Comments','Next Trip Destination'];
+  var csvRows = rows.map(function(r){
+    return [r.clientName||'', r.tripDestination||'', r.submittedAt||'', r.overallRating!=null?r.overallRating:'', r.serviceRating!=null?r.serviceRating:'',
+      r.nps!=null?r.nps:'', r.bookingsWentAsPlanned||'', r.bookingIssuesDetails||'', r.bestPart||'', r.improve||'', r.willingTestimonial||'',
+      r.testimonial||'', r.okToFeaturePublicly?'Yes':'No', r.additionalComments||'', r.nextTripDestination||''];
+  });
+  var csv = [headers].concat(csvRows).map(function(r){return r.map(esc).join(',');}).join('\n');
+  var b = new Blob([csv],{type:'text/csv'});
+  var a = document.createElement('a'); a.href=URL.createObjectURL(b); a.download='milesman-survey-results-report.csv'; a.click();
+  toast('Report exported ✓');
 }
 
 // ── Hotels by City Report ────────────────────────────────────────────────
@@ -14244,6 +14479,7 @@ function renderEmail(){
     '<div class="email-two-col">'+
       '<div>'+
         '<div id="email-client-label" style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">1. Select Client(s)</div>'+
+        '<input type="text" id="email-filter-search" placeholder="Search clients by name..." style="width:100%;box-sizing:border-box;padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;font-family:inherit;margin-bottom:8px">'+
         '<div style="display:flex;gap:14px;margin-bottom:8px">'+
           '<label style="display:flex;align-items:center;gap:5px;font-size:12px;color:#374151;cursor:pointer"><input type="checkbox" id="email-filter-paying" style="width:13px;height:13px"> Paying clients only</label>'+
           '<label style="display:flex;align-items:center;gap:5px;font-size:12px;color:#374151;cursor:pointer"><input type="checkbox" id="email-filter-subscriber" style="width:13px;height:13px"> Subscribers only</label>'+
@@ -14416,9 +14652,11 @@ function renderEmail(){
   function filteredClients(){
     var payingOnly = document.getElementById('email-filter-paying').checked;
     var subOnly = document.getElementById('email-filter-subscriber').checked;
+    var searchTerm = document.getElementById('email-filter-search').value.trim().toLowerCase();
     return sortedClients.filter(function(c){
       if(payingOnly && !c.isPayingClient) return false;
       if(subOnly && !c.isSubscriber) return false;
+      if(searchTerm && (c.name||'').toLowerCase().indexOf(searchTerm)===-1) return false;
       return true;
     });
   }
@@ -14438,6 +14676,7 @@ function renderEmail(){
   }
   document.getElementById('email-filter-paying').addEventListener('change', applyEmailFilters);
   document.getElementById('email-filter-subscriber').addEventListener('change', applyEmailFilters);
+  document.getElementById('email-filter-search').addEventListener('input', applyEmailFilters);
 
   document.querySelectorAll('.template-card').forEach(function(card){
     card.addEventListener('click',function(){
@@ -18881,13 +19120,36 @@ function tripSummaryLineHtml(members, collapsed){
     (info.isGroup?'&#128279; ':'')+escHtml(info.label)+(info.statusLabel?' &middot; '+escHtml(info.statusLabel):'')+(info.dateRange?' &middot; '+info.dateRange:'')+(info.isGroup?' &middot; '+info.sorted.length+' trips':'')+(info.totalRevenue?' &middot; $'+money(info.totalRevenue):'')+
   '</td></tr>';
 }
+// Whether a trip has anything recorded in Booked Trip Details (any
+// category) — same categories bookedTripCategoriesWithContent() checks,
+// but defensively guarded (callable on a trip whose booked shape may be
+// incomplete/legacy) and short-circuits on the first match since the
+// caller only needs a yes/no, not the full category list.
+function tripHasBookedDetails(t){
+  var bd = t && t.booked;
+  if(!bd) return false;
+  if(bd.airline && (bd.airline.records||[]).length) return true;
+  if((bd.hotel||[]).length) return true;
+  var cru = bd.cruise||{};
+  if(cru.cruiseLine||cru.shipName||cru.confirmationNumber||cru.sailingDate||cru.price||(cru.cabins||[]).length) return true;
+  if((bd.carRental||[]).length) return true;
+  if((bd.transfers||[]).length) return true;
+  if((bd.tours||[]).length) return true;
+  if((bd.themePark||[]).length) return true;
+  if((bd.train||[]).length) return true;
+  if((bd.bus||[]).length) return true;
+  return false;
+}
 // Groups consecutive rendering by linked-trip membership without disturbing
 // the active sort/filter: walks `list` in its already-sorted order, and the
 // first time a member of a group (linked or solo) is reached, renders its
 // summary line — collapsed by default (window._tripGroupsCollapsed[key]!==false,
 // so an explicit expand is what gets remembered, not the other way round) —
-// followed by every member present in `list` (chronologically) if expanded,
-// then skips the rest of that group's members later in the loop.
+// followed by every member present in `list` if expanded (the trip(s) with
+// real Booked Trip Details first — e.g. a revenue-only/phantom trip wrongly
+// linked into the group shouldn't bury the one with the actual itinerary —
+// then chronologically within each tier), then skips the rest of that
+// group's members later in the loop.
 function tripTableBodyHtml(list){
   if(!list.length) return '<tr><td colspan="12"><div class="empty">No trips found</div></td></tr>';
   var groupOf = tripLinkGroups();
@@ -18904,8 +19166,11 @@ function tripTableBodyHtml(list){
     var isCollapsed = collapsedGroups[key] !== false;
     html += tripSummaryLineHtml(membersInList, isCollapsed);
     if(!isCollapsed){
-      membersInList.slice().sort(function(a,b){ return depSortKey(a).localeCompare(depSortKey(b)); })
-        .forEach(function(m){ html += tripRowHtml(m, membersInList.length>1); });
+      membersInList.slice().sort(function(a,b){
+        var aHas = tripHasBookedDetails(a), bHas = tripHasBookedDetails(b);
+        if(aHas !== bHas) return aHas ? -1 : 1;
+        return depSortKey(a).localeCompare(depSortKey(b));
+      }).forEach(function(m){ html += tripRowHtml(m, membersInList.length>1); });
     }
     membersInList.forEach(function(m){ rendered[m.id] = true; });
   });
