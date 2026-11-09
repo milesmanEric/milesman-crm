@@ -1933,16 +1933,31 @@ function stripTruncation(seg){
   if(seg.slice(-1)==='…') return seg.slice(0,-1).trim();
   return seg;
 }
+// Shared truncation-aware segment comparison — a "..."-truncated segment
+// (see stripTruncation) is treated as a known prefix rather than requiring
+// the full segment to match, e.g. "Bak..." matches "Bakhash". Handles
+// either side being the truncated one (or both), since a revenue report's
+// Name and Class columns can each independently get cut off. An empty
+// prefix (the report truncated this segment down to nothing at all) never
+// matches anything — see matchClientByName's own comment for the incident
+// that guards against (a transaction silently attributed to the wrong
+// same-first-name client instead of falling through to manual review).
+function segMatchesTruncated(segA, segB){
+  var aTrunc = isTruncatedSeg(segA), bTrunc = isTruncatedSeg(segB);
+  if(!aTrunc && !bTrunc) return segA===segB;
+  var prefixA = aTrunc ? stripTruncation(segA) : segA;
+  var prefixB = bTrunc ? stripTruncation(segB) : segB;
+  if(!prefixA || !prefixB) return false;
+  return aTrunc ? prefixB.indexOf(prefixA)===0 : prefixA.indexOf(prefixB)===0;
+}
 // Matches a revenue-import row's client name against db.clients. Exact
-// full-name match first; otherwise compares first/last name independently,
-// treating a "..."-truncated segment (see stripTruncation) as a known
-// prefix rather than requiring the full segment to match — "Bak..."
-// matches a stored last name of "Bakhash". Only returns a match when
-// exactly one client fits, so an empty/ambiguous prefix (a Class value
-// truncated down to nothing but the first name) never guesses wrong; it
-// just falls through to the normal unmatched-client flow instead. Shared
-// by startRevenueImport's pre-pass and finalizeImport's per-row match so
-// the two can't silently disagree the way they used to.
+// full-name match first; otherwise compares first/last name independently
+// via segMatchesTruncated. Only returns a match when exactly one client
+// fits, so an empty/ambiguous prefix (e.g. a Class value truncated down to
+// a single letter, which could be any number of existing last names) never
+// guesses wrong; it just falls through to the normal unmatched-client flow
+// instead. Shared by startRevenueImport's pre-pass and finalizeImport's
+// per-row match so the two can't silently disagree the way they used to.
 function matchClientByName(name){
   if(!name) return null;
   var nl = name.toLowerCase().trim();
@@ -1951,28 +1966,25 @@ function matchClientByName(name){
   var inputFirst = getFirstName(nl).toLowerCase();
   var inputLast = getLastName(nl).toLowerCase();
   if(!inputFirst || !inputLast || inputFirst===inputLast) return null;
-  function segMatches(inputSeg, candidateSeg){
-    if(isTruncatedSeg(inputSeg)){
-      var prefix = stripTruncation(inputSeg);
-      // An empty prefix means the report truncated this segment down to
-      // nothing at all (e.g. a long first name swallowing the entire last
-      // name into "..."), so there's zero real information to match
-      // on — treating that as "matches anything" is exactly how a
-      // transaction got silently attributed to the wrong same-first-name
-      // client (Jennifer Gartenberg's revenue landing on Jennifer
-      // Colamedici) instead of falling through to manual review the way
-      // the comment above this function promises. Matching nothing here
-      // forces that fallthrough instead of guessing.
-      return prefix ? candidateSeg.indexOf(prefix)===0 : false;
-    }
-    return candidateSeg===inputSeg;
-  }
   var candidates = db.clients.filter(function(c){
     var cFirst = getFirstName(c.name).toLowerCase();
     var cLast = getLastName(c.name).toLowerCase();
-    return segMatches(inputFirst, cFirst) && segMatches(inputLast, cLast);
+    return segMatchesTruncated(inputFirst, cFirst) && segMatchesTruncated(inputLast, cLast);
   });
   return candidates.length===1 ? candidates[0] : null;
+}
+// Whether a revenue row's Name and Class column values represent the same
+// person — first used as an exact string comparison, which a report that
+// truncates one column but not the other (or truncates them to different
+// lengths) can never satisfy. That mismatch used to make extractRevenueRow
+// treat the client's own (correctly spelled) name in the Name column as a
+// third-party supplier being paid, creating a phantom Vendor record named
+// after the client — a real incident this fixes.
+function namesRepresentSamePerson(nameA, nameB){
+  if(!nameA || !nameB) return false;
+  var aFirst=getFirstName(nameA).toLowerCase(), aLast=getLastName(nameA).toLowerCase();
+  var bFirst=getFirstName(nameB).toLowerCase(), bLast=getLastName(nameB).toLowerCase();
+  return segMatchesTruncated(aFirst,bFirst) && segMatchesTruncated(aLast,bLast);
 }
 // Builds a clean name for a brand-new client created from an import row's
 // (possibly report-truncated) name, so nothing ever gets a literal "..."
@@ -9626,10 +9638,16 @@ function extractRevenueRow(getCol, cols){
   // Class (normalized to Last, First) is the client whenever it's present.
   // If Name differs from Class, Name is very likely the supplier being paid —
   // check for that. Class blank falls back to Name as the client. Never skip
-  // a row over a Name/Class mismatch.
+  // a row over a Name/Class mismatch. Truncation-aware (namesRepresentSamePerson)
+  // rather than a plain string comparison — a report that truncates Class
+  // but not Name (or truncates them to different lengths) used to fail this
+  // exact-match check even when both columns named the same person,
+  // wrongly treating the client's own name in the Name column as a
+  // third-party supplier and creating a phantom Vendor record for them — a
+  // real incident this fixes.
   var nameNormalized  = toLastFirst(nameVal);
   var classNormalized = clientFromClass ? toLastFirst(clientFromClass) : '';
-  var namesMatch = classNormalized && nameNormalized.toLowerCase()===classNormalized.toLowerCase();
+  var namesMatch = classNormalized && (nameNormalized.toLowerCase()===classNormalized.toLowerCase() || namesRepresentSamePerson(nameNormalized, classNormalized));
 
   var clientName   = classNormalized || nameNormalized;
   var supplierId   = '';
