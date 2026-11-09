@@ -20556,7 +20556,7 @@ function pointsEntryRowInnerHtml(entry){
       '<div class="field"><label>Cost ($)</label><input class="points-entry-cost" type="number" value="'+(entry.cost||'')+'"></div>'+
       '<div class="field"><label>Currency</label><select class="points-entry-cashvalue-currency"><option value="">-- Select --</option>'+selOpts(FOREIGN_CURRENCIES,entry.cashValueCurrency)+'</select></div>'+
       '<div class="field"><label>Cash Value (Other Currency)</label><input class="points-entry-cashvalue-foreign" type="number" value="'+(entry.cashValueForeign||'')+'"></div>'+
-      '<div class="field"><label>Cash Value ($) <span class="hint" style="text-transform:none;font-weight:400">(auto: Cost − Price)</span></label><input class="points-entry-cashvalue" type="number" readonly style="background:#f3f4f6;color:#555" value="'+(entry.cashValue||'')+'"></div>'+
+      '<div class="field"><label>Cash Value ($) <span class="hint" style="text-transform:none;font-weight:400">(full value of the flight/booking if redeemed via points)</span></label><input class="points-entry-cashvalue" type="number" value="'+(entry.cashValue||'')+'"></div>'+
     '</div>'+
     '<div class="field full"><label>Notes</label><textarea class="points-entry-notes">'+(entry.notes||'')+'</textarea></div>';
 }
@@ -20586,52 +20586,6 @@ function readPointsEntriesFrom(containerEl){
       notes: (row.querySelector('.points-entry-notes')||{}).value||''
     };
   }).filter(function(e){ return e.program||e.amount||e.currency||e.costForeign||e.cost||e.cashValueCurrency||e.cashValueForeign||e.cashValue||e.notes; });
-}
-// Points Used Cash Value ($) used to be typed in by hand — in practice it's
-// always Cost($) minus whatever real cash was paid for that same booking
-// (its own Price($) field), since points only ever cover the gap between
-// the two. Blank/zero Cost reads as "not entered yet" (blank), not a
-// negative cash value.
-function pointsEntryCashValue(cost, price){
-  var c = Number(cost)||0;
-  return c ? Math.round((c-(Number(price)||0))*100)/100 : '';
-}
-function setPointsEntryCashValues(ptsContainerEl, price){
-  if(!ptsContainerEl) return;
-  Array.from(ptsContainerEl.querySelectorAll('.points-entry-row')).forEach(function(row){
-    var cvEl = row.querySelector('.points-entry-cashvalue');
-    if(!cvEl) return;
-    cvEl.value = pointsEntryCashValue((row.querySelector('.points-entry-cost')||{}).value, price);
-  });
-}
-function sumEntryPrices(containerId, rowClass, priceClass){
-  var el = document.getElementById(containerId);
-  if(!el) return 0;
-  return Array.from(el.querySelectorAll('.'+rowClass)).reduce(function(a,row){
-    return a + (Number((row.querySelector('.'+priceClass)||{}).value)||0);
-  },0);
-}
-// Airline (per-segment) and Hotel (per-entry) each have their own nested
-// Points Used list, so each list's owning Price is unambiguous — that
-// entry's own. Every other category (Cruise/Car Rental/Transfers/Tours/
-// Theme Park/Train/Bus) shares one Points Used list for the whole category,
-// even though 6 of those 7 can have more than one priced entry — so there's
-// no single entry to tie a shared points row to; the owning Price there is
-// that category's combined Price total instead.
-function recomputePointsEntryCashValues(){
-  document.querySelectorAll('.airline-record-row .flight-entry-row').forEach(function(row){
-    setPointsEntryCashValues(row.querySelector('.flight-pts-entries'), (row.querySelector('.flight-entry-price')||{}).value);
-  });
-  document.querySelectorAll('#tb-hotel-entries .hotel-entry-row').forEach(function(row){
-    setPointsEntryCashValues(row.querySelector('.hotel-pts-entries'), (row.querySelector('.hotel-entry-price')||{}).value);
-  });
-  setPointsEntryCashValues(document.getElementById('tb-cruise-pts-entries'), (document.getElementById('tb-cruise-price')||{}).value);
-  setPointsEntryCashValues(document.getElementById('tb-car-pts-entries'), sumEntryPrices('tb-car-entries','car-entry-row','car-entry-price'));
-  setPointsEntryCashValues(document.getElementById('tb-transfers-pts-entries'), sumEntryPrices('tb-transfer-entries','transfer-entry-row','transfer-entry-price'));
-  setPointsEntryCashValues(document.getElementById('tb-tours-pts-entries'), sumEntryPrices('tb-tours-entries','tour-entry-row','tour-entry-price'));
-  setPointsEntryCashValues(document.getElementById('tb-tp-pts-entries'), sumEntryPrices('tb-themepark-entries','themepark-entry-row','themepark-entry-price'));
-  setPointsEntryCashValues(document.getElementById('tb-train-pts-entries'), sumEntryPrices('tb-train-entries','train-entry-row','train-entry-price'));
-  setPointsEntryCashValues(document.getElementById('tb-bus-pts-entries'), sumEntryPrices('tb-bus-entries','bus-entry-row','bus-entry-price'));
 }
 // Same row markup as pointsEntriesListHtml but with a class-marked (not
 // id-marked) empty placeholder, since this is used inside a per-hotel-entry
@@ -20892,7 +20846,6 @@ function refreshBudgetIncludesText(bd){
 function refreshBookedTripSummary(){
   var el = document.getElementById('tb-booked-summary');
   if(!el) return;
-  recomputePointsEntryCashValues();
   var invoicedToClient = !gv('tsup'); // no supplier linked => invoiced to the client, not a supplier
   var bd = readBookedTripDetails();
   el.innerHTML = bookedTripSummaryHtml(computeBookedTripSummary(bd), invoicedToClient, gv('tbr'));
