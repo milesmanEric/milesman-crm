@@ -10040,7 +10040,7 @@ function importRevenueRowForClient(row, cid, seenInBatch){
   // status existed only to distinguish "paid but not yet completed" from
   // real Completed, which the date itself already does more precisely.
   const importedStatus = tripDate>today() ? 'Upcoming' : (tripDate===today() ? 'In Progress' : 'Completed');
-  db.trips.push({
+  const newTrip = {
     id:tripId,clientId:cid,clientName:client.name,
     destination:dest,origin:'',departDate:tripDate,returnDate:tripDate,invoiceDate:invoiceDate,
     status:importedStatus,type:'Leisure',airline:'',flightClass:'',hotel:'',
@@ -10048,7 +10048,29 @@ function importRevenueRowForClient(row, cid, seenInBatch){
     bookingRef:row.invoiceNum||'',notes:row.memo||'',product:row.product||'',
     supplierId:row.supplierId||'',supplierName:row.supplierName||'',
     invoiceNum:row.invoiceNum||''
-  });
+  };
+  db.trips.push(newTrip);
+
+  // Separate revenue-report line items (flight, hotel, cruise, etc.) for the
+  // same client's same trip commonly arrive as separate rows/imports with no
+  // shared invoice number to tie them together — but they do share the same
+  // travel start date. Auto-link this new trip (symmetrically, same two-way
+  // update saveTrip()'s Linked Trips checklist does) to every other trip
+  // already on file for this client with that same departDate, so the Trips
+  // page's grouped summary line picks them up as one trip automatically
+  // instead of requiring a manual Linked Trips edit after every import.
+  if(tripDate){
+    db.trips.forEach(function(t){
+      if(t.id===tripId || t.clientId!==cid || (t.departDate||'')!==tripDate) return;
+      t.linkedTripIds=t.linkedTripIds||[];
+      if(t.linkedTripIds.indexOf(tripId)===-1) t.linkedTripIds.push(tripId);
+      newTrip.linkedTripIds=newTrip.linkedTripIds||[];
+      if(newTrip.linkedTripIds.indexOf(t.id)===-1) newTrip.linkedTripIds.push(t.id);
+    });
+    if(newTrip.linkedTripIds && newTrip.linkedTripIds.length){
+      debugLog('Revenue: auto-linked new trip '+tripId+' to '+newTrip.linkedTripIds.length+' existing trip(s) for '+client.name+' with the same start date ('+tripDate+')');
+    }
+  }
 
   // Deliberately not pushing cid onto the supplier's clientIds here — see
   // the matching comment in saveTrip(): getVendorStats() already derives
