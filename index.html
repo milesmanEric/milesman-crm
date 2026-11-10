@@ -12962,7 +12962,12 @@ function renderReports(){
           '<button class="report-export-btn" id="rpt-inv-export-pdf">Export PDF</button>'+
         '</div>'+
       '</div>'+
-      '<div id="rpt-inv-results"><div class="empty" style="padding:40px">Set filters above and click Run Report</div></div>')
+      '<div id="rpt-inv-results"><div class="empty" style="padding:40px">Set filters above and click Run Report</div></div>'+
+      '<div style="margin-top:28px;padding-top:16px;border-top:1px solid #e5e7eb">'+
+        '<button class="report-export-btn" id="rpt-inv-audit-blank">List Trips With No Resolvable Invoice Date</button>'+
+        '<span class="hint" style="margin-left:10px;text-transform:none;font-weight:400;font-size:12px;color:#888">Ignores the filters above — lists every trip on file where the Invoice Date fallback chain (its own Invoice Date, then its CRM entry date, then its Linked Trips group\'s earliest Invoice Date) still comes up blank.</span>'+
+        '<div id="rpt-inv-audit-results"></div>'+
+      '</div>')
     : activeTab==='certs' ?
       ('<div class="report-filter">'+
         '<div><label>Client</label>'+searchableSelectWrap('<select id="rpt-cert-client"><option value="">All clients</option>'+
@@ -13052,6 +13057,7 @@ function renderReports(){
     document.getElementById('rpt-inv-run').addEventListener('click', runInvoiceReport);
     document.getElementById('rpt-inv-export').addEventListener('click', exportInvoiceReport);
     document.getElementById('rpt-inv-export-pdf').addEventListener('click', exportInvoiceReportPdf);
+    document.getElementById('rpt-inv-audit-blank').addEventListener('click', runInvoiceDateAudit);
   } else if(activeTab==='certs'){
     document.getElementById('rpt-cert-run').addEventListener('click', function(){
       runCertificatesReport();
@@ -13612,6 +13618,42 @@ async function exportInvoiceReportPdf(){
   if(!groups.length){ toast('No data to export','err'); return; }
   var subtitle = groups.length+' invoice'+(groups.length!==1?'s':'');
   await downloadReportAsPdf('Invoice Report', subtitle, invoiceReportPdfTable(groups), 'milesman-invoice-report.pdf');
+}
+
+// One-shot audit (deliberately ignores every filter on this tab — Supplier,
+// Client, From/To Date all included or not, this always checks every trip
+// on file) for effectiveInvoiceDate()'s fallback chain still coming up
+// blank: no invoiceDate, no createdAt (only trips created since that field
+// started being stamped have one), and no linked trip with an invoiceDate
+// either. Lists exactly the trips a Supplier/date-filtered Invoice Date
+// report run would still silently exclude.
+function runInvoiceDateAudit(){
+  var container = document.getElementById('rpt-inv-audit-results');
+  if(!container) return;
+  var linkGroupsMap = tripLinkGroups();
+  var blankTrips = db.trips.filter(function(t){ return !effectiveInvoiceDate(t, linkGroupsMap); });
+  if(!blankTrips.length){
+    container.innerHTML = '<div class="empty" style="padding:20px">Every trip on file has a resolvable Invoice Date — nothing to list.</div>';
+    return;
+  }
+  blankTrips.sort(function(a,b){ return (a.clientName||'').toLowerCase().localeCompare((b.clientName||'').toLowerCase()); });
+  var rowsHtml = blankTrips.map(function(t){
+    return '<tr class="rpt-inv-audit-row" style="cursor:pointer" data-trip-id="'+t.id+'">'+
+      '<td>'+escHtml(t.clientName||'')+'</td>'+
+      '<td>'+escHtml(t.destination||'')+'</td>'+
+      '<td style="white-space:nowrap">'+(t.departDate||'—')+'</td>'+
+      '<td>'+escHtml(t.supplierName||'—')+'</td>'+
+      '<td style="text-align:right">$'+money(t.totalValue||0)+'</td>'+
+    '</tr>';
+  }).join('');
+  container.innerHTML =
+    '<div style="font-size:13px;color:#888;margin:14px 0 10px">'+blankTrips.length+' trip'+(blankTrips.length!==1?'s':'')+' with no resolvable Invoice Date</div>'+
+    '<div class="tbl-wrap"><table class="report-table"><thead><tr>'+
+      '<th>Client</th><th>Destination</th><th>Travel Date</th><th>Supplier</th><th style="text-align:right">Value</th>'+
+    '</tr></thead><tbody>'+rowsHtml+'</tbody></table></div>';
+  document.querySelectorAll('.rpt-inv-audit-row').forEach(function(row){
+    row.addEventListener('click', function(){ openTripForm(row.dataset.tripId); });
+  });
 }
 
 // A certificate can have a referralCredits row on more than one client's
