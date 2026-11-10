@@ -10047,7 +10047,7 @@ function importRevenueRowForClient(row, cid, seenInBatch){
     hotelNights:0,pointsUsed:0,cashPaid:row.amt,totalValue:row.amt,
     bookingRef:row.invoiceNum||'',notes:row.memo||'',product:row.product||'',
     supplierId:row.supplierId||'',supplierName:row.supplierName||'',
-    invoiceNum:row.invoiceNum||''
+    invoiceNum:row.invoiceNum||'',createdAt:today()
   };
   db.trips.push(newTrip);
 
@@ -13321,6 +13321,26 @@ function bindSavedReportButtons(){
   });
 }
 
+// Fallback chain for a trip with no recorded Invoice Date, used only by the
+// Invoice Report (filtering, display and export) — never written back to
+// the trip's own stored invoiceDate field, since that field also has to
+// stay a trustworthy "was this really invoiced" signal elsewhere in the app
+// (the Booked Trip Details form, revenue-import backfill/dedup, etc.).
+// 1. createdAt — the date the trip was actually entered into the CRM
+//    (stamped at creation time by saveTrip()/importRevenueRowForClient();
+//    trips that already existed before that stamping started have none).
+// 2. The earliest Invoice Date among every trip in its Linked Trips group
+//    (tripLinkGroups() — the same connected-component grouping the Trips
+//    page's summary line uses), covering the common case of one real trip's
+//    flight/hotel/cruise line items arriving as separate revenue-report
+//    rows where only one of them happened to carry an invoice date.
+function effectiveInvoiceDate(t, linkGroupsMap){
+  if(t.invoiceDate) return t.invoiceDate;
+  if(t.createdAt) return t.createdAt;
+  var group = (linkGroupsMap && linkGroupsMap[t.id]) || [];
+  var linkedDates = group.filter(function(m){ return m.id!==t.id && m.invoiceDate; }).map(function(m){ return m.invoiceDate; });
+  return linkedDates.length ? linkedDates.sort()[0] : '';
+}
 function getInvoiceReportData(){
   var fromDate = (document.getElementById('rpt-inv-from')||{}).value||'';
   var toDate   = (document.getElementById('rpt-inv-to')||{}).value||'';
@@ -13329,24 +13349,31 @@ function getInvoiceReportData(){
   // "Travel Date" (departDate) or "Invoice Date" (invoiceDate) — these can
   // legitimately differ (booked in one period, travel happens in another),
   // so the From/To range needs to be explicit about which one it's filtering.
-  // invoiceDate is only ever populated by the revenue importer (§4 of
-  // DOCUMENTATION.md); trips added by hand or from the Book a Trip form
-  // don't have one, so an empty invoiceDate sorts before any real fromDate
-  // and those trips are excluded when filtering by Invoice Date with a From
-  // Date set — not a bug, there's genuinely no invoice date recorded for them.
+  // A trip with no recorded Invoice Date falls back through
+  // effectiveInvoiceDate() above (its own createdAt, then its Linked Trips
+  // group's earliest invoice date) rather than being treated as blank —
+  // this runs across every trip on file each time the report runs, old and
+  // new alike, so already-existing blank-invoice-date trips are covered
+  // without any separate one-time migration.
   var dateField = (document.getElementById('rpt-inv-datetype')||{}).value||'invoiceDate';
+  var linkGroupsMap = tripLinkGroups();
 
   // Group trips by invoice number
   var groups = {};
   db.trips.forEach(function(t){
     if(supplierId && t.supplierId !== supplierId) return;
     if(clientId && t.clientId !== clientId) return;
-    var tripDate = t[dateField]||'';
+    var effInvoiceDate = effectiveInvoiceDate(t, linkGroupsMap);
+    var tripDate = dateField==='invoiceDate' ? effInvoiceDate : (t.departDate||'');
     if(fromDate && tripDate < fromDate) return;
     if(toDate   && tripDate > toDate)   return;
     var key = t.invoiceNum || t.bookingRef || ('(no invoice) '+t.id);
     if(!groups[key]) groups[key] = {invoiceNum:key, trips:[], totalValue:0, totalCash:0};
-    groups[key].trips.push(t);
+    // Row object carries the fallback-resolved Invoice Date (display/export/
+    // sort all read t.invoiceDate off these grouped rows) without touching
+    // the real trip record in db.trips.
+    var rowTrip = effInvoiceDate !== (t.invoiceDate||'') ? Object.assign({}, t, {invoiceDate: effInvoiceDate}) : t;
+    groups[key].trips.push(rowTrip);
     groups[key].totalValue += (t.totalValue||0);
     groups[key].totalCash  += (t.cashPaid||0);
   });
@@ -23146,6 +23173,7 @@ function saveTrip(id){
     toast('Trip updated');
   }else{
     data.id=newId('T',db.trips);
+    data.createdAt=today();
     db.trips.push(data);
     if(client) client.totalTrips=(client.totalTrips||0)+1;
     toast('Trip added');
