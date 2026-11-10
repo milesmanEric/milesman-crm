@@ -12907,6 +12907,9 @@ function renderReports(){
         '<div><label>From Date</label><input type="date" id="rpt-from"/></div>'+
         '<div><label>To Date</label><input type="date" id="rpt-to"/></div>'+
         '<div><label>Note Type</label><select id="rpt-type">'+typeOpts+'</select></div>'+
+        '<div><label>Supplier</label>'+searchableSelectWrap('<select id="rpt-supplier"><option value="">All suppliers</option>'+
+          [...db.vendors].sort(function(a,b){return (a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase());}).map(function(v){return '<option value="'+v.id+'">'+v.name+'</option>';}).join('')+
+        '</select>','Search suppliers...')+'</div>'+
         '<div><label>Client</label>'+searchableSelectWrap('<select id="rpt-client"><option value="">All clients</option>'+
           [...db.clients].sort(function(a,b){return (a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase());}).map(function(c){return '<option value="'+c.id+'">'+c.name+'</option>';}).join('')+
         '</select>','Search clients...')+'</div>'+
@@ -13913,6 +13916,7 @@ function getReportData(){
   var fromDate = (document.getElementById('rpt-from')||{}).value||'';
   var toDate   = (document.getElementById('rpt-to')||{}).value||'';
   var noteType = (document.getElementById('rpt-type')||{}).value||'';
+  var supplierId = (document.getElementById('rpt-supplier')||{}).value||'';
   var clientId = (document.getElementById('rpt-client')||{}).value||'';
 
   var rows = [];
@@ -13921,6 +13925,7 @@ function getReportData(){
   if(!noteType || noteType==='Trips'){
     db.trips.forEach(function(t){
       if(clientId && t.clientId !== clientId) return;
+      if(supplierId && t.supplierId !== supplierId) return;
       var tripDate = t.departDate||'';
       if(fromDate && tripDate < fromDate) return;
       if(toDate   && tripDate > toDate)   return;
@@ -13937,8 +13942,9 @@ function getReportData(){
     });
   }
 
-  // Include notes from clients (skip Trip Import - those are legacy, trips now come from db.trips)
-  if(!noteType || noteType!=='Trips'){
+  // Include notes from clients (skip Trip Import - those are legacy, trips now come from db.trips).
+  // Notes carry no supplier association, so a Supplier filter excludes them entirely.
+  if((!noteType || noteType!=='Trips') && !supplierId){
     db.clients.forEach(function(c){
       if(clientId && c.id !== clientId) return;
       (c.notesLog||[]).forEach(function(n){
