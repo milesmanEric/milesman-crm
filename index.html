@@ -8631,7 +8631,7 @@ async function itineraryEmailBodyHtml(opts){
   var themeParkEntries = opts.themeParkEntries || [];
   var themeParkItems = themeParkEntries.map(function(p, i){
     var rows = itineraryDetailRow('Park', p.park) +
-      itineraryDetailRow('Ticket Type', p.ticketType) +
+      itineraryDetailRow('Ticket Type', themeParkTicketsLabel(p)) +
       itineraryDetailRow('Confirmation Number', p.confirmationNumber);
     // Theme Park has no date field at all, unlike Tours above.
     return {date:'', time:'', html: itineraryDetailBox('Theme Park Details', rows)};
@@ -8954,7 +8954,7 @@ function buildItinerarySections(opts){
   var themeParkEntries = opts.themeParkEntries || [];
   themeParkEntries.forEach(function(p,i){
     var rows = itineraryDetailRowText('Park', p.park) +
-      itineraryDetailRowText('Ticket Type', p.ticketType) +
+      itineraryDetailRowText('Ticket Type', themeParkTicketsLabel(p)) +
       itineraryDetailRowText('Confirmation Number', p.confirmationNumber);
     items.push({date:'', time:'', heading:'Theme Park Details', rows:rows, logo:''});
   });
@@ -9479,7 +9479,7 @@ function tripToTravelItems(trip){
     push('Tour', {vendor:t.vendor, description:t.description, confirmationNumber:t.confirmationNumber, price:t.price});
   });
   asArr(b.themePark).forEach(function(p){
-    push('Theme Park', {park:p.park, ticketType:p.ticketType, notes:p.notes, confirmationNumber:p.confirmationNumber, price:p.price});
+    push('Theme Park', {park:p.park, ticketType:themeParkTicketsLabel(p), notes:p.notes, confirmationNumber:p.confirmationNumber, price:themeParkTicketsPriceTotal(p)});
   });
   [['Train', b.train], ['Bus', b.bus]].forEach(function(pair){
     asArr(pair[1]).forEach(function(x){
@@ -18251,7 +18251,10 @@ function tripBookedPriceTotal(t){
     // ticket Price itself, same reasoning as every other per-entry add-on
     // cost in this total — kept in sync with computeBookedTripSummary()'s
     // matching addition.
-    themeParks.reduce(function(a,x){return a+num(x&&x.price)+num(x&&x.mealPlanPrice)+num(x&&x.addOnsPrice);},0) :
+    themeParks.reduce(function(a,x){
+      var ticketsTotal = themeParkEntryTickets(x||{}).reduce(function(a2,tk){return a2+num(tk&&tk.price);},0);
+      return a+ticketsTotal+num(x&&x.mealPlanPrice)+num(x&&x.addOnsPrice);
+    },0) :
     num(b.themePark && b.themePark.price);
   var transfers = Array.isArray(b.transfers) ? b.transfers : [];
   total += transfers.reduce(function(a,x){return a+num(x&&x.price);},0);
@@ -21158,10 +21161,13 @@ function computeBookedTripSummary(bd){
     + carRentalArr.reduce(function(a,c){return a+(c.price||0);},0)
     + transfersArr.reduce(function(a,t){return a+(t.price||0);},0)
     + toursArr.reduce(function(a,t){return a+(t.price||0);},0)
-    // Meal Plan and Add-Ons are each their own real cash cost on top of the
-    // ticket Price itself — kept in sync with tripBookedPriceTotal()'s
-    // matching addition.
-    + themeParkArr.reduce(function(a,t){return a+(t.price||0)+(t.mealPlanPrice||0)+(t.addOnsPrice||0);},0)
+    // Meal Plan and Add-Ons are each their own real cash cost on top of
+    // whatever each of this entry's own ticket types cost — kept in sync
+    // with tripBookedPriceTotal()'s matching addition.
+    + themeParkArr.reduce(function(a,t){
+        var ticketsTotal = themeParkEntryTickets(t||{}).reduce(function(a2,tk){return a2+(tk&&tk.price||0);},0);
+        return a+ticketsTotal+(t.mealPlanPrice||0)+(t.addOnsPrice||0);
+      },0)
     + trainArr.reduce(function(a,t){return a+(t.price||0);},0)
     + busArr.reduce(function(a,t){return a+(t.price||0);},0);
   // Insurance premiums are real cash cost too — same reasoning as
@@ -21658,6 +21664,67 @@ function themeParkTicketTypeOptionsHtml(park, selected){
 // toursInsurancePremium/toursInsuranceCoverage/toursPts, rather than
 // per-entry the way Hotel's are — a single insurance policy or points
 // redemption covering the whole park-tickets purchase is the common case.
+// A theme park entry used to carry exactly one Ticket Type/Number of
+// Days/Price (plus its own Currency/Price-Other-Currency pair) directly on
+// itself — a family buying different ticket types (e.g. a Park Hopper for
+// the adults, a regular ticket for a toddler) had nowhere to put the
+// second one. Those five fields now live in their own repeatable nested
+// list (entry.tickets[]), same "+ Add .../Remove" pattern as a Hotel
+// entry's own nested Points Used list. A trip saved before this (flat
+// ticketType/numDays/currency/priceForeign/price directly on the entry)
+// is migrated into a single-element tickets[] the moment this row renders
+// — see themeParkEntryTickets() below, reused by the totals too so a
+// not-yet-resaved legacy trip's price is never silently dropped from
+// Total Trip Value.
+function themeParkEntryTickets(entry){
+  if(Array.isArray(entry.tickets)) return entry.tickets;
+  return (entry.ticketType||entry.numDays||entry.currency||entry.priceForeign||entry.price) ?
+    [{ticketType:entry.ticketType||'', numDays:entry.numDays||0, currency:entry.currency||'', priceForeign:entry.priceForeign||0, price:entry.price||0}] : [];
+}
+// Human-readable summary of every ticket type on a theme park entry (e.g.
+// "Multi-Day Park Hopper (5 days), 1-Day Base Ticket") and their combined
+// cost including Meal Plan/Add-Ons — used wherever this entry used to be
+// displayed/prefilled off its own single flat ticketType/price (the
+// itinerary email, its plaintext/PDF counterpart, and the Trip
+// Confirmation email's editable prefill), now that those live per-ticket.
+function themeParkTicketsLabel(p){
+  return themeParkEntryTickets(p||{}).map(function(tk){
+    return (tk.ticketType||'')+(tk.numDays?' ('+tk.numDays+' day'+(tk.numDays!==1?'s':'')+')':'');
+  }).filter(Boolean).join(', ');
+}
+function themeParkTicketsPriceTotal(p){
+  return themeParkEntryTickets(p||{}).reduce(function(a,tk){return a+(Number(tk&&tk.price)||0);},0) + (Number(p&&p.mealPlanPrice)||0) + (Number(p&&p.addOnsPrice)||0);
+}
+function themeParkTicketRowInnerHtml(ticket, park){
+  ticket = ticket || {};
+  return '<div style="display:flex;justify-content:flex-end;margin-bottom:4px">'+
+      '<button type="button" class="del-themepark-ticket-btn" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:12px">&#128465;&#65039; Remove</button>'+
+    '</div>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
+      '<div class="field"><label>Ticket Type</label><select class="themepark-ticket-type">'+themeParkTicketTypeOptionsHtml(park,ticket.ticketType)+'</select></div>'+
+      '<div class="field"><label>Number of Days</label><input class="themepark-ticket-days" type="number" value="'+(ticket.numDays||'')+'"></div>'+
+      foreignPriceFieldsHtml('themepark-ticket-currency','themepark-ticket-price-foreign',ticket.currency,ticket.priceForeign)+
+      '<div class="field"><label>Price ($)</label><input class="themepark-ticket-price" type="number" value="'+(ticket.price||'')+'"></div>'+
+    '</div>';
+}
+function themeParkTicketRowHtml(ticket, park){
+  return '<div class="themepark-ticket-row" style="border:1px solid #e5e7eb;border-radius:8px;padding:10px;margin-bottom:8px;background:#fff">'+themeParkTicketRowInnerHtml(ticket, park)+'</div>';
+}
+function themeParkTicketsListHtmlNoId(tickets, park){
+  return (tickets && tickets.length) ? tickets.map(function(t){return themeParkTicketRowHtml(t, park);}).join('') : '<div class="themepark-tickets-empty" style="color:#aaa;font-size:12px;padding:6px 0">No ticket types added yet</div>';
+}
+function readThemeParkTicketsFrom(containerEl){
+  if(!containerEl) return [];
+  return Array.from(containerEl.querySelectorAll('.themepark-ticket-row')).map(function(row){
+    return {
+      ticketType: (row.querySelector('.themepark-ticket-type')||{}).value||'',
+      numDays: Number((row.querySelector('.themepark-ticket-days')||{}).value)||0,
+      currency: (row.querySelector('.themepark-ticket-currency')||{}).value||'',
+      priceForeign: Number((row.querySelector('.themepark-ticket-price-foreign')||{}).value)||0,
+      price: Number((row.querySelector('.themepark-ticket-price')||{}).value)||0
+    };
+  }).filter(function(t){ return t.ticketType||t.numDays||t.currency||t.priceForeign||t.price; });
+}
 function themeParkEntryRowInnerHtml(entry){
   entry = entry || {};
   return '<div style="display:flex;justify-content:flex-end;margin-bottom:4px">'+
@@ -21666,10 +21733,10 @@ function themeParkEntryRowInnerHtml(entry){
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
       '<div class="field"><label>Park</label><select class="themepark-entry-park"><option value="">-- Select --</option>'+selOpts(THEME_PARKS,entry.park)+'</select></div>'+
       '<div class="field"><label>Confirmation Number</label><input class="themepark-entry-conf" type="text" value="'+(entry.confirmationNumber||'').toString().replace(/"/g,'&quot;')+'" placeholder="e.g. TP-334455"></div>'+
-      '<div class="field"><label>Ticket Type</label><select class="themepark-entry-ticket">'+themeParkTicketTypeOptionsHtml(entry.park,entry.ticketType)+'</select></div>'+
-      '<div class="field"><label>Number of Days</label><input class="themepark-entry-days" type="number" value="'+(entry.numDays||'')+'"></div>'+
-      foreignPriceFieldsHtml('themepark-entry-currency','themepark-entry-price-foreign',entry.currency,entry.priceForeign)+
-      '<div class="field"><label>Price ($)</label><input class="themepark-entry-price" type="number" value="'+(entry.price||'')+'"></div>'+
+      '<div class="field full"><label>Ticket Types <span class="hint" style="text-transform:none;font-weight:400">(add one row per distinct ticket type purchased for this park)</span></label>'+
+        '<div class="themepark-tickets">'+themeParkTicketsListHtmlNoId(themeParkEntryTickets(entry), entry.park)+'</div>'+
+        '<button type="button" class="themepark-ticket-add-btn" style="padding:5px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit">+ Add Ticket Type</button>'+
+      '</div>'+
       '<div class="field"><label>Meal Plan</label><select class="themepark-entry-meal-plan">'+selOpts(THEME_PARK_MEAL_PLANS,entry.mealPlan||'None')+'</select></div>'+
       '<div class="field"><label>Meal Plan Price ($)</label><input class="themepark-entry-meal-plan-price" type="number" value="'+(entry.mealPlanPrice||'')+'"></div>'+
       '<div class="field"><label>Add-Ons <span class="hint" style="text-transform:none;font-weight:400">(e.g. Genie+, Memory Maker)</span></label><input class="themepark-entry-addons" type="text" value="'+(entry.addOns||'').toString().replace(/"/g,'&quot;')+'"></div>'+
@@ -21691,11 +21758,7 @@ function readThemeParkEntries(){
     return {
       park: (row.querySelector('.themepark-entry-park')||{}).value||'',
       confirmationNumber: (row.querySelector('.themepark-entry-conf')||{}).value||'',
-      ticketType: (row.querySelector('.themepark-entry-ticket')||{}).value||'',
-      numDays: Number((row.querySelector('.themepark-entry-days')||{}).value)||0,
-      currency: (row.querySelector('.themepark-entry-currency')||{}).value||'',
-      priceForeign: Number((row.querySelector('.themepark-entry-price-foreign')||{}).value)||0,
-      price: Number((row.querySelector('.themepark-entry-price')||{}).value)||0,
+      tickets: readThemeParkTicketsFrom(row.querySelector('.themepark-tickets')),
       mealPlan: (row.querySelector('.themepark-entry-meal-plan')||{}).value||'',
       mealPlanPrice: Number((row.querySelector('.themepark-entry-meal-plan-price')||{}).value)||0,
       addOns: (row.querySelector('.themepark-entry-addons')||{}).value||'',
@@ -21706,7 +21769,7 @@ function readThemeParkEntries(){
       notes: (row.querySelector('.themepark-entry-notes')||{}).value||''
     };
   }).filter(function(e){
-    return e.park||e.confirmationNumber||e.ticketType||e.numDays||e.currency||e.priceForeign||e.price||(e.mealPlan&&e.mealPlan!=='None')||e.mealPlanPrice||e.addOns||e.addOnsPrice||e.milesManFee||e.paymentDueDate||e.paymentAmount||e.notes;
+    return e.park||e.confirmationNumber||(e.tickets&&e.tickets.length)||(e.mealPlan&&e.mealPlan!=='None')||e.mealPlanPrice||e.addOns||e.addOnsPrice||e.milesManFee||e.paymentDueDate||e.paymentAmount||e.notes;
   });
 }
 // Transfer / car-service entries are the same dynamic add/remove pattern
@@ -22817,15 +22880,47 @@ function bindBookedTripDetailsListeners(){
         themeParkEntriesEl.innerHTML = '<div id="tb-themepark-entries-empty" style="color:#aaa;font-size:12px;padding:6px 0">No theme parks added yet</div>';
       }
     });
-    // Selecting a Park repopulates Ticket Type with that park's own curated
-    // list (THEME_PARK_TICKET_TYPES) — same dependent-select pattern as
-    // Hotel Brand -> Property above.
+    // Selecting a Park repopulates every nested Ticket Type row with that
+    // park's own curated list (THEME_PARK_TICKET_TYPES) — same dependent-
+    // select pattern as Hotel Brand -> Property above.
     themeParkEntriesEl.addEventListener('change', function(e){
       var sel = e.target.closest ? e.target.closest('.themepark-entry-park') : null;
       if(!sel) return;
       var row = sel.closest('.themepark-entry-row');
-      var ticketSel = row && row.querySelector('.themepark-entry-ticket');
-      if(ticketSel) ticketSel.innerHTML = themeParkTicketTypeOptionsHtml(sel.value, '');
+      if(!row) return;
+      row.querySelectorAll('.themepark-ticket-type').forEach(function(ticketSel){
+        ticketSel.innerHTML = themeParkTicketTypeOptionsHtml(sel.value, '');
+      });
+    });
+    // Each theme park entry has its own nested Ticket Types list (a family
+    // can buy more than one ticket type for the same park — a Park Hopper
+    // for the adults, a regular ticket for a toddler) — delegated here at
+    // the theme-park-entries-container level, same pattern as a Hotel
+    // entry's own nested Points Used list.
+    themeParkEntriesEl.addEventListener('click', function(e){
+      var addBtn = e.target.closest ? e.target.closest('.themepark-ticket-add-btn') : null;
+      if(!addBtn) return;
+      var row = addBtn.closest('.themepark-entry-row');
+      var container = row && row.querySelector('.themepark-tickets');
+      if(!container) return;
+      var empty = container.querySelector('.themepark-tickets-empty');
+      if(empty) empty.remove();
+      var park = (row.querySelector('.themepark-entry-park')||{}).value||'';
+      var div = document.createElement('div');
+      div.className = 'themepark-ticket-row';
+      div.style.cssText = 'border:1px solid #e5e7eb;border-radius:8px;padding:10px;margin-bottom:8px;background:#fff';
+      div.innerHTML = themeParkTicketRowInnerHtml({}, park);
+      container.appendChild(div);
+    });
+    themeParkEntriesEl.addEventListener('click', function(e){
+      var delBtn = e.target.closest ? e.target.closest('.del-themepark-ticket-btn') : null;
+      if(!delBtn) return;
+      var container = delBtn.closest('.themepark-tickets');
+      var row = delBtn.closest('.themepark-ticket-row');
+      if(row) row.remove();
+      if(container && !container.querySelector('.themepark-ticket-row')){
+        container.innerHTML = '<div class="themepark-tickets-empty" style="color:#aaa;font-size:12px;padding:6px 0">No ticket types added yet</div>';
+      }
     });
   }
   var transferEntriesEl = document.getElementById('tb-transfer-entries');
