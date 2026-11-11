@@ -21679,17 +21679,18 @@ function themeParkTicketTypeOptionsHtml(park, selected){
 function themeParkEntryTickets(entry){
   if(Array.isArray(entry.tickets)) return entry.tickets;
   return (entry.ticketType||entry.numDays||entry.currency||entry.priceForeign||entry.price) ?
-    [{ticketType:entry.ticketType||'', numDays:entry.numDays||0, currency:entry.currency||'', priceForeign:entry.priceForeign||0, price:entry.price||0}] : [];
+    [{ticketType:entry.ticketType||'', parkName:'', numDays:entry.numDays||0, currency:entry.currency||'', priceForeign:entry.priceForeign||0, price:entry.price||0}] : [];
 }
 // Human-readable summary of every ticket type on a theme park entry (e.g.
-// "Multi-Day Park Hopper (5 days), 1-Day Base Ticket") and their combined
-// cost including Meal Plan/Add-Ons — used wherever this entry used to be
-// displayed/prefilled off its own single flat ticketType/price (the
-// itinerary email, its plaintext/PDF counterpart, and the Trip
-// Confirmation email's editable prefill), now that those live per-ticket.
+// "Multi-Day Park Hopper — Magic Kingdom (5 days), 1-Day Base Ticket —
+// Epcot") and their combined cost including Meal Plan/Add-Ons — used
+// wherever this entry used to be displayed/prefilled off its own single
+// flat ticketType/price (the itinerary email, its plaintext/PDF
+// counterpart, and the Trip Confirmation email's editable prefill), now
+// that those live per-ticket.
 function themeParkTicketsLabel(p){
   return themeParkEntryTickets(p||{}).map(function(tk){
-    return (tk.ticketType||'')+(tk.numDays?' ('+tk.numDays+' day'+(tk.numDays!==1?'s':'')+')':'');
+    return [tk.ticketType||'', tk.parkName||''].filter(Boolean).join(' — ')+(tk.numDays?' ('+tk.numDays+' day'+(tk.numDays!==1?'s':'')+')':'');
   }).filter(Boolean).join(', ');
 }
 function themeParkTicketsPriceTotal(p){
@@ -21702,6 +21703,7 @@ function themeParkTicketRowInnerHtml(ticket, park){
     '</div>'+
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
       '<div class="field"><label>Ticket Type</label><select class="themepark-ticket-type">'+themeParkTicketTypeOptionsHtml(park,ticket.ticketType)+'</select></div>'+
+      '<div class="field"><label>Park Name <span class="hint" style="text-transform:none;font-weight:400">(e.g. Magic Kingdom, Epcot)</span></label><input class="themepark-ticket-parkname" type="text" value="'+(ticket.parkName||'').toString().replace(/"/g,'&quot;')+'"></div>'+
       '<div class="field"><label>Number of Days</label><input class="themepark-ticket-days" type="number" value="'+(ticket.numDays||'')+'"></div>'+
       foreignPriceFieldsHtml('themepark-ticket-currency','themepark-ticket-price-foreign',ticket.currency,ticket.priceForeign)+
       '<div class="field"><label>Price ($)</label><input class="themepark-ticket-price" type="number" value="'+(ticket.price||'')+'"></div>'+
@@ -21718,12 +21720,13 @@ function readThemeParkTicketsFrom(containerEl){
   return Array.from(containerEl.querySelectorAll('.themepark-ticket-row')).map(function(row){
     return {
       ticketType: (row.querySelector('.themepark-ticket-type')||{}).value||'',
+      parkName: (row.querySelector('.themepark-ticket-parkname')||{}).value||'',
       numDays: Number((row.querySelector('.themepark-ticket-days')||{}).value)||0,
       currency: (row.querySelector('.themepark-ticket-currency')||{}).value||'',
       priceForeign: Number((row.querySelector('.themepark-ticket-price-foreign')||{}).value)||0,
       price: Number((row.querySelector('.themepark-ticket-price')||{}).value)||0
     };
-  }).filter(function(t){ return t.ticketType||t.numDays||t.currency||t.priceForeign||t.price; });
+  }).filter(function(t){ return t.ticketType||t.parkName||t.numDays||t.currency||t.priceForeign||t.price; });
 }
 function themeParkEntryRowInnerHtml(entry){
   entry = entry || {};
