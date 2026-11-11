@@ -18000,6 +18000,16 @@ function renderCalendar(){
     });
   });
 
+  // Same idea for hotel stays — a trip can have several, and each one can
+  // carry its own balance due date.
+  db.trips.forEach(function(t){
+    if(t.status==='Cancelled') return;
+    var hotelEntries = (t.booked && t.booked.hotel) || [];
+    hotelEntries.forEach(function(h){
+      if(h.balanceDueDate) addToMap(h.balanceDueDate, t, 'hotel-balance-due');
+    });
+  });
+
   // Build calendar grid HTML
   var days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   var headerCells = days.map(function(d){return '<div class="cal-header-cell">'+d+'</div>';}).join('');
@@ -18018,7 +18028,7 @@ function renderCalendar(){
     var dayNumHtml = isToday
       ? '<div class="cal-day-num today-num">'+d+'</div>'
       : '<div class="cal-day-num">'+d+'</div>';
-    var paymentLabels = {'deposit-due':'Deposit Due','second-deposit-due':'2nd Deposit Due','final-payment-due':'Final Payment Due','themepark-payment-due':'Theme Park Payment Due'};
+    var paymentLabels = {'deposit-due':'Deposit Due','second-deposit-due':'2nd Deposit Due','final-payment-due':'Final Payment Due','themepark-payment-due':'Theme Park Payment Due','hotel-balance-due':'Hotel Balance Due'};
     var tripHtml = trips.slice(0,3).map(function(entry){
       var t=entry.trip, tp=entry.type;
       if(paymentLabels[tp]){
@@ -21386,6 +21396,9 @@ function hotelEntryRowInnerHtml(entry){
       '<div class="field"><label>Nights</label><input class="hotel-entry-nights" type="number" value="'+(entry.nights||'')+'"></div>'+
       foreignPriceFieldsHtml('hotel-entry-currency','hotel-entry-price-foreign',entry.currency,entry.priceForeign)+
       '<div class="field"><label>Price ($)</label><input class="hotel-entry-price" type="number" value="'+(entry.price||'')+'"></div>'+
+      '<div class="field"><label>Deposit Amount ($)</label><input class="hotel-entry-deposit-amount" type="number" value="'+(entry.depositAmount||'')+'"></div>'+
+      '<div class="field"><label>Balance Amount ($)</label><input class="hotel-entry-balance-amount" type="number" value="'+(entry.balanceAmount||'')+'"></div>'+
+      '<div class="field"><label>Balance Due Date</label><input class="hotel-entry-balance-due" type="date" value="'+(entry.balanceDueDate||'')+'"></div>'+
       '<div class="field"><label>Miles Man Booking Fee ($)</label><input class="hotel-entry-fee" type="number" value="'+(entry.milesManFee||'')+'"></div>'+
       '<div class="field"><label>Credits to be Received ($) <span class="hint" style="text-transform:none;font-weight:400">(e.g. a future-stay credit owed back — subtracted from cash paid in the summary)</span></label><input class="hotel-entry-credits" type="number" value="'+(entry.creditsReceived||'')+'"></div>'+
       '<div class="field"><label>Resort/Food &amp; Beverage Credit ($) <span class="hint" style="text-transform:none;font-weight:400">(e.g. a daily resort credit included with this stay — added to Total Trip Value in the summary)</span></label><input class="hotel-entry-resort-credit" type="number" value="'+(entry.resortCredit||'')+'"></div>'+
@@ -21421,6 +21434,9 @@ function readHotelEntries(){
       currency: (row.querySelector('.hotel-entry-currency')||{}).value||'',
       priceForeign: Number((row.querySelector('.hotel-entry-price-foreign')||{}).value)||0,
       price: Number((row.querySelector('.hotel-entry-price')||{}).value)||0,
+      depositAmount: Number((row.querySelector('.hotel-entry-deposit-amount')||{}).value)||0,
+      balanceAmount: Number((row.querySelector('.hotel-entry-balance-amount')||{}).value)||0,
+      balanceDueDate: (row.querySelector('.hotel-entry-balance-due')||{}).value||'',
       milesManFee: Number((row.querySelector('.hotel-entry-fee')||{}).value)||0,
       creditsReceived: Number((row.querySelector('.hotel-entry-credits')||{}).value)||0,
       resortCredit: Number((row.querySelector('.hotel-entry-resort-credit')||{}).value)||0,
@@ -21434,7 +21450,7 @@ function readHotelEntries(){
       notes: (row.querySelector('.hotel-entry-notes')||{}).value||''
     };
   }).filter(function(e){
-    return e.hotelBrand||e.property||e.city||e.country||e.confirmationNumber||e.checkInDate||e.nights||e.currency||e.priceForeign||e.price||e.milesManFee||e.creditsReceived||e.resortCredit||e.allInclusive||e.thirdPartyAgency||e.thirdPartyAgencyBookingNumber||e.transferredFrom||e.transferredAmount||e.transferredTo||(e.pts&&e.pts.length)||e.notes;
+    return e.hotelBrand||e.property||e.city||e.country||e.confirmationNumber||e.checkInDate||e.nights||e.currency||e.priceForeign||e.price||e.depositAmount||e.balanceAmount||e.balanceDueDate||e.milesManFee||e.creditsReceived||e.resortCredit||e.allInclusive||e.thirdPartyAgency||e.thirdPartyAgencyBookingNumber||e.transferredFrom||e.transferredAmount||e.transferredTo||(e.pts&&e.pts.length)||e.notes;
   });
 }
 // Net Rate Hotel Voucher — a standalone printable/emailable PDF the client
