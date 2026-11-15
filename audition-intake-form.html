@@ -38,6 +38,8 @@
   .pkg:has(input:checked){border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
   .pkg b{display:block}
   .pkg span{color:var(--muted);font-size:.85rem}
+  .pkg .price{display:block;color:var(--accent);font-weight:600;margin:2px 0}
+  .pkg .desc{display:block}
   #ok-msg{display:none;background:#d1fae5;color:#065f46;border:1px solid #6ee7b7;border-radius:10px;padding:16px;text-align:center;font-size:15px;font-weight:600;margin-top:16px}
   footer{color:var(--muted);font-size:.78rem;margin-top:18px}
 </style>
@@ -95,12 +97,13 @@
 <section>
   <h2>Package</h2>
   <p class="hint" style="margin-top:-6px">Which Miles Man package are you interested in?</p>
-  <label class="pkg"><input type="radio" name="pkg" value="Unifieds Trip"><div><b>Unifieds Trip</b><span>Flights (cash or points), hotel within walking distance of the audition venue, airport transfers, and a day-by-day schedule built around your audition slots. Best for one Unifieds city.</span></div></label>
-  <label class="pkg"><input type="radio" name="pkg" value="Campus Audition Trip"><div><b>Campus Audition Trip</b><span>Flights or drive plan, hotel near campus, rental car or car service, arrival the day before, and a campus logistics sheet. One per on-campus audition.</span></div></label>
-  <label class="pkg"><input type="radio" name="pkg" value="Full Season Concierge"><div><b>Full Season Concierge</b><span>A travel map of every audition: a Unifieds Trip, up to 5 Campus Audition Trips, 1 callback or accepted-student trip, multi-school routing, and live text support. Best for 6+ programs.</span></div></label>
-  <label class="pkg"><input type="radio" name="pkg" value="Prep Weekend Trip"><div><b>Prep Weekend Trip</b><span>Travel to a prep company's in-person weekend: headshots, training, mock auditions or prescreen filming. Flights or drive plan, hotel near the studio, ground transfers.</span></div></label>
+  <label class="pkg"><input type="radio" name="pkg" value="Unifieds Trip"><div><b>Unifieds Trip</b><span class="price">$295 per trip</span><span class="desc">One Unifieds or multi-school event (MARCAS, CAP, Moonifieds and more) for the student plus 1 guest: flights or a drive plan, a hotel within walking distance of the venue when possible, airport transfers, rental car or car service, a full itinerary built around your audition slots, and live text support during travel. $195 per additional traveler.</span></div></label>
+  <label class="pkg"><input type="radio" name="pkg" value="Campus Audition Trip"><div><b>Campus Audition Trip</b><span class="price">$175 per trip · $125 each for 3+</span><span class="desc">One on-campus audition or revisit day for the student plus 1 guest: flights or a drive plan, a hotel near campus, airport transfers, rental car or car service, a full itinerary built around your audition slots, and live text support during travel. $195 per additional traveler.</span></div></label>
+  <label class="pkg"><input type="radio" name="pkg" value="Full Season Concierge"><div><b>Full Season Concierge</b><span class="price">$1,295 per student, per season</span><span class="desc">Up to 2 Unifieds or multi-school events, 5 campus audition trips and 1 accepted-student or revisit trip for the student plus 1 guest: flights or a drive plan, hotels near each venue and campus, airport transfers, rental car or car service, full itineraries that group nearby schools when possible, and live text support all season. $195 per additional trip; $195 per additional traveler.</span></div></label>
+  <label class="pkg"><input type="radio" name="pkg" value="Prep Trip"><div><b>Prep Trip</b><span class="price">$150 per trip</span><span class="desc">Travel to an organized prep event run by a college audition prep company, for the student plus 1 guest: flights or a drive plan, a hotel near the event, airport transfers, rental car or car service, a full itinerary, and live text support during travel. $195 per additional traveler. Credited toward Full Season Concierge if you upgrade within 60 days.</span></div></label>
   <label class="pkg"><input type="radio" name="pkg" value="Not sure yet — help me choose"><div><b>Not sure yet — help me choose</b><span>We'll recommend a package after the intake call.</span></div></label>
-  <label class="pkg"><input type="checkbox" id="points"><div><b>Add-on: book with our points and miles</b><span>Use your airline, hotel or credit card points for flights and hotels.</span></div></label>
+  <label class="pkg"><input type="checkbox" id="points"><div><b>Add-on: book with our points and miles</b><span class="desc">Use your airline, hotel or credit card points for flights and hotels. Award bookings are charged at Miles Man's standard award booking fees.</span></div></label>
+  <p class="hint">Planning fees are separate from the cost of flights, hotels and other travel.</p>
 </section>
 
 <section>
