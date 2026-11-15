@@ -4,6 +4,7 @@ A single-file CRM for a travel agency built around points/miles-based bookings, 
 
 - **CRM**: [index.html](index.html)
 - **Public intake form**: [intake-form.html](intake-form.html) — embedded on `themilesman.com/book-a-trip-form/` via an `<iframe>`
+- **Public audition travel intake form**: [audition-intake-form.html](audition-intake-form.html) — college musical theater audition travel requests (student, prep company, package, schools and audition dates). Same setup as the Book a Trip form: posts to Formspark with `_subject` "New Audition Travel Request — Miles Man website", strips blank fields before sending, and reports its height to an embedding `<iframe>` (`milesman-intake-height` / `milesman-intake-scroll-top`). Currently posts to the same Formspark form as intake-form.html; to give it its own form, change the `action` URL on its `<form>`. Not imported by the CRM's trip-form importer.
 - **Public credit card authorization upload**: [cc-auth-upload.html](cc-auth-upload.html) — a personalized per-client link (§4.12), not embedded anywhere
 
 ---
