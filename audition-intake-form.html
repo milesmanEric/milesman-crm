@@ -95,6 +95,13 @@
 </section>
 
 <section>
+  <h2>Schools &amp; audition dates</h2>
+  <div id="rows"></div>
+  <button type="button" id="add">+ Add another school</button>
+  <div class="hint">Dates shown are 2026–27 season dates published by each school as of Nov 15, 2026. Dates are not guaranteed — check with each school and your audition portal before booking.</div>
+</section>
+
+<section>
   <h2>Package</h2>
   <p class="hint" style="margin-top:-6px">Which Miles Man package are you interested in?</p>
   <label class="pkg"><input type="radio" name="pkg" value="Full Season Concierge"><div><b>Full Season Concierge</b><span class="price">$1,295 per student, per season</span><span class="desc">Up to 2 Unifieds or multi-school events, 5 campus audition trips and 1 accepted-student or revisit trip for the student plus 1 guest: flights or a drive plan, hotels near each venue and campus, airport transfers, rental car or car service, full itineraries that group nearby schools when possible, and live text support all season. $195 per additional trip; $195 per additional traveler.</span></div></label>
@@ -104,19 +111,6 @@
   <label class="pkg"><input type="radio" name="pkg" value="Not sure yet — help me choose"><div><b>Not sure yet — help me choose</b><span>We'll recommend a package after the intake call.</span></div></label>
   <label class="pkg"><input type="checkbox" id="points"><div><b>Add-on: book with our points and miles</b><span class="desc">Use your airline, hotel or credit card points for flights and hotels. Award bookings are charged at Miles Man's standard award booking fees.</span></div></label>
   <p class="hint">Planning fees are separate from the cost of flights, hotels and other travel.</p>
-</section>
-
-<section>
-  <h2>Schools &amp; audition dates</h2>
-  <div id="rows"></div>
-  <button type="button" id="add">+ Add another school</button>
-  <div class="hint">Dates shown are 2026–27 season dates published by each school as of Nov 15, 2026. Dates are not guaranteed — check with each school and your audition portal before booking.</div>
-</section>
-
-<section>
-  <h2>Anything else?</h2>
-  <label for="notes">Notes (loyalty programs, points you want to use, hotel preferences, accessibility needs)</label>
-  <textarea id="notes" rows="3"></textarea>
   <div class="err" id="err" hidden></div>
   <button class="primary" type="submit" id="submit-btn">Send my request</button>
 </section>
@@ -362,7 +356,6 @@ $("f").addEventListener("submit", e => {
     data.set("School " + (n + 1), p.school);
     data.set("School " + (n + 1) + " - Audition Date", p.date);
   });
-  data.set("Notes", v("notes"));
   // Same as the Book a Trip form: send only fields that have a value, so
   // Formspark's notification email doesn't fill up with blank lines.
   const KEEP = ["_gotcha", "_subject", "_replyto", "Student Name", "Email", "Number of Travelers"];
