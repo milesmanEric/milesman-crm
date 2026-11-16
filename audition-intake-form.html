@@ -98,7 +98,6 @@
   <h2>Schools &amp; audition dates</h2>
   <div id="rows"></div>
   <button type="button" id="add">+ Add another school</button>
-  <div class="hint">Dates shown are 2026–27 season dates published by each school as of Nov 15, 2026. Dates are not guaranteed — check with each school and your audition portal before booking.</div>
 </section>
 
 <section>
@@ -178,62 +177,17 @@ RAW.split("\n").forEach(line => {
 });
 SCHOOLS.sort((a, b) => a.name.localeCompare(b.name));
 
-// ---------- National Unified Auditions 2027 ----------
-const NYC = "New York Unifieds · Jan 23–24, 2027 · Pearl Studios, 500 8th Ave, New York, NY";
-const CHI = "Chicago Unifieds · Feb 1–4, 2027 · Palmer House Hilton, 17 E Monroe St, Chicago, IL";
-const LA  = "Los Angeles Unifieds · Feb 6–7, 2027 · Hilton Anaheim, 777 W Convention Way, Anaheim, CA";
-
-// National Unified Auditions member schools with no school-specific Unifieds schedule loaded
-const MEMBERS = new Set(["Boston Conservatory at Berklee","University of Cincinnati (CCM)","Cornish College of the Arts","University of Miami","Montclair State University","Ohio University","University of Oklahoma","Otterbein University","Rider University","Roosevelt University (CCPA)","University of Utah","Viterbo University","Webster University"]);
-
-// ---------- School-published dates (upcoming only) ----------
-// c = on-campus / school-run, u = Unifieds, n = note
-const DATES = {
-  "Belmont University": { c: ["Sat, Jan 16, 2027 · On campus, Nashville, TN","Sat, Jan 30, 2027 · On campus, Nashville, TN","Sat, Feb 13, 2027 · On campus, Nashville, TN","Sat, Feb 27, 2027 · On campus, Nashville, TN"] },
-  "Five Towns College": { u: ["New York Unifieds · Jan 22–24, 2027 · New York, NY","Chicago Unifieds · Feb 1–4, 2027 · Chicago, IL"] },
-  "Indiana University Bloomington": { c: ["Sat, Jan 16, 2027 · Bloomington, IN","Sat, Jan 30, 2027 · Bloomington, IN","Sat, Feb 20, 2027 · Bloomington, IN"], n: "IU's page lists the dates without a location; live auditions are by invitation after prescreen." },
-  "Marywood University": { c: ["Sat, Jan 16, 2027 · On campus, Scranton, PA","Sat, Feb 20, 2027 · On campus, Scranton, PA","Sat, Feb 27, 2027 · On campus, Scranton, PA"] },
-  "Montclair State University": { c: ["Sat, Dec 12, 2026 · On campus, Montclair, NJ","Sat, Jan 16, 2027 · Virtual","Sat, Feb 13, 2027 · On campus, Montclair, NJ","Sat, Mar 6, 2027 · Virtual","Sat, Mar 20, 2027 · On campus, Montclair, NJ","Sat, Apr 3, 2027 · On campus, Montclair, NJ"], u: [NYC, CHI, LA], n: "Montclair's portal lists days without a year — confirm when registering." },
-  "New York University – Tisch": { c: ["Fri, Jan 22, 2027 · New York, NY","Fri, Jan 29, 2027 · New York, NY","Fri, Feb 5, 2027 · New York, NY","Fri, Feb 12, 2027 · New York, NY"], n: "Regular Decision dates. Musical Theatre in-person reviews are by invitation (emailed by Jan 22, 2027), and Tisch's page doesn't clearly separate Acting from Musical Theatre days — confirm in the Artistic Review portal." },
-  "Ohio University": { c: ["Sat, Jan 16, 2027 · On campus, Athens, OH"], u: [NYC, CHI, "Los Angeles Unifieds · Sat, Feb 6, 2027 · Anaheim, CA"] },
-  "Point Park University": { c: ["Sat, Dec 5, 2026 · On campus, Pittsburgh, PA","Sun, Feb 14, 2027 · On campus, Pittsburgh, PA","Sat, Feb 20, 2027 · Virtual","Sat, Feb 27, 2027 · On campus, Pittsburgh, PA"], u: [NYC, CHI, "Los Angeles Unifieds · Sat, Feb 6, 2027 · 777 W Convention Way, Anaheim, CA"] },
-  "SUNY Cortland": { c: ["Sat, Feb 27, 2027 · New York, NY","Sat, Apr 3, 2027 · On campus, Cortland, NY"], u: ["New York Unifieds · Jan 23–24, 2027 · New York, NY"] },
-  "SUNY Fredonia": { c: ["Sat, Jan 30, 2027 · On campus, Fredonia, NY","Sat, Feb 6, 2027 · On campus, Fredonia, NY","Sat, Feb 20, 2027 · On campus, Fredonia, NY","Sat, Feb 27, 2027 · On campus, Fredonia, NY"] },
-  "Syracuse University": { c: ["Fri, Dec 11, 2026 · On campus, Regent Theater Complex, Syracuse, NY","Sat, Dec 12, 2026 · On campus, Syracuse, NY (musical theater only)","Fri, Jan 22, 2027 · On campus, Syracuse, NY","Sat, Jan 23, 2027 · On campus, Syracuse, NY","Fri, Jan 29, 2027 · On campus, Syracuse, NY","Sat, Jan 30, 2027 · On campus, Syracuse, NY"], u: ["New York (Unifieds weekend) · Jan 23–24, 2027 · Ripley Grier Studios, New York, NY","Chicago (Unifieds week) · Feb 1–3, 2027 · JW Marriott, Chicago, IL","Los Angeles · Feb 4–5, 2027 · Syracuse University LA (SULA), North Hollywood, CA"] },
-  "University of Miami": { c: ["Sat, Nov 21, 2026 · Moonifieds, Dallas, TX","Jan 21–22, 2027 · MTCA (location not listed)","Sat, Feb 13, 2027 · On campus, Coral Gables, FL"], u: ["New York Unifieds · Jan 23–24, 2027 · Pearl Studios, New York, NY","Chicago Unifieds · Feb 1–3, 2027 · Palmer House, Chicago, IL"] },
-  "Western Connecticut State University": { c: ["Sat, Dec 5, 2026 · On campus, Danbury, CT","Sat, Jan 30, 2027 · On campus, Danbury, CT"] },
-  "Wright State University": { c: ["Sat, Jan 16, 2027 · On campus, Dayton, OH","Sat, Jan 30, 2027 · Virtual","Fri, Feb 12, 2027 · Master class, on campus, Dayton, OH","Sat, Feb 13, 2027 · On campus, Dayton, OH"] },
-  "Baldwin Wallace University": { c: ["Nov 19–22, 2026 · Moonifieds, Dallas, TX","Sat, Nov 21, 2026 · On campus, Berea, OH","Sat, Jan 30, 2027 · On campus, Berea, OH","Sat, Feb 13, 2027 · On campus, Berea, OH","Sat, Feb 20, 2027 · Zoom"], u: ["New York Unifieds · Jan 23–24, 2027 · New York, NY","Chicago Unifieds · Feb 1–4, 2027 · Chicago, IL"] },
-  "Baylor University": { c: ["Fri, Jan 22, 2027 · On campus, Waco, TX","Fri, Feb 5, 2027 · On campus, Waco, TX","Fri, Feb 19, 2027 · On campus, Waco, TX (Scholar's Day)","Mon, Feb 22, 2027 · On campus, Waco, TX (Scholar's Day)","Mon, Mar 22, 2027 · Virtual","Mon, Apr 5, 2027 · Virtual","Fri, Apr 9, 2027 · On campus, Waco, TX"], n: "Baylor's page lists days without a year and shows Feb 22 as both on-campus and virtual — confirm with the department." },
-  "Boston Conservatory at Berklee": { c: ["Sat, Nov 21, 2026 · On campus, Boston, MA (Early Action)","Sun, Nov 22, 2026 · On campus, Boston, MA (Early Action)","Sun, Jan 3, 2027 · Atlanta, GA (Early Action)","Tue, Jan 5, 2027 · Miami, FL (Early Action)","Jan 8–10, 2027 · On campus, Boston, MA (Early Action)","Jan 16–17, 2027 · On campus, Boston, MA (Early Action)","Sat, Jan 30, 2027 · On campus, Boston, MA","Sat, Feb 13, 2027 · Online","Sun, Feb 21, 2027 · On campus, Boston, MA"], u: ["New York (Unifieds weekend) · Jan 22–24, 2027 · New York, NY","Chicago (Unifieds week) · Jan 31–Feb 4, 2027 · Chicago, IL","Los Angeles (Unifieds weekend) · Sat, Feb 6, 2027 · Los Angeles area, CA"], n: "School lists these as tentative until they appear in the applicant portal." },
-  "Elon University": { c: ["Fri, Feb 5, 2027 · On campus, Elon, NC","Fri, Feb 12, 2027 · On campus, Elon, NC","Fri, Feb 19, 2027 · On campus, Elon, NC"], u: ["New York Unifieds · Jan 23–24, 2027 · New York, NY (school lists as closed)","Chicago Unifieds · Feb 1–3, 2027 · Chicago, IL (school lists as closed)"] },
-  "Florida Atlantic University": { c: ["Sat, Jan 30, 2027 · On campus, Boca Raton, FL"] },
-  "Florida Southern College": { c: ["Sat, Dec 12, 2026 · Virtual","Sat, Jan 23, 2027 · On campus, Lakeland, FL","Sat, Feb 20, 2027 · On campus, Lakeland, FL","Sat, Mar 20, 2027 · Virtual"] },
-  "New York University – Steinhardt": { c: ["Fri, Jan 15, 2027 · Zoom (Early Decision II & Regular Decision)","Fri, Feb 5, 2027 · Zoom","Thu, Feb 18, 2027 · Zoom"], n: "NYU's page lists Zoom for every date but also mentions live on-campus auditions for Regular Decision — confirm format before booking travel." },
-  "Penn State University": { c: ["Sat, Dec 5, 2026 · On campus, University Park, PA","Sat, Jan 30, 2027 · On campus, University Park, PA","Sat, Feb 6, 2027 · On campus, University Park, PA","Sat, Feb 13, 2027 · On campus, University Park, PA","Sat, Feb 20, 2027 · On campus, University Park, PA"], u: ["New York (Unifieds weekend) · Jan 23–24, 2027 · New York, NY","Chicago (Unifieds week) · Feb 1–5, 2027 · Chicago, IL"] },
-  "Southern Methodist University (SMU)": { c: ["Sat, Dec 5, 2026 · On campus, Dallas, TX","Sat, Feb 20, 2027 · On campus, Dallas, TX"], u: [NYC, CHI, LA] },
-  "Texas State University": { c: ["Jan 23–24, 2027 · Virtual callbacks (Zoom)","Sat, Jan 30, 2027 · On-campus callback, San Marcos, TX","Sat, Feb 13, 2027 · On-campus callback, San Marcos, TX"], u: ["Chicago Unifieds week · Jan 31–Feb 4, 2027 · Ballet Chicago, 17 N State St, 19th floor, Chicago, IL","Los Angeles Unifieds · Sat, Feb 6, 2027 · Anaheim, CA"], n: "Texas State also holds invite-only callbacks at Moonifieds (Nov 2026) and an MTCA day in Los Angeles (Feb 2027) — use “Other date” for those." },
-  "University of Cincinnati (CCM)": { c: ["Jan 15–16, 2027 · Virtual"], u: ["New York Unifieds · Jan 22–23, 2027 · New York, NY","Chicago Unifieds · Feb 1–4, 2027 · Chicago, IL"], n: "CCM's dates page doesn't state the year — confirm days in the CCM portal." },
-  "University of Florida": { c: ["Sat, Jan 16, 2027 · In-person callbacks (invitation only; location not stated on the school page)"] },
-  "University of Oklahoma": { c: ["Sat, Dec 5, 2026 · On-campus callback, Norman, OK","Sat, Jan 16, 2027 · On-campus callback, Norman, OK"], n: "OU also holds callbacks at Moonifieds (Dallas) and at New York, Chicago and Los Angeles Unifieds; the school page doesn't list its specific days." },
-  "Otterbein University": { c: ["Sat, Jan 16, 2027 · On campus, Westerville, OH","Sat, Feb 13, 2027 · On campus, Westerville, OH"], u: ["New York Unifieds · Jan 23–24, 2027 · New York, NY","Chicago Unifieds · Feb 1–3, 2027 · Chicago, IL","Los Angeles Unifieds · Feb 6–7, 2027 · Anaheim, CA"], n: "Unifieds slots are reserved for out-of-state students; Ohio residents audition on campus." },
-  "University of Utah": { c: ["Feb 13–14, 2027 · On campus, Price Theatre Arts Building, Salt Lake City, UT"], u: [NYC, CHI, LA] },
-  "Western Michigan University": { c: ["Sat, Jan 16, 2027 · Virtual","Sat, Jan 30, 2027 · On campus, Kalamazoo, MI","Fri, Feb 12, 2027 · On campus, Kalamazoo, MI"], u: ["Chicago Unifieds · Feb 1–3, 2027 · Chicago, IL"] },
-  "Ball State University": { c: ["Sat, Feb 6, 2027 · On campus, Muncie, IN","Sat, Feb 20, 2027 · On campus, Muncie, IN"], u: [NYC, CHI, "Los Angeles Unifieds · Sat, Feb 6, 2027 · Hilton Anaheim, Anaheim, CA"] },
-  "Bowling Green State University": { c: ["Sat, Nov 21, 2026 · On campus, Bowling Green, OH","Sat, Feb 6, 2027 · On campus, Bowling Green, OH","Sat, Mar 27, 2027 · On campus, Bowling Green, OH"] },
-  "Emerson College": { c: ["Sun, Jan 31, 2027 · Virtual","Sun, Feb 7, 2027 · Virtual"], u: ["New York Unifieds · Jan 22–24, 2027 · Pearl Studios, New York, NY","Chicago Unifieds · Feb 1–3, 2027 · Palmer House Hilton, Chicago, IL"] },
-  "Illinois State University": { c: ["Sat, Dec 5, 2026 · On campus, Normal, IL","Sat, Feb 27, 2027 · On campus, Normal, IL"], u: ["Chicago Unifieds · Feb 1–4, 2027 (exact day TBD) · Palmer House Hilton, Chicago, IL"] },
-  "Ithaca College": { c: ["Sat, Jan 30, 2027 (morning) · On campus, Ithaca, NY","Sat, Jan 30, 2027 (afternoon) · Zoom","Sat, Feb 13, 2027 (morning) · On campus, Ithaca, NY","Sat, Feb 13, 2027 (afternoon) · Zoom"], u: ["New York Unifieds · Jan 22–24, 2027 · Pearl Studios, New York, NY","Chicago Unifieds · Feb 1–3, 2027 · Palmer House Hilton, Chicago, IL","Los Angeles Unifieds · Sat, Feb 6, 2027 · Hilton Anaheim, Anaheim, CA"] },
-  "James Madison University": { c: ["Sat, Jan 30, 2027 · On campus, Harrisonburg, VA"] },
-  "Kent State University": { c: ["Feb 26–27, 2027 · On campus, Kent, OH","Mar 5–6, 2027 · On campus, Kent, OH"], u: ["Chicago Unifieds · Feb 1–3, 2027 · Chicago, IL"] },
-  "Oberlin College & Conservatory": { c: ["Fri, Dec 4, 2026 · On campus, Oberlin, OH","Sat, Dec 5, 2026 (Early Decision) · On campus, Oberlin, OH","Jan 3–4, 2027 · New York, NY (MTCA members only)","Sat, Feb 13, 2027 · On campus, Oberlin, OH","Sun, Feb 14, 2027 · On campus, Oberlin, OH"], u: ["Chicago Unifieds · Jan 31–Feb 2, 2027 · Chicago, IL"] },
-  "Shenandoah University (Conservatory)": { c: ["Fri, Feb 26, 2027 · On campus, Winchester, VA","Sat, Feb 27, 2027 · On campus, Winchester, VA"], u: ["New York regional (Unifieds weekend) · Jan 23–24, 2027 · New York, NY","Chicago regional (Unifieds week) · Jan 31–Feb 3, 2027 · Chicago, IL"] },
-  "Texas Christian University (TCU)": { c: ["Sat, Jan 30, 2027 · On campus, Fort Worth, TX (Musical Theatre day)","Sun, Feb 7, 2027 · Virtual"], u: ["New York Unifieds · Sat, Jan 23, 2027 · Pearl Studios, New York, NY","Chicago Unifieds · Feb 1–3, 2027 · Palmer House Hilton, Chicago, IL"] },
-  "University at Buffalo (SUNY)": { c: ["Sat, Jan 16, 2027 · Pearl Studios, New York, NY","Sat, Jan 30, 2027 · Western NY Unified Auditions, Shea's, Buffalo, NY","Sat, Mar 6, 2027 · On campus, Buffalo, NY"] },
-  "University of Hartford (The Hartt School)": { c: ["Sat, Feb 13, 2027 · On campus, West Hartford, CT","Sun, Feb 14, 2027 · On campus, West Hartford, CT","Mon, Feb 15, 2027 · Virtual","Sat, Feb 27, 2027 · On campus, West Hartford, CT","Sun, Feb 28, 2027 · On campus, West Hartford, CT"], u: [NYC, CHI, LA] },
-  "University of North Carolina at Greensboro": { c: ["Fri, Jan 22, 2027 · On campus, Greensboro, NC","Fri, Jan 29, 2027 · On campus, Greensboro, NC","Sat, Feb 20, 2027 · On campus, Greensboro, NC","Fri, Feb 26, 2027 · On campus, Greensboro, NC"] },
-  "West Texas A&M University": { c: ["Fri, Feb 12, 2027 · On campus, Canyon, TX"] }
-};
+// ---------- Audition locations (one option per day) ----------
+// value = label shown/sent; d = ISO date that auto-fills the date box
+const LOCATIONS = [
+  { g: "New York Unifieds · Pearl Studios, 500 8th Ave, New York, NY", days: [["2027-01-23","Sat, Jan 23, 2027"],["2027-01-24","Sun, Jan 24, 2027"]], short: "New York Unifieds" },
+  { g: "Chicago Unifieds · Palmer House Hilton, 17 E Monroe St, Chicago, IL", days: [["2027-02-01","Mon, Feb 1, 2027"],["2027-02-02","Tue, Feb 2, 2027"],["2027-02-03","Wed, Feb 3, 2027"],["2027-02-04","Thu, Feb 4, 2027"]], short: "Chicago Unifieds" },
+  { g: "Los Angeles Unifieds · Hilton Anaheim, 777 W Convention Way, Anaheim, CA", days: [["2027-02-06","Sat, Feb 6, 2027"],["2027-02-07","Sun, Feb 7, 2027"]], short: "Los Angeles Unifieds" },
+  { g: "Moonifieds (College Audition Coach) · Dallas, TX", days: [["2026-11-19","Thu, Nov 19, 2026"],["2026-11-20","Fri, Nov 20, 2026"],["2026-11-21","Sat, Nov 21, 2026"],["2026-11-22","Sun, Nov 22, 2026"]], short: "Moonifieds, Dallas" },
+  { g: "Western NY Unified Auditions · Shea's Rehearsal Halls, Buffalo, NY", days: [["2027-01-30","Sat, Jan 30, 2027"]], short: "Western NY Unifieds, Buffalo" },
+  { g: "MTCA (Musical Theatre Competitions of America) · Anaheim, CA", days: [["2027-02-04","Thu, Feb 4, 2027"],["2027-02-05","Fri, Feb 5, 2027"],["2027-02-06","Sat, Feb 6, 2027"],["2027-02-07","Sun, Feb 7, 2027"]], short: "MTCA, Anaheim" },
+  { g: "SETC Convention · Lexington, KY", days: [["2027-03-04","Thu, Mar 4, 2027"],["2027-03-05","Fri, Mar 5, 2027"],["2027-03-06","Sat, Mar 6, 2027"]], short: "SETC, Lexington" }
+];
 
 // ---------- UI ----------
 const $ = id => document.getElementById(id);
@@ -249,27 +203,6 @@ function el(tag, attrs, kids) {
 function opt(value, label) { const o = el("option", { value }); o.textContent = label; return o; }
 function group(label, items) { const g = el("optgroup", { label }); items.forEach(t => g.appendChild(opt(t, t))); return g; }
 
-function fillDates(sel, school, noteEl) {
-  sel.innerHTML = "";
-  noteEl.hidden = true;
-  if (!school) { sel.appendChild(opt("", "Select a school first")); sel.disabled = true; return; }
-  sel.disabled = false;
-  sel.appendChild(opt("", "Select a date…"));
-  const d = DATES[school] || {};
-  let notes = [];
-  if (d.c && d.c.length) sel.appendChild(group("School auditions / callbacks", d.c));
-  let u = d.u;
-  if (!u && MEMBERS.has(school)) { u = [NYC, CHI, LA]; notes.push("Unifieds member school — confirm which cities and days this program is seeing students."); }
-  if (u && u.length) sel.appendChild(group("Unifieds", u));
-  if (!(d.c && d.c.length) && !(u && u.length)) notes.push("No published dates loaded for this school yet — enter your date in the “Different date” row below.");
-  else if (!(d.c && d.c.length) && !d.n) notes.push("On-campus dates not loaded yet — enter one in the “Different date” row below.");
-  if (d.n) notes.push(d.n);
-  const g = el("optgroup", { label: "Other" });
-  g.appendChild(opt("__tbd", "Not scheduled yet"));
-  sel.appendChild(g);
-  if (notes.length) { noteEl.textContent = notes.join(" "); noteEl.hidden = false; }
-}
-
 function addRow() {
   const id = ++rowId;
   const school = el("select", { id: "s" + id, "aria-label": "College" });
@@ -277,38 +210,50 @@ function addRow() {
   SCHOOLS.forEach(s => school.appendChild(opt(s.name, s.name + " (" + s.st + ")")));
   school.appendChild(opt("__other", "Other — not listed"));
   const otherSchool = el("input", { placeholder: "School name", "aria-label": "Other school name", hidden: "" });
-  const date = el("select", { id: "d" + id, "aria-label": "Audition date" });
-  const note = el("div", { class: "note", hidden: "" });
-  const customDate = el("input", { type: "date", "aria-label": "Audition date" });
-  const customLoc = el("input", { placeholder: "Location (campus, city, or virtual)", "aria-label": "Audition location" });
-  const custom = el("div", { class: "field" }, [
-    el("label", { text: "Different date (if yours isn't listed above)" }),
-    el("div", { class: "grid" }, [customDate, customLoc])
-  ]);
-  const disclaimer = el("div", { class: "hint", text: "Dates are not guaranteed. Check with each school to make sure you are selecting the correct dates for your auditions." });
+  const loc = el("select", { id: "l" + id, "aria-label": "Audition location" });
+  loc.appendChild(opt("", "Select a location…"));
+  LOCATIONS.forEach(L => {
+    const g = el("optgroup", { label: L.g });
+    L.days.forEach(([iso, day]) => { const o = opt(L.short + " · " + day, day); o.dataset.date = iso; g.appendChild(o); });
+    loc.appendChild(g);
+  });
+  const og = el("optgroup", { label: "Other" });
+  og.appendChild(opt("On campus", "On campus"));
+  og.appendChild(opt("Virtual / Zoom", "Virtual / Zoom"));
+  og.appendChild(opt("__other", "Another location (I'll type it)"));
+  loc.appendChild(og);
+  const otherLoc = el("input", { placeholder: "Location (city, venue or event)", "aria-label": "Other audition location", hidden: "" });
+  const date = el("input", { type: "date", id: "d" + id, "aria-label": "Audition date" });
+  const time = el("input", { type: "time", id: "t" + id, "aria-label": "Audition time" });
   const num = el("strong");
   const rm = el("button", { type: "button", class: "link", text: "Remove" });
   const row = el("div", { class: "row" }, [
     el("div", { class: "rowhead" }, [num, rm]),
     el("div", { class: "field" }, [el("label", { for: "s" + id, text: "College" }), school, otherSchool]),
-    el("div", { class: "field" }, [el("label", { for: "d" + id, text: "Audition / callback date" }), date, disclaimer, note]),
-    custom
+    el("div", { class: "field" }, [el("label", { for: "l" + id, text: "Audition location" }), loc, otherLoc]),
+    el("div", { class: "grid" }, [
+      el("div", {}, [el("label", { for: "d" + id, text: "Audition date" }), date]),
+      el("div", {}, [el("label", { for: "t" + id, text: "Audition time" }), time])
+    ])
   ]);
   row._get = () => {
     const sn = school.value === "__other" ? otherSchool.value.trim() : school.value;
-    const fmt = v => { const [y, m, d] = v.split("-").map(Number); return new Date(y, m - 1, d).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" }); };
-    const own = [customDate.value && fmt(customDate.value), customLoc.value.trim()].filter(Boolean).join(" · ");
-    let dt = date.value === "__tbd" ? "Not scheduled yet" : date.value;
-    if (own) dt = "Different date: " + own;
-    return { school: sn, date: dt };
+    const fmtD = v => { const [y, m, d] = v.split("-").map(Number); return new Date(y, m - 1, d).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" }); };
+    const fmtT = v => { let [h, m] = v.split(":").map(Number); const ap = h >= 12 ? "PM" : "AM"; h = h % 12 || 12; return h + ":" + String(m).padStart(2, "0") + " " + ap; };
+    const lv = loc.value === "__other" ? (otherLoc.value.trim() || "Other (not named)") : loc.value;
+    return { school: sn, date: date.value ? fmtD(date.value) : "", time: time.value ? fmtT(time.value) : "", location: lv };
   };
   school.addEventListener("change", () => {
     otherSchool.hidden = school.value !== "__other";
     otherSchool.style.marginTop = "8px";
-    fillDates(date, school.value === "__other" ? "__none" : school.value, note);
+  });
+  loc.addEventListener("change", () => {
+    otherLoc.hidden = loc.value !== "__other";
+    otherLoc.style.marginTop = "8px";
+    const iso = loc.selectedOptions[0] && loc.selectedOptions[0].dataset.date;
+    if (iso) date.value = iso;
   });
   rm.addEventListener("click", () => { row.remove(); if (!rows.children.length) addRow(); renumber(); });
-  fillDates(date, "", note);
   rows.appendChild(row);
   renumber();
 }
@@ -334,7 +279,7 @@ $("f").addEventListener("submit", e => {
   if (!/^\S+@\S+\.\S+$/.test(v("email"))) problems.push("a valid email");
   if (v("phone").replace(/\D/g, "").length < 10) problems.push("a mobile phone number");
   if (!picks.length) problems.push("at least one school");
-  if (picks.some(p => !p.date)) problems.push("a date (or “Not scheduled yet”) for each school");
+  if (picks.some(p => !p.date)) problems.push("an audition date for each school");
   if (problems.length) { err.textContent = "Please add " + problems.join(", ") + "."; err.hidden = false; return; }
 
   const pkg = document.querySelector('input[name="pkg"]:checked');
@@ -357,6 +302,8 @@ $("f").addEventListener("submit", e => {
   picks.forEach((p, n) => {
     data.set("School " + (n + 1), p.school);
     data.set("School " + (n + 1) + " - Audition Date", p.date);
+    data.set("School " + (n + 1) + " - Audition Time", p.time);
+    data.set("School " + (n + 1) + " - Audition Location", p.location);
   });
   // Same as the Book a Trip form: send only fields that have a value, so
   // Formspark's notification email doesn't fill up with blank lines.
