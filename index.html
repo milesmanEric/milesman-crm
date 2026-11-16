@@ -11145,6 +11145,7 @@ function processTripFormRow(getVal, counters, opts){
       origin:getVal('Origin'), destination:destination,
       departDate:tripDepartDate, returnDate:tripReturnDate,
       status:'Planning', type:getVal('Trip Type')||'Leisure',
+      referredBy:referredBy, referredByDetail:referredByDetail,
       airline:airline, flightClass:getVal('Class of Service'), hotel:hotelBrand,
       hotelNights:parseInt(getVal('Hotel 1 - Nights'),10)||0,
       hotelCertificates:hotelCertificates,
@@ -20497,12 +20498,52 @@ function readBalanceGrid(idPrefix,list,statusList){
   return out;
 }
 
-const REF_DETAIL_TYPES=['Event','Person','Other'];
+// "How did you hear about us?" answers — the Book a Trip form's own list
+// (intake-form.html's referredByFieldGroupHtml()) plus the Client, Trip and
+// Audition Trip forms all draw from this one list. Mirror new choices there.
+const REFERRED_BY_OPTIONS=['Subscriber','Advertisement','Event','Person','Outbound Solicit','ChatGPT','Claude','CoPilot','Gemini','Facebook','Instagram','X','TikTok','College Audition Program','Other'];
+const REF_DETAIL_TYPES=['Event','Person','Other','College Audition Program'];
 function refDetailLabel(referredBy){
   if(referredBy==='Person') return 'Person Name';
   if(referredBy==='Event') return 'Event Name';
   if(referredBy==='Other') return 'Other Detail';
+  if(referredBy==='College Audition Program') return 'Which College Audition Program';
   return '';
+}
+// Referred By select + its "which one" detail box, with ids prefix+'ref',
+// prefix+'ref-detail-wrap', prefix+'ref-detail-label', prefix+'refdetail'
+// (prefix 'f' = Client form, 't' = Trip form, 'a' = Audition Trip form).
+function referredByFieldsHtml(prefix, d){
+  d = d || {};
+  return fld('Referred By','<select id="'+prefix+'ref"><option value="">-- Select --</option>'+
+      REFERRED_BY_OPTIONS.map(function(o){ return '<option value="'+o+'"'+(d.referredBy===o?' selected':'')+'>'+o+'</option>'; }).join('')+
+    '</select>')+
+    '<div class="field" id="'+prefix+'ref-detail-wrap" style="display:'+(REF_DETAIL_TYPES.indexOf(d.referredBy)!==-1?'flex':'none')+'">'+
+      '<label id="'+prefix+'ref-detail-label">'+refDetailLabel(d.referredBy)+'</label>'+
+      '<input id="'+prefix+'refdetail" type="text" value="'+(d.referredByDetail||'').toString().replace(/"/g,'&quot;')+'" placeholder="Enter name">'+
+    '</div>';
+}
+function bindReferredByToggle(prefix){
+  var selEl = document.getElementById(prefix+'ref');
+  if(!selEl) return;
+  selEl.addEventListener('change',function(){
+    var wrap=document.getElementById(prefix+'ref-detail-wrap');
+    var label=document.getElementById(prefix+'ref-detail-label');
+    var input=document.getElementById(prefix+'refdetail');
+    if(REF_DETAIL_TYPES.indexOf(this.value)!==-1){
+      wrap.style.display='flex';
+      label.textContent=refDetailLabel(this.value);
+      input.focus();
+    }else{
+      wrap.style.display='none';
+      input.value='';
+    }
+  });
+}
+// {referredBy, referredByDetail} from the form fields above.
+function readReferredBy(prefix){
+  var v = gv(prefix+'ref');
+  return {referredBy:v, referredByDetail:REF_DETAIL_TYPES.indexOf(v)!==-1?gv(prefix+'refdetail'):''};
 }
 
 // Discounts checklist — used on both the Client form and Trip form (each
@@ -20648,22 +20689,7 @@ function openClientForm(id){
       fld('Birthdate',inp('fbd','date',d.birthdate))+
       fld('Country of Citizenship',inp('fcoc','text',d.countryOfCitizenship))+fld('Country of Birth',inp('fcob','text',d.countryOfBirth))+
       fld('Passport Expiration Date',inp('fped','date',d.passportExpiration))+
-      fld('Referred By','<select id="fref"><option value="">-- Select --</option>'+
-        '<option value="Subscriber"'+(d.referredBy==='Subscriber'?' selected':'')+'>Subscriber</option>'+
-        '<option value="Advertisement"'+(d.referredBy==='Advertisement'?' selected':'')+'>Advertisement</option>'+
-        '<option value="Event"'+(d.referredBy==='Event'?' selected':'')+'>Event</option>'+
-        '<option value="Person"'+(d.referredBy==='Person'?' selected':'')+'>Person</option>'+
-        '<option value="Outbound Solicit"'+(d.referredBy==='Outbound Solicit'?' selected':'')+'>Outbound Solicit</option>'+
-        '<option value="ChatGPT"'+(d.referredBy==='ChatGPT'?' selected':'')+'>ChatGPT</option>'+
-        '<option value="Claude"'+(d.referredBy==='Claude'?' selected':'')+'>Claude</option>'+
-        '<option value="CoPilot"'+(d.referredBy==='CoPilot'?' selected':'')+'>CoPilot</option>'+
-        '<option value="Gemini"'+(d.referredBy==='Gemini'?' selected':'')+'>Gemini</option>'+
-        '<option value="Other"'+(d.referredBy==='Other'?' selected':'')+'>Other</option>'+
-      '</select>')+
-      '<div class="field" id="fref-detail-wrap" style="display:'+(REF_DETAIL_TYPES.indexOf(d.referredBy)!==-1?'flex':'none')+'">'+
-        '<label id="fref-detail-label">'+refDetailLabel(d.referredBy)+'</label>'+
-        '<input id="frefdetail" type="text" value="'+(d.referredByDetail||'').toString().replace(/"/g,'&quot;')+'" placeholder="Enter name">'+
-      '</div>'+
+      referredByFieldsHtml('f', d)+
       discountsFieldHtml('fdis', d.discounts, d.discountOther)+
       interestsFieldHtml('fint', d.interests, d.interestOther)+
       fld('Preferred Airline',sel('fpa',AIRLINES,d.preferredAirline))+fld('Preferred Hotel',sel('fph',HOTELS,d.preferredHotel))+fld('Preferred Cruise Line',sel('fpc',CRUISE_LINES,d.preferredCruiseLine))+
@@ -20870,18 +20896,7 @@ function openClientForm(id){
     });
   });
 
-  $('fref').addEventListener('change',function(){
-    var wrap=document.getElementById('fref-detail-wrap');
-    var label=document.getElementById('fref-detail-label');
-    if(REF_DETAIL_TYPES.indexOf(this.value)!==-1){
-      wrap.style.display='flex';
-      label.textContent=refDetailLabel(this.value);
-      document.getElementById('frefdetail').focus();
-    }else{
-      wrap.style.display='none';
-      document.getElementById('frefdetail').value='';
-    }
-  });
+  bindReferredByToggle('f');
   bindDiscountOtherToggle('fdis');
   bindInterestOtherToggle('fint');
 
@@ -23392,6 +23407,7 @@ function openTripForm(id){
       discountsFieldHtml('tdis', d.discounts, d.discountOther)+
       interestsFieldHtml('tint', d.interests, d.interestOther)+
       fld('Product',inp('tpr','text',d.product,'e.g. Airline Booking:Roundtrip Intl Business'))+
+      referredByFieldsHtml('t', d)+
       '<div id="trip-balance-sections">'+tripBalanceSectionsHtml(initCid)+'</div>'+
       fld('Notes','<textarea id="tno">'+(d.notes||'')+'</textarea>',true)+
       bookedTripDetailsHtml(d.booked)+
@@ -23471,6 +23487,7 @@ function openTripForm(id){
   bindTripBalanceListeners();
   bindBookedTripDetailsListeners();
   bindDiscountOtherToggle('tdis');
+  bindReferredByToggle('t');
   bindInterestOtherToggle('tint');
   $('modal').scrollTop = 0;
 }
@@ -23589,7 +23606,7 @@ function saveTrip(id){
   const oldLinkedTripIds=id?((db.trips.find(function(t){return t.id===id;})||{}).linkedTripIds||[]):[];
   const tripDiscountData=readDiscounts('tdis');
   const tripInterestData=readInterests('tint');
-  const data={clientId:clientId,clientName:client?client.name:'',clientIds:additionalClientIds,linkedTripIds:linkedTripIds,supplierId:supplierId,supplierName:supplier?supplier.name:'',origin:gv('tor'),destination:dest,departDate:gv('tdd'),returnDate:gv('trd'),status:gv('tst')||'Planning',type:gv('tty')||'Leisure',airline:gv('tai'),flightClass:gv('tcl')||'Economy',hotel:gv('tho'),hotelProperty:gv('thp'),hotelNights:gn('thn'),hotelCertificates:readHotelCertificates(),cruiseLine:gv('tcr'),shipName:gv('tship'),vvVoucherExpiry:gv('tvv-exp'),pointsUsed:gn('tpu'),cashPaid:gn('tcp'),totalValue:gn('tva'),bookingRef:gv('tbr'),invoiceDate:gv('tinv'),discounts:tripDiscountData.discounts,discountOther:tripDiscountData.discountOther,interests:tripInterestData.interests,interestOther:tripInterestData.interestOther,product:gv('tpr'),notes:gv('tno'),booked:readBookedTripDetails()};
+  const data={clientId:clientId,clientName:client?client.name:'',clientIds:additionalClientIds,linkedTripIds:linkedTripIds,supplierId:supplierId,supplierName:supplier?supplier.name:'',origin:gv('tor'),destination:dest,departDate:gv('tdd'),returnDate:gv('trd'),status:gv('tst')||'Planning',type:gv('tty')||'Leisure',airline:gv('tai'),flightClass:gv('tcl')||'Economy',hotel:gv('tho'),hotelProperty:gv('thp'),hotelNights:gn('thn'),hotelCertificates:readHotelCertificates(),cruiseLine:gv('tcr'),shipName:gv('tship'),vvVoucherExpiry:gv('tvv-exp'),pointsUsed:gn('tpu'),cashPaid:gn('tcp'),totalValue:gn('tva'),bookingRef:gv('tbr'),invoiceDate:gv('tinv'),discounts:tripDiscountData.discounts,discountOther:tripDiscountData.discountOther,interests:tripInterestData.interests,interestOther:tripInterestData.interestOther,product:gv('tpr'),referredBy:readReferredBy('t').referredBy,referredByDetail:readReferredBy('t').referredByDetail,notes:gv('tno'),booked:readBookedTripDetails()};
   if(client){
     client.mileageBalances=readBalanceGrid('mb',AIRLINES,AIRLINE_STATUS);
     client.hotelBalances=readBalanceGrid('hb',HOTELS,HOTEL_STATUS);
@@ -23992,6 +24009,7 @@ function openAuditionTripForm(id){
       fld('Invoice Number', inp('tbr','text',d.bookingRef,'e.g. INV-10234'))+
       fld('Invoice Date', inp('at-invdate','date',d.invoiceDate))+
       fld('Revenue ($)', inp('at-revenue','number',d.revenue||0,'Package and booking fees collected'))+
+      referredByFieldsHtml('a', d)+
       '<div class="modal-section-title">Auditions</div>'+
       '<div class="field full"><div class="hint" style="text-transform:none;font-weight:400;margin-bottom:6px">One entry per school: School, Audition Date, Audition Time, City and State.</div>'+
         '<datalist id="at-school-list">'+auditionSchools().map(function(s){ return '<option value="'+escHtml(s.name)+'">'; }).join('')+'</datalist>'+
@@ -24036,6 +24054,7 @@ function openAuditionTripForm(id){
     var stateEl = row && row.querySelector('.at-aud-state');
     if(stateEl && !stateEl.value) stateEl.value = auditionStateForSchool(e.target.value);
   });
+  bindReferredByToggle('a');
   bindBookedTripDetailsListeners();
   $('modal').scrollTop = 0;
 }
@@ -24071,6 +24090,7 @@ function saveAuditionTrip(id){
     pointsAddon: !!($('at-points')||{}).checked,
     supplierId: supplierId, supplierName: supplier ? supplier.name : '',
     bookingRef: gv('tbr'), invoiceDate: gv('at-invdate'), revenue: Number(gv('at-revenue'))||0,
+    referredBy: readReferredBy('a').referredBy, referredByDetail: readReferredBy('a').referredByDetail,
     notes: gv('tno'),
     auditions: readAuditionRows(),
     booked: readBookedTripDetails()

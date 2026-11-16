@@ -36,7 +36,7 @@ A single-file CRM for a travel agency built around points/miles-based bookings, 
 ### `db.clients` (`C001`, `C002`, ...)
 Core identity: `name` (stored "Last, First"), `email`, `phone`, `streetAddress`, `city`, `state`, `zip`, `birthdate`, `countryOfCitizenship`, `countryOfBirth`.
 
-Lead source: `referredBy`, `referredByDetail`.
+Lead source ("How did you hear about us?"): `referredBy`, `referredByDetail`. Choices come from `REFERRED_BY_OPTIONS` (Subscriber, Advertisement, Event, Person, Outbound Solicit, ChatGPT, Claude, CoPilot, Gemini, Facebook, Instagram, X, TikTok, College Audition Program, Other) and mirror the Book a Trip form's dropdown; Event, Person, Other and College Audition Program also show a "which one" box (`REF_DETAIL_TYPES`). The same two fields also exist on trip records and Audition Trip records (`referredByFieldsHtml()` in the Client, Trip and Audition Trip forms); a Book a Trip submission's answer is copied onto the trip it creates.
 
 Preferences: `preferredAirline`, `preferredHotel`, `preferredCruiseLine`.
 

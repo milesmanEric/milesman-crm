@@ -589,7 +589,9 @@
         '<option value="Subscriber">Newsletter Subscriber</option><option value="Advertisement">Advertisement</option><option value="Event">Event</option>'+
         '<option value="Person">Referred by a Person</option><option value="Outbound Solicit">Outbound Solicit</option>'+
         '<option value="ChatGPT">ChatGPT</option><option value="Claude">Claude</option><option value="CoPilot">CoPilot</option>'+
-        '<option value="Gemini">Gemini</option><option value="Other">Other</option>'+
+        '<option value="Gemini">Gemini</option><option value="Facebook">Facebook</option><option value="Instagram">Instagram</option>'+
+        '<option value="X">X</option><option value="TikTok">TikTok</option>'+
+        '<option value="College Audition Program">College Audition Program</option><option value="Other">Other</option>'+
       '</select></div>'+
       '<div class="field full ref-detail-wrap" style="display:none"><label class="ref-detail-label">Details</label>'+
       '<input type="text" class="ref-detail-input" name="'+namePrefix+' Detail" placeholder="Event or person\'s name"></div>';
@@ -1057,10 +1059,10 @@
       var refFieldDiv = e.target.closest('.field');
       var refWrap = refFieldDiv ? refFieldDiv.nextElementSibling : null;
       if(refWrap && refWrap.classList.contains('ref-detail-wrap')){
-        var show = (e.target.value==='Event' || e.target.value==='Person' || e.target.value==='Other');
+        var show = (e.target.value==='Event' || e.target.value==='Person' || e.target.value==='Other' || e.target.value==='College Audition Program');
         refWrap.style.display = show ? 'flex' : 'none';
         var refLabelEl = refWrap.querySelector('.ref-detail-label');
-        if(refLabelEl) refLabelEl.textContent = e.target.value==='Person' ? 'Person\'s Name' : (e.target.value==='Event' ? 'Event Name' : 'Please specify');
+        if(refLabelEl) refLabelEl.textContent = e.target.value==='Person' ? 'Person\'s Name' : (e.target.value==='Event' ? 'Event Name' : (e.target.value==='College Audition Program' ? 'Which college audition program?' : 'Please specify'));
         if(!show){
           var refInput = refWrap.querySelector('.ref-detail-input');
           if(refInput) refInput.value='';
