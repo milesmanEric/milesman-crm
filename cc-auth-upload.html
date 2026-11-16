@@ -64,7 +64,7 @@
   <div class="hdr">
     <div class="tag">Miles Man</div>
     <h1>Credit Card Payment Authorization</h1>
-    <p id="greeting">To book flights, hotels, or cruises for you we need a signed credit card authorization form. Nothing is charged until your booking is complete.</p>
+    <p id="greeting">To book flights, hotels, or cruises for you we need a signed credit card authorization form. Nothing is charged until your booking is complete (college audition travel packages are charged in advance).</p>
   </div>
 
   <div id="ok-msg">
@@ -103,7 +103,7 @@
         <br><br>
         By signing this form, you authorize Miles Man to charge your credit card for fee amounts as indicated on www.themilesman.com and/or for any booking deposits or payments for airlines, hotels, tour operators, transfers, etc.
         <br><br>
-        I <input type="text" class="name-fill-input" id="cc-cardholder-name" placeholder="your name" autocomplete="name"> authorize Miles Man to charge my credit card indicated below for amounts as indicated on the Miles Man pricing schedule as shown on www.themilesman.com based upon specific services provided, as well as for any booking deposits or payments required by third party travel suppliers. No charges will be made for Miles Man service fees until a reservation(s) or change(s) are completed.
+        I <input type="text" class="name-fill-input" id="cc-cardholder-name" placeholder="your name" autocomplete="name"> authorize Miles Man to charge my credit card indicated below for amounts as indicated on the Miles Man pricing schedule as shown on www.themilesman.com based upon specific services provided, as well as for any booking deposits or payments required by third party travel suppliers. No charges will be made for Miles Man service fees until a reservation(s) or change(s) are completed, except for college audition travel package fees, which are charged in full in advance when the package is purchased, before any travel is booked.
       </div>
 
       <div class="section-heading">Billing Details</div>
@@ -244,7 +244,7 @@
   var clientName = (params.get('cname')||'').trim();
   var clientEmail = (params.get('email')||'').trim();
   if(clientName){
-    document.getElementById('greeting').textContent = 'Hi '+clientName+' — to book flights, hotels, or cruises for you we need a signed credit card authorization form. Nothing is charged until your booking is complete.';
+    document.getElementById('greeting').textContent = 'Hi '+clientName+' — to book flights, hotels, or cruises for you we need a signed credit card authorization form. Nothing is charged until your booking is complete (college audition travel packages are charged in advance).';
   }
   if(!clientId){
     ['identify-fields-fill','identify-fields'].forEach(function(id){ document.getElementById(id).style.display = 'block'; });
@@ -487,7 +487,7 @@
     }
     wrapText('Sign and complete this form to authorize Miles Man to make a charge(s) to your credit card below.');
     wrapText('By signing this form, you authorize Miles Man to charge your credit card for fee amounts as indicated on www.themilesman.com and/or for any booking deposits or payments for airlines, hotels, tour operators, transfers, etc.');
-    wrapText('I ' + data.cardholderName + ' authorize Miles Man to charge my credit card indicated below for amounts as indicated on the Miles Man pricing schedule as shown on www.themilesman.com based upon specific services provided, as well as for any booking deposits or payments required by third party travel suppliers. No charges will be made for Miles Man service fees until a reservation(s) or change(s) are completed.');
+    wrapText('I ' + data.cardholderName + ' authorize Miles Man to charge my credit card indicated below for amounts as indicated on the Miles Man pricing schedule as shown on www.themilesman.com based upon specific services provided, as well as for any booking deposits or payments required by third party travel suppliers. No charges will be made for Miles Man service fees until a reservation(s) or change(s) are completed, except for college audition travel package fees, which are charged in full in advance when the package is purchased, before any travel is booked.');
 
     function sectionHeading(text){
       if(y > doc.internal.pageSize.getHeight() - margin - 20){ doc.addPage(); y = margin; }
