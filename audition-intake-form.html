@@ -61,9 +61,9 @@
   <h2>Traveler</h2>
   <div class="grid">
     <div><label for="student">Student name *</label><input id="student" autocomplete="name" required></div>
-    <div><label for="parent">Parent / guardian name</label><input id="parent"></div>
+    <div><label for="parent">Parent / guardian name *</label><input id="parent" autocomplete="name" required></div>
     <div><label for="email">Email *</label><input id="email" type="email" autocomplete="email" required></div>
-    <div><label for="phone">Mobile phone</label><input id="phone" type="tel" autocomplete="tel"></div>
+    <div><label for="phone">Mobile phone *</label><input id="phone" type="tel" autocomplete="tel" required></div>
     <div><label for="airport">Home airport or city</label><input id="airport" placeholder="e.g. EWR or Newark, NJ"></div>
     <div><label for="pax">Number of travelers</label>
       <select id="pax"><option>1</option><option selected>2</option><option>3</option><option>4</option><option>5+</option></select></div>
@@ -330,7 +330,9 @@ $("f").addEventListener("submit", e => {
   const picks = [...rows.children].map(r => r._get()).filter(p => p.school);
   const problems = [];
   if (!v("student")) problems.push("student name");
+  if (!v("parent")) problems.push("parent / guardian name");
   if (!/^\S+@\S+\.\S+$/.test(v("email"))) problems.push("a valid email");
+  if (v("phone").replace(/\D/g, "").length < 10) problems.push("a mobile phone number");
   if (!picks.length) problems.push("at least one school");
   if (picks.some(p => !p.date)) problems.push("a date (or “Not scheduled yet”) for each school");
   if (problems.length) { err.textContent = "Please add " + problems.join(", ") + "."; err.hidden = false; return; }
@@ -358,7 +360,7 @@ $("f").addEventListener("submit", e => {
   });
   // Same as the Book a Trip form: send only fields that have a value, so
   // Formspark's notification email doesn't fill up with blank lines.
-  const KEEP = ["_gotcha", "_subject", "_replyto", "Student Name", "Email", "Number of Travelers"];
+  const KEEP = ["_gotcha", "_subject", "_replyto", "Student Name", "Parent/Guardian Name", "Email", "Phone", "Number of Travelers"];
   [...new Set(data.keys())].forEach(k => { if (!KEEP.includes(k) && !(data.get(k) || "").trim()) data.delete(k); });
 
   const btn = $("submit-btn"); btn.disabled = true; btn.textContent = "Sending…";
