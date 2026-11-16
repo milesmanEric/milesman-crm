@@ -11,6 +11,7 @@ The CRM tracks everything about your clients, their trips, your suppliers, and y
 Two things feed it automatically, with no action needed from you:
 - **Book a Trip form** submissions (from the website) become client + trip records.
 - **Contact Form** submissions (from the website) become client + lead records.
+- **College audition travel requests** (the audition intake form on the website) become a client (the parent/guardian), the student as a traveler on the trip, a trip listing the schools and audition dates, and a follow-up task. Both people get the **Audition Client** box ticked on their client record (you can also tick or untick it yourself).
 
 Both are checked automatically every 5 minutes as long as the CRM tab is open and Outlook is connected (see [Connecting Outlook](#connecting-outlook) below).
 

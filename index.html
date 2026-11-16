@@ -10436,7 +10436,17 @@ function importCSV(){
 // (checkForNewTripFormEmails). getVal(name) abstracts the field lookup so
 // each caller can supply its own source — a CSV row lookup, or a parsed
 // notification-email key/value object — without duplicating this logic.
-function processTripFormRow(getVal, counters){
+// opts (optional, used by the audition-form importer — see
+// processAuditionFormRow): {namedTravelerCount, extraLines, taskTitle,
+// auditionClient}. auditionClient ticks the "Audition Client" checkbox on the
+// primary contact and every named traveler.
+// namedTravelerCount overrides how many "Traveler N - Full Name" blocks are
+// read (the audition form's "Number of Travelers" is a head count that
+// includes unnamed guests, not a list of named travelers); extraLines are
+// appended to the trip/task description; taskTitle replaces the default
+// "New trip request: <destination>" planner task title.
+function processTripFormRow(getVal, counters, opts){
+  opts = opts || {};
   // Reads the per-brand "Airline - American" / "Airline Status - American"
   // style fields the intake form's balance grids submit, matching the
   // exact field names buildBalanceGrid() in intake-form.html generates.
@@ -10557,6 +10567,9 @@ function processTripFormRow(getVal, counters){
       birthdate:tBirthdate, countryOfCitizenship:tCountryOfCitizenship, countryOfBirth:tCountryOfBirth, passportExpiration:tPassportExpiration,
       discountOther:tDiscountOther, interestOther:tInterestOther,
       preferredAirline:tAirline, preferredHotel:tHotel, preferredCruiseLine:tCruise};
+    // Set on every traveler (matched, newly created, or queued for review) that
+    // came from an audition-form import — see processAuditionFormRow.
+    if(opts.auditionClient) tFields.isAuditionClient = true;
 
     // Match a companion traveler to an existing client the same priority
     // order the primary contact uses: email first (the trip form now
@@ -10781,6 +10794,7 @@ function processTripFormRow(getVal, counters){
     if(passportExpiration && passportExpiration!==client.passportExpiration){client.passportExpiration=passportExpiration;filled.push('passportExpiration');}
     if(referredBy && referredBy!==client.referredBy){client.referredBy=referredBy;filled.push('referredBy');}
     if(okToText && !client.okToText){client.okToText=true;filled.push('okToText');}
+    if(opts.auditionClient && !client.isAuditionClient){client.isAuditionClient=true;filled.push('isAuditionClient');}
     if(referredByDetail && referredByDetail!==client.referredByDetail){client.referredByDetail=referredByDetail;filled.push('referredByDetail');}
     if(preferredAirline && preferredAirline!==client.preferredAirline){client.preferredAirline=preferredAirline;filled.push('preferredAirline');}
     if(preferredHotel && preferredHotel!==client.preferredHotel){client.preferredHotel=preferredHotel;filled.push('preferredHotel');}
@@ -10841,7 +10855,7 @@ function processTripFormRow(getVal, counters){
       // list — same reasoning as the manual Add Client modal's own
       // Paying/Subscriber checkboxes, just defaulted on here since there's
       // no one present to check them.
-      isPayingClient:true, isSubscriber:true};
+      isPayingClient:true, isSubscriber:true, isAuditionClient:!!opts.auditionClient};
     db.clients.push(client);
     counters.added++;
   }
@@ -11032,6 +11046,7 @@ function processTripFormRow(getVal, counters){
   addLine('Bus Departure City', getVal('Bus Departure City'));
   addLine('Bus Arrival City', getVal('Bus Arrival City'));
   addLine('Bus Class of Service', getVal('Bus Class of Service'));
+  (opts.extraLines||[]).forEach(function(l){ if(l) tripLines.push(l); });
 
   // Companion travelers (Traveler 2+) get their own client record too —
   // matched/enriched by name the same way the primary contact is, with
@@ -11061,7 +11076,7 @@ function processTripFormRow(getVal, counters){
   // flagging each other as an ambiguous same-last-name candidate — see
   // processTravelerBlock's own comment for the incident this fixed.
   var submissionClientIds = [client.id];
-  var travelerCount = parseInt(getVal('Number of Travelers'),10)||1;
+  var travelerCount = opts.namedTravelerCount || parseInt(getVal('Number of Travelers'),10)||1;
   for(var tn=2; tn<=travelerCount; tn++){
     var result = processTravelerBlock(tn, pendingMatches, submissionClientIds);
     if(!result) continue;
@@ -11143,7 +11158,7 @@ function processTripFormRow(getVal, counters){
   if(tripLines.length){
     db.planner.push({
       id:newId('PL',db.planner),
-      title:'New trip request'+(destination?': '+destination:''),
+      title: opts.taskTitle || ('New trip request'+(destination?': '+destination:'')),
       dueDate:today(), done:false, clientId:client.id, tripId:newTripId,
       completionNoteType:'General',
       desc: tripLines.join('\n'),
@@ -11357,6 +11372,143 @@ function parseTripFormEmailText(flatText){
     }
   }
   return row;
+}
+// ── College audition travel requests ────────────────────────────────────
+// audition-intake-form.html posts to its own Formspark form ("Audition
+// travel"), so its notification email arrives as "New submission: Audition
+// travel" in the same "Label: Value" layout as the Book a Trip emails. It's
+// polled by checkForNewTripFormEmails() right alongside them (same
+// watermark, processed-id list, oldest-first ordering, 14-day rewind and
+// manual re-import), then parsed here and fed through processTripFormRow()
+// so client matching/enrichment, companion-traveler matching and the
+// trip + follow-up task creation behave exactly like a Book a Trip import.
+//   Parent/Guardian -> the primary contact/client (the form's Email and
+//     Phone are theirs), Student -> "Traveler 2" (matched/created the same
+//     way a Book a Trip companion is), each School -> a line in the trip
+//     notes, earliest audition date -> the trip's depart date.
+var AUDITION_FORM_EMAIL_SUBJECT_RE = /^New submission\b.*\bAudition travel$/i;
+function isTripFormEmailSubject(subject){
+  var s = (subject||'').trim();
+  return TRIPFORM_EMAIL_SUBJECT_RE.test(s) || AUDITION_FORM_EMAIL_SUBJECT_RE.test(s);
+}
+function buildAuditionFormFieldLabels(){
+  var labels = ['Form','Student Name','Parent/Guardian Name','Email','Phone','Home Airport or City','Number of Travelers',
+    'Audition Prep Company','Package','Points and Miles Add-on','Number of Schools'];
+  // The form lets a family add as many schools as they like; 30 is far
+  // beyond a realistic list.
+  for(var si=1; si<=30; si++){
+    labels.push('School '+si, 'School '+si+' - Audition Date', 'School '+si+' - Audition Time', 'School '+si+' - Audition Location');
+  }
+  return labels;
+}
+var _auditionFormLabelRegex = null;
+function auditionFormLabelRegex(){
+  if(_auditionFormLabelRegex) return _auditionFormLabelRegex;
+  // Longest-first so "School 1 - Audition Date" can't be shadowed by "School 1".
+  var labels = buildAuditionFormFieldLabels().slice().sort(function(a,b){return b.length-a.length;});
+  var pattern = labels.map(function(l){return l.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');}).join('|');
+  _auditionFormLabelRegex = new RegExp('(?:'+pattern+')(?![A-Za-z])', 'g');
+  return _auditionFormLabelRegex;
+}
+function isAuditionFormEmailText(flatText){
+  return /Form\s*:\s*Audition Travel Intake/i.test(flatText);
+}
+function parseAuditionFormEmailText(flatText){
+  // The notification opens with a hidden preview line that repeats some of
+  // the answers, then a "Form: Audition travel" header; the real field table
+  // starts at the form's own hidden "Form: Audition Travel Intake" field.
+  var startIdx = flatText.search(/Form\s*:\s*Audition Travel Intake/i);
+  if(startIdx !== -1) flatText = flatText.slice(startIdx);
+  var footerIdx = flatText.search(/Botpoison can protect|You receive this because/i);
+  if(footerIdx !== -1) flatText = flatText.slice(0, footerIdx);
+  var regex = auditionFormLabelRegex();
+  regex.lastIndex = 0;
+  var matches = [];
+  var m;
+  while((m = regex.exec(flatText))){
+    matches.push({label:m[0], start:m.index, end:m.index+m[0].length});
+  }
+  var row = {};
+  for(var i=0; i<matches.length; i++){
+    if(matches[i].label in row) continue;
+    var end = (i+1<matches.length) ? matches[i+1].start : flatText.length;
+    row[matches[i].label] = flatText.slice(matches[i].end, end).replace(/^\s*:\s*/, '').trim();
+  }
+  return row;
+}
+// "Thu, Feb 4, 2027" (how the form formats audition dates) -> "2027-02-04".
+function auditionDateToIso(s){
+  var m = (s||'').match(/([A-Za-z]{3})[a-z]*\.?\s+(\d{1,2}),?\s+(\d{4})/);
+  if(!m) return '';
+  var mi = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'].indexOf(m[1].toLowerCase());
+  if(mi<0) return '';
+  return m[3]+'-'+String(mi+1).padStart(2,'0')+'-'+String(parseInt(m[2],10)).padStart(2,'0');
+}
+function processAuditionFormRow(row, counters){
+  var student = (row['Student Name']||'').trim();
+  var parent = (row['Parent/Guardian Name']||'').trim();
+  var contactName = parent || student;
+  if(!contactName){
+    debugLog('Audition form email check: skipped a submission — could not parse a Student or Parent/Guardian Name from it (email='+(row['Email']||'none')+', phone='+(row['Phone']||'none')+'). Not retried automatically — check the email body in Outlook.');
+    counters.skipped++; return;
+  }
+  var schools = [];
+  for(var si=1; si<=30; si++){
+    var sName = row['School '+si];
+    var sDate = row['School '+si+' - Audition Date']||'';
+    var sTime = row['School '+si+' - Audition Time']||'';
+    var sLoc = row['School '+si+' - Audition Location']||'';
+    if(!(sName||sDate||sTime||sLoc)) continue;
+    schools.push({name:sName||'(school not named)', date:sDate, time:sTime, location:sLoc, iso:auditionDateToIso(sDate)});
+  }
+  var declared = parseInt(row['Number of Schools'],10)||0;
+  if(declared && declared!==schools.length){
+    debugLog('Audition form email check: "'+contactName+'" says '+declared+' school(s) but '+schools.length+' were parsed from the email — check the email in Outlook.');
+  }
+  var isoDates = schools.map(function(s){return s.iso;}).filter(Boolean).sort();
+  var schoolNames = schools.map(function(s){return s.name;});
+  var destination = schools.length
+    ? 'College auditions: '+(schoolNames.length>3 ? schoolNames.slice(0,3).join(', ')+' and '+(schoolNames.length-3)+' more' : schoolNames.join(', '))
+    : 'College auditions';
+  var pax = row['Number of Travelers']||'';
+  var extra = [];
+  if(student) extra.push('Student: '+student);
+  if(parent) extra.push('Parent/Guardian: '+parent);
+  if(pax) extra.push('Number of Travelers (student plus guests): '+pax);
+  if(row['Audition Prep Company']) extra.push('Audition Prep Company: '+row['Audition Prep Company']);
+  if(row['Package']) extra.push('Package: '+row['Package']);
+  if(row['Points and Miles Add-on']) extra.push('Points and Miles Add-on: '+row['Points and Miles Add-on']);
+  schools.forEach(function(s, i){
+    extra.push('School '+(i+1)+': '+[s.name, s.date, s.time, s.location].filter(Boolean).join(' | '));
+  });
+  var fields = {
+    'Full Name': contactName,
+    'Email': row['Email']||'',
+    'Phone': row['Phone']||'',
+    'Origin': row['Home Airport or City']||'',
+    'Destination': destination,
+    'Depart Date': isoDates[0]||'',
+    // The student is the one traveling, so they become the trip's "Traveler 2"
+    // (a distinct person from the parent filling out the form).
+    'Traveler 2 - Full Name': (student && student.toLowerCase()!==contactName.toLowerCase()) ? student : ''
+  };
+  var hasStudent = !!fields['Traveler 2 - Full Name'];
+  processTripFormRow(function(name){ return fields[name]||''; }, counters, {
+    namedTravelerCount: hasStudent ? 2 : 1,
+    extraLines: extra,
+    taskTitle: 'New audition travel request: '+(student||contactName),
+    auditionClient: true
+  });
+}
+// Routes one Book a Trip / audition-travel notification (already flattened
+// to plain text) to the right parser + importer.
+function importTripFormEmailText(flatText, counters){
+  if(isAuditionFormEmailText(flatText)){
+    processAuditionFormRow(parseAuditionFormEmailText(flatText), counters);
+  } else {
+    var row = parseTripFormEmailText(flatText);
+    processTripFormRow(function(name){ return row[name]||''; }, counters);
+  }
 }
 // ── Post-Trip Survey responses ──────────────────────────────────────────
 // post-trip-survey.html posts to the exact SAME submit-form.com endpoint
@@ -11601,12 +11753,12 @@ async function checkForNewTripFormEmails(silent){
     }
     debugLog('Trip form email check: fetched '+fetched.length+' message(s) since '+lastCheck);
     fetched.forEach(function(m){
-      if(TRIPFORM_EMAIL_SUBJECT_RE.test((m.subject||'').trim())){
+      if(isTripFormEmailSubject(m.subject)){
         debugLog('Trip form email check: found subject match — id='+m.id+' subject="'+m.subject+'" alreadyProcessed='+(processedIds.indexOf(m.id)!==-1)+' receivedDateTime='+m.receivedDateTime);
       }
     });
     var messages = fetched.filter(function(m){
-      return TRIPFORM_EMAIL_SUBJECT_RE.test((m.subject||'').trim()) && processedIds.indexOf(m.id)===-1;
+      return isTripFormEmailSubject(m.subject) && processedIds.indexOf(m.id)===-1;
     });
     // The Graph query above fetches newest-first (best for the near-miss
     // logging just above, and for capping at $top=50 without missing the
@@ -11638,8 +11790,7 @@ async function checkForNewTripFormEmails(silent){
       if(POST_TRIP_SURVEY_MARKER_RE.test(flatText)){
         processPostTripSurveyRow(parsePostTripSurveyEmailText(flatText), counters, msg.id);
       } else {
-        var row = parseTripFormEmailText(flatText);
-        processTripFormRow(function(name){ return row[name]||''; }, counters);
+        importTripFormEmailText(flatText, counters);
       }
       processedIds.push(msg.id);
     });
@@ -11680,12 +11831,13 @@ async function openReimportTripFormEmailsModal(){
   try{ fetched = await fetchAllGraphMessagePages(token, url, 'Re-import trip form emails'); }
   catch(e){ toast('Could not fetch emails: '+e.message,'err'); return; }
   var processedIds = JSON.parse(localStorage.getItem('mm_tripform_processed_ids')||'[]');
-  var items = fetched.filter(function(m){ return TRIPFORM_EMAIL_SUBJECT_RE.test((m.subject||'').trim()); }).map(function(m){
+  var items = fetched.filter(function(m){ return isTripFormEmailSubject(m.subject); }).map(function(m){
     var flat = stripHtml(m.body && m.body.content || '');
-    var row = parseTripFormEmailText(flat);
+    var isAud = isAuditionFormEmailText(flat);
+    var row = isAud ? parseAuditionFormEmailText(flat) : parseTripFormEmailText(flat);
     return {
       msg: m,
-      name: row['Full Name'] || row['Primary Contact Name'] || '(no name)',
+      name: isAud ? ((row['Student Name'] ? row['Student Name']+' (audition travel)' : '') || row['Parent/Guardian Name'] || '(no name)') : (row['Full Name'] || row['Primary Contact Name'] || '(no name)'),
       travelers: row['Number of Travelers'] || '',
       colon: /Full Name\s*:/.test(flat),
       done: processedIds.indexOf(m.id)!==-1
@@ -11728,8 +11880,7 @@ async function openReimportTripFormEmailsModal(){
     var counters = {added:0, enriched:0, tasksCreated:0, tripsCreated:0, skipped:0};
     var ids = JSON.parse(localStorage.getItem('mm_tripform_processed_ids')||'[]');
     picked.forEach(function(it){
-      var row = parseTripFormEmailText(stripHtml(it.msg.body && it.msg.body.content || ''));
-      try{ processTripFormRow(function(name){ return row[name]||''; }, counters); }
+      try{ importTripFormEmailText(stripHtml(it.msg.body && it.msg.body.content || ''), counters); }
       catch(e){ debugLog('Re-import trip form email failed for "'+it.name+'": '+e.message); counters.skipped++; return; }
       if(ids.indexOf(it.msg.id)===-1) ids.push(it.msg.id);
     });
@@ -20465,6 +20616,7 @@ function openClientForm(id){
         '<label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#374151;text-transform:none;font-weight:500;cursor:pointer"><input type="checkbox" id="f-paying" '+(d.isPayingClient?'checked':'')+' style="width:15px;height:15px"> Paying Client</label>'+
         '<label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#374151;text-transform:none;font-weight:500;cursor:pointer"><input type="checkbox" id="f-subscriber" '+(d.isSubscriber?'checked':'')+' style="width:15px;height:15px"> Subscriber</label>'+
         '<label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#374151;text-transform:none;font-weight:500;cursor:pointer"><input type="checkbox" id="f-terms-signed" '+(d.termsSigned?'checked':'')+' style="width:15px;height:15px"> Terms and Conditions signed</label>'+
+        '<label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#374151;text-transform:none;font-weight:500;cursor:pointer"><input type="checkbox" id="f-audition-client" '+(d.isAuditionClient?'checked':'')+' style="width:15px;height:15px"> Audition Client</label>'+
       '</div>'+
       (d.termsSigned&&(d.termsSignedAt||d.termsFileUrl)?'<div class="field full" style="font-size:12px;color:#555;margin-top:-6px">Terms and Conditions signed '+(d.termsSignedAt?escHtml(String(d.termsSignedAt).slice(0,10)):'')+(d.termsVersion?' (version '+escHtml(String(d.termsVersion))+')':'')+(d.termsFileUrl?' &middot; <a href="'+escHtml(d.termsFileUrl)+'" target="_blank" rel="noopener" style="color:#2563eb">View signed copy</a>':'')+'</div>':'')+
       '<div class="field full"><label>Attachments (Google Drive Links)</label>'+
@@ -23295,7 +23447,7 @@ function saveClient(id){
       certNumber:certRaw?Number(certRaw):undefined
     };
   }).filter(function(rc){return rc.referredName;});
-  const data={name:name,email:email,phone:gv('fp'),streetAddress:gv('fst'),city:gv('fcty'),state:gv('fstate'),zip:gv('fzip'),birthdate:gv('fbd'),countryOfCitizenship:gv('fcoc'),countryOfBirth:gv('fcob'),passportExpiration:gv('fped'),referredBy:referredBy,referredByDetail:referredByDetail,discounts:discountData.discounts,discountOther:discountData.discountOther,interests:interestData.interests,interestOther:interestData.interestOther,preferredAirline:gv('fpa'),preferredHotel:gv('fph'),preferredCruiseLine:gv('fpc'),mileageBalances:mileageBalances,hotelBalances:hotelBalances,cruiseBalances:cruiseBalances,carRentalBalances:carRentalBalances,trainBalance:trainBalance,creditCardBalances:creditCardBalances,airlineCreditCards:airlineCreditCards,hotelCreditCards:hotelCreditCards,notesLog:notesLog,isPayingClient:document.getElementById('f-paying')?document.getElementById('f-paying').checked:false,isSubscriber:document.getElementById('f-subscriber')?document.getElementById('f-subscriber').checked:false,termsSigned:document.getElementById('f-terms-signed')?document.getElementById('f-terms-signed').checked:false,okToText:document.getElementById('f-oktotext')?document.getElementById('f-oktotext').checked:false,attachments:window._currentClientAttachments||[],referralCredits:referralCredits};
+  const data={name:name,email:email,phone:gv('fp'),streetAddress:gv('fst'),city:gv('fcty'),state:gv('fstate'),zip:gv('fzip'),birthdate:gv('fbd'),countryOfCitizenship:gv('fcoc'),countryOfBirth:gv('fcob'),passportExpiration:gv('fped'),referredBy:referredBy,referredByDetail:referredByDetail,discounts:discountData.discounts,discountOther:discountData.discountOther,interests:interestData.interests,interestOther:interestData.interestOther,preferredAirline:gv('fpa'),preferredHotel:gv('fph'),preferredCruiseLine:gv('fpc'),mileageBalances:mileageBalances,hotelBalances:hotelBalances,cruiseBalances:cruiseBalances,carRentalBalances:carRentalBalances,trainBalance:trainBalance,creditCardBalances:creditCardBalances,airlineCreditCards:airlineCreditCards,hotelCreditCards:hotelCreditCards,notesLog:notesLog,isPayingClient:document.getElementById('f-paying')?document.getElementById('f-paying').checked:false,isSubscriber:document.getElementById('f-subscriber')?document.getElementById('f-subscriber').checked:false,termsSigned:document.getElementById('f-terms-signed')?document.getElementById('f-terms-signed').checked:false,isAuditionClient:document.getElementById('f-audition-client')?document.getElementById('f-audition-client').checked:false,okToText:document.getElementById('f-oktotext')?document.getElementById('f-oktotext').checked:false,attachments:window._currentClientAttachments||[],referralCredits:referralCredits};
   // Terms box may have changed: let the credit card form's check see it (see publishTermsIndex).
   setTimeout(publishTermsIndex, 1500);
   var resultId = id;
