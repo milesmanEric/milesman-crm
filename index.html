@@ -11523,7 +11523,7 @@ function processAuditionFormRow(row, counters){
         package: row['Package']||'', prepCompany: row['Audition Prep Company']||'',
         travelers: row['Number of Travelers']||'', homeAirport: row['Home Airport or City']||'',
         pointsAddon: !!(row['Points and Miles Add-on']||'').trim(),
-        supplierId: '', supplierName: '', bookingRef: '', invoiceDate: '',
+        supplierId: '', supplierName: '', bookingRef: '', invoiceDate: '', revenue: 0,
         notes: '', auditions: auditions, booked: {},
         createdAt: today()
       };
@@ -23840,12 +23840,14 @@ function renderAuditionTrips(){
     if(sortCol==='firstDate'){ av = auditionTripFirstDate(a); bv = auditionTripFirstDate(b); if(!av && !bv) return 0; if(!av) return 1; if(!bv) return -1; }
     else if(sortCol==='student'){ av = auditionTripStudent(a).toLowerCase(); bv = auditionTripStudent(b).toLowerCase(); }
     else if(sortCol==='clientName'){ av = (a.clientName||'').toLowerCase(); bv = (b.clientName||'').toLowerCase(); }
+    else if(sortCol==='revenue'){ av = Number(a.revenue)||0; bv = Number(b.revenue)||0; }
     else { av = (a[sortCol]||'').toString().toLowerCase(); bv = (b[sortCol]||'').toString().toLowerCase(); }
     if(av<bv) return sortDir==='asc'?-1:1;
     if(av>bv) return sortDir==='asc'?1:-1;
     return 0;
   });
   function arrow(col){ return sortCol===col ? (sortDir==='asc'?' &#9650;':' &#9660;') : ''; }
+  var totalRevenue = list.reduce(function(a,t){ return a+(Number(t.revenue)||0); },0);
   var upcoming = all.filter(function(t){ return t.status!=='Cancelled' && t.status!=='Completed'; }).length;
   $('main').innerHTML =
     '<div class="page-hdr">'+
@@ -23855,9 +23857,10 @@ function renderAuditionTrips(){
       '</div>'+
       '<button class="add-btn" id="btn-add-audition-trip">+ Add Audition Trip</button>'+
     '</div>'+
-    '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:16px">'+
-      '<div class="stat"><div class="stat-lbl">Audition Trips</div><div class="stat-val">'+all.length+'</div></div>'+
+    '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px">'+
+      '<div class="stat"><div class="stat-lbl">Audition Trips</div><div class="stat-val">'+list.length+'</div></div>'+
       '<div class="stat"><div class="stat-lbl">Open (not completed or cancelled)</div><div class="stat-val">'+upcoming+'</div></div>'+
+      '<div class="stat"><div class="stat-lbl">Total Revenue</div><div class="stat-val">$'+money(totalRevenue)+'</div></div>'+
     '</div>'+
     '<div class="search-row">'+
       '<input id="at-search" placeholder="Search client, student, school, city..." value="'+escHtml(window._atSearch||'')+'"/>'+
@@ -23874,6 +23877,7 @@ function renderAuditionTrips(){
       '<th class="at-sort-th" data-sort="firstDate" style="cursor:pointer">Auditions (School &middot; Date &middot; Time &middot; City, State)'+arrow('firstDate')+'</th>'+
       '<th class="at-sort-th" data-sort="status" style="cursor:pointer">Status'+arrow('status')+'</th>'+
       '<th>Booked</th>'+
+      '<th class="at-sort-th" data-sort="revenue" style="cursor:pointer">Revenue'+arrow('revenue')+'</th>'+
       '<th></th>'+
     '</tr></thead><tbody>'+
     (list.length ? list.map(function(t){
@@ -23886,9 +23890,10 @@ function renderAuditionTrips(){
         '<td>'+((t.auditions||[]).length ? t.auditions.map(auditionLineHtml).join('') : '<span style="color:#aaa">&mdash;</span>')+'</td>'+
         '<td><span class="badge '+(BCLS[t.status]||'b-gray')+'">'+escHtml(t.status||'Planning')+'</span></td>'+
         '<td>'+(chips.length?chips.map(function(c){return '<span class="badge b-gray" style="margin-right:4px">'+c+'</span>';}).join(''):'<span style="color:#aaa">&mdash;</span>')+'</td>'+
+        '<td>$'+money(t.revenue)+'</td>'+
         '<td style="white-space:nowrap"><button class="icon-btn edit-at" data-id="'+t.id+'" title="Edit">&#9998;</button> <button class="icon-btn del-at" data-id="'+t.id+'" title="Delete">&#128465;</button></td>'+
       '</tr>';
-    }).join('') : '<tr><td colspan="7" style="text-align:center;color:#aaa;padding:24px">No audition trips yet. They are created automatically from the audition intake form, or add one with the button above.</td></tr>')+
+    }).join('') : '<tr><td colspan="8" style="text-align:center;color:#aaa;padding:24px">No audition trips yet. They are created automatically from the audition intake form, or add one with the button above.</td></tr>')+
     '</tbody></table></div>';
 
   $('btn-add-audition-trip').addEventListener('click', function(){ openAuditionTripForm(); });
@@ -23986,6 +23991,7 @@ function openAuditionTripForm(id){
       fld('Supplier','<select id="tsup"><option value="">None</option>'+vopts+'</select>')+
       fld('Invoice Number', inp('tbr','text',d.bookingRef,'e.g. INV-10234'))+
       fld('Invoice Date', inp('at-invdate','date',d.invoiceDate))+
+      fld('Revenue ($)', inp('at-revenue','number',d.revenue||0,'Package and booking fees collected'))+
       '<div class="modal-section-title">Auditions</div>'+
       '<div class="field full"><div class="hint" style="text-transform:none;font-weight:400;margin-bottom:6px">One entry per school: School, Audition Date, Audition Time, City and State.</div>'+
         '<datalist id="at-school-list">'+auditionSchools().map(function(s){ return '<option value="'+escHtml(s.name)+'">'; }).join('')+'</datalist>'+
@@ -24064,7 +24070,7 @@ function saveAuditionTrip(id){
     package: gv('at-package'), prepCompany: gv('at-prep'), travelers: gv('at-travelers'), homeAirport: gv('at-airport'),
     pointsAddon: !!($('at-points')||{}).checked,
     supplierId: supplierId, supplierName: supplier ? supplier.name : '',
-    bookingRef: gv('tbr'), invoiceDate: gv('at-invdate'),
+    bookingRef: gv('tbr'), invoiceDate: gv('at-invdate'), revenue: Number(gv('at-revenue'))||0,
     notes: gv('tno'),
     auditions: readAuditionRows(),
     booked: readBookedTripDetails()
