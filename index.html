@@ -261,6 +261,7 @@ tr:last-child td{border-bottom:none}
       <button class="nb" id="nb-communities">&#127961;&#65039; Communities <span class="nc" id="nc-communities">0</span></button>
       <button class="nb" id="nb-corporate">&#127970; Corporate <span class="nc" id="nc-corporate">0</span></button>
       <button class="nb" id="nb-trips">&#9992;&#65039; Trips <span class="nc" id="nc-trips">0</span></button>
+      <button class="nb" id="nb-audition-trips">&#127917; Audition Trips <span class="nc" id="nc-audition-trips">0</span></button>
       <button class="nb" id="nb-groups">&#128193; Groups <span class="nc" id="nc-groups">0</span></button>
       <button class="nb" id="nb-ccconsulting">&#128179; Credit Card Consulting</button>
       <button class="nb" id="nb-referrals">&#129309; Referrals and Promo</button>
@@ -1319,7 +1320,7 @@ function quoteTableStructure(cfg){
   return structure;
 }
 const STATUSES = ['Planning','Confirmed','Upcoming','In Progress','Completed','Cancelled'];
-const TYPES    = ['Leisure','Business','Honeymoon','Family','Adventure','Cruise'];
+const TYPES    = ['Leisure','Business','Honeymoon','Family','Adventure','Cruise','Audition'];
 const CLASSES  = ['Basic Economy','Economy','Premium Economy','Business','First'];
 const THIRD_PARTY_AGENCIES = ['American Express Travel','Chase Travel','Rail Europe'];
 const FOREIGN_CURRENCIES = ['EUR - Euro','GBP - British Pound','CAD - Canadian Dollar','AUD - Australian Dollar','MXN - Mexican Peso','JPY - Japanese Yen','CHF - Swiss Franc','NZD - New Zealand Dollar','Other'];
@@ -1606,7 +1607,7 @@ const DEFAULT_BOOKMARKS = [
   {name:'AwardWallet', url:'https://www.awardwallet.com', category:'Award Tools', audience:'Travel Agent', notes:'tracks client mileage/points balances across programs'}
 ];
 
-let db = {clients:[],trips:[],vendors:[],bizVendors:[],communities:[],corporateClients:[],planner:[],bookmarks:[],savedReports:[],groups:[],marketingPlan:[],pendingImportMatches:[],pendingTravelerMatches:[],jetpackRemovalQueue:[],payments:[],surveyResponses:[],reportTotals:{}};
+let db = {clients:[],trips:[],vendors:[],bizVendors:[],communities:[],corporateClients:[],planner:[],bookmarks:[],savedReports:[],groups:[],marketingPlan:[],pendingImportMatches:[],pendingTravelerMatches:[],auditionTrips:[],jetpackRemovalQueue:[],payments:[],surveyResponses:[],reportTotals:{}};
 // Diagnostic tracer for the repeated data-wipe incidents (Sept 1/2/4) —
 // db.clients/db.trips have gone empty in memory mid-session for a reason
 // never caught in the act, only ever inferred afterward from Drive backup
@@ -2568,6 +2569,7 @@ async function loadDB(){
     // flagJetpackManualRemoval() for why this can't be automated.
     db.jetpackRemovalQueue=Array.isArray(d.jetpackRemovalQueue)?d.jetpackRemovalQueue:[];
     db.surveyResponses=Array.isArray(d.surveyResponses)?d.surveyResponses:[];
+    db.auditionTrips=Array.isArray(d.auditionTrips)?d.auditionTrips:[];
     // Always normalize client names to 'Last, First' format on every load
     // (safe to run repeatedly since it skips names that already have a comma)
     var migrated=0;
@@ -3004,7 +3006,7 @@ function toast(msg,type='ok'){
 }
 
 // ── Badges ────────────────────────────────────────────────────────────────
-const BCLS={Confirmed:'b-green',Planning:'b-amber',Completed:'b-blue',Cancelled:'b-red',Upcoming:'b-amber',Elite:'b-amber',Gold:'b-amber',Standard:'b-gray',Platinum:'b-blue',Leisure:'b-blue',Business:'b-gray',Honeymoon:'b-green',Family:'b-green',Adventure:'b-amber',Cruise:'b-blue',First:'b-blue','Premium Economy':'b-amber',Economy:'b-gray',Pending:'b-amber',Paid:'b-green'};
+const BCLS={Confirmed:'b-green',Planning:'b-amber',Completed:'b-blue',Cancelled:'b-red',Upcoming:'b-amber',Elite:'b-amber',Gold:'b-amber',Standard:'b-gray',Platinum:'b-blue',Leisure:'b-blue',Business:'b-gray',Honeymoon:'b-green',Family:'b-green',Adventure:'b-amber',Cruise:'b-blue',Audition:'b-amber',First:'b-blue','Premium Economy':'b-amber',Economy:'b-gray',Pending:'b-amber',Paid:'b-green'};
 const badge = l => '<span class="badge '+(BCLS[l]||'b-gray')+'">'+(l||'')+'</span>';
 const av = (name,sz) => { sz=sz||30; var fn=getFirstName(name)||name||'?'; return '<div class="av" style="width:'+sz+'px;height:'+sz+'px;font-size:'+Math.round(sz*.4)+'px">'+fn[0].toUpperCase()+'</div>'; };
 
@@ -5111,7 +5113,8 @@ async function driveRestore(){
         pendingTravelerMatches:Array.isArray(d.pendingTravelerMatches)?d.pendingTravelerMatches:[],
         jetpackRemovalQueue:Array.isArray(d.jetpackRemovalQueue)?d.jetpackRemovalQueue:[],
         payments:Array.isArray(d.payments)?d.payments:[],
-        surveyResponses:Array.isArray(d.surveyResponses)?d.surveyResponses:[]
+        surveyResponses:Array.isArray(d.surveyResponses)?d.surveyResponses:[],
+        auditionTrips:Array.isArray(d.auditionTrips)?d.auditionTrips:[]
       };
       instrumentDbWipeTracing();
       var _compRestored = applyComplianceFromBackup(d);
@@ -5253,7 +5256,8 @@ async function secureSyncRestore(){
         pendingTravelerMatches:Array.isArray(d.pendingTravelerMatches)?d.pendingTravelerMatches:[],
         jetpackRemovalQueue:Array.isArray(d.jetpackRemovalQueue)?d.jetpackRemovalQueue:[],
         payments:Array.isArray(d.payments)?d.payments:[],
-        surveyResponses:Array.isArray(d.surveyResponses)?d.surveyResponses:[]
+        surveyResponses:Array.isArray(d.surveyResponses)?d.surveyResponses:[],
+        auditionTrips:Array.isArray(d.auditionTrips)?d.auditionTrips:[]
       };
       instrumentDbWipeTracing();
       var _compRestored = applyComplianceFromBackup(d);
@@ -6390,7 +6394,7 @@ function importJSON(){
         const d=JSON.parse(ev.target.result);
         if(Array.isArray(d.clients)&&Array.isArray(d.trips)){
           debugLog('Local restore: parsed backup file — '+d.clients.length+' clients, '+d.trips.length+' trips');
-          db=d;instrumentDbWipeTracing();if(applyComplianceFromBackup(d)) debugLog('Local restore: compliance tracker data restored');if(!Array.isArray(db.vendors))db.vendors=[];if(!Array.isArray(db.bizVendors))db.bizVendors=[];if(!Array.isArray(db.communities))db.communities=[];if(!Array.isArray(db.corporateClients))db.corporateClients=[];if(!Array.isArray(db.planner))db.planner=[];if(!Array.isArray(db.bookmarks))db.bookmarks=[];if(!Array.isArray(db.savedReports))db.savedReports=[];if(!Array.isArray(db.groups))db.groups=[];if(!Array.isArray(db.marketingPlan))db.marketingPlan=[];if(!Array.isArray(db.pendingImportMatches))db.pendingImportMatches=[];if(!Array.isArray(db.jetpackRemovalQueue))db.jetpackRemovalQueue=[];if(!Array.isArray(db.payments))db.payments=[];if(!Array.isArray(db.surveyResponses))db.surveyResponses=[];(db.clients||[]).forEach(function(c){ if(c.name && !c.name.includes(',')) c.name=toLastFirst(c.name); });_dbDecryptFailed=false;
+          db=d;instrumentDbWipeTracing();if(applyComplianceFromBackup(d)) debugLog('Local restore: compliance tracker data restored');if(!Array.isArray(db.vendors))db.vendors=[];if(!Array.isArray(db.bizVendors))db.bizVendors=[];if(!Array.isArray(db.communities))db.communities=[];if(!Array.isArray(db.corporateClients))db.corporateClients=[];if(!Array.isArray(db.planner))db.planner=[];if(!Array.isArray(db.bookmarks))db.bookmarks=[];if(!Array.isArray(db.savedReports))db.savedReports=[];if(!Array.isArray(db.groups))db.groups=[];if(!Array.isArray(db.marketingPlan))db.marketingPlan=[];if(!Array.isArray(db.pendingImportMatches))db.pendingImportMatches=[];if(!Array.isArray(db.jetpackRemovalQueue))db.jetpackRemovalQueue=[];if(!Array.isArray(db.payments))db.payments=[];if(!Array.isArray(db.surveyResponses))db.surveyResponses=[];if(!Array.isArray(db.auditionTrips))db.auditionTrips=[];(db.clients||[]).forEach(function(c){ if(c.name && !c.name.includes(',')) c.name=toLastFirst(c.name); });_dbDecryptFailed=false;
           // Awaited specifically because this is a restore: the natural next
           // move after seeing "Data imported" is to reload to confirm it
           // stuck, and saveDB()'s encrypted write is otherwise fire-and-
@@ -10356,6 +10360,13 @@ function resolvePendingTravelerMatch(id, cid, skipSnapshot){
     }
   }
 
+  // An audition-form student: link the resolved client as the Audition
+  // Trip's Student.
+  if(pm.auditionTripId){
+    var aTrip = (db.auditionTrips||[]).find(function(t){return t.id===pm.auditionTripId;});
+    if(aTrip){ aTrip.studentClientId = cid; aTrip.studentName = client.name; }
+  }
+
   db.pendingTravelerMatches = (db.pendingTravelerMatches||[]).filter(function(x){return x.id!==id;});
   saveDB();
   toast('Matched '+pm.name+' to '+client.name,'ok');
@@ -10438,7 +10449,8 @@ function importCSV(){
 // notification-email key/value object — without duplicating this logic.
 // opts (optional, used by the audition-form importer — see
 // processAuditionFormRow): {namedTravelerCount, extraLines, taskTitle,
-// auditionClient}. auditionClient ticks the "Audition Client" checkbox on the
+// auditionClient, onResolved}. onResolved(res) replaces the trip/task creation
+// at the end. auditionClient ticks the "Audition Client" checkbox on the
 // primary contact and every named traveler.
 // namedTravelerCount overrides how many "Traveler N - Full Name" blocks are
 // read (the audition form's "Number of Travelers" is a head count that
@@ -11117,6 +11129,14 @@ function processTripFormRow(getVal, counters, opts){
   [airlineVendor, cruiseVendor, carRentalVendor].concat(hotelVendors, themeParkVendors, tourVendorMatches).forEach(linkClientToVendor);
   var primarySupplier = airlineVendor || cruiseVendor || hotelVendors[0] || carRentalVendor || themeParkVendors[0] || tourVendorMatches[0] || null;
 
+  // The audition importer wants an Audition Trip instead of a regular Trip
+  // (see processAuditionFormRow): everything above — client matching/
+  // enrichment, companion-traveler matching and the pending-review queue —
+  // is shared, only the record created at the end differs.
+  if(opts.onResolved){
+    opts.onResolved({client:client, linkedClientIds:linkedClientIds, pendingMatches:pendingMatches});
+    return;
+  }
   var newTripId = null;
   if(destination || tripLines.length){
     newTripId = newId('T', db.trips);
@@ -11465,39 +11485,80 @@ function processAuditionFormRow(row, counters){
   if(declared && declared!==schools.length){
     debugLog('Audition form email check: "'+contactName+'" says '+declared+' school(s) but '+schools.length+' were parsed from the email — check the email in Outlook.');
   }
-  var isoDates = schools.map(function(s){return s.iso;}).filter(Boolean).sort();
   var schoolNames = schools.map(function(s){return s.name;});
   var destination = schools.length
     ? 'College auditions: '+(schoolNames.length>3 ? schoolNames.slice(0,3).join(', ')+' and '+(schoolNames.length-3)+' more' : schoolNames.join(', '))
     : 'College auditions';
-  var pax = row['Number of Travelers']||'';
-  var extra = [];
-  if(student) extra.push('Student: '+student);
-  if(parent) extra.push('Parent/Guardian: '+parent);
-  if(pax) extra.push('Number of Travelers (student plus guests): '+pax);
-  if(row['Audition Prep Company']) extra.push('Audition Prep Company: '+row['Audition Prep Company']);
-  if(row['Package']) extra.push('Package: '+row['Package']);
-  if(row['Points and Miles Add-on']) extra.push('Points and Miles Add-on: '+row['Points and Miles Add-on']);
-  schools.forEach(function(s, i){
-    extra.push('School '+(i+1)+': '+[s.name, s.date, s.time, s.location].filter(Boolean).join(' | '));
+  // One row per school, in the shape the Audition Trips form edits:
+  // School / Audition Date (ISO) / Audition Time (24h) / City / State, plus
+  // the form's own location text kept as "Event / Location".
+  var auditions = schools.map(function(s){
+    var event = (s.location||'').split(' · ')[0].trim();
+    var place = auditionPlaceFromEvent(event, s.name);
+    return {school:s.name, date:s.iso, time:auditionTimeTo24(s.time), city:place.city, state:place.state, event:event};
   });
   var fields = {
     'Full Name': contactName,
     'Email': row['Email']||'',
     'Phone': row['Phone']||'',
-    'Origin': row['Home Airport or City']||'',
-    'Destination': destination,
-    'Depart Date': isoDates[0]||'',
-    // The student is the one traveling, so they become the trip's "Traveler 2"
-    // (a distinct person from the parent filling out the form).
+    // The student is the one traveling, so they are the one named traveler
+    // ("Traveler 2", matched/created exactly like a Book a Trip companion).
     'Traveler 2 - Full Name': (student && student.toLowerCase()!==contactName.toLowerCase()) ? student : ''
   };
   var hasStudent = !!fields['Traveler 2 - Full Name'];
   processTripFormRow(function(name){ return fields[name]||''; }, counters, {
     namedTravelerCount: hasStudent ? 2 : 1,
-    extraLines: extra,
-    taskTitle: 'New audition travel request: '+(student||contactName),
-    auditionClient: true
+    auditionClient: true,
+    // Instead of a regular Trip, create an Audition Trip record. Client
+    // matching/enrichment, the companion (student) match and the queue of
+    // possible-duplicate travelers all ran inside processTripFormRow first.
+    onResolved: function(res){
+      if(!db.auditionTrips) db.auditionTrips = [];
+      var linkedStudentId = res.linkedClientIds[0] || '';
+      var at = {
+        id: newId('AT', db.auditionTrips),
+        clientId: res.client.id, clientName: res.client.name,
+        studentClientId: linkedStudentId, studentName: student,
+        type: 'Audition', status: 'Planning',
+        package: row['Package']||'', prepCompany: row['Audition Prep Company']||'',
+        travelers: row['Number of Travelers']||'', homeAirport: row['Home Airport or City']||'',
+        pointsAddon: !!(row['Points and Miles Add-on']||'').trim(),
+        supplierId: '', supplierName: '', bookingRef: '', invoiceDate: '',
+        notes: '', auditions: auditions, booked: {},
+        createdAt: today()
+      };
+      db.auditionTrips.push(at);
+      counters.auditionTripsCreated = (counters.auditionTripsCreated||0) + 1;
+      if(res.pendingMatches.length){
+        if(!db.pendingTravelerMatches) db.pendingTravelerMatches = [];
+        res.pendingMatches.forEach(function(pm){
+          pm.tripId = '';
+          pm.auditionTripId = at.id;
+          pm.tripDestination = destination;
+          db.pendingTravelerMatches.push(pm);
+        });
+      }
+      var lines = [];
+      if(student) lines.push('Student: '+student);
+      if(parent) lines.push('Parent/Guardian: '+parent);
+      if(at.travelers) lines.push('Number of Travelers (student plus guests): '+at.travelers);
+      if(at.homeAirport) lines.push('Home Airport or City: '+at.homeAirport);
+      if(at.prepCompany) lines.push('Audition Prep Company: '+at.prepCompany);
+      if(at.package) lines.push('Package: '+at.package);
+      if(at.pointsAddon) lines.push('Points and Miles Add-on: Yes');
+      auditions.forEach(function(a, i){
+        lines.push('Audition '+(i+1)+': '+[a.school, a.date, a.time, [a.city, a.state].filter(Boolean).join(', '), a.event].filter(Boolean).join(' | '));
+      });
+      db.planner.push({
+        id:newId('PL',db.planner),
+        title:'New audition travel request: '+(student||contactName),
+        dueDate:today(), done:false, clientId:res.client.id, tripId:'', auditionTripId:at.id,
+        completionNoteType:'General',
+        desc: lines.join('\n'),
+        createdAt: today()
+      });
+      counters.tasksCreated++;
+    }
   });
 }
 // Routes one Book a Trip / audition-travel notification (already flattened
@@ -11797,10 +11858,10 @@ async function checkForNewTripFormEmails(silent){
     if(processedIds.length > 500) processedIds = processedIds.slice(processedIds.length-500);
     localStorage.setItem('mm_tripform_processed_ids', JSON.stringify(processedIds));
 
-    if(counters.tripsCreated || counters.added || counters.enriched || counters.pendingReview || counters.travelersAdded || counters.surveysImported){
+    if(counters.tripsCreated || counters.auditionTripsCreated || counters.added || counters.enriched || counters.pendingReview || counters.travelersAdded || counters.surveysImported){
       snapshot('Auto-import trip form emails');
       saveDB(); render();
-      toast('Auto-imported '+counters.tripsCreated+' trip'+(counters.tripsCreated!==1?'s':'')+' from email ('+counters.added+' new client'+(counters.added!==1?'s':'')+')'+(counters.pendingReview?' — '+counters.pendingReview+' traveler'+(counters.pendingReview!==1?'s':'')+' need review, see Pending Traveler Matches':'')+(counters.travelersAdded?' — added '+counters.travelersAdded+' additional traveler'+(counters.travelersAdded!==1?'s':'')+' to an existing trip':'')+(counters.surveysImported?' — '+counters.surveysImported+' post-trip survey response'+(counters.surveysImported!==1?'s':''):''),'ok');
+      toast('Auto-imported '+counters.tripsCreated+' trip'+(counters.tripsCreated!==1?'s':'')+' from email ('+counters.added+' new client'+(counters.added!==1?'s':'')+')'+(counters.pendingReview?' — '+counters.pendingReview+' traveler'+(counters.pendingReview!==1?'s':'')+' need review, see Pending Traveler Matches':'')+(counters.travelersAdded?' — added '+counters.travelersAdded+' additional traveler'+(counters.travelersAdded!==1?'s':'')+' to an existing trip':'')+(counters.auditionTripsCreated?' — '+counters.auditionTripsCreated+' audition trip'+(counters.auditionTripsCreated!==1?'s':''):'')+(counters.surveysImported?' — '+counters.surveysImported+' post-trip survey response'+(counters.surveysImported!==1?'s':''):''),'ok');
     }
   }catch(e){
     debugLog('Trip form email check failed: '+e.message);
@@ -13032,9 +13093,9 @@ async function importTripFormPDF(){
 // ── Navigation ────────────────────────────────────────────────────────────
 function go(v,cid){
   view=v;
-  selCid=(v==='trips'&&cid)?cid:null;
+  selCid=((v==='trips'||v==='audition-trips')&&cid)?cid:null;
   fSearch='';fStatus=STATUSES.filter(function(s){return s!=='Cancelled';});fHideSubOnly=true;
-  ['dashboard','clients','corporate','trips','groups','reports','calendar','email','vendors','bizvendors','communities','planner','bookmarks','ccconsulting','referrals','payments','marketing','analytics'].forEach(function(x){var el=$('nb-'+x);if(el)el.classList.toggle('active',x===v);});
+  ['dashboard','clients','corporate','trips','audition-trips','groups','reports','calendar','email','vendors','bizvendors','communities','planner','bookmarks','ccconsulting','referrals','payments','marketing','analytics'].forEach(function(x){var el=$('nb-'+x);if(el)el.classList.toggle('active',x===v);});
   render();
 }
 
@@ -13042,6 +13103,7 @@ function go(v,cid){
 function render(){
   $('nc-clients').textContent=db.clients.length;
   $('nc-trips').textContent=db.trips.length;
+  var ncat=$('nc-audition-trips'); if(ncat) ncat.textContent=(db.auditionTrips||[]).length;
   var ncv=$('nc-vendors'); if(ncv) ncv.textContent=db.vendors.length;
   var ncbv=$('nc-bizvendors'); if(ncbv) ncbv.textContent=db.bizVendors.length;
   var nccm=$('nc-communities'); if(nccm) nccm.textContent=db.communities.length;
@@ -13054,6 +13116,7 @@ function render(){
   if(view==='dashboard') renderDash();
   else if(view==='clients') renderClients();
   else if(view==='trips') renderTrips();
+  else if(view==='audition-trips') renderAuditionTrips();
   else if(view==='groups') renderGroups();
   else if(view==='reports') renderReports();
   else if(view==='calendar') renderCalendar();
@@ -22440,6 +22503,12 @@ function updateAirlineRecordPaxWarning(recordRow){
 // letting the fields fall back to block layout) since it sits between the
 // grid-item .field/.modal-section-title children as an extra nesting level.
 function bookedCatSectionHtml(key, title, innerHtml){
+  if(window._bookedCatAllow && window._bookedCatAllow.indexOf(key)===-1){
+    var hidden = window._bookedCatAllow; window._bookedCatAllow = null;
+    var html = bookedCatSectionHtml(key, title, innerHtml);
+    window._bookedCatAllow = hidden;
+    return '<div style="display:none">'+html+'</div>';
+  }
   var collapsedMap = window._bookedCatCollapsed || {};
   var isCollapsed = collapsedMap[key] !== false;
   var bodyId = 'tb-cat-body-'+key;
@@ -22464,7 +22533,15 @@ function backfillSharedMilesManFee(entries, legacyFee){
   filled[0] = Object.assign({}, filled[0]||{}, {milesManFee: legacyFee});
   return filled;
 }
-function bookedTripDetailsHtml(bd){
+// opts.cats (optional): only these Booked Trip Details categories are shown
+// (the others, plus Budget/Trip Name, are still rendered but hidden, so
+// readBookedTripDetails() keeps working unchanged) — used by Audition Trips.
+function bookedTripDetailsHtml(bd, opts){
+  window._bookedCatAllow = (opts && opts.cats) || null;
+  try{ return bookedTripDetailsHtmlInner(bd); }
+  finally{ window._bookedCatAllow = null; }
+}
+function bookedTripDetailsHtmlInner(bd){
   bd = bd || {};
   var air = bd.airline||{}, cru = bd.cruise||{}, ins = bd.insurance||{};
   // bd.hotel/bd.tours/bd.themePark used to each be a single object (one
@@ -22578,15 +22655,18 @@ function bookedTripDetailsHtml(bd){
       return Object.assign({}, r, {segments: segs});
     });
   }
+  var _hideExtras = !!window._bookedCatAllow;
   return ''+
+    (_hideExtras?'<div style="display:none">':'')+
     '<div class="modal-section-title">Budget</div>'+
     '<div style="display:grid;grid-column:1/-1;grid-template-columns:1fr 1fr;gap:12px">'+
       fld('Total Budget ($)',inp('tb-budget-total','number',bd.totalBudget))+
       '<div class="field full"><div class="hint" id="tb-budget-includes" style="text-transform:none;font-weight:400"></div></div>'+
       '<div class="field full"><div class="hint" style="text-transform:none;font-weight:400">Any Miles Man fees will be in addition to this budgeted amount.</div></div>'+
     '</div>'+
+    (_hideExtras?'</div>':'')+
     '<div class="modal-section-title">Booked Trip Details</div>'+
-    fld('Trip Name',inp('tb-trip-name','text',bd.tripName,'e.g. Smith Family Alaska Cruise'))+
+    (_hideExtras?'<div style="display:none">':'')+fld('Trip Name',inp('tb-trip-name','text',bd.tripName,'e.g. Smith Family Alaska Cruise'))+(_hideExtras?'</div>':'')+
     bookedCatSectionHtml('airline','Airline',
       '<div class="field full"><label>Records <span class="hint" style="text-transform:none;font-weight:400">(one per confirmation/PNR — e.g. separate records for different fare types or when not everyone is ticketed together)</span></label>'+
         '<div id="tb-airline-records">'+airlineRecordsListHtml(airlineRecords)+'</div>'+
@@ -23460,6 +23540,7 @@ function saveClient(id){
     // trip already on file still showing the old name everywhere except
     // the Clients page, which is the only view that reads client.name live.
     db.trips=db.trips.map(function(t){return t.clientId===id?Object.assign({},t,{clientName:name}):t;});
+    (db.auditionTrips||[]).forEach(function(t){ if(t.clientId===id) t.clientName=name; });
     toast('Client updated');
   }else{
     resultId = newId('C',db.clients);
@@ -23577,6 +23658,8 @@ function delClient(id){
   snapshot('Delete client: '+c.name);
   db.clients=db.clients.filter(function(x){return x.id!==id;});
   db.trips=db.trips.filter(function(t){return t.clientId!==id;});
+  db.auditionTrips=(db.auditionTrips||[]).filter(function(t){return t.clientId!==id;});
+  db.auditionTrips.forEach(function(t){ if(t.studentClientId===id){ t.studentName=c.name; t.studentClientId=''; } });
   if(selCid===id) selCid=null;
   saveDB();toast('Client deleted');render();
 }
@@ -23587,6 +23670,417 @@ function delTrip(id){
   db.trips=db.trips.filter(function(t){return t.id!==id;});
   saveDB();toast('Trip deleted');render();
 }
+
+// ── Audition Trips ───────────────────────────────────────────────────────
+// A separate record type (db.auditionTrips) for college audition travel,
+// modeled on the regular Trips tab: same Status values, supplier/invoice
+// fields, and the very same Booked Trip Details sections (Airline, Hotel,
+// Transfers / Car Service, Train — the other sections are hidden, see
+// bookedTripDetailsHtml's opts.cats), but with the audition-specific parts
+// on top: the parent/guardian is the Client, the student is a link to a
+// client record, and each school auditioned for is its own row (School,
+// Audition Date, Audition Time, City, State). The public audition intake
+// form's emails import straight into these (processAuditionFormRow).
+// Same school list (by state) as audition-intake-form.html's RAW list —
+// used for the School suggestions and to fill State when the audition is on
+// campus. Mirror new schools there.
+const AUDITION_SCHOOLS_RAW = `AL:Auburn University|Samford University|University of Alabama|University of Alabama at Birmingham|University of Mobile|University of Montevallo|University of South Alabama
+AZ:Arizona State University|University of Arizona
+AR:Arkansas State University|John Brown University|Ouachita Baptist University|Southern Arkansas University
+CA:AMDA College of the Performing Arts (Los Angeles)|Azusa Pacific University|Biola University|California State University, Chico|California State University, East Bay|California State University, Fullerton|California State University, Northridge|California State University, San Bernardino|Concordia University Irvine|Pepperdine University|San Diego State University|San Francisco State University|San José State University|Santa Clara University|University of California, Irvine|University of California, Los Angeles (UCLA)|University of Redlands|University of Southern California (USC)|University of the Pacific|Vanguard University
+CO:Colorado Mesa University|Colorado State University|Fort Lewis College|Metropolitan State University of Denver|University of Colorado Boulder|University of Northern Colorado
+CT:Norwalk Conservatory of the Arts|Sacred Heart University|University of Hartford (The Hartt School)|Western Connecticut State University
+DC:American University|Catholic University of America|Howard University
+FL:Eckerd College|Flagler College|Florida Atlantic University|Florida International University|Florida Southern College|Florida State University|Jacksonville University|Lynn University|New World School of the Arts|Nova Southeastern University|Palm Beach Atlantic University|Rollins College|University of Central Florida|University of Florida|University of Miami|University of Tampa|University of West Florida
+GA:Berry College|Brenau University|Columbus State University|Kennesaw State University|LaGrange College|Piedmont University|Reinhardt University|Shorter University|University of West Georgia|Valdosta State University|Young Harris College
+HI:University of Hawaiʻi at Mānoa
+ID:Northwest Nazarene University|University of Idaho
+IL:Columbia College Chicago|Eastern Illinois University|Illinois State University|Illinois Wesleyan University|Loyola University Chicago|Millikin University|Monmouth College|North Central College|Northwestern University|Rockford University|Roosevelt University (CCPA)|Southern Illinois University Carbondale|Western Illinois University
+IN:Anderson University (IN)|Ball State University|Bethel University (IN)|Butler University|DePauw University|Indiana University Bloomington|Indiana University South Bend|Purdue University Fort Wayne|Saint Mary's College (IN)|Taylor University|University of Notre Dame|Valparaiso University
+IA:Central College|Coe College|Drake University|Iowa State University|University of Iowa|Waldorf University
+KS:Fort Hays State University|Kansas State University|University of Kansas|Washburn University|Wichita State University
+KY:Eastern Kentucky University|Murray State University|Northern Kentucky University|University of Kentucky|Western Kentucky University
+LA:Northwestern State University of Louisiana|Tulane University
+ME:Colby College|University of Southern Maine
+MD:Bowie State University|Frostburg State University|McDaniel College
+MA:Boston Conservatory at Berklee|Boston University|Brandeis University|Dean College|Emerson College|Suffolk University
+MI:Central Michigan University|Eastern Michigan University|Michigan State University|Oakland University|Saginaw Valley State University|University of Michigan|Wayne State University|Western Michigan University
+MN:Augsburg University|Minnesota State University, Mankato|St. Olaf College|University of Minnesota Duluth|University of Northwestern – St. Paul
+MS:Belhaven University|Mississippi College|University of Mississippi (Ole Miss)
+MO:College of the Ozarks|Culver-Stockton College|Lindenwood University|Missouri Baptist University|Missouri Southern State University|Missouri State University|Southeast Missouri State University|Stephens College|Truman State University|University of Central Missouri|Webster University
+MT:University of Montana
+NE:Creighton University|Hastings College|Nebraska Wesleyan University|University of Nebraska at Kearney|University of Nebraska Omaha
+NV:University of Nevada, Reno
+NH:Plymouth State University|University of New Hampshire
+NJ:Centenary University|Drew University|Fairleigh Dickinson University|Monmouth University|Montclair State University|Princeton University|Rider University|Rowan University|Rutgers University–Camden|Seton Hall University
+NM:New Mexico Highlands University|New Mexico State University
+NY:AMDA (New York)|Binghamton University (SUNY)|Circle in the Square Theatre School|City College of New York (CUNY)|Five Towns College|Hartwick College|Hofstra University|Institute for American Musical Theatre|Ithaca College|Long Island University Post|Manhattan School of Music|Manhattanville University|Marymount Manhattan College|Molloy University / CAP21|Nazareth University|New York Film Academy|New York University – Steinhardt|New York University – Tisch|Niagara University|Pace University|Russell Sage College|SUNY Brockport|SUNY Cortland|SUNY Fredonia|SUNY Geneseo|SUNY Oswego|SUNY Potsdam|Syracuse University|The New School|University at Albany (SUNY)|University at Buffalo (SUNY)|Wagner College
+NC:Barton College|Catawba College|Duke University|East Carolina University|Elon University|Greensboro College|High Point University|Lees-McRae College|Mars Hill University|University of North Carolina at Chapel Hill|University of North Carolina at Charlotte|University of North Carolina at Greensboro|University of North Carolina Wilmington|Western Carolina University|William Peace University
+ND:North Dakota State University|University of North Dakota
+OH:Baldwin Wallace University|Bowling Green State University|Denison University|Heidelberg University|Kent State University|Marietta College|Miami University (OH)|Muskingum University|Oberlin College & Conservatory|Ohio Northern University|Ohio University|Otterbein University|Shawnee State University|University of Cincinnati (CCM)|University of Mount Union|Wright State University|Xavier University|Youngstown State University
+OK:East Central University|Oklahoma City University|Oklahoma State University|Southeastern Oklahoma State University|University of Central Oklahoma|University of Oklahoma|University of Tulsa
+OR:Linfield University|Southern Oregon University
+PA:Arcadia University|Carnegie Mellon University|DeSales University|East Stroudsburg University|Eastern University|Indiana University of Pennsylvania|Kutztown University|Lycoming College|Marywood University|Messiah University|Muhlenberg College|Penn State University|PennWest University|Point Park University|Saint Joseph's University|Seton Hill University|Slippery Rock University|Temple University|West Chester University|Wilkes University|York College of Pennsylvania
+RI:Rhode Island College|University of Rhode Island
+SC:Anderson University (SC)|Coastal Carolina University|Coker University|Converse University|Newberry College|North Greenville University|University of South Carolina|Winthrop University
+SD:University of South Dakota
+TN:Austin Peay State University|Belmont University|East Tennessee State University|Lipscomb University|Middle Tennessee State University|Tennessee Tech University|University of Memphis
+TX:Abilene Christian University|Baylor University|East Texas Baptist University|KD Conservatory|Midwestern State University|Sam Houston State University|Southern Methodist University (SMU)|St. Edward's University|Stephen F. Austin State University|Tarleton State University|Texas Christian University (TCU)|Texas State University|Texas Tech University|Texas Wesleyan University|Texas Woman's University|University of Texas at Arlington|University of Texas at El Paso|West Texas A&M University
+UT:Brigham Young University|Southern Utah University|University of Utah|Utah State University|Utah Valley University|Weber State University|Westminster University (UT)
+VT:University of Vermont
+VA:Christopher Newport University|Eastern Mennonite University|Emory & Henry University|George Mason University|Hollins University|James Madison University|Liberty University|Longwood University|Randolph College|Shenandoah University (Conservatory)|Sweet Briar College|University of Mary Washington|Virginia Commonwealth University
+WA:Central Washington University|Cornish College of the Arts|Pacific Lutheran University|Western Washington University
+WV:Marshall University|West Virginia University|West Virginia Wesleyan College
+WI:Carthage College|Edgewood College|University of Wisconsin–Eau Claire|University of Wisconsin–Stevens Point|Viterbo University
+WY:University of Wyoming`;
+var _auditionSchoolsCache = null;
+function auditionSchools(){
+  if(_auditionSchoolsCache) return _auditionSchoolsCache;
+  var out = [];
+  AUDITION_SCHOOLS_RAW.split('\n').forEach(function(line){
+    var i = line.indexOf(':');
+    if(i<0) return;
+    var st = line.slice(0,i).trim();
+    line.slice(i+1).split('|').forEach(function(n){ n = n.trim(); if(n) out.push({name:n, st:st}); });
+  });
+  out.sort(function(a,b){ return a.name.localeCompare(b.name); });
+  _auditionSchoolsCache = out;
+  return out;
+}
+function auditionStateForSchool(name){
+  var key = (name||'').trim().toLowerCase();
+  if(!key) return '';
+  var hit = auditionSchools().find(function(s){ return s.name.toLowerCase()===key; });
+  return hit ? hit.st : '';
+}
+// Where each group-audition event on the intake form actually takes place
+// (keyed by the short event name the form puts at the start of every
+// location line).
+var AUDITION_EVENT_PLACES = {
+  'new york unifieds': {city:'New York', state:'NY'},
+  'chicago unifieds': {city:'Chicago', state:'IL'},
+  'los angeles unifieds': {city:'Anaheim', state:'CA'},
+  'moonifieds, dallas': {city:'Dallas', state:'TX'},
+  'western ny unifieds, buffalo': {city:'Buffalo', state:'NY'},
+  'mtca, anaheim': {city:'Anaheim', state:'CA'},
+  'setc, lexington': {city:'Lexington', state:'KY'}
+};
+function auditionPlaceFromEvent(event, school){
+  var e = (event||'').trim();
+  var known = AUDITION_EVENT_PLACES[e.toLowerCase()];
+  if(known) return {city:known.city, state:known.state};
+  var m = e.match(/^([^,]+),\s*([A-Za-z]{2})$/);
+  if(m) return {city:m[1].trim(), state:m[2].toUpperCase()};
+  // On campus (or anything unrecognized): the school's own state, city left
+  // for a person to fill in.
+  return {city:'', state:auditionStateForSchool(school)};
+}
+// "9:30 AM" -> "09:30" (what <input type="time"> wants).
+function auditionTimeTo24(t){
+  var m = (t||'').trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  if(!m) return /^\d{2}:\d{2}$/.test((t||'').trim()) ? t.trim() : '';
+  var h = parseInt(m[1],10)%12;
+  if(m[3].toUpperCase()==='PM') h += 12;
+  return String(h).padStart(2,'0')+':'+m[2];
+}
+function auditionTimeDisplay(t){
+  var m = (t||'').match(/^(\d{2}):(\d{2})$/);
+  if(!m) return t||'';
+  var h = parseInt(m[1],10);
+  return ((h%12)||12)+':'+m[2]+' '+(h>=12?'PM':'AM');
+}
+function auditionDateDisplay(iso){
+  var m = (iso||'').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if(!m) return iso||'';
+  return new Date(parseInt(m[1],10), parseInt(m[2],10)-1, parseInt(m[3],10)).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+}
+var AUDITION_PACKAGES = ['Full Season Concierge','Unifieds Trip','Campus Audition Trip','Prep Trip','Not sure yet — help me choose'];
+var AUDITION_BOOKED_CATS = ['airline','hotel','transfers','train'];
+function auditionTripStudent(t){
+  var c = t.studentClientId ? db.clients.find(function(x){return x.id===t.studentClientId;}) : null;
+  return c ? c.name : (t.studentName||'');
+}
+function auditionTripFirstDate(t){
+  var ds = (t.auditions||[]).map(function(a){return a.date;}).filter(Boolean).sort();
+  return ds[0]||'';
+}
+function auditionTripBookedChips(t){
+  var bd = t.booked||{};
+  var out = [];
+  var air = bd.airline||{};
+  if((air.records||[]).length) out.push('Air');
+  if((bd.hotel||[]).length) out.push('Hotel');
+  if((bd.transfers||[]).length) out.push('Car Service');
+  if((bd.train||[]).length) out.push('Train');
+  return out;
+}
+function auditionLineHtml(a){
+  var place = [a.city, a.state].filter(Boolean).join(', ');
+  var when = [auditionDateDisplay(a.date), auditionTimeDisplay(a.time)].filter(Boolean).join(' ');
+  return '<div style="font-size:12px;line-height:1.5"><b>'+escHtml(a.school||'(school)')+'</b>'+(when?' &middot; '+escHtml(when):'')+(place?' &middot; '+escHtml(place):'')+'</div>';
+}
+
+function renderAuditionTrips(){
+  var sortCol = window._atSortCol || 'firstDate';
+  var sortDir = window._atSortDir || 'asc';
+  var statusF = window._atStatusFilter || 'active';
+  var q = (window._atSearch||'').toLowerCase();
+  var selC = db.clients.find(function(c){return c.id===selCid;});
+  var all = db.auditionTrips || [];
+  var list = all.filter(function(t){
+    if(selCid && t.clientId!==selCid && t.studentClientId!==selCid) return false;
+    if(statusF==='active' && t.status==='Cancelled') return false;
+    if(statusF!=='active' && statusF!=='all' && t.status!==statusF) return false;
+    if(!q) return true;
+    var hay = [t.clientName, auditionTripStudent(t), t.package, t.prepCompany, t.bookingRef].concat((t.auditions||[]).map(function(a){return [a.school,a.city,a.state].join(' ');})).join(' ').toLowerCase();
+    return hay.indexOf(q)!==-1;
+  });
+  list = list.slice().sort(function(a,b){
+    var av, bv;
+    if(sortCol==='firstDate'){ av = auditionTripFirstDate(a); bv = auditionTripFirstDate(b); if(!av && !bv) return 0; if(!av) return 1; if(!bv) return -1; }
+    else if(sortCol==='student'){ av = auditionTripStudent(a).toLowerCase(); bv = auditionTripStudent(b).toLowerCase(); }
+    else if(sortCol==='clientName'){ av = (a.clientName||'').toLowerCase(); bv = (b.clientName||'').toLowerCase(); }
+    else { av = (a[sortCol]||'').toString().toLowerCase(); bv = (b[sortCol]||'').toString().toLowerCase(); }
+    if(av<bv) return sortDir==='asc'?-1:1;
+    if(av>bv) return sortDir==='asc'?1:-1;
+    return 0;
+  });
+  function arrow(col){ return sortCol===col ? (sortDir==='asc'?' &#9650;':' &#9660;') : ''; }
+  var upcoming = all.filter(function(t){ return t.status!=='Cancelled' && t.status!=='Completed'; }).length;
+  $('main').innerHTML =
+    '<div class="page-hdr">'+
+      '<div>'+
+        '<div class="page-title">'+(selC?escHtml(selC.name)+"'s Audition Trips":'Audition Trips')+'</div>'+
+        (selC?'<button class="back-btn" id="btn-back">&#8592; All audition trips</button>':'')+
+      '</div>'+
+      '<button class="add-btn" id="btn-add-audition-trip">+ Add Audition Trip</button>'+
+    '</div>'+
+    '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:16px">'+
+      '<div class="stat"><div class="stat-lbl">Audition Trips</div><div class="stat-val">'+all.length+'</div></div>'+
+      '<div class="stat"><div class="stat-lbl">Open (not completed or cancelled)</div><div class="stat-val">'+upcoming+'</div></div>'+
+    '</div>'+
+    '<div class="search-row">'+
+      '<input id="at-search" placeholder="Search client, student, school, city..." value="'+escHtml(window._atSearch||'')+'"/>'+
+      '<select id="at-status-filter" style="padding:7px 12px;border-radius:7px;border:1px solid #d1d5db;font-size:12px;font-family:inherit">'+
+        '<option value="active"'+(statusF==='active'?' selected':'')+'>All except Cancelled</option>'+
+        '<option value="all"'+(statusF==='all'?' selected':'')+'>All statuses</option>'+
+        STATUSES.map(function(s){ return '<option value="'+s+'"'+(statusF===s?' selected':'')+'>'+s+'</option>'; }).join('')+
+      '</select>'+
+    '</div>'+
+    '<div class="tbl-wrap"><table><thead><tr>'+
+      '<th class="at-sort-th" data-sort="clientName" style="cursor:pointer">Client Name'+arrow('clientName')+'</th>'+
+      '<th class="at-sort-th" data-sort="student" style="cursor:pointer">Student'+arrow('student')+'</th>'+
+      '<th class="at-sort-th" data-sort="package" style="cursor:pointer">Package'+arrow('package')+'</th>'+
+      '<th class="at-sort-th" data-sort="firstDate" style="cursor:pointer">Auditions (School &middot; Date &middot; Time &middot; City, State)'+arrow('firstDate')+'</th>'+
+      '<th class="at-sort-th" data-sort="status" style="cursor:pointer">Status'+arrow('status')+'</th>'+
+      '<th>Booked</th>'+
+      '<th></th>'+
+    '</tr></thead><tbody>'+
+    (list.length ? list.map(function(t){
+      var stu = auditionTripStudent(t);
+      var chips = auditionTripBookedChips(t);
+      return '<tr class="at-row" data-id="'+t.id+'" style="cursor:pointer">'+
+        '<td>'+(t.clientId?'<span class="open-client" data-id="'+t.clientId+'" style="color:#2563eb;cursor:pointer">'+escHtml(t.clientName||'')+'</span>':escHtml(t.clientName||''))+'</td>'+
+        '<td>'+(t.studentClientId?'<span class="open-client" data-id="'+t.studentClientId+'" style="color:#2563eb;cursor:pointer">'+escHtml(stu)+'</span>':escHtml(stu))+'</td>'+
+        '<td>'+escHtml(t.package||'')+'</td>'+
+        '<td>'+((t.auditions||[]).length ? t.auditions.map(auditionLineHtml).join('') : '<span style="color:#aaa">&mdash;</span>')+'</td>'+
+        '<td><span class="badge '+(BCLS[t.status]||'b-gray')+'">'+escHtml(t.status||'Planning')+'</span></td>'+
+        '<td>'+(chips.length?chips.map(function(c){return '<span class="badge b-gray" style="margin-right:4px">'+c+'</span>';}).join(''):'<span style="color:#aaa">&mdash;</span>')+'</td>'+
+        '<td style="white-space:nowrap"><button class="icon-btn edit-at" data-id="'+t.id+'" title="Edit">&#9998;</button> <button class="icon-btn del-at" data-id="'+t.id+'" title="Delete">&#128465;</button></td>'+
+      '</tr>';
+    }).join('') : '<tr><td colspan="7" style="text-align:center;color:#aaa;padding:24px">No audition trips yet. They are created automatically from the audition intake form, or add one with the button above.</td></tr>')+
+    '</tbody></table></div>';
+
+  $('btn-add-audition-trip').addEventListener('click', function(){ openAuditionTripForm(); });
+  if($('btn-back')) $('btn-back').addEventListener('click', function(){ selCid = null; render(); });
+  $('at-search').addEventListener('input', function(){
+    var pos = this.selectionStart;
+    window._atSearch = this.value;
+    renderAuditionTrips();
+    var el = $('at-search');
+    if(el){ el.focus(); try{ el.setSelectionRange(pos,pos); }catch(e){} }
+  });
+  $('at-status-filter').addEventListener('change', function(){ window._atStatusFilter = this.value; renderAuditionTrips(); });
+  document.querySelectorAll('.at-sort-th').forEach(function(th){
+    th.addEventListener('click', function(){
+      var col = th.dataset.sort;
+      if(window._atSortCol===col) window._atSortDir = (window._atSortDir==='asc') ? 'desc' : 'asc';
+      else { window._atSortCol = col; window._atSortDir = 'asc'; }
+      renderAuditionTrips();
+    });
+  });
+  document.querySelectorAll('#main .open-client').forEach(function(span){
+    span.addEventListener('click', function(e){ e.stopPropagation(); openClientForm(span.dataset.id); });
+  });
+  document.querySelectorAll('.edit-at').forEach(function(btn){
+    btn.addEventListener('click', function(e){ e.stopPropagation(); openAuditionTripForm(btn.dataset.id); });
+  });
+  document.querySelectorAll('.del-at').forEach(function(btn){
+    btn.addEventListener('click', function(e){ e.stopPropagation(); delAuditionTrip(btn.dataset.id); });
+  });
+  document.querySelectorAll('.at-row').forEach(function(row){
+    row.addEventListener('click', function(e){
+      if(e.target.closest('button, .open-client')) return;
+      openAuditionTripForm(row.dataset.id);
+    });
+  });
+}
+
+function delAuditionTrip(id){
+  if(!confirm('Delete this audition trip?')) return;
+  snapshot('Delete audition trip');
+  db.auditionTrips = (db.auditionTrips||[]).filter(function(t){return t.id!==id;});
+  saveDB(); toast('Audition trip deleted'); render();
+}
+
+function auditionRowHtml(a){
+  a = a || {};
+  function cell(label, html){ return '<div class="field"><label>'+label+'</label>'+html+'</div>'; }
+  return '<div class="at-aud-row" style="border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin-bottom:10px;background:#fafafa">'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><b class="at-aud-num" style="font-size:12px;color:#374151"></b>'+
+      '<button type="button" class="at-aud-remove" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:12px">Remove</button></div>'+
+    '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px">'+
+      cell('School','<input class="at-aud-school" list="at-school-list" value="'+escHtml(a.school||'')+'" placeholder="Start typing a school...">')+
+      cell('Audition Date','<input class="at-aud-date" type="date" value="'+escHtml(a.date||'')+'">')+
+      cell('Audition Time','<input class="at-aud-time" type="time" value="'+escHtml(a.time||'')+'">')+
+      cell('City','<input class="at-aud-city" value="'+escHtml(a.city||'')+'" placeholder="e.g. Anaheim">')+
+      cell('State','<input class="at-aud-state" maxlength="2" value="'+escHtml(a.state||'')+'" placeholder="e.g. CA" style="text-transform:uppercase">')+
+      cell('Event / Location <span class="hint" style="text-transform:none;font-weight:400">(optional)</span>','<input class="at-aud-event" value="'+escHtml(a.event||'')+'" placeholder="e.g. Chicago Unifieds, or On campus">')+
+    '</div></div>';
+}
+function renumberAuditionRows(){
+  document.querySelectorAll('#at-aud-rows .at-aud-row').forEach(function(row, i){
+    row.querySelector('.at-aud-num').textContent = 'Audition '+(i+1);
+  });
+}
+function readAuditionRows(){
+  return Array.from(document.querySelectorAll('#at-aud-rows .at-aud-row')).map(function(row){
+    function v(sel){ var el = row.querySelector(sel); return el ? el.value.trim() : ''; }
+    return {school:v('.at-aud-school'), date:v('.at-aud-date'), time:v('.at-aud-time'), city:v('.at-aud-city'), state:v('.at-aud-state').toUpperCase(), event:v('.at-aud-event')};
+  }).filter(function(a){ return a.school || a.date || a.time || a.city || a.state || a.event; });
+}
+
+function openAuditionTripForm(id){
+  var d = id ? ((db.auditionTrips||[]).find(function(t){return t.id===id;})||{}) : {};
+  var initCid = d.clientId || selCid || '';
+  var sortedClients = db.clients.slice().sort(function(a,b){ return (a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase()); });
+  function clientOpts(selectedId){
+    return sortedClients.map(function(c){ return '<option value="'+c.id+'"'+(c.id===selectedId?' selected':'')+'>'+escHtml(c.name)+' ('+c.id+')</option>'; }).join('');
+  }
+  var vopts = db.vendors.slice().sort(function(a,b){ return (a.name||'').toLowerCase().localeCompare((b.name||'').toLowerCase()); }).map(function(v){
+    return '<option value="'+v.id+'"'+(v.id===d.supplierId?' selected':'')+'>'+escHtml(v.name)+'</option>';
+  }).join('');
+  var auditions = (d.auditions && d.auditions.length) ? d.auditions : [{}];
+  $('modal').innerHTML =
+    '<div class="modal-hdr"><div class="modal-title">'+(id?'Edit Audition Trip':'Add Audition Trip')+'</div><button class="close-btn" id="modal-close">&#x2715;</button></div>'+
+    '<div class="fg">'+
+      fld('Client Name <span class="hint" style="text-transform:none;font-weight:400">(parent / guardian)</span>', searchableSelectWrap('<select id="tc"><option value="">Select client...</option>'+clientOpts(initCid)+'</select>','Search clients...'), true)+
+      fld('Student <span class="hint" style="text-transform:none;font-weight:400">(pick from client records)</span>', searchableSelectWrap('<select id="at-student"><option value="">Not linked to a client record</option>'+clientOpts(d.studentClientId||'')+'</select>','Search clients...'), true)+
+      fld('Student Name <span class="hint" style="text-transform:none;font-weight:400">(used when the student is not a client record; filled in automatically when you pick one above)</span>', inp('at-student-name','text',auditionTripStudent(d),'e.g. Jamie Rivera'), true)+
+      fld('Status', sel('tst',STATUSES,d.status||'Planning'))+
+      fld('Package', sel('at-package',AUDITION_PACKAGES,d.package))+
+      fld('Audition Prep Company', inp('at-prep','text',d.prepCompany,'e.g. My College Audition (MCA)'))+
+      fld('Number of Travelers', inp('at-travelers','text',d.travelers,'student plus guests'))+
+      fld('Home Airport or City', inp('at-airport','text',d.homeAirport,'e.g. EWR'))+
+      '<div class="field" style="justify-content:flex-end"><label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#374151;text-transform:none;font-weight:500;cursor:pointer"><input type="checkbox" id="at-points" '+(d.pointsAddon?'checked':'')+' style="width:15px;height:15px"> Points and Miles add-on</label></div>'+
+      fld('Supplier','<select id="tsup"><option value="">None</option>'+vopts+'</select>')+
+      fld('Invoice Number', inp('tbr','text',d.bookingRef,'e.g. INV-10234'))+
+      fld('Invoice Date', inp('at-invdate','date',d.invoiceDate))+
+      '<div class="modal-section-title">Auditions</div>'+
+      '<div class="field full"><div class="hint" style="text-transform:none;font-weight:400;margin-bottom:6px">One entry per school: School, Audition Date, Audition Time, City and State.</div>'+
+        '<datalist id="at-school-list">'+auditionSchools().map(function(s){ return '<option value="'+escHtml(s.name)+'">'; }).join('')+'</datalist>'+
+        '<div id="at-aud-rows">'+auditions.map(auditionRowHtml).join('')+'</div>'+
+        '<button type="button" id="at-aud-add" style="padding:5px 14px;border-radius:7px;border:1px solid #d1d5db;background:#fff;color:#2563eb;cursor:pointer;font-size:12px;font-family:inherit">+ Add Another Audition</button>'+
+      '</div>'+
+      fld('Notes','<textarea id="tno">'+escHtml(d.notes||'')+'</textarea>',true)+
+      bookedTripDetailsHtml(d.booked, {cats:AUDITION_BOOKED_CATS})+
+    '</div>'+
+    '<div class="form-actions form-actions-sticky"><button class="cancel-btn" id="modal-cancel">Cancel</button><button class="save-btn" id="modal-save-at" data-id="'+(id||'')+'">Save Audition Trip</button></div>';
+  $('modal').classList.add('modal-wide');
+  $('overlay').classList.add('open');
+  $('modal-close').addEventListener('click', closeModal);
+  $('modal-cancel').addEventListener('click', closeModal);
+  $('modal-save-at').addEventListener('click', function(){ saveAuditionTrip(this.dataset.id); });
+  renumberAuditionRows();
+  $('at-student').addEventListener('change', function(){
+    var c = db.clients.find(function(x){return x.id===$('at-student').value;});
+    if(c) $('at-student-name').value = c.name;
+  });
+  $('at-aud-add').addEventListener('click', function(){
+    var tmp = document.createElement('div');
+    tmp.innerHTML = auditionRowHtml({});
+    $('at-aud-rows').appendChild(tmp.firstChild);
+    renumberAuditionRows();
+  });
+  // One delegated handler for the rows: Remove, and School -> State fill-in.
+  $('at-aud-rows').addEventListener('click', function(e){
+    if(!e.target.classList.contains('at-aud-remove')) return;
+    var row = e.target.closest('.at-aud-row');
+    if(row) row.remove();
+    if(!document.querySelector('#at-aud-rows .at-aud-row')){
+      var tmp = document.createElement('div');
+      tmp.innerHTML = auditionRowHtml({});
+      $('at-aud-rows').appendChild(tmp.firstChild);
+    }
+    renumberAuditionRows();
+  });
+  $('at-aud-rows').addEventListener('change', function(e){
+    if(!e.target.classList.contains('at-aud-school')) return;
+    var row = e.target.closest('.at-aud-row');
+    var stateEl = row && row.querySelector('.at-aud-state');
+    if(stateEl && !stateEl.value) stateEl.value = auditionStateForSchool(e.target.value);
+  });
+  bindBookedTripDetailsListeners();
+  $('modal').scrollTop = 0;
+}
+
+function saveAuditionTrip(id){
+  var clientId = gv('tc');
+  if(!clientId){ toast('Client is required','err'); return; }
+  // Same per-record airline passenger-count check the Trip form applies.
+  var airlineRecordRows = document.querySelectorAll('#tb-airline-records .airline-record-row');
+  for(var ari=0; ari<airlineRecordRows.length; ari++){
+    var arRow = airlineRecordRows[ari];
+    var arNum = Number((arRow.querySelector('.airline-record-numpax')||{}).value)||0;
+    var arPaxSel = arRow.querySelector('.airline-record-passengers');
+    var arCount = arPaxSel ? arPaxSel.selectedOptions.length : 0;
+    if(arNum && arCount!==arNum){
+      toast((airlineRecordRows.length>1?'Airline Record '+(ari+1):'Airline')+': '+arCount+' passenger'+(arCount!==1?'s':'')+' selected but Number of Passengers is '+arNum+' — they must match','err');
+      return;
+    }
+  }
+  snapshot(id?'Edit audition trip':'Add audition trip');
+  if(!db.auditionTrips) db.auditionTrips = [];
+  var client = db.clients.find(function(c){return c.id===clientId;});
+  var studentId = gv('at-student');
+  var studentClient = studentId ? db.clients.find(function(c){return c.id===studentId;}) : null;
+  var supplierId = gv('tsup');
+  var supplier = supplierId ? db.vendors.find(function(v){return v.id===supplierId;}) : null;
+  var data = {
+    clientId: clientId, clientName: client ? client.name : '',
+    studentClientId: studentClient ? studentClient.id : '',
+    studentName: studentClient ? studentClient.name : gv('at-student-name'),
+    type: 'Audition', status: gv('tst')||'Planning',
+    package: gv('at-package'), prepCompany: gv('at-prep'), travelers: gv('at-travelers'), homeAirport: gv('at-airport'),
+    pointsAddon: !!($('at-points')||{}).checked,
+    supplierId: supplierId, supplierName: supplier ? supplier.name : '',
+    bookingRef: gv('tbr'), invoiceDate: gv('at-invdate'),
+    notes: gv('tno'),
+    auditions: readAuditionRows(),
+    booked: readBookedTripDetails()
+  };
+  if(id){
+    db.auditionTrips = db.auditionTrips.map(function(t){ return t.id===id ? Object.assign({},t,data) : t; });
+    toast('Audition trip updated');
+  } else {
+    data.id = newId('AT', db.auditionTrips);
+    data.createdAt = today();
+    db.auditionTrips.push(data);
+    toast('Audition trip added');
+  }
+  saveDB(); closeModal(); render();
+}
+
 
 // ── Non-travel income pages (Credit Card Consulting / Referrals) ─────────
 // Non-travel income records are still stored as plain trip records (they
@@ -28495,6 +28989,7 @@ function bindClick(id, handler){
   bindClick('nb-clients', function(){go('clients');closeMobileNav();});
   bindClick('nb-corporate', function(){go('corporate');closeMobileNav();});
   bindClick('nb-trips', function(){go('trips');closeMobileNav();});
+  bindClick('nb-audition-trips', function(){go('audition-trips');closeMobileNav();});
   bindClick('nb-groups', function(){go('groups');closeMobileNav();});
   bindClick('nb-reports', function(){go('reports');closeMobileNav();});
   bindClick('nb-calendar', function(){go('calendar');closeMobileNav();});
