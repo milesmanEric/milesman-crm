@@ -214,7 +214,7 @@ function addRow() {
   loc.appendChild(opt("", "Select a location…"));
   LOCATIONS.forEach(L => {
     const g = el("optgroup", { label: L.g });
-    L.days.forEach(([iso, day]) => { const o = opt(L.short + " · " + day, day); o.dataset.date = iso; g.appendChild(o); });
+    L.days.forEach(([iso, day]) => { const o = opt(L.short + " · " + day, L.short + " · " + day); o.dataset.date = iso; g.appendChild(o); });
     loc.appendChild(g);
   });
   const og = el("optgroup", { label: "Other" });
@@ -230,7 +230,7 @@ function addRow() {
   const row = el("div", { class: "row" }, [
     el("div", { class: "rowhead" }, [num, rm]),
     el("div", { class: "field" }, [el("label", { for: "s" + id, text: "College" }), school, otherSchool]),
-    el("div", { class: "field" }, [el("label", { for: "l" + id, text: "Audition location" }), loc, otherLoc, el("div", { class: "hint", text: "Confirm that the school selected participates in the group audition event on the date you choose." })]),
+    el("div", { class: "field" }, [el("label", { for: "l" + id, text: "Audition location" }), loc, otherLoc, el("div", { class: "note", text: "Confirm that the school selected participates in the group audition event on the date you choose." })]),
     el("div", { class: "grid" }, [
       el("div", {}, [el("label", { for: "d" + id, text: "Audition date" }), date]),
       el("div", {}, [el("label", { for: "t" + id, text: "Audition time" }), time])
