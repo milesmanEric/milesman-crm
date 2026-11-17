@@ -9808,9 +9808,27 @@ function startRevenueImport(rows, extractionSkipped, autoResolveUnmatched){
       // extracting correctly. Auto-creating a client here (same shape the
       // modal's own "+ Add as new client" button uses) avoids ever leaving
       // state in that fragile condition during an unattended run.
-      const newCid=newId('C',db.clients);
       const cleanName=cleanNewClientName(row.name);
-      db.clients.push({id:newCid,name:cleanName,email:'',phone:'',location:'',preferredAirline:'',preferredHotel:'',preferredCruiseLine:'',notesLog:[],joined:today(),totalTrips:0,totalRevenue:0});
+      // Reuse a client an earlier unattended import already auto-created for
+      // this same (truncated) name instead of making another. A fully
+      // truncated Class/Name like "..., Jennifer" can never match anything
+      // via matchClientByName() — not even the "Jennifer" client the
+      // previous email in the very same poll just created — so a report
+      // emailed N times (or N reports naming the same person) used to create
+      // N separate clients, each with its own full copy of the trips; the
+      // per-client duplicate check in importRevenueRowForClient() then
+      // never saw any of them as repeats (real incident: 4 copies of one
+      // report -> 4 "Jennifer" clients x 2 trips each). autoCreatedFromReport
+      // limits this to clients this path made itself, never a real client
+      // someone happens to share a first name with.
+      const reuse=db.clients.find(function(c){return c.autoCreatedFromReport && !c.email && (c.name||'')===cleanName;});
+      if(reuse){
+        autoResolutions[row.name]=reuse.id;
+        debugLog('Revenue report email: reusing auto-created client "'+reuse.name+'" ('+reuse.id+') for "'+row.name+'" instead of creating another');
+        return;
+      }
+      const newCid=newId('C',db.clients);
+      db.clients.push({id:newCid,name:cleanName,email:'',phone:'',location:'',preferredAirline:'',preferredHotel:'',preferredCruiseLine:'',notesLog:[],joined:today(),totalTrips:0,totalRevenue:0,autoCreatedFromReport:true});
       autoResolutions[row.name]=newCid;
       var isIncomplete = isTruncatedSeg(getFirstName(row.name))||isTruncatedSeg(getLastName(row.name));
       if(isIncomplete) incompleteNameCount++;
@@ -12522,7 +12540,18 @@ async function checkForNewRevenueReportEmails(silent){
         break;
       }
       var msg = messages[mi];
+      // Re-read the shared list and persist this id immediately, before the
+      // slow attachment fetch/PDF parse below. It used to be written only
+      // after the whole batch finished, so a second poll (another open tab,
+      // or the next 5-minute tick starting while this one was still parsing)
+      // read the stale list and imported the same emails again.
+      try{
+        var latestIds = JSON.parse(localStorage.getItem('mm_revenuereport_processed_ids')||'[]');
+        if(latestIds.indexOf(msg.id)!==-1){ debugLog('Revenue report email: message already handled by another check — skipping'); continue; }
+        processedIds = latestIds;
+      }catch(e){}
       processedIds.push(msg.id);
+      try{ localStorage.setItem('mm_revenuereport_processed_ids', JSON.stringify(processedIds)); }catch(e){}
       try{
         var attUrl = 'https://graph.microsoft.com/v1.0/me/messages/'+msg.id+'/attachments';
         var ar = await fetch(attUrl, {headers:{Authorization:'Bearer '+token}});
