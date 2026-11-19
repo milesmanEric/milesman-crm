@@ -457,7 +457,7 @@ Backups are saved in a **Miles Man Backups** folder in your Google Drive (quotes
 
 ## Mailchimp
 
-If you send a newsletter/campaign through Mailchimp, **Sync Mailchimp Activity** checks which of your clients actually received the most recent campaign and logs it to their notes automatically. **Log Mailchimp Campaign** is the manual fallback if you'd rather just note that a campaign went out without connecting to Mailchimp's API.
+When you send a newsletter/campaign through Mailchimp, the CRM notices on its own: within about 20 minutes of the send (it checks every 5 minutes and waits 15 minutes after a send so the recipient list is complete) it logs a "Mailchimp Email Sent" note on every client who received it, and shows a short confirmation. **Sync Mailchimp Activity** does the same thing on demand. The very first time, click it once so the CRM knows which Mailchimp audience to use. **Log Mailchimp Campaign** is the manual fallback if you'd rather just note that a campaign went out without connecting to Mailchimp's API.
 
 **Any client marked "Subscriber"** (at creation or later) gets pushed into your Mailchimp audience automatically — no extra step needed, as long as you've used Sync/Log Mailchimp Activity at least once so the CRM knows which audience to use. **Unchecking Subscriber unsubscribes them for real** — the CRM tells Mailchimp to mark them unsubscribed, the same as if they'd clicked the unsubscribe link at the bottom of one of your emails.
 

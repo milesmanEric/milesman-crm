@@ -6027,7 +6027,95 @@ async function getLatestSentCampaign(){
   };
 }
 
+// Watermark: send_time (ISO) of the newest Mailchimp campaign already
+// processed by the sync, so the next run only looks at campaigns sent after
+// it. Per-client `mcKey` notes still make logging idempotent either way.
+const MAILCHIMP_SYNCED_KEY = 'mm_mailchimp_last_synced_send_time';
+let _mcSyncRunning = false;
+
+// Every sent campaign newer than `sinceIso` (up to 20, oldest first), each
+// with its body. With no watermark yet, only the single newest campaign is
+// returned — a first run shouldn't backfill the whole send history.
+async function getSentCampaignsSince(sinceIso){
+  const d = await mailchimpProxyGet('/campaigns?count=20&sort_field=send_time&sort_dir=DESC&status=sent');
+  var list = (d.campaigns||[]).filter(function(c){return c.send_time;});
+  if(sinceIso){
+    var since = new Date(sinceIso).getTime();
+    list = list.filter(function(c){return new Date(c.send_time).getTime() > since;});
+  }else{
+    list = list.slice(0,1);
+  }
+  list.sort(function(a,b){return new Date(a.send_time)-new Date(b.send_time);});
+  const out = [];
+  for(const c of list){
+    const content = await mailchimpProxyGet('/campaigns/'+c.id+'/content');
+    var body = (content.plain_text||'').trim();
+    if(!body && content.html) body = stripHtml(content.html);
+    out.push({
+      id: c.id,
+      subject: (c.settings && (c.settings.subject_line || c.settings.title)) || '(no subject)',
+      sendTime: c.send_time,
+      body: body
+    });
+  }
+  return out;
+}
+
+// Lowercased email addresses of everyone a campaign was sent to — one
+// paged request series per campaign instead of one request per client.
+async function getCampaignRecipientEmails(campaignId){
+  const emails = new Set();
+  var offset = 0;
+  while(true){
+    const r = await mailchimpProxyGet('/reports/'+campaignId+'/sent-to?count=1000&offset='+offset);
+    const rows = r.sent_to||[];
+    rows.forEach(function(x){ if(x.email_address) emails.add(String(x.email_address).trim().toLowerCase()); });
+    offset += rows.length;
+    if(!rows.length || offset >= (r.total_items||0)) break;
+  }
+  return emails;
+}
+
+// Logs each given campaign as a "Mailchimp Email Sent" note on every client
+// who received it. Returns {newNotes, errors}. Does not save/render.
+async function logMailchimpCampaignsToClients(campaigns){
+  var newNotes = 0, errors = 0;
+  for(const campaign of campaigns){
+    var recipients;
+    try{
+      recipients = await getCampaignRecipientEmails(campaign.id);
+    }catch(e){
+      errors++;
+      debugLog('Mailchimp: could not load recipients for "'+campaign.subject+'" — '+(e&&e.message||e));
+      continue;
+    }
+    debugLog('Mailchimp: "'+campaign.subject+'" sent '+campaign.sendTime+' to '+recipients.size+' recipients');
+    const mcKey = 'sent|'+campaign.id;
+    const dt = new Date(campaign.sendTime);
+    const ts = !isNaN(dt) ? dt.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})+' '+dt.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}) : tsNow();
+    const noteText = 'Mailchimp: '+campaign.subject+(campaign.body?'\n'+campaign.body:'');
+    db.clients = db.clients.map(function(c){
+      if(!c.email || !recipients.has(c.email.trim().toLowerCase())) return c;
+      if((c.notesLog||[]).some(function(n){return n.mcKey===mcKey;})) return c;
+      newNotes++;
+      return Object.assign({}, c, {notesLog:(c.notesLog||[]).concat([{ts:ts, text:noteText, noteType:'Mailchimp Email Sent', source:'mailchimp', mcKey:mcKey}])});
+    });
+  }
+  return {newNotes:newNotes, errors:errors};
+}
+
+function advanceMailchimpWatermark(campaigns){
+  if(!campaigns.length) return;
+  var newest = campaigns.reduce(function(m,c){return new Date(c.sendTime)>new Date(m)?c.sendTime:m;}, campaigns[0].sendTime);
+  var cur = localStorage.getItem(MAILCHIMP_SYNCED_KEY);
+  if(!cur || new Date(newest) > new Date(cur)) localStorage.setItem(MAILCHIMP_SYNCED_KEY, newest);
+}
+
+// Manual button: catches up on every campaign sent since the last sync (or,
+// if there is nothing new, re-checks the latest one).
 async function syncMailchimpEmails(){
+  if(_mcSyncRunning){ toast('A Mailchimp sync is already running','err'); return; }
+  _mcSyncRunning = true;
   const btn=$('btn-sync-mailchimp');
   const orig=btn?btn.textContent:'';
   if(btn){btn.textContent='Syncing...';btn.disabled=true;}
@@ -6036,56 +6124,56 @@ async function syncMailchimpEmails(){
     const listId = await getMailchimpListId();
     debugLog('Mailchimp: using audience '+listId);
 
-    const campaign = await getLatestSentCampaign();
-    debugLog('Mailchimp: latest campaign "'+campaign.subject+'" sent '+campaign.sendTime+' ('+campaign.body.length+' body chars)');
-
-    const clients = db.clients.filter(function(c){return c.email && c.email.includes('@');});
-    if(!clients.length){ toast('Add clients with email addresses first','err'); if(btn){btn.textContent=orig;btn.disabled=false;} return; }
-
-    const mcKey = 'sent|'+campaign.id;
-    const dt = new Date(campaign.sendTime);
-    const ts = !isNaN(dt) ? dt.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})+' '+dt.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}) : tsNow();
-    const noteText = 'Mailchimp: '+campaign.subject+(campaign.body?'\n'+campaign.body:'');
-
-    var totalNew=0, notRecipient=0, errors=0;
-    for(const client of clients){
-      try{
-        const already = (client.notesLog||[]).some(function(n){return n.mcKey===mcKey;});
-        if(already) continue;
-
-        const hash = md5hex(client.email.trim().toLowerCase());
-        var feed;
-        try{
-          feed = await mailchimpProxyGet('/lists/'+listId+'/members/'+hash+'/activity-feed?count=50');
-        }catch(feedErr){
-          feed = await mailchimpProxyGet('/lists/'+listId+'/members/'+hash+'/activity?count=50');
-        }
-        const items = feed.activity||[];
-        const wasSent = items.some(function(it){
-          var action = it.activity_type || it.action;
-          return action==='sent' && it.campaign_id===campaign.id;
-        });
-        if(!wasSent){ notRecipient++; continue; }
-
-        const note = {ts:ts, text:noteText, noteType:'Mailchimp Email Sent', source:'mailchimp', mcKey:mcKey};
-        const notesLog = (client.notesLog||[]).concat([note]);
-        db.clients = db.clients.map(function(c){return c.id===client.id?Object.assign({},c,{notesLog:notesLog}):c;});
-        totalNew++;
-      }catch(e){
-        if(e && e.status===404){ notRecipient++; }
-        else { errors++; debugLog('Mailchimp: error for '+client.email+' — '+(e&&e.message||e)); }
-      }
+    if(!db.clients.some(function(c){return c.email && c.email.includes('@');})){
+      toast('Add clients with email addresses first','err');
+      return;
     }
+    var campaigns = await getSentCampaignsSince(localStorage.getItem(MAILCHIMP_SYNCED_KEY));
+    if(!campaigns.length) campaigns = [await getLatestSentCampaign()];
 
+    const res = await logMailchimpCampaignsToClients(campaigns);
+    if(!res.errors) advanceMailchimpWatermark(campaigns);
     saveDB(); render();
-    debugLog('=== Mailchimp Sync Complete: '+totalNew+' new notes, '+notRecipient+' not recipients, '+errors+' error(s) ===');
-    toast((totalNew?'Logged latest campaign for '+totalNew+' client'+(totalNew!==1?'s':''):'No new clients to log (already logged, or not a recipient)')+(errors?' — '+errors+' error(s), see Debug Log':''), errors?'err':'ok');
+    debugLog('=== Mailchimp Sync Complete: '+campaigns.length+' campaign(s), '+res.newNotes+' new notes, '+res.errors+' error(s) ===');
+    toast((res.newNotes?'Logged '+campaigns.length+' campaign'+(campaigns.length!==1?'s':'')+' — '+res.newNotes+' new note'+(res.newNotes!==1?'s':''):'No new clients to log (already logged, or not a recipient)')+(res.errors?' — '+res.errors+' error(s), see Debug Log':''), res.errors?'err':'ok');
   }catch(e){
     console.error('Mailchimp sync error:', e);
     debugLog('Mailchimp sync FATAL: '+(e&&e.message||e));
     toast('Mailchimp sync failed: '+(e&&e.message||e),'err');
+  }finally{
+    _mcSyncRunning = false;
+    if(btn){btn.textContent=orig;btn.disabled=false;}
   }
-  if(btn){btn.textContent=orig;btn.disabled=false;}
+}
+
+// Automatic version, run on page load and every 5 minutes: no button, no
+// modal. Silent unless it actually logged something. Does nothing until an
+// audience has been chosen once (the manual button does that), and never
+// re-looks at campaigns older than the watermark.
+async function autoSyncMailchimpCampaigns(){
+  if(_mcSyncRunning) return;
+  if(!localStorage.getItem(MAILCHIMP_LIST_KEY)){
+    debugLog('Mailchimp auto-sync: skipped — no audience chosen yet');
+    return;
+  }
+  if(!db || !db.clients || !db.clients.some(function(c){return c.email && c.email.includes('@');})) return;
+  _mcSyncRunning = true;
+  try{
+    var campaigns = await getSentCampaignsSince(localStorage.getItem(MAILCHIMP_SYNCED_KEY));
+    // Give a just-sent campaign time to finish sending so its recipient list is complete.
+    campaigns = campaigns.filter(function(c){return Date.now()-new Date(c.sendTime).getTime() > 15*60*1000;});
+    if(!campaigns.length) return;
+    debugLog('Mailchimp auto-sync: '+campaigns.length+' new campaign(s) to log');
+    const res = await logMailchimpCampaignsToClients(campaigns);
+    if(res.newNotes) { saveDB(); render(); }
+    if(!res.errors) advanceMailchimpWatermark(campaigns);
+    debugLog('Mailchimp auto-sync complete: '+res.newNotes+' new notes, '+res.errors+' error(s)');
+    if(res.newNotes) toast('Mailchimp: logged '+campaigns.length+' new campaign'+(campaigns.length!==1?'s':'')+' on '+res.newNotes+' client record'+(res.newNotes!==1?'s':''),'ok');
+  }catch(e){
+    debugLog('Mailchimp auto-sync failed: '+(e&&e.message||e));
+  }finally{
+    _mcSyncRunning = false;
+  }
 }
 
 // ── Clean Supplier File ───────────────────────────────────────────────────
@@ -12590,8 +12678,8 @@ async function checkForNewRevenueReportEmails(silent){
   }
 }
 
-setInterval(function(){ checkForNewTripFormEmails(true); checkForNewContactFormEmails(true); checkForNewRevenueReportEmails(true); checkForUpcomingBirthdays(); checkForUpcomingTripDepartures(); checkForTripReturns(); autoUpdateTripStatusesByDate(); }, 5*60*1000);
-setTimeout(function(){ checkForNewTripFormEmails(true); checkForNewContactFormEmails(true); checkForNewRevenueReportEmails(true); checkForUpcomingBirthdays(); checkForUpcomingTripDepartures(); checkForTripReturns(); autoUpdateTripStatusesByDate(); }, 5000);
+setInterval(function(){ checkForNewTripFormEmails(true); checkForNewContactFormEmails(true); checkForNewRevenueReportEmails(true); autoSyncMailchimpCampaigns(); checkForUpcomingBirthdays(); checkForUpcomingTripDepartures(); checkForTripReturns(); autoUpdateTripStatusesByDate(); }, 5*60*1000);
+setTimeout(function(){ checkForNewTripFormEmails(true); checkForNewContactFormEmails(true); checkForNewRevenueReportEmails(true); autoSyncMailchimpCampaigns(); checkForUpcomingBirthdays(); checkForUpcomingTripDepartures(); checkForTripReturns(); autoUpdateTripStatusesByDate(); }, 5000);
 
 // Auto-transitions a trip's stored status based on its dates: while today
 // falls within [departDate, returnDate] (or on departDate itself, for a
