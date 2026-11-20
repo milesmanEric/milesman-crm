@@ -5192,10 +5192,25 @@ async function secureSyncBackup(){
       return;
     }
     debugLog('Secure Sync: uploading...');
+    // Vercel rejects any request body over 4.5 MB before the function even
+    // runs (surfaces here as a bare "Failed to fetch" — no CORS headers on
+    // that error). The full db is bigger than that as plain JSON, so gzip it
+    // first; JSON of this shape compresses roughly 8-10x. The server detects
+    // gzip by its magic bytes. Falls back to plain JSON where
+    // CompressionStream isn't available (small databases still work).
+    const payloadText = backupPayload();
+    let reqBody = payloadText, reqType = 'application/json';
+    if(typeof CompressionStream === 'function'){
+      try{
+        const gz = await new Response(new Blob([payloadText]).stream().pipeThrough(new CompressionStream('gzip'))).blob();
+        reqBody = gz; reqType = 'application/octet-stream';
+        debugLog('Secure Sync: compressed '+(payloadText.length/1048576).toFixed(2)+' MB -> '+(gz.size/1048576).toFixed(2)+' MB');
+      }catch(ce){ debugLog('Secure Sync: compression failed, sending uncompressed ('+ce.message+')'); }
+    }
     const r = await fetch(DRIVE_AUTH_SERVER+'/api/secure-sync',{
       method:'POST',
-      headers:{'Content-Type':'application/json','Authorization':'Bearer '+idToken},
-      body: backupPayload()
+      headers:{'Content-Type':reqType,'Authorization':'Bearer '+idToken},
+      body: reqBody
     });
     const d = await r.json();
     if(!r.ok){
