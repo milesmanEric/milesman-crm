@@ -82,7 +82,7 @@
 // gap for a low-traffic single-client-facing form, not something this file
 // defends against.
 
-const DRIVE_CLIENT_ID = '1055867383042-an9l58o1qg22pt7o4ak8vaneeftv54ib.apps.googleusercontent.com';
+const DRIVE_CLIENT_ID = '493779520648-pnchnino12e0dc893do88bikt041u5sa.apps.googleusercontent.com';
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const DRIVE_FILES_URL = 'https://www.googleapis.com/drive/v3/files';
 const DRIVE_UPLOAD_URL = 'https://www.googleapis.com/upload/drive/v3/files';
