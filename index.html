@@ -10209,6 +10209,7 @@ function finalizeImport(){
   var seenInBatch={}; // track signature counts seen so far in THIS import batch
   if(!Array.isArray(db.discardedImportSigs)) db.discardedImportSigs=[];
   var discardedSigs=new Set(db.discardedImportSigs);
+  var recordedSeen={}; // per invoice#|amount: unmatched rows seen so far this batch
   state.rows.forEach(function(row){
     // Find client by name — check resolution from the match modal first,
     // then fall back to the same truncation-tolerant matcher
@@ -10242,6 +10243,23 @@ function finalizeImport(){
         debugLog('Revenue: no client match for '+row.name+' — identical row was discarded from Pending Import Matches earlier, not queued again');
         skipped++;
         return;
+      }
+      // A name cut off in the report ("..., Jennifer") never matches a client,
+      // so a line that was already imported earlier got re-queued every time
+      // its report was imported again. If a trip with this invoice number and
+      // amount already exists (the same duplicate test importRevenueRowForClient
+      // uses), it's already recorded — skip it. Counted per occurrence so a
+      // genuinely repeated line item still gets queued.
+      if(row.invoiceNum){
+        var recKey = row.invoiceNum+'|'+row.amt;
+        var recIdx = recordedSeen[recKey] || 0;
+        recordedSeen[recKey] = recIdx + 1;
+        var recordedCount = db.trips.filter(function(t){ return t.invoiceNum===row.invoiceNum && t.cashPaid===row.amt; }).length;
+        if(recIdx < recordedCount){
+          debugLog('Revenue: no client match for '+row.name+' — invoice '+row.invoiceNum+' for $'+row.amt+' is already recorded on an existing trip, not queued');
+          skipped++;
+          return;
+        }
       }
       var alreadyQueued = db.pendingImportMatches.some(function(pm){ return pm.row && pimSig(pm.row, pm.name)===thisSig; });
       if(alreadyQueued){
