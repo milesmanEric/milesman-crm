@@ -1608,7 +1608,7 @@ const DEFAULT_BOOKMARKS = [
   {name:'AwardWallet', url:'https://www.awardwallet.com', category:'Award Tools', audience:'Travel Agent', notes:'tracks client mileage/points balances across programs'}
 ];
 
-let db = {clients:[],trips:[],vendors:[],bizVendors:[],communities:[],corporateClients:[],planner:[],bookmarks:[],savedReports:[],groups:[],marketingPlan:[],pendingImportMatches:[],pendingTravelerMatches:[],auditionTrips:[],jetpackRemovalQueue:[],payments:[],surveyResponses:[],reportTotals:{}};
+let db = {clients:[],trips:[],vendors:[],bizVendors:[],communities:[],corporateClients:[],planner:[],bookmarks:[],savedReports:[],groups:[],marketingPlan:[],pendingImportMatches:[],discardedImportSigs:[],pendingTravelerMatches:[],auditionTrips:[],jetpackRemovalQueue:[],payments:[],surveyResponses:[],reportTotals:{}};
 // Diagnostic tracer for the repeated data-wipe incidents (Sept 1/2/4) —
 // db.clients/db.trips have gone empty in memory mid-session for a reason
 // never caught in the act, only ever inferred afterward from Drive backup
@@ -2555,6 +2555,7 @@ async function loadDB(){
     db.groups=Array.isArray(d.groups)?d.groups:[];
     db.marketingPlan=Array.isArray(d.marketingPlan)?d.marketingPlan:[];
     db.pendingImportMatches=Array.isArray(d.pendingImportMatches)?d.pendingImportMatches:[];
+    db.discardedImportSigs=Array.isArray(d.discardedImportSigs)?d.discardedImportSigs:[];
     db.pendingTravelerMatches=Array.isArray(d.pendingTravelerMatches)?d.pendingTravelerMatches:[];
     db.payments=Array.isArray(d.payments)?d.payments:[];
     // Latest-known figure per auto-detected QuickBooks report (see
@@ -5111,6 +5112,7 @@ async function driveRestore(){
         groups:Array.isArray(d.groups)?d.groups:[],
         marketingPlan:Array.isArray(d.marketingPlan)?d.marketingPlan:[],
         pendingImportMatches:Array.isArray(d.pendingImportMatches)?d.pendingImportMatches:[],
+        discardedImportSigs:Array.isArray(d.discardedImportSigs)?d.discardedImportSigs:[],
         pendingTravelerMatches:Array.isArray(d.pendingTravelerMatches)?d.pendingTravelerMatches:[],
         jetpackRemovalQueue:Array.isArray(d.jetpackRemovalQueue)?d.jetpackRemovalQueue:[],
         payments:Array.isArray(d.payments)?d.payments:[],
@@ -5269,6 +5271,7 @@ async function secureSyncRestore(){
         groups:Array.isArray(d.groups)?d.groups:[],
         marketingPlan:Array.isArray(d.marketingPlan)?d.marketingPlan:[],
         pendingImportMatches:Array.isArray(d.pendingImportMatches)?d.pendingImportMatches:[],
+        discardedImportSigs:Array.isArray(d.discardedImportSigs)?d.discardedImportSigs:[],
         pendingTravelerMatches:Array.isArray(d.pendingTravelerMatches)?d.pendingTravelerMatches:[],
         jetpackRemovalQueue:Array.isArray(d.jetpackRemovalQueue)?d.jetpackRemovalQueue:[],
         payments:Array.isArray(d.payments)?d.payments:[],
@@ -6498,7 +6501,7 @@ function importJSON(){
         const d=JSON.parse(ev.target.result);
         if(Array.isArray(d.clients)&&Array.isArray(d.trips)){
           debugLog('Local restore: parsed backup file — '+d.clients.length+' clients, '+d.trips.length+' trips');
-          db=d;instrumentDbWipeTracing();if(applyComplianceFromBackup(d)) debugLog('Local restore: compliance tracker data restored');if(!Array.isArray(db.vendors))db.vendors=[];if(!Array.isArray(db.bizVendors))db.bizVendors=[];if(!Array.isArray(db.communities))db.communities=[];if(!Array.isArray(db.corporateClients))db.corporateClients=[];if(!Array.isArray(db.planner))db.planner=[];if(!Array.isArray(db.bookmarks))db.bookmarks=[];if(!Array.isArray(db.savedReports))db.savedReports=[];if(!Array.isArray(db.groups))db.groups=[];if(!Array.isArray(db.marketingPlan))db.marketingPlan=[];if(!Array.isArray(db.pendingImportMatches))db.pendingImportMatches=[];if(!Array.isArray(db.jetpackRemovalQueue))db.jetpackRemovalQueue=[];if(!Array.isArray(db.payments))db.payments=[];if(!Array.isArray(db.surveyResponses))db.surveyResponses=[];if(!Array.isArray(db.auditionTrips))db.auditionTrips=[];(db.clients||[]).forEach(function(c){ if(c.name && !c.name.includes(',')) c.name=toLastFirst(c.name); });_dbDecryptFailed=false;
+          db=d;instrumentDbWipeTracing();if(applyComplianceFromBackup(d)) debugLog('Local restore: compliance tracker data restored');if(!Array.isArray(db.vendors))db.vendors=[];if(!Array.isArray(db.bizVendors))db.bizVendors=[];if(!Array.isArray(db.communities))db.communities=[];if(!Array.isArray(db.corporateClients))db.corporateClients=[];if(!Array.isArray(db.planner))db.planner=[];if(!Array.isArray(db.bookmarks))db.bookmarks=[];if(!Array.isArray(db.savedReports))db.savedReports=[];if(!Array.isArray(db.groups))db.groups=[];if(!Array.isArray(db.marketingPlan))db.marketingPlan=[];if(!Array.isArray(db.pendingImportMatches))db.pendingImportMatches=[];if(!Array.isArray(db.discardedImportSigs))db.discardedImportSigs=[];if(!Array.isArray(db.jetpackRemovalQueue))db.jetpackRemovalQueue=[];if(!Array.isArray(db.payments))db.payments=[];if(!Array.isArray(db.surveyResponses))db.surveyResponses=[];if(!Array.isArray(db.auditionTrips))db.auditionTrips=[];(db.clients||[]).forEach(function(c){ if(c.name && !c.name.includes(',')) c.name=toLastFirst(c.name); });_dbDecryptFailed=false;
           // Awaited specifically because this is a restore: the natural next
           // move after seeing "Data imported" is to reload to confirm it
           // stuck, and saveDB()'s encrypted write is otherwise fire-and-
@@ -10197,10 +10200,15 @@ function importRevenueRowForClient(row, cid, seenInBatch){
 
   return {outcome:'imported', amt:row.amt, supplierCreated:supplierCreated};
 }
+// Identity of an unmatched revenue row — what the Pending Import Matches queue
+// and the discarded-row memory (db.discardedImportSigs) both compare on.
+function pimSig(r,nm){ return [nm, r.invoiceNum||'', r.amt, r.supplierName||'', (r.date||'').slice(0,10), r.memo||''].join('|'); }
 function finalizeImport(){
   const state=window._importState;
   let imported=0,skipped=0,totalRev=0,relinked=0,suppliersCreated=0,pendingSaved=0;
   var seenInBatch={}; // track signature counts seen so far in THIS import batch
+  if(!Array.isArray(db.discardedImportSigs)) db.discardedImportSigs=[];
+  var discardedSigs=new Set(db.discardedImportSigs);
   state.rows.forEach(function(row){
     // Find client by name — check resolution from the match modal first,
     // then fall back to the same truncation-tolerant matcher
@@ -10226,8 +10234,15 @@ function finalizeImport(){
       // Skip a row identical to one already waiting in the queue — the same
       // report emailed more than once (real incident: 4 copies) would
       // otherwise queue every line 4 times for someone to resolve by hand.
-      var pimSig = function(r,nm){ return [nm, r.invoiceNum||'', r.amt, r.supplierName||'', (r.date||'').slice(0,10), r.memo||''].join('|'); };
+      // A row you already Discarded from the queue is skipped too — the queue
+      // alone can't remember that, so the same line kept coming back every
+      // time a report containing it was imported again.
       var thisSig = pimSig(row, row.name);
+      if(discardedSigs.has(thisSig)){
+        debugLog('Revenue: no client match for '+row.name+' — identical row was discarded from Pending Import Matches earlier, not queued again');
+        skipped++;
+        return;
+      }
       var alreadyQueued = db.pendingImportMatches.some(function(pm){ return pm.row && pimSig(pm.row, pm.name)===thisSig; });
       if(alreadyQueued){
         debugLog('Revenue: no client match for '+row.name+' — identical row already in Pending Import Matches, not queued again');
@@ -10320,8 +10335,17 @@ function openPendingImportMatchesModal(){
   });
   document.querySelectorAll('.pim-discard-btn').forEach(function(btn){
     btn.addEventListener('click', function(){
-      if(!confirm('Discard this pending match without importing it? This cannot be undone from here.')) return;
+      if(!confirm('Discard this pending match without importing it? If the same row shows up in a later import it will be skipped too. This cannot be undone from here.')) return;
       snapshot('Discard pending import match');
+      // Remember the row, not just drop it — otherwise the same line is queued
+      // again the next time a report containing it is imported (finalizeImport()).
+      var discardedPm = db.pendingImportMatches.find(function(x){return x.id===btn.dataset.id;});
+      if(discardedPm && discardedPm.row){
+        if(!Array.isArray(db.discardedImportSigs)) db.discardedImportSigs=[];
+        var dSig = pimSig(discardedPm.row, discardedPm.name);
+        if(db.discardedImportSigs.indexOf(dSig)===-1) db.discardedImportSigs.push(dSig);
+        if(db.discardedImportSigs.length>2000) db.discardedImportSigs=db.discardedImportSigs.slice(-2000);
+      }
       db.pendingImportMatches = db.pendingImportMatches.filter(function(x){return x.id!==btn.dataset.id;});
       saveDB();render();
       openPendingImportMatchesModal();
