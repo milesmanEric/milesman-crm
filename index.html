@@ -12693,8 +12693,60 @@ async function checkForNewRevenueReportEmails(silent){
   }
 }
 
-setInterval(function(){ checkForNewTripFormEmails(true); checkForNewContactFormEmails(true); checkForNewRevenueReportEmails(true); autoSyncMailchimpCampaigns(); checkForUpcomingBirthdays(); checkForUpcomingTripDepartures(); checkForTripReturns(); autoUpdateTripStatusesByDate(); }, 5*60*1000);
-setTimeout(function(){ checkForNewTripFormEmails(true); checkForNewContactFormEmails(true); checkForNewRevenueReportEmails(true); autoSyncMailchimpCampaigns(); checkForUpcomingBirthdays(); checkForUpcomingTripDepartures(); checkForTripReturns(); autoUpdateTripStatusesByDate(); }, 5000);
+setInterval(function(){ checkForNewTripFormEmails(true); checkForNewContactFormEmails(true); checkForNewRevenueReportEmails(true); autoSyncMailchimpCampaigns(); checkForUpcomingBirthdays(); checkForUpcomingTripDepartures(); checkForTripReturns(); autoUpdateTripStatusesByDate(); checkPendingMatchTasks(); },5*60*1000);
+setTimeout(function(){ checkForNewTripFormEmails(true); checkForNewContactFormEmails(true); checkForNewRevenueReportEmails(true); autoSyncMailchimpCampaigns(); checkForUpcomingBirthdays(); checkForUpcomingTripDepartures(); checkForTripReturns(); autoUpdateTripStatusesByDate(); checkPendingMatchTasks(); },5000);
+
+// Pending Import Matches / Pending Traveler Matches only show as a count on
+// the sidebar's Import menu, so nothing nudges you to clear them. This keeps
+// one open Planner task per queue while it holds matches (due today, so it
+// lands in Today & Overdue): created when new matches appear, with its title
+// and list refreshed while it stays open. `autoKey` + `autoIds` on the task
+// record which queue entries already got a task (newId() ids carry a random
+// suffix, so they aren't reused) — finishing a task without clearing the
+// queue therefore doesn't recreate it every 5 minutes; only matches added
+// afterwards do.
+function checkPendingMatchTasks(){
+  var kinds = [
+    {key:'pending-import-matches', queue:db.pendingImportMatches||[], noun:'import', menu:'Import → Pending Import Matches',
+      line:function(pm){ return pm.name||'(unnamed)'; }},
+    {key:'pending-traveler-matches', queue:db.pendingTravelerMatches||[], noun:'traveler', menu:'Import → Pending Traveler Matches',
+      line:function(pm){ return (pm.name||'(unnamed)')+(pm.tripDestination?' (trip: '+pm.tripDestination+')':''); }}
+  ];
+  var created = 0, updated = 0;
+  kinds.forEach(function(k){
+    if(!k.queue.length) return;
+    var tasked = new Set();
+    db.planner.forEach(function(t){ if(t.autoKey===k.key) (t.autoIds||[]).forEach(function(id){ tasked.add(id); }); });
+    var freshIds = k.queue.filter(function(pm){ return !tasked.has(pm.id); }).map(function(pm){ return pm.id; });
+    if(!freshIds.length) return;
+    var title = 'Resolve pending '+k.noun+' matches ('+k.queue.length+')';
+    var lines = k.queue.slice(0,15).map(function(pm){ return '• '+k.line(pm); });
+    if(k.queue.length>15) lines.push('…and '+(k.queue.length-15)+' more');
+    var desc = 'In the sidebar, open '+k.menu+' and match each one to a client, add it as a new client, or discard it.\n\n'+lines.join('\n');
+    var open = db.planner.find(function(t){ return t.autoKey===k.key && !t.done; });
+    if(open){
+      open.title = title;
+      open.desc = desc;
+      open.autoIds = (open.autoIds||[]).concat(freshIds);
+      updated++;
+    } else {
+      db.planner.push({
+        id:newId('PL',db.planner),
+        title:title,
+        dueDate:today(), done:false, clientId:'', vendorId:'', tripId:'',
+        completionNoteType:'General',
+        desc:desc,
+        createdAt:today(),
+        autoKey:k.key, autoIds:freshIds
+      });
+      created++;
+    }
+  });
+  if(created || updated){
+    saveDB(); render();
+    debugLog('Pending matches check: '+created+' task(s) created, '+updated+' updated');
+  }
+}
 
 // Auto-transitions a trip's stored status based on its dates: while today
 // falls within [departDate, returnDate] (or on departDate itself, for a
