@@ -27253,7 +27253,8 @@ function renderAnalytics(){
         (jetpackSubConfigured
           ? '<span style="color:#166534">&#9989; Connected</span> &nbsp; <button class="cancel-btn" id="jetpack-sub-change">Change</button> <button class="cancel-btn" id="jetpack-sub-disconnect">Disconnect</button>'
           : '<button class="add-btn" id="jetpack-sub-setup">Set Up Auto-Subscribe</button>')+
-        '<div style="color:#888;margin-top:6px">Requires a small snippet installed on the WordPress site (see wordpress-snippets/jetpack-subscribe-endpoint.php) since Jetpack has no public API for adding subscribers. Clients checked "Subscriber" get pushed here automatically — they still get Jetpack\'s own confirmation email before it counts as active.</div>'+
+        (jetpackSubConfigured ? '' :
+          '<div style="color:#888;margin-top:6px">Requires a small snippet installed on the WordPress site (see wordpress-snippets/jetpack-subscribe-endpoint.php) since Jetpack has no public API for adding subscribers. Clients checked "Subscriber" get pushed here automatically — they still get Jetpack\'s own confirmation email before it counts as active.</div>')+
       '</div>'+
       (db.jetpackRemovalQueue.length ? (
         '<div style="margin-top:12px;padding-top:12px;border-top:1px solid #f0f0f0;font-size:12px">'+
