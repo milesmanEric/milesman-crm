@@ -12700,11 +12700,11 @@ setTimeout(function(){ checkForNewTripFormEmails(true); checkForNewContactFormEm
 // the sidebar's Import menu, so nothing nudges you to clear them. This keeps
 // one open Planner task per queue while it holds matches (due today, so it
 // lands in Today & Overdue): created when new matches appear, with its title
-// and list refreshed while it stays open. `autoKey` + `autoIds` on the task
-// record which queue entries already got a task (newId() ids carry a random
-// suffix, so they aren't reused) — finishing a task without clearing the
-// queue therefore doesn't recreate it every 5 minutes; only matches added
-// afterwards do.
+// and list refreshed while it stays open, and marked done once its queue is
+// empty. `autoKey` + `autoIds` on the task record which queue entries already
+// got a task (newId() ids carry a random suffix, so they aren't reused) —
+// finishing a task without clearing the queue therefore doesn't recreate it
+// every 5 minutes; only matches added afterwards do.
 function checkPendingMatchTasks(){
   var kinds = [
     {key:'pending-import-matches', queue:db.pendingImportMatches||[], noun:'import', menu:'Import → Pending Import Matches',
@@ -12712,9 +12712,13 @@ function checkPendingMatchTasks(){
     {key:'pending-traveler-matches', queue:db.pendingTravelerMatches||[], noun:'traveler', menu:'Import → Pending Traveler Matches',
       line:function(pm){ return (pm.name||'(unnamed)')+(pm.tripDestination?' (trip: '+pm.tripDestination+')':''); }}
   ];
-  var created = 0, updated = 0;
+  var created = 0, updated = 0, completed = 0;
   kinds.forEach(function(k){
-    if(!k.queue.length) return;
+    var open = db.planner.find(function(t){ return t.autoKey===k.key && !t.done; });
+    if(!k.queue.length){
+      if(open){ open.done = true; completed++; }
+      return;
+    }
     var tasked = new Set();
     db.planner.forEach(function(t){ if(t.autoKey===k.key) (t.autoIds||[]).forEach(function(id){ tasked.add(id); }); });
     var freshIds = k.queue.filter(function(pm){ return !tasked.has(pm.id); }).map(function(pm){ return pm.id; });
@@ -12723,7 +12727,6 @@ function checkPendingMatchTasks(){
     var lines = k.queue.slice(0,15).map(function(pm){ return '• '+k.line(pm); });
     if(k.queue.length>15) lines.push('…and '+(k.queue.length-15)+' more');
     var desc = 'In the sidebar, open '+k.menu+' and match each one to a client, add it as a new client, or discard it.\n\n'+lines.join('\n');
-    var open = db.planner.find(function(t){ return t.autoKey===k.key && !t.done; });
     if(open){
       open.title = title;
       open.desc = desc;
@@ -12742,9 +12745,9 @@ function checkPendingMatchTasks(){
       created++;
     }
   });
-  if(created || updated){
+  if(created || updated || completed){
     saveDB(); render();
-    debugLog('Pending matches check: '+created+' task(s) created, '+updated+' updated');
+    debugLog('Pending matches check: '+created+' task(s) created, '+updated+' updated, '+completed+' completed');
   }
 }
 
