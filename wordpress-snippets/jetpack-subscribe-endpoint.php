@@ -62,7 +62,11 @@ function milesman_crm_add_jetpack_subscriber(WP_REST_Request $request)
         return new WP_Error('invalid_email', 'A valid email address is required.', array('status' => 400));
     }
 
-    if (!class_exists('Jetpack_Subscriptions') || !method_exists('Jetpack_Subscriptions', 'subscribe')) {
+    if (
+        !class_exists('Jetpack_Subscriptions')
+        || !method_exists('Jetpack_Subscriptions', 'init')
+        || !method_exists('Jetpack_Subscriptions', 'subscribe')
+    ) {
         return new WP_Error(
             'jetpack_unavailable',
             'Jetpack Subscriptions isn\'t active on this site (module missing, or Jetpack changed its internals — see the comment at the top of jetpack-subscribe-endpoint.php).',
@@ -70,19 +74,33 @@ function milesman_crm_add_jetpack_subscriber(WP_REST_Request $request)
         );
     }
 
-    $result = Jetpack_Subscriptions::subscribe($email);
+    // subscribe() is an instance method (calling it statically is a fatal
+    // error), so go through the module's singleton. $async = false makes it
+    // return the real per-address result; the default (true) just queues the
+    // call for shutdown and returns null, which would hide every failure.
+    $result = Jetpack_Subscriptions::init()->subscribe($email, 0, false);
 
-    // subscribe() returns a WP_Error on failure (e.g. malformed address) in
-    // the versions of Jetpack this was tested against — pass that through
-    // as-is rather than masking it with a generic message.
     if (is_wp_error($result)) {
         return $result;
     }
 
-    return rest_ensure_response(array(
-        'success' => true,
-        'email'   => $email,
-    ));
+    $first = is_array($result) ? reset($result) : null;
+
+    if ($first === true) {
+        // Jetpack accepted the sign-up and is emailing the confirmation link.
+        return rest_ensure_response(array('success' => true, 'email' => $email, 'status' => 'confirming'));
+    }
+
+    if (is_wp_error($first) && in_array($first->get_error_code(), array('active', 'pending'), true)) {
+        // Already subscribed, or a confirmation email is already outstanding.
+        return rest_ensure_response(array('success' => true, 'email' => $email, 'status' => $first->get_error_code()));
+    }
+
+    if (is_wp_error($first)) {
+        return $first;
+    }
+
+    return new WP_Error('subscribe_failed', 'Jetpack did not return a subscribe result.', array('status' => 502));
 }
 
 /**
