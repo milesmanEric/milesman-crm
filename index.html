@@ -24604,11 +24604,10 @@ function renderPlanner(){
   // exactly the "duplicated logic drifts apart" bug already hit a couple
   // of times elsewhere in this app (e.g. the Email tab's client sort).
   function supplierNameForTask(t){
-    // A task's own Linked Supplier only shows here when no client is linked —
-    // on a client task the Type badge/Phone/Email columns already carry it.
-    if(!taskClientId(t) && t.vendorId){
+    // The task's own Linked Supplier wins, client-linked or not.
+    if(t.vendorId){
       var sup = db.vendors.find(function(v){return v.id===t.vendorId;});
-      return sup ? sup.name : '';
+      if(sup) return sup.name;
     }
     // Otherwise fall back to the linked trip's supplier (e.g. the cruise line
     // matched when a Book a Trip form imported), client-linked or not. The
