@@ -978,13 +978,53 @@ function complianceSnapshot(){
     return (o && Array.isArray(o.items)) ? o : null;
   }catch(e){ return null; }
 }
+// The "already imported" email-id lists live in localStorage (per browser /
+// per app), not in `db`, so a second device — e.g. the desktop or Android app
+// pointed at the same Outlook inbox — would otherwise see every email as new
+// and import the same trips again. Folded into every outbound backup as
+// `processedImportIds` and UNION-merged on restore (never replaced), so a
+// restore can only ever make the "already imported" list longer.
+const PROCESSED_ID_KEYS = ['mm_tripform_processed_ids','mm_contactform_processed_ids','mm_revenuereport_processed_ids'];
+function processedIdsSnapshot(){
+  var out = {}, any = false;
+  PROCESSED_ID_KEYS.forEach(function(k){
+    try{
+      var a = JSON.parse(localStorage.getItem(k)||'[]');
+      if(Array.isArray(a) && a.length){ out[k] = a; any = true; }
+    }catch(e){}
+  });
+  return any ? out : null;
+}
+function applyProcessedIdsFromBackup(d){
+  try{
+    var p = d && d.processedImportIds;
+    if(d && d.processedImportIds) delete d.processedImportIds;
+    if(!p || typeof p!=='object') return;
+    PROCESSED_ID_KEYS.forEach(function(k){
+      if(!Array.isArray(p[k])) return;
+      var cur = [];
+      try{ cur = JSON.parse(localStorage.getItem(k)||'[]'); }catch(e){}
+      if(!Array.isArray(cur)) cur = [];
+      var merged = cur.slice();
+      p[k].forEach(function(id){ if(typeof id==='string' && merged.indexOf(id)===-1) merged.push(id); });
+      if(merged.length > 500) merged = merged.slice(merged.length-500);
+      localStorage.setItem(k, JSON.stringify(merged));
+    });
+    debugLog('Restore: merged "already imported" email-id lists from backup');
+  }catch(e){ debugLog('Processed-ids restore failed: '+e.message); }
+}
 function backupPayload(space){
   var c = complianceSnapshot();
-  return JSON.stringify(c ? Object.assign({}, db, {complianceTracker:c}) : db, null, space);
+  var ids = processedIdsSnapshot();
+  var extra = {};
+  if(c) extra.complianceTracker = c;
+  if(ids) extra.processedImportIds = ids;
+  return JSON.stringify(Object.keys(extra).length ? Object.assign({}, db, extra) : db, null, space);
 }
 // Returns true if tracker data was found in the backup and applied. Keeps the
 // previous local copy under a _prev key so a restore can never destroy it.
 function applyComplianceFromBackup(d){
+  applyProcessedIdsFromBackup(d);
   try{
     var c = d && d.complianceTracker;
     if(!c || !Array.isArray(c.items)) return false;
