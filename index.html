@@ -5630,6 +5630,19 @@ function autoSyncSubscriberToJetpack(client){
   });
 }
 
+// Clients created by an email import (Book a Trip form, contact form, an
+// additional traveler, a resolved Pending Traveler Match) are created with
+// isSubscriber:true, but unlike the Add Client form they used to never push
+// that to Mailchimp/Jetpack, so they showed as subscribers in the CRM only.
+// Called right after such a client is pushed onto db.clients. Both syncs are
+// silent no-ops when the connection isn't set up on this device, and skip
+// clients with no email.
+function autoSyncNewImportedSubscriber(client){
+  if(!client || !client.isSubscriber || !client.email) return;
+  autoSyncSubscriberToMailchimp(client);
+  autoSyncSubscriberToJetpack(client);
+}
+
 // ── Jetpack Manual-Removal Queue ────────────────────────────────────────────
 // Jetpack/WordPress.com has no documented API — public or internal — for
 // removing a subscriber by email. Jetpack_Subscriptions (the class the
@@ -10500,6 +10513,7 @@ function openPendingTravelerMatchesModal(){
         airlineCreditCards:pm.airlineCreditCards||[], hotelCreditCards:pm.hotelCreditCards||[],
         notes:'', joined:today(), totalTrips:0, notesLog:[],
         isPayingClient:true, isSubscriber:true}, pm.fields||{}));
+      autoSyncNewImportedSubscriber(db.clients[db.clients.length-1]);
       resolvePendingTravelerMatch(btn.dataset.id, newCid, true);
     });
   });
@@ -10855,6 +10869,7 @@ function processTripFormRow(getVal, counters, opts){
           isPayingClient:true, isSubscriber:true}, tFields);
         db.clients.push(tClient);
         counters.added++;
+        autoSyncNewImportedSubscriber(tClient);
         return {clientId: tClient.id, line: 'Traveling with: '+tClient.name+' (client '+tClient.id+')'};
       }
     }
@@ -11066,6 +11081,7 @@ function processTripFormRow(getVal, counters, opts){
       isPayingClient:true, isSubscriber:true, isAuditionClient:!!opts.auditionClient};
     db.clients.push(client);
     counters.added++;
+    autoSyncNewImportedSubscriber(client);
   }
 
   var destination = getVal('Destination');
@@ -12272,6 +12288,7 @@ function processContactFormRow(row, counters, msgId){
       isPayingClient:true, isSubscriber:true};
     db.clients.push(client);
     counters.added++;
+    autoSyncNewImportedSubscriber(client);
   }
 
   db.planner.push({
