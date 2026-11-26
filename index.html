@@ -29705,11 +29705,13 @@ const ASSISTANT_SYSTEM_PROMPT = 'You are the in-app assistant for a travel agenc
 const ASSISTANT_TOOLS = [
   {
     name: 'find_clients',
-    description: 'Search clients by name or email substring (case-insensitive). Returns up to 10 matches with id, name, email, phone. Use this first to resolve which client the user means before adding a note, creating a task, or looking up trips for them.',
+    description: 'Search clients by name or email substring (case-insensitive), and/or by the state in their address. Returns up to 25 matches with id, name, email, phone, state (as entered on the client record; blank if none on file), plus totalMatches. Use this first to resolve which client the user means before adding a note, creating a task, or looking up trips for them, and to answer questions like "which clients are in New Jersey?".',
     input_schema: {
       type: 'object',
-      properties: { query: { type: 'string', description: 'Name or email substring to search for' } },
-      required: ['query']
+      properties: {
+        query: { type: 'string', description: 'Name or email substring to search for. Optional — omit to list by state only.' },
+        state: { type: 'string', description: 'Only clients whose state matches — a US state name or 2-letter abbreviation (e.g. "NJ" or "New Jersey"; both match either spelling on the record).' }
+      }
     }
   },
   {
@@ -30014,6 +30016,15 @@ const ASSISTANT_TOOLS = [
 // plain-object result (sent back to Claude as the tool_result). Never lets
 // the model run its own code — this is the fixed, reviewable surface of
 // what the assistant is allowed to do.
+// The client "State" field is free text, so a record may hold "NJ", "nj" or
+// "New Jersey". Normalise either spelling to the 2-letter code so the
+// assistant's state filter matches them all; anything unrecognised (e.g. a
+// non-US province) falls back to its trimmed, upper-cased text.
+const ASSISTANT_STATE_NAMES = {'ALABAMA':'AL','ALASKA':'AK','ARIZONA':'AZ','ARKANSAS':'AR','CALIFORNIA':'CA','COLORADO':'CO','CONNECTICUT':'CT','DELAWARE':'DE','DISTRICT OF COLUMBIA':'DC','FLORIDA':'FL','GEORGIA':'GA','HAWAII':'HI','IDAHO':'ID','ILLINOIS':'IL','INDIANA':'IN','IOWA':'IA','KANSAS':'KS','KENTUCKY':'KY','LOUISIANA':'LA','MAINE':'ME','MARYLAND':'MD','MASSACHUSETTS':'MA','MICHIGAN':'MI','MINNESOTA':'MN','MISSISSIPPI':'MS','MISSOURI':'MO','MONTANA':'MT','NEBRASKA':'NE','NEVADA':'NV','NEW HAMPSHIRE':'NH','NEW JERSEY':'NJ','NEW MEXICO':'NM','NEW YORK':'NY','NORTH CAROLINA':'NC','NORTH DAKOTA':'ND','OHIO':'OH','OKLAHOMA':'OK','OREGON':'OR','PENNSYLVANIA':'PA','RHODE ISLAND':'RI','SOUTH CAROLINA':'SC','SOUTH DAKOTA':'SD','TENNESSEE':'TN','TEXAS':'TX','UTAH':'UT','VERMONT':'VT','VIRGINIA':'VA','WASHINGTON':'WA','WEST VIRGINIA':'WV','WISCONSIN':'WI','WYOMING':'WY','PUERTO RICO':'PR'};
+function assistantStateKey(s){
+  var k = String(s||'').replace(/\./g,'').replace(/\s+/g,' ').trim().toUpperCase();
+  return ASSISTANT_STATE_NAMES[k] || k;
+}
 async function runAssistantTool(name, input){
   input = input || {};
   if(name === 'get_analytics_summary'){
@@ -30049,10 +30060,13 @@ async function runAssistantTool(name, input){
   }
   if(name === 'find_clients'){
     var q = (input.query||'').toLowerCase();
-    var matches = db.clients.filter(function(c){
+    var stateWanted = assistantStateKey(input.state);
+    var allMatches = db.clients.filter(function(c){
+      if(stateWanted && assistantStateKey(c.state)!==stateWanted) return false;
       return (c.name||'').toLowerCase().indexOf(q)!==-1 || (c.email||'').toLowerCase().indexOf(q)!==-1;
-    }).slice(0,10).map(function(c){ return {id:c.id, name:c.name, email:c.email, phone:c.phone}; });
-    return {clients: matches};
+    });
+    var matches = allMatches.slice(0,25).map(function(c){ return {id:c.id, name:c.name, email:c.email, phone:c.phone, state:c.state||''}; });
+    return {clients: matches, totalMatches: allMatches.length};
   }
   if(name === 'find_trips'){
     var results = db.trips.filter(function(t){
@@ -30313,7 +30327,7 @@ function assistantMsgBubble(kind, text){
 function describeToolResult(name, input, result){
   if(result && result.error) return '✗ '+result.error;
   if(result && result.message) return '✓ '+result.message;
-  if(name==='find_clients') return 'Found '+((result.clients||[]).length)+' client(s) for "'+(input.query||'')+'"';
+  if(name==='find_clients') return 'Found '+(result.totalMatches!=null?result.totalMatches:(result.clients||[]).length)+' client(s)'+(input.query?' for "'+input.query+'"':'')+(input.state?' in '+input.state:'');
   if(name==='find_trips') return 'Found '+((result.trips||[]).length)+' trip(s)';
   if(name==='find_marketing_plan_items') return 'Found '+((result.items||[]).length)+' marketing plan item(s)';
   if(name==='find_vendors') return 'Found '+((result.vendors||[]).length)+' vendor(s) for "'+(input.query||'')+'"';
