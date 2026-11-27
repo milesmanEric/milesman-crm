@@ -322,6 +322,7 @@ tr:last-child td{border-bottom:none}
         <button class="sync-btn" id="btn-sync-texts" style="color:#0891b2;border-color:#67e8f9">&#128241; Sync Texts</button>
         <button class="sync-btn" id="btn-log-mailchimp" style="color:#7c3aed;border-color:#c4b5fd">&#128226; Log Mailchimp Campaign</button>
         <button class="sync-btn" id="btn-sync-mailchimp" style="color:#7c3aed;border-color:#c4b5fd">&#128260; Sync Mailchimp Activity</button>
+        <button class="sync-btn" id="btn-copy-outlook-contacts" style="color:#2563eb;border-color:#93c5fd" title="Copies existing clients that have an email or phone into eric@themilesman.com's Outlook contacts (new clients are added automatically)">&#128100; Copy Clients to Outlook Contacts</button>
         <button class="sync-btn" id="btn-ms-signout" style="color:#888;border-color:#ddd;font-size:11px">&#128274; Reset Outlook Login</button>
       </div>
 
@@ -5682,11 +5683,22 @@ function _ocWarnOnce(key, msg){
   toast(msg,'err');
 }
 async function _ocGraph(token, method, url, body){
-  var r = await fetch('https://graph.microsoft.com/v1.0'+url, {
-    method: method,
-    headers: Object.assign({'Authorization':'Bearer '+token}, body?{'Content-Type':'application/json'}:{}),
-    body: body ? JSON.stringify(body) : undefined
-  });
+  var r, attempt = 0;
+  while(true){
+    r = await fetch('https://graph.microsoft.com/v1.0'+url, {
+      method: method,
+      headers: Object.assign({'Authorization':'Bearer '+token}, body?{'Content-Type':'application/json'}:{}),
+      body: body ? JSON.stringify(body) : undefined
+    });
+    // Graph throttles bursts (the bulk copy below); honor Retry-After and retry.
+    if(r.status===429 && attempt<4){
+      attempt++;
+      var wait = Math.min(60, parseInt(r.headers.get('Retry-After')||'5',10)||5);
+      await new Promise(function(res){ setTimeout(res, wait*1000); });
+      continue;
+    }
+    break;
+  }
   var d = await r.json().catch(function(){ return {}; });
   if(!r.ok){
     var err = new Error((d && d.error && d.error.message) || ('Graph returned '+r.status));
@@ -5742,6 +5754,10 @@ async function _ocCreateFor(token, c){
     var q = "emailAddresses/any(a:a/address eq '"+email.replace(/'/g,"''")+"')";
     var found = await _ocGraph(token,'GET','/me/contacts?$select=id&$top=1&$filter='+encodeURIComponent(q));
     if(found.value && found.value.length) return found.value[0].id;
+  }else if(c.name){
+    var q2 = "displayName eq '"+_ocBuildContact(c).displayName.replace(/'/g,"''")+"'";
+    var found2 = await _ocGraph(token,'GET','/me/contacts?$select=id&$top=1&$filter='+encodeURIComponent(q2));
+    if(found2.value && found2.value.length) return found2.value[0].id;
   }
   var created = await _ocGraph(token,'POST','/me/contacts',_ocBuildContact(c));
   return created.id;
@@ -5778,6 +5794,54 @@ async function syncNewClientsToOutlookContacts(){
   }finally{
     _ocRunning = false;
     if(changed) saveDB();
+  }
+}
+
+// One-time (re-runnable) bulk copy of the clients that existed before the
+// automatic sync above, triggered by the "Copy Clients to Outlook Contacts"
+// button in the Email menu. Same create/dedupe rules, but ignores the
+// OUTLOOK_CONTACTS_START cutoff. Holds _ocRunning so the automatic sync
+// doesn't interleave, and saves ids in batches so an interruption loses little.
+async function copyExistingClientsToOutlookContacts(){
+  if(_ocRunning){ toast('An Outlook contacts sync is already running — try again in a moment','err'); return; }
+  var todo = (db.clients||[]).filter(function(c){
+    return c && c.id && !c.outlookContactId && (c.name||'').trim() && ((c.email||'').trim()||(c.phone||'').trim());
+  });
+  if(!todo.length){ toast('Every client with an email or phone is already in Outlook contacts'); return; }
+  if(!confirm('Copy '+todo.length+' client'+(todo.length!==1?'s':'')+' (those with an email or phone) to the Outlook contacts of '+OUTLOOK_CONTACTS_ACCOUNT+'?\n\nContacts that already exist (same email) are reused, not duplicated. This may take a few minutes.')) return;
+  _ocRunning = true;
+  var done = 0, failed = 0, sinceSave = 0;
+  try{
+    var token = await getValidMsToken(false);
+    if(!token){ toast('Outlook isn\'t connected — click Sync Outlook Emails first','err'); return; }
+    _ocBlockedUntil = 0;
+    if(!(await _ocCheckAccount(token))) return;
+    for(var i=0;i<todo.length;i++){
+      var c = todo[i];
+      try{
+        var contactId = await _ocCreateFor(token, c);
+        var live = db.clients.find(function(x){ return x.id===c.id; });
+        if(live && !live.outlookContactId){ live.outlookContactId = contactId; sinceSave++; }
+        done++;
+      }catch(e){
+        if(e && (e.status===401 || e.status===403)) throw e;
+        failed++;
+        debugLog('Outlook contacts: bulk copy failed for '+(c.name||c.email)+' — '+((e&&e.message)||e));
+      }
+      if(sinceSave>=25){ saveDB(); sinceSave = 0; }
+      if((i+1)%10===0) toast('Copying clients to Outlook contacts… '+(i+1)+' of '+todo.length);
+    }
+    toast('Copied '+done+' client'+(done!==1?'s':'')+' to Outlook contacts'+(failed?' ('+failed+' failed — see Debug Log)':''));
+  }catch(e){
+    debugLog('Outlook contacts: bulk copy stopped — '+((e&&e.message)||e));
+    if(e && (e.status===401 || e.status===403)){
+      toast('Outlook contacts permission missing — Reset Outlook Login, then Sync Outlook Emails to reconnect, then try again.','err');
+    }else{
+      toast('Copy to Outlook contacts stopped after '+done+': '+((e&&e.message)||e),'err');
+    }
+  }finally{
+    _ocRunning = false;
+    if(sinceSave) saveDB();
   }
 }
 
@@ -29449,6 +29513,7 @@ function bindClick(id, handler){
   bindClick('nb-referrals', function(){go('referrals');closeMobileNav();});
   bindClick('nb-payments', function(){go('payments');closeMobileNav();});
   bindClick('outlook-btn', syncOutlook);
+  bindClick('btn-copy-outlook-contacts', copyExistingClientsToOutlookContacts);
   bindClick('btn-sync-texts', syncTexts);
   // Passing driveBackup directly used to hand it the click Event object as
   // its `silent` parameter — always truthy, so every real click silently
