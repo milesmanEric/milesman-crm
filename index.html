@@ -29700,7 +29700,7 @@ async function closeApp(){
 // maps straight onto an existing CRM action. Every mutating tool calls
 // snapshot() first, so any assistant-made change is undoable with the same
 // Undo button as everything else in the app.
-const ASSISTANT_SYSTEM_PROMPT = 'You are the in-app assistant for a travel agency CRM. Help the user look up and update their own clients, trips, groups, marketing plan, vendors, referral credits, bookmarks, and follow-up tasks, and answer questions about blog/website traffic, Facebook Ads performance, and Mailchimp email marketing performance, using only the provided tools. Always resolve a client by name to a clientId with find_clients before acting on them — if more than one client matches, ask which one rather than guessing. Same idea for a marketing plan item (find_marketing_plan_items) or a trip (find_trips) — always find its id before calling update_trip or update_marketing_plan_item, rather than guessing one, and if more than one trip matches ask which before changing anything. When asked to add something to the marketing plan/calendar (a blog post, social post, email, ad, or sales task) without every field spelled out, use sensible defaults instead of asking for each one — channel matching the kind of content described, target group \'General/All Clients\' unless a specific audience was mentioned, status \'Planned\', and today\'s date if no date was given. For any traffic, blog, or ad-performance question, call get_analytics_summary — if a source comes back connected:false, tell the user that integration isn\'t connected rather than saying you can\'t access it. For any email marketing question (subscribers, unsubscribes, campaign opens/clicks), call get_mailchimp_summary or find_mailchimp_campaigns — same connected:false handling if no Mailchimp audience is chosen yet. Be concise. After taking an action, briefly confirm what you did.';
+const ASSISTANT_SYSTEM_PROMPT = 'You are the in-app assistant for a travel agency CRM. Help the user look up and update their own clients, trips, groups, marketing plan, vendors, referral credits, bookmarks, and follow-up tasks, and answer questions about blog/website traffic, Facebook Ads performance, and Mailchimp email marketing performance, using only the provided tools. Always resolve a client by name to a clientId with find_clients before acting on them — if more than one client matches, ask which one rather than guessing. For "how many trips by state" questions use count_trips_by_state (it groups by the client\'s State field and already includes every trip — do not try to tally with find_trips, which is capped at 15 rows). Same idea for a marketing plan item (find_marketing_plan_items) or a trip (find_trips) — always find its id before calling update_trip or update_marketing_plan_item, rather than guessing one, and if more than one trip matches ask which before changing anything. When asked to add something to the marketing plan/calendar (a blog post, social post, email, ad, or sales task) without every field spelled out, use sensible defaults instead of asking for each one — channel matching the kind of content described, target group \'General/All Clients\' unless a specific audience was mentioned, status \'Planned\', and today\'s date if no date was given. For any traffic, blog, or ad-performance question, call get_analytics_summary — if a source comes back connected:false, tell the user that integration isn\'t connected rather than saying you can\'t access it. For any email marketing question (subscribers, unsubscribes, campaign opens/clicks), call get_mailchimp_summary or find_mailchimp_campaigns — same connected:false handling if no Mailchimp audience is chosen yet. Be concise. After taking an action, briefly confirm what you did.';
 
 const ASSISTANT_TOOLS = [
   {
@@ -29723,6 +29723,20 @@ const ASSISTANT_TOOLS = [
         clientId: { type: 'string', description: 'Only trips linked to this client id (primary or additional)' },
         destination: { type: 'string', description: 'Substring match against destination' },
         status: { type: 'string', enum: STATUSES },
+        departAfter: { type: 'string', description: 'YYYY-MM-DD, inclusive' },
+        departBefore: { type: 'string', description: 'YYYY-MM-DD, inclusive' }
+      }
+    }
+  },
+  {
+    name: 'count_trips_by_state',
+    description: 'Counts trips grouped by the state in the booking client\'s address (the State field on the client record; trips whose client has no state on file are grouped as "(no state)"). Returns one row per state with the trip count, a breakdown by status, and total value, sorted by most trips, plus totalTrips. Filters are optional and combine (AND): pass state to get one state only, or status / destination / departAfter / departBefore to narrow which trips are counted. Cancelled trips are included unless you filter them out — if the user wants real bookings, say so or subtract the Cancelled count from byStatus. Use this for any "how many trips by state" or "trips from New Jersey clients" question.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        state: { type: 'string', description: 'Only this state — a US state name or 2-letter abbreviation (e.g. "NJ" or "New Jersey").' },
+        status: { type: 'string', enum: STATUSES },
+        destination: { type: 'string', description: 'Substring match against destination' },
         departAfter: { type: 'string', description: 'YYYY-MM-DD, inclusive' },
         departBefore: { type: 'string', description: 'YYYY-MM-DD, inclusive' }
       }
@@ -30081,6 +30095,30 @@ async function runAssistantTool(name, input){
     });
     return {trips: results};
   }
+  if(name === 'count_trips_by_state'){
+    var cbsWanted = assistantStateKey(input.state);
+    var cbsClients = {};
+    db.clients.forEach(function(c){ cbsClients[c.id] = c; });
+    var cbsRows = {}, cbsTotal = 0;
+    db.trips.forEach(function(t){
+      if(input.status && t.status!==input.status) return;
+      if(input.destination && (t.destination||'').toLowerCase().indexOf(input.destination.toLowerCase())===-1) return;
+      if(input.departAfter && !((t.departDate||'')>=input.departAfter)) return;
+      if(input.departBefore && !((t.departDate||'')<=input.departBefore)) return;
+      var cl = cbsClients[t.clientId];
+      var key = cl ? assistantStateKey(cl.state) : '';
+      if(cbsWanted && key!==cbsWanted) return;
+      var label = key || '(no state)';
+      var row = cbsRows[label] || (cbsRows[label] = {state:label, trips:0, byStatus:{}, totalValue:0});
+      row.trips++; cbsTotal++;
+      var st = t.status || '(no status)';
+      row.byStatus[st] = (row.byStatus[st]||0) + 1;
+      row.totalValue += (Number(t.totalValue)||0);
+    });
+    var cbsList = Object.keys(cbsRows).map(function(k){ return cbsRows[k]; }).sort(function(a,b){ return b.trips-a.trips || a.state.localeCompare(b.state); });
+    cbsList.forEach(function(r){ r.totalValue = Math.round(r.totalValue*100)/100; });
+    return {states: cbsList, totalTrips: cbsTotal, note: 'Grouped by the primary client\'s State field; trips with a client that has no state are under "(no state)".'};
+  }
   if(name === 'add_client_note'){
     var client = db.clients.find(function(c){return c.id===input.clientId;});
     if(!client) return {error:'No client found with id '+input.clientId};
@@ -30329,6 +30367,7 @@ function describeToolResult(name, input, result){
   if(result && result.message) return '✓ '+result.message;
   if(name==='find_clients') return 'Found '+(result.totalMatches!=null?result.totalMatches:(result.clients||[]).length)+' client(s)'+(input.query?' for "'+input.query+'"':'')+(input.state?' in '+input.state:'');
   if(name==='find_trips') return 'Found '+((result.trips||[]).length)+' trip(s)';
+  if(name==='count_trips_by_state') return 'Counted '+(result.totalTrips||0)+' trip(s) across '+((result.states||[]).length)+' state group(s)';
   if(name==='find_marketing_plan_items') return 'Found '+((result.items||[]).length)+' marketing plan item(s)';
   if(name==='find_vendors') return 'Found '+((result.vendors||[]).length)+' vendor(s) for "'+(input.query||'')+'"';
   if(name==='find_bookmarks') return 'Found '+((result.bookmarks||[]).length)+' bookmark(s)';
