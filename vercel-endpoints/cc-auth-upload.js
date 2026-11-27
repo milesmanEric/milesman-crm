@@ -373,9 +373,14 @@ async function ccAuthUploadHandler(req, res) {
 // One function, two jobs (Hobby plan 12-function cap): /api/client-agreement is a
 // vercel.json rewrite to this file with ?service=agreement - see
 // lib/client-agreement.js (Client Services Agreement e-signature).
+// /api/client-portal is a vercel.json rewrite to this file with ?service=portal
+// - see lib/portal.js (Client Portal: magic-link login, trips, change requests).
 module.exports = async (req, res) => {
   if (req.query && req.query.service === 'agreement') {
     return require('../lib/client-agreement.js')(req, res);
+  }
+  if (req.query && req.query.service === 'portal') {
+    return require('../lib/portal.js')(req, res);
   }
   return ccAuthUploadHandler(req, res);
 };

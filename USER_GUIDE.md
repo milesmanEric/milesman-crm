@@ -494,6 +494,18 @@ The Clients page also shows a small red count on the Sync Subscribers button whe
 
 ---
 
+## Client Portal
+
+Clients can sign in at **client-portal.html** (`https://milesmaneric.github.io/milesman-crm/client-portal.html` — put a link to it on the website or in your emails) to see their own trips and booking confirmations, see their record, and ask for changes.
+
+- **How they sign in:** they type the email address on their client record and we email them a sign-in link (good for 20 minutes). No password. If the email isn't on a client record, nothing is sent — the page looks the same either way.
+- **What they see:** their trips (destination, dates, status, flight/hotel/cruise/car/transfer/tour confirmation numbers) and their contact details and preferences. They never see your notes, prices, points, suppliers or anyone else's records.
+- **How fresh it is:** the portal reads the last Drive backup the CRM made, so it can be a few minutes behind (more if the CRM hasn't been open). The page tells them "Information as of …".
+- **Changes they make:** nothing changes in the CRM by itself. When a client submits changes you get an email, and **File → Client Portal Requests** shows each request with *Now in CRM* next to *Client wants*. Click **Apply** to update the client record (a note is added to their activity log) or **Dismiss** to ignore it. A ⚠ means the record changed in the CRM after they submitted.
+- **Tip:** a client's email address is how they get in, so keep it correct. To stop someone getting in, change or clear the email on their record.
+
+First-time setup is a one-time job on the Vercel side — see DOCUMENTATION.md §4.15.
+
 ## When something goes wrong
 
 Every import/sync feature writes to a hidden **Debug Log** as it runs — request counts, warnings, per-client match results, errors. This is the first place to check when a sync "did nothing" or an import skipped something you expected to see. Ask whoever maintains the CRM's code how to open it if you can't find it.

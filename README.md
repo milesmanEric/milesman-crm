@@ -15,3 +15,5 @@ Book a Trip form submissions import via CSV, or automatically from the connected
 See [USER_GUIDE.md](USER_GUIDE.md) for how to actually use the CRM day to day, or [DOCUMENTATION.md](DOCUMENTATION.md) for the full architecture, data model, feature list, and integration details.
 
 Legal compliance tracker: open [compliance-tracker.html](compliance-tracker.html) — federal + 50-state (and DC) requirements register with deadlines, owners, evidence links, a state map, CSV/JSON/.ics export. Stored locally in the browser and included in the CRM's Drive backups (manual, auto, nightly), Secure Sync and JSON export/restore; starter items are a checklist, not legal advice.
+
+Client portal: clients sign in at [client-portal.html](client-portal.html) with an emailed link to see their trips and record and request changes, which you review under File → Client Portal Requests. Needs a one-time server setup — see DOCUMENTATION.md §4.15.

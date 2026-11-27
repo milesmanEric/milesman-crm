@@ -299,6 +299,7 @@ tr:last-child td{border-bottom:none}
         <div style="font-size:10px;font-weight:700;color:#059669;text-transform:uppercase;letter-spacing:.04em;margin:2px 0 4px">&#128274; Secure Sync</div>
         <button class="sync-btn" id="secure-sync-backup-btn" style="color:#059669;border-color:#6ee7b7" title="Server-verified — checks your identity server-side before touching any data">&#128274; Secure Sync: Save</button>
         <button class="sync-btn" id="secure-sync-restore-btn" style="color:#059669;border-color:#6ee7b7" title="Server-verified — checks your identity server-side before touching any data">&#128274; Secure Sync: Load</button>
+        <button class="sync-btn" id="portal-requests-btn" style="color:#2563eb;border-color:#bfdbfe" title="Review changes clients submitted from the Client Portal (client-portal.html)">&#129523; Client Portal Requests <span id="portal-req-count"></span></button>
         <div style="font-size:10px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.04em;margin:10px 0 4px;border-top:1px solid #eee;padding-top:8px">Manual Fallback (not identity-verified)</div>
         <button class="sync-btn" id="drive-btn" style="color:#888;border-color:#ddd;font-size:11px" title="Direct Drive access with no server-side identity check — prefer Secure Sync above once it's set up">&#9729; Backup to Google Drive</button>
         <button class="sync-btn" id="drive-restore-btn" style="color:#888;border-color:#ddd;font-size:11px" title="Direct Drive access with no server-side identity check — prefer Secure Sync above once it's set up">&#9729; Restore from Google Drive</button>
@@ -5347,6 +5348,127 @@ async function secureSyncRestore(){
     toast('Secure Sync failed: '+e.message,'err');
   }
   if(btn){btn.textContent='Secure Sync: Load';btn.disabled=false;}
+}
+
+// ── Client Portal requests ───────────────────────────────────────────────
+// Clients sign in at client-portal.html and can ask for changes to their own
+// record. The server (vercel-endpoints/portal.js, /api/client-portal) stores
+// each submission as a pending request in Drive; nothing touches this CRM's
+// data until it is applied here. Authenticated the same way as Secure Sync
+// (Google ID token + server allowlist). See DOCUMENTATION.md §4.14.
+async function portalStaffCall(action, body){
+  const idToken = await getValidDriveIdToken();
+  if(!idToken) throw new Error('Connect Google Drive first (Backup to Google Drive), then try again');
+  const r = await fetch(DRIVE_AUTH_SERVER+'/api/client-portal',{
+    method:'POST',
+    headers:{'Content-Type':'application/json','Authorization':'Bearer '+idToken},
+    body: JSON.stringify(Object.assign({action:action}, body||{}))
+  });
+  const d = await r.json().catch(function(){return {};});
+  if(!r.ok) throw new Error(d.error_description||d.error||('HTTP '+r.status));
+  return d;
+}
+function setPortalReqCount(n){
+  const el=$('portal-req-count'); if(el) el.textContent = n>0 ? '('+n+')' : '';
+}
+// Silent badge refresh after load - never toasts or throws if Drive isn't connected.
+async function refreshPortalRequestCount(){
+  try{
+    if(!localStorage.getItem('mm_drive_refresh')) return;
+    const d = await portalStaffCall('staff-list');
+    setPortalReqCount((d.requests||[]).length);
+  }catch(e){ debugLog('Portal requests count skipped: '+e.message); }
+}
+// The only client fields a portal request may change - the server enforces the same list, and
+// the review table below shows exactly these, so what you see is what Apply does.
+const PORTAL_FIELDS = ['name','email','phone','streetAddress','city','state','zip','birthdate','countryOfCitizenship','countryOfBirth','passportExpiration','preferredAirline','preferredHotel','preferredCruiseLine','okToText'];
+function portalFieldCurrent(c, key){
+  if(key==='okToText') return c.okToText ? 'Yes' : 'No';
+  return c[key]==null ? '' : String(c[key]);
+}
+function renderPortalRequests(list){
+  setPortalReqCount(list.length);
+  const body = list.length ? list.map(function(q,i){
+    const c = db.clients.find(function(x){return x.id===q.clientId;});
+    const rows = Object.keys(q.changes||{}).filter(function(k){return PORTAL_FIELDS.indexOf(k)>=0;}).map(function(k){
+      const ch = q.changes[k];
+      const cur = c ? portalFieldCurrent(c,k==='name'?'name':k) : '';
+      const drifted = c && cur !== (ch.from==null?'':String(ch.from));
+      return '<tr><td style="padding:5px 8px;font-weight:600">'+escHtml(ch.label||k)+'</td>'+
+        '<td style="padding:5px 8px;color:#555">'+escHtml(cur||'(blank)')+(drifted?' <span title="The CRM record differs from what the client saw when they submitted this" style="color:#b45309;font-size:11px">&#9888; changed since</span>':'')+'</td>'+
+        '<td style="padding:5px 8px;color:#065f46;font-weight:600">'+escHtml(ch.to===''||ch.to==null?'(blank)':ch.to)+'</td></tr>';
+    }).join('');
+    return '<div style="border:1px solid #e5e7eb;border-radius:10px;padding:12px 14px;margin-bottom:12px">'+
+      '<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center">'+
+        '<div><strong>'+escHtml(q.clientName||'Unknown')+'</strong> <span style="color:#888;font-size:12px">'+escHtml(q.clientId||'')+' &middot; '+escHtml(q.clientEmail||'')+'</span><br><span style="color:#888;font-size:12px">Submitted '+escHtml(new Date(q.createdAt).toLocaleString())+'</span></div>'+
+        '<div><button class="save-btn" data-portal-apply="'+i+'">Apply</button> <button class="cancel-btn" data-portal-dismiss="'+i+'">Dismiss</button></div></div>'+
+      (c?'':'<div style="color:#b91c1c;font-size:12px;margin-top:6px">This client is no longer in the CRM - it can only be dismissed.</div>')+
+      '<table style="width:100%;border-collapse:collapse;margin-top:8px;font-size:13px"><thead><tr style="text-align:left;color:#888;font-size:11px;text-transform:uppercase"><th style="padding:4px 8px">Field</th><th style="padding:4px 8px">Now in CRM</th><th style="padding:4px 8px">Client wants</th></tr></thead><tbody>'+rows+'</tbody></table>'+
+      (q.message?'<div style="margin-top:8px;font-size:13px;background:#f9fafb;border-radius:8px;padding:8px 10px"><strong>Client message:</strong> '+escHtml(q.message)+'</div>':'')+
+      '</div>';
+  }).join('') : '<p style="color:#888">No pending requests.</p>';
+  $('modal').innerHTML =
+    '<div class="modal-hdr"><div class="modal-title">Client Portal Requests</div><button class="close-btn" id="modal-close">&#x2715;</button></div>'+
+    '<p style="font-size:12px;color:#888;margin:0 0 12px">Changes clients submitted from the Client Portal. Nothing changes in the CRM until you click Apply.</p>'+body;
+  $('modal').classList.add('modal-wide');
+  window._portalRequests = list;
+  $('modal-close').addEventListener('click', closeModal);
+  $('modal').querySelectorAll('[data-portal-apply]').forEach(function(b){ b.addEventListener('click', function(){ applyPortalRequest(+b.getAttribute('data-portal-apply')); }); });
+  $('modal').querySelectorAll('[data-portal-dismiss]').forEach(function(b){ b.addEventListener('click', function(){ dismissPortalRequest(+b.getAttribute('data-portal-dismiss')); }); });
+}
+async function openPortalRequests(){
+  $('modal').innerHTML='<div class="modal-hdr"><div class="modal-title">Client Portal Requests</div><button class="close-btn" id="modal-close">&#x2715;</button></div><p style="color:#888">Loading...</p>';
+  $('modal-close').addEventListener('click', closeModal);
+  $('overlay').classList.add('open');
+  try{
+    const d = await portalStaffCall('staff-list');
+    renderPortalRequests(d.requests||[]);
+  }catch(e){
+    debugLog('Portal requests load failed: '+e.message);
+    $('modal').innerHTML='<div class="modal-hdr"><div class="modal-title">Client Portal Requests</div><button class="close-btn" id="modal-close">&#x2715;</button></div><p style="color:#b91c1c">Could not load requests: '+escHtml(e.message)+'</p>';
+    $('modal-close').addEventListener('click', closeModal);
+  }
+}
+async function applyPortalRequest(i){
+  const q = (window._portalRequests||[])[i]; if(!q) return;
+  const c = db.clients.find(function(x){return x.id===q.clientId;});
+  if(!c){ toast('That client is no longer in the CRM','err'); return; }
+  // Re-validate on this side too: only whitelisted client fields, never anything else.
+  const parts = [];
+  Object.keys(q.changes||{}).forEach(function(k){
+    if(PORTAL_FIELDS.indexOf(k)<0) return;
+    const ch = q.changes[k];
+    const before = portalFieldCurrent(c,k);
+    c[k] = k==='okToText' ? !!ch.value : (ch.value==null?'':String(ch.value));
+    parts.push((ch.label||k)+': '+(before||'(blank)')+' -> '+(portalFieldCurrent(c,k)||'(blank)'));
+    if(k==='name'){ db.trips = db.trips.map(function(t){ return t.clientId===c.id ? Object.assign({},t,{clientName:c.name}) : t; }); }
+  });
+  if(!parts.length){ toast('Nothing in this request could be applied','err'); return; }
+  c.notesLog = Array.isArray(c.notesLog) ? c.notesLog : [];
+  c.notesLog.push({ts:new Date().toLocaleString(), text:'Client Portal update applied - '+parts.join('; ')+(q.message?' | Client message: '+q.message:''), noteType:'General', source:'client-portal'});
+  const saved = await saveDB();
+  if(saved===false){ toast('Could not save to this device - request left pending','err'); return; }
+  try{
+    await portalStaffCall('staff-resolve',{fileId:q.fileId,status:'applied'});
+  }catch(e){
+    debugLog('Portal request applied locally but could not be marked done: '+e.message);
+    toast('Applied, but could not mark it done on the server: '+e.message,'err');
+  }
+  debugLog('Portal request applied for '+q.clientId+': '+parts.join('; '));
+  toast('Applied to '+(c.name||q.clientId),'ok');
+  render();
+  window._portalRequests.splice(i,1);
+  renderPortalRequests(window._portalRequests);
+}
+async function dismissPortalRequest(i){
+  const q = (window._portalRequests||[])[i]; if(!q) return;
+  if(!confirm('Dismiss this request from '+(q.clientName||'this client')+' without changing their record?')) return;
+  try{
+    await portalStaffCall('staff-resolve',{fileId:q.fileId,status:'dismissed'});
+    toast('Dismissed','ok');
+    window._portalRequests.splice(i,1);
+    renderPortalRequests(window._portalRequests);
+  }catch(e){ toast('Could not dismiss: '+e.message,'err'); }
 }
 // One-time setup helper: copies the Drive refresh token already sitting in
 // this browser (from having connected Backup/Restore at least once) to the
@@ -29321,6 +29443,7 @@ function bindClick(id, handler){
   bindClick('drive-restore-btn', driveRestore);
   bindClick('secure-sync-backup-btn', secureSyncBackup);
   bindClick('secure-sync-restore-btn', secureSyncRestore);
+  bindClick('portal-requests-btn', openPortalRequests);
   bindClick('btn-copy-drive-refresh', copyDriveRefreshToken);
   bindClick('btn-reset-clean-folder', chooseCleanFileSaveFolder);
   bindClick('btn-clients-csv', function(){exportCSV('clients');});
@@ -29508,6 +29631,8 @@ function startAutosave(){
   // nightly backup is due yet (see checkNightlyPermanentBackup()) — it's a
   // no-op every check except the first one at or after 11pm each day.
   setInterval(function(){ runAutoDriveBackup(); checkNightlyPermanentBackup(); }, 5 * 60 * 1000);
+  setTimeout(refreshPortalRequestCount, 8000);
+  setInterval(refreshPortalRequestCount, 15 * 60 * 1000);
 
   // Also back up whenever the tab is hidden/backgrounded or the page is being
   // unloaded — this is the case that matters most on mobile, where someone edits
