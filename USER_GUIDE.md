@@ -432,6 +432,8 @@ Email menu → **Sync Outlook Emails**. This is a one-time login (until you sign
 - Logging emails to or from a Hotel supplier's individual **property** email addresses onto that supplier's Notes.
 - Automatically importing Book a Trip form submissions, Contact Form leads, and emailed revenue reports every 5 minutes. Clicking **Sync Outlook Emails** also runs those checks right away instead of waiting for the next 5-minute pass.
 
+- Adding every **new client** to the Outlook contacts of eric@themilesman.com automatically (name, email, phone, address), as long as they have an email or phone number. Existing clients aren't copied, and later edits to a client aren't pushed. If you connected Outlook before this was added, use **Reset Outlook Login**, then **Sync Outlook Emails** once to grant the extra contacts permission.
+
 **This only runs while the CRM tab is open in your browser** — there's no server running these checks in the background, so if you close the tab, imports pause until you reopen it.
 
 If a big sync gets interrupted partway through (say, a network hiccup a few thousand emails in), the emails it had already fetched still get logged — the next sync picks up the rest.

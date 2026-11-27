@@ -778,7 +778,10 @@ const MS_AUTH_SERVER   = 'https://milesman-auth.vercel.app'; // no secret in bro
 // Outlook connection to actually send mail, not just read it. Reconnect
 // Outlook once after this change — an existing mm_ms_refresh token
 // predating this scope doesn't retroactively gain it.
-const MS_SCOPE         = 'https://graph.microsoft.com/Mail.Read https://graph.microsoft.com/Mail.Send offline_access';
+// Contacts.ReadWrite (+ User.Read, to confirm which mailbox is connected) added
+// so new CRM clients are mirrored into eric@themilesman.com's Outlook contacts
+// (see syncNewClientsToOutlookContacts). Same one-time reconnect applies.
+const MS_SCOPE         = 'https://graph.microsoft.com/Mail.Read https://graph.microsoft.com/Mail.Send https://graph.microsoft.com/Contacts.ReadWrite https://graph.microsoft.com/User.Read offline_access';
 const MS_REDIRECT      = 'https://milesmaneric.github.io/milesman-crm';
 const DRIVE_CLIENT_ID  = '493779520648-pnchnino12e0dc893do88bikt041u5sa.apps.googleusercontent.com';
 // "openid email" alongside drive.file so the same token exchange/refresh
@@ -2466,6 +2469,8 @@ function saveDB(){
       toast('Warning: local data just dropped to '+wipeMsg+' — if this wasn\'t intentional, stop editing and use Restore before more changes get saved over it','err');
     }
   }
+  // Mirror any brand-new client into Outlook contacts (debounced, async).
+  try{ scheduleOutlookContactSync(); }catch(e){}
   try{
     var json = JSON.stringify(db);
     if(!window._loggedDbSize){
@@ -5641,6 +5646,139 @@ function autoSyncNewImportedSubscriber(client){
   if(!client || !client.isSubscriber || !client.email) return;
   autoSyncSubscriberToMailchimp(client);
   autoSyncSubscriberToJetpack(client);
+}
+
+// ── Outlook Contacts auto-sync ──────────────────────────────────────────────
+// Every new client (any creation path — Add Client form, email imports, blog
+// follower sync, the Assistant's create_client, ...) is mirrored into the
+// Outlook/Microsoft 365 contacts of OUTLOOK_CONTACTS_ACCOUNT through the same
+// Outlook connection the email imports use (needs the Contacts.ReadWrite
+// scope — reconnect Outlook once after this shipped). Rather than patch each of
+// the ~10 places that push onto db.clients, saveDB() calls
+// scheduleOutlookContactSync(), which finds clients that have no
+// outlookContactId yet and creates their contact. State lives on the client
+// record (outlookContactId), so it syncs across devices via backups and a
+// second device never re-creates it. Only clients joined on/after
+// OUTLOOK_CONTACTS_START are considered, so the existing client list isn't
+// bulk-uploaded. Clients with neither an email nor a phone wait until they
+// have one. Create-only: later edits to a client are not pushed.
+var OUTLOOK_CONTACTS_ACCOUNT = 'eric@themilesman.com';
+var OUTLOOK_CONTACTS_START   = '2026-11-27';
+var _ocTimer = null, _ocRunning = false, _ocBlockedUntil = 0, _ocAccountOk = null, _ocWarned = {};
+
+function scheduleOutlookContactSync(){
+  if(_ocTimer || _ocRunning) return;
+  _ocTimer = setTimeout(function(){ _ocTimer = null; syncNewClientsToOutlookContacts(); }, 3000);
+}
+function clientsNeedingOutlookContact(){
+  return (db.clients||[]).filter(function(c){
+    return c && c.id && !c.outlookContactId && (c.joined||'')>=OUTLOOK_CONTACTS_START &&
+      ((c.email||'').trim() || (c.phone||'').trim());
+  });
+}
+function _ocWarnOnce(key, msg){
+  if(_ocWarned[key]) return;
+  _ocWarned[key] = true;
+  toast(msg,'err');
+}
+async function _ocGraph(token, method, url, body){
+  var r = await fetch('https://graph.microsoft.com/v1.0'+url, {
+    method: method,
+    headers: Object.assign({'Authorization':'Bearer '+token}, body?{'Content-Type':'application/json'}:{}),
+    body: body ? JSON.stringify(body) : undefined
+  });
+  var d = await r.json().catch(function(){ return {}; });
+  if(!r.ok){
+    var err = new Error((d && d.error && d.error.message) || ('Graph returned '+r.status));
+    err.status = r.status;
+    throw err;
+  }
+  return d;
+}
+// Confirms the connected Outlook is OUTLOOK_CONTACTS_ACCOUNT before writing
+// anything into its contacts. An unreadable /me result is treated as
+// inconclusive (proceed) — only a positive mismatch blocks.
+async function _ocCheckAccount(token){
+  if(_ocAccountOk!==null) return _ocAccountOk;
+  try{
+    var me = await _ocGraph(token,'GET','/me?$select=mail,userPrincipalName,proxyAddresses');
+    var want = OUTLOOK_CONTACTS_ACCOUNT.toLowerCase();
+    var all = [me.mail, me.userPrincipalName].concat(me.proxyAddresses||[]).map(function(s){
+      return String(s||'').toLowerCase().replace(/^smtp:/,'');
+    });
+    _ocAccountOk = all.indexOf(want)!==-1;
+    if(!_ocAccountOk){
+      debugLog('Outlook contacts: connected account is '+(me.mail||me.userPrincipalName)+', not '+OUTLOOK_CONTACTS_ACCOUNT+' — skipping contact sync');
+      _ocWarnOnce('acct','Outlook is connected as '+(me.mail||me.userPrincipalName)+', not '+OUTLOOK_CONTACTS_ACCOUNT+' — new clients are not being added to contacts. Sign out of Outlook and reconnect with the right account.');
+    }
+    return _ocAccountOk;
+  }catch(e){
+    return true;
+  }
+}
+function _ocBuildContact(c){
+  var email = (c.email||'').trim(), phone = (c.phone||'').trim();
+  var nameIsEmail = (c.name||'').indexOf('@')!==-1;
+  var first = nameIsEmail ? '' : (getFirstName(c.name)||'');
+  var last  = nameIsEmail ? '' : (getLastName(c.name)||'');
+  var contact = {
+    displayName: nameIsEmail ? (email||c.name) : (((first+' '+last).trim())||c.name||email),
+    categories: ['Miles Man CRM']
+  };
+  if(first) contact.givenName = first;
+  if(last)  contact.surname = last;
+  if(email) contact.emailAddresses = [{address:email, name:contact.displayName}];
+  if(phone) contact.mobilePhone = phone;
+  if(c.streetAddress||c.city||c.state||c.zip){
+    contact.homeAddress = {street:c.streetAddress||'', city:c.city||'', state:c.state||'', postalCode:c.zip||''};
+  }
+  return contact;
+}
+async function _ocCreateFor(token, c){
+  var email = (c.email||'').trim();
+  // Don't duplicate a contact that already exists (e.g. created by hand, or
+  // by a second device that raced this one).
+  if(email){
+    var q = "emailAddresses/any(a:a/address eq '"+email.replace(/'/g,"''")+"')";
+    var found = await _ocGraph(token,'GET','/me/contacts?$select=id&$top=1&$filter='+encodeURIComponent(q));
+    if(found.value && found.value.length) return found.value[0].id;
+  }
+  var created = await _ocGraph(token,'POST','/me/contacts',_ocBuildContact(c));
+  return created.id;
+}
+async function syncNewClientsToOutlookContacts(){
+  if(_ocRunning || Date.now()<_ocBlockedUntil) return;
+  if(!clientsNeedingOutlookContact().length) return;
+  _ocRunning = true;
+  var changed = false;
+  try{
+    var token = await getValidMsToken(false);
+    if(!token) return; // Outlook isn't connected on this device — nothing to do
+    if(!(await _ocCheckAccount(token))){ _ocBlockedUntil = Date.now()+3600000; return; }
+    var todo = clientsNeedingOutlookContact();
+    for(var i=0;i<todo.length;i++){
+      var c = todo[i];
+      var contactId = await _ocCreateFor(token, c);
+      // Re-find the live record: db.clients may have been replaced (edit,
+      // restore) while the request was in flight.
+      var live = db.clients.find(function(x){ return x.id===c.id; });
+      if(live && !live.outlookContactId){ live.outlookContactId = contactId; changed = true; }
+      debugLog('Outlook contacts: added '+(c.name||c.email)+' to '+OUTLOOK_CONTACTS_ACCOUNT);
+    }
+  }catch(e){
+    var msg = (e&&e.message)||String(e);
+    debugLog('Outlook contacts: sync failed — '+msg);
+    if(e && (e.status===401 || e.status===403)){
+      // Token predates the Contacts.ReadWrite scope — needs a reconnect.
+      _ocBlockedUntil = Date.now()+3600000;
+      _ocWarnOnce('scope','New clients can\'t be added to Outlook contacts yet — sign out of Outlook (File menu) and click Sync to reconnect and grant contacts permission.');
+    }else{
+      _ocBlockedUntil = Date.now()+600000;
+    }
+  }finally{
+    _ocRunning = false;
+    if(changed) saveDB();
+  }
 }
 
 // ── Jetpack Manual-Removal Queue ────────────────────────────────────────────
