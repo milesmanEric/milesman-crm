@@ -29730,7 +29730,7 @@ const ASSISTANT_TOOLS = [
   },
   {
     name: 'count_trips_by_state',
-    description: 'Counts trips grouped by the state in the booking client\'s address (the State field on the client record; trips whose client has no state on file are grouped as "(no state)"). Returns one row per state with the trip count, a breakdown by status, and total value, sorted by most trips, plus totalTrips. Filters are optional and combine (AND): pass state to get one state only, or status / destination / departAfter / departBefore to narrow which trips are counted. Cancelled trips are included unless you filter them out — if the user wants real bookings, say so or subtract the Cancelled count from byStatus. Use this for any "how many trips by state" or "trips from New Jersey clients" question.',
+    description: 'Counts trips grouped by the state in the booking client\'s address. Each set of Linked Trips (a multi-leg vacation) counts as ONE trip, matching the Trips page. State comes from the State field on the client record; trips whose client has no state on file are grouped as "(no state)". Returns one row per state with the trip count, a breakdown by status, and total value, sorted by most trips, plus totalTrips. Filters are optional and combine (AND): pass state to get one state only, or status / destination / departAfter / departBefore to narrow which trips are counted. Cancelled trips are included unless you filter them out — if the user wants real bookings, say so or subtract the Cancelled count from byStatus. Use this for any "how many trips by state" or "trips from New Jersey clients" question.',
     input_schema: {
       type: 'object',
       properties: {
@@ -30099,25 +30099,41 @@ async function runAssistantTool(name, input){
     var cbsWanted = assistantStateKey(input.state);
     var cbsClients = {};
     db.clients.forEach(function(c){ cbsClients[c.id] = c; });
-    var cbsRows = {}, cbsTotal = 0;
+    var cbsLinkGroups = tripLinkGroups();
+    // Linked Trips (a multi-leg vacation) count as ONE trip, same as the
+    // Trips page's collapsed summary line — so bucket every matching trip by
+    // its link group first, then count each group once.
+    var cbsGroups = {}, cbsOrder = [];
     db.trips.forEach(function(t){
       if(input.status && t.status!==input.status) return;
       if(input.destination && (t.destination||'').toLowerCase().indexOf(input.destination.toLowerCase())===-1) return;
       if(input.departAfter && !((t.departDate||'')>=input.departAfter)) return;
       if(input.departBefore && !((t.departDate||'')<=input.departBefore)) return;
-      var cl = cbsClients[t.clientId];
-      var key = cl ? assistantStateKey(cl.state) : '';
+      var grp = cbsLinkGroups[t.id] || [t];
+      var gk = grp.map(function(m){return m.id;}).sort()[0];
+      if(!cbsGroups[gk]){ cbsGroups[gk] = []; cbsOrder.push(gk); }
+      cbsGroups[gk].push(t);
+    });
+    var cbsRows = {}, cbsTotal = 0, cbsRecords = 0;
+    cbsOrder.forEach(function(gk){
+      var members = cbsGroups[gk].slice().sort(function(a,b){ return (a.departDate||'').localeCompare(b.departDate||'') || String(a.id).localeCompare(String(b.id)); });
+      // the group's state = the first member (by depart date) whose client has a state on file
+      var key = '';
+      for(var i=0;i<members.length && !key;i++){
+        var cl = cbsClients[members[i].clientId];
+        key = cl ? assistantStateKey(cl.state) : '';
+      }
       if(cbsWanted && key!==cbsWanted) return;
       var label = key || '(no state)';
       var row = cbsRows[label] || (cbsRows[label] = {state:label, trips:0, byStatus:{}, totalValue:0});
-      row.trips++; cbsTotal++;
-      var st = t.status || '(no status)';
+      row.trips++; cbsTotal++; cbsRecords += members.length;
+      var st = members[0].status || '(no status)';
       row.byStatus[st] = (row.byStatus[st]||0) + 1;
-      row.totalValue += (Number(t.totalValue)||0);
+      members.forEach(function(m){ row.totalValue += (Number(m.totalValue)||0); });
     });
     var cbsList = Object.keys(cbsRows).map(function(k){ return cbsRows[k]; }).sort(function(a,b){ return b.trips-a.trips || a.state.localeCompare(b.state); });
     cbsList.forEach(function(r){ r.totalValue = Math.round(r.totalValue*100)/100; });
-    return {states: cbsList, totalTrips: cbsTotal, note: 'Grouped by the primary client\'s State field; trips with a client that has no state are under "(no state)".'};
+    return {states: cbsList, totalTrips: cbsTotal, underlyingTripRecords: cbsRecords, note: 'Linked Trips (multi-leg vacations) are counted as one trip. Grouped by the client\'s State field; trips whose client has no state are under "(no state)". byStatus uses each linked trip\'s earliest leg.'};
   }
   if(name === 'add_client_note'){
     var client = db.clients.find(function(c){return c.id===input.clientId;});
