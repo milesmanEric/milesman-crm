@@ -322,7 +322,7 @@ tr:last-child td{border-bottom:none}
         <button class="sync-btn" id="btn-sync-texts" style="color:#0891b2;border-color:#67e8f9">&#128241; Sync Texts</button>
         <button class="sync-btn" id="btn-log-mailchimp" style="color:#7c3aed;border-color:#c4b5fd">&#128226; Log Mailchimp Campaign</button>
         <button class="sync-btn" id="btn-sync-mailchimp" style="color:#7c3aed;border-color:#c4b5fd">&#128260; Sync Mailchimp Activity</button>
-        <button class="sync-btn" id="btn-copy-outlook-contacts" style="color:#2563eb;border-color:#93c5fd" title="Copies existing clients that have an email or phone into eric@themilesman.com's Outlook contacts (new clients are added automatically)">&#128100; Copy Clients to Outlook Contacts</button>
+        <button class="sync-btn" id="btn-copy-outlook-contacts" style="color:#2563eb;border-color:#93c5fd" title="Copies existing paying clients that have an email or phone into eric@themilesman.com's Outlook contacts (new paying clients are added automatically)">&#128100; Copy Clients to Outlook Contacts</button>
         <button class="sync-btn" id="btn-ms-signout" style="color:#888;border-color:#ddd;font-size:11px">&#128274; Reset Outlook Login</button>
       </div>
 
@@ -5673,7 +5673,7 @@ function scheduleOutlookContactSync(){
 }
 function clientsNeedingOutlookContact(){
   return (db.clients||[]).filter(function(c){
-    return c && c.id && !c.outlookContactId && (c.joined||'')>=OUTLOOK_CONTACTS_START &&
+    return c && c.id && c.isPayingClient && !c.outlookContactId && (c.joined||'')>=OUTLOOK_CONTACTS_START &&
       ((c.email||'').trim() || (c.phone||'').trim());
   });
 }
@@ -5805,10 +5805,10 @@ async function syncNewClientsToOutlookContacts(){
 async function copyExistingClientsToOutlookContacts(){
   if(_ocRunning){ toast('An Outlook contacts sync is already running — try again in a moment','err'); return; }
   var todo = (db.clients||[]).filter(function(c){
-    return c && c.id && !c.outlookContactId && (c.name||'').trim() && ((c.email||'').trim()||(c.phone||'').trim());
+    return c && c.id && c.isPayingClient && !c.outlookContactId && (c.name||'').trim() && ((c.email||'').trim()||(c.phone||'').trim());
   });
-  if(!todo.length){ toast('Every client with an email or phone is already in Outlook contacts'); return; }
-  if(!confirm('Copy '+todo.length+' client'+(todo.length!==1?'s':'')+' (those with an email or phone) to the Outlook contacts of '+OUTLOOK_CONTACTS_ACCOUNT+'?\n\nContacts that already exist (same email) are reused, not duplicated. This may take a few minutes.')) return;
+  if(!todo.length){ toast('Every paying client with an email or phone is already in Outlook contacts'); return; }
+  if(!confirm('Copy '+todo.length+' paying client'+(todo.length!==1?'s':'')+' (those with an email or phone) to the Outlook contacts of '+OUTLOOK_CONTACTS_ACCOUNT+'?\n\nContacts that already exist (same email) are reused, not duplicated. This may take a few minutes.')) return;
   _ocRunning = true;
   var done = 0, failed = 0, sinceSave = 0;
   try{
